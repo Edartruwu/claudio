@@ -1,0 +1,105 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+// FileEditTool performs exact string replacement in files.
+type FileEditTool struct{}
+
+type fileEditInput struct {
+	FilePath   string `json:"file_path"`
+	OldString  string `json:"old_string"`
+	NewString  string `json:"new_string"`
+	ReplaceAll bool   `json:"replace_all,omitempty"`
+}
+
+func (t *FileEditTool) Name() string { return "Edit" }
+
+func (t *FileEditTool) Description() string {
+	return `Performs exact string replacement in a file. The old_string must be unique in the file (unless replace_all is true). Use this for making targeted changes to existing files.`
+}
+
+func (t *FileEditTool) InputSchema() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"file_path": {
+				"type": "string",
+				"description": "Absolute path to the file to edit"
+			},
+			"old_string": {
+				"type": "string",
+				"description": "The exact text to find and replace"
+			},
+			"new_string": {
+				"type": "string",
+				"description": "The text to replace it with"
+			},
+			"replace_all": {
+				"type": "boolean",
+				"description": "Replace all occurrences (default: false)"
+			}
+		},
+		"required": ["file_path", "old_string", "new_string"]
+	}`)
+}
+
+func (t *FileEditTool) IsReadOnly() bool { return false }
+
+func (t *FileEditTool) RequiresApproval(_ json.RawMessage) bool { return true }
+
+func (t *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
+	var in fileEditInput
+	if err := json.Unmarshal(input, &in); err != nil {
+		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
+	}
+
+	if in.FilePath == "" {
+		return &Result{Content: "No file path provided", IsError: true}, nil
+	}
+	if in.OldString == "" {
+		return &Result{Content: "old_string cannot be empty", IsError: true}, nil
+	}
+	if in.OldString == in.NewString {
+		return &Result{Content: "old_string and new_string are identical", IsError: true}, nil
+	}
+
+	content, err := os.ReadFile(in.FilePath)
+	if err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to read file: %v", err), IsError: true}, nil
+	}
+
+	text := string(content)
+
+	if !in.ReplaceAll {
+		// Check uniqueness
+		count := strings.Count(text, in.OldString)
+		if count == 0 {
+			return &Result{Content: "old_string not found in file", IsError: true}, nil
+		}
+		if count > 1 {
+			return &Result{
+				Content: fmt.Sprintf("old_string found %d times — must be unique. Provide more context or use replace_all.", count),
+				IsError: true,
+			}, nil
+		}
+		text = strings.Replace(text, in.OldString, in.NewString, 1)
+	} else {
+		count := strings.Count(text, in.OldString)
+		if count == 0 {
+			return &Result{Content: "old_string not found in file", IsError: true}, nil
+		}
+		text = strings.ReplaceAll(text, in.OldString, in.NewString)
+	}
+
+	if err := os.WriteFile(in.FilePath, []byte(text), 0644); err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to write file: %v", err), IsError: true}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Successfully edited %s", in.FilePath)}, nil
+}

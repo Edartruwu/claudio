@@ -1,0 +1,6 @@
+bin/
+*.exe
+*.db
+*.db-journal
+.claudio/
+.DS_Store
