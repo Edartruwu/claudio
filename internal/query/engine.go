@@ -230,6 +230,11 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		// Stream response
 		response, err := e.streamResponse(ctx, req)
 		if err != nil {
+			// Save whatever partial content arrived before the error so the
+			// model has it in history on the next attempt (e.g. after a timeout).
+			if response != nil && len(response.Content) > 0 {
+				e.saveAssistantMessage(response.Content)
+			}
 			e.handler.OnError(err)
 			return err
 		}
@@ -239,6 +244,9 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			req.MaxTokens = escalatedMaxTokens
 			response, err = e.streamResponse(ctx, req)
 			if err != nil {
+				if response != nil && len(response.Content) > 0 {
+					e.saveAssistantMessage(response.Content)
+				}
 				e.handler.OnError(err)
 				return err
 			}
@@ -246,17 +254,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 
 		// Append assistant message — strip thinking blocks since they
 		// require a signature field when sent back and are ephemeral
-		var filteredContent []api.ContentBlock
-		for _, block := range response.Content {
-			if block.Type != "thinking" {
-				filteredContent = append(filteredContent, block)
-			}
-		}
-		assistantContent, _ := json.Marshal(filteredContent)
-		e.messages = append(e.messages, api.Message{
-			Role:    "assistant",
-			Content: assistantContent,
-		})
+		e.saveAssistantMessage(response.Content)
 
 		e.handler.OnTurnComplete(response.Usage)
 
@@ -446,13 +444,24 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 				}
 
 			case "content_block_stop":
-				if currentBlockIdx >= 0 && currentBlockIdx < len(currentBlocks) {
-					block := currentBlocks[currentBlockIdx]
+				// Use the event's own index — not currentBlockIdx — so parallel
+				// tool calls (where a second block starts before the first stops)
+				// are attributed to the correct block.
+				stopIdx := event.Index
+				if stopIdx >= 0 && stopIdx < len(currentBlocks) {
+					block := currentBlocks[stopIdx]
 					if block.Type == "tool_use" {
+						// Ensure input is always a valid JSON object — the API
+						// rejects tool_use blocks where input is null or missing.
+						input := block.Input
+						if len(input) == 0 {
+							input = json.RawMessage("{}")
+							currentBlocks[stopIdx].Input = input
+						}
 						response.ToolUses = append(response.ToolUses, tools.ToolUse{
 							ID:    block.ID,
 							Name:  block.Name,
-							Input: block.Input,
+							Input: input,
 						})
 					}
 				}
@@ -480,9 +489,13 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 			if !ok {
 				continue
 			}
-			return nil, err
+			// Return whatever partial content arrived before the error so the
+			// engine can save it to history. The caller checks err != nil.
+			response.Content = currentBlocks
+			return response, err
 
 		case <-ctx.Done():
+			// User cancelled — don't save partial content, just stop cleanly.
 			return nil, ctx.Err()
 		}
 	}
@@ -763,6 +776,30 @@ func (e *Engine) trackDiscoveredTools(input json.RawMessage) {
 			}
 		}
 	}
+}
+
+// saveAssistantMessage filters thinking blocks and appends the assistant turn
+// to the conversation history. Ensures tool_use blocks always carry a valid
+// JSON input object (the API rejects null/missing input).
+func (e *Engine) saveAssistantMessage(content []api.ContentBlock) {
+	var filtered []api.ContentBlock
+	for _, block := range content {
+		if block.Type == "thinking" {
+			continue
+		}
+		if block.Type == "tool_use" && len(block.Input) == 0 {
+			block.Input = json.RawMessage("{}")
+		}
+		filtered = append(filtered, block)
+	}
+	if len(filtered) == 0 {
+		return
+	}
+	assistantContent, _ := json.Marshal(filtered)
+	e.messages = append(e.messages, api.Message{
+		Role:    "assistant",
+		Content: assistantContent,
+	})
 }
 
 // mergeConsecutiveUserMessages merges adjacent user messages into one.
