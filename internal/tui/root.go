@@ -1341,6 +1341,17 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		if output == "__new_session__" {
 			return m, nil
 		}
+		// Clear: wipe UI messages and engine history
+		if output == "[action:clear]" {
+			m.messages = nil
+			m.streamText.Reset()
+			m.turns = 0
+			m.totalTokens = 0
+			m.totalCost = 0
+			m.engine.SetMessages(nil)
+			m.refreshViewport()
+			return m, nil
+		}
 		// Skill invocation: intercept [skill:NAME] and send skill content to engine
 		if strings.HasPrefix(output, "[skill:") && strings.Contains(output, "]") {
 			skillName := output[7:strings.Index(output, "]")]
