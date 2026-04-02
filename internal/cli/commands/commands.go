@@ -26,7 +26,6 @@ type CommandDeps struct {
 	RenameSession   func(title string) error
 	ToggleVim       func() bool // returns new state (true=enabled)
 	// Session lifecycle
-	LoadHistory   func() (string, error)
 	NewSession    func() error
 	// Memory
 	ExtractMemories func() (int, error) // manually trigger extraction, returns count of memories saved

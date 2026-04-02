@@ -386,17 +386,6 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	})
 
 	r.Register(&Command{
-		Name:        "history",
-		Description: "Load full conversation history from previous session",
-		Execute: func(args string) (string, error) {
-			if deps.LoadHistory == nil {
-				return "No session manager available", nil
-			}
-			return deps.LoadHistory()
-		},
-	})
-
-	r.Register(&Command{
 		Name:        "new",
 		Description: "Start a new session",
 		Execute: func(args string) (string, error) {

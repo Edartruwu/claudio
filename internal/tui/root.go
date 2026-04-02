@@ -231,19 +231,6 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			m.prompt.ToggleVim()
 			return m.prompt.IsVimEnabled()
 		},
-		LoadHistory: func() (string, error) {
-			if sess == nil {
-				return "", fmt.Errorf("no session manager")
-			}
-			msgs, err := sess.GetMessages()
-			if err != nil {
-				return "", err
-			}
-			if len(msgs) == 0 {
-				return "No messages in this session.", nil
-			}
-			return fmt.Sprintf("__load_history__%d", len(msgs)), nil
-		},
 		NewSession: func() error {
 			if sess == nil {
 				return fmt.Errorf("no session manager")
@@ -1352,10 +1339,6 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		if output == "__new_session__" {
 			return m, nil
 		}
-		// Load history: load messages from DB into current viewport
-		if strings.HasPrefix(output, "__load_history__") {
-			return m.loadHistoryIntoViewport()
-		}
 		// Skill invocation: intercept [skill:NAME] and send skill content to engine
 		if strings.HasPrefix(output, "[skill:") && strings.Contains(output, "]") {
 			skillName := output[7:strings.Index(output, "]")]
@@ -2040,55 +2023,6 @@ func (m *Model) deleteCurrentSession() (bool, tea.Cmd) {
 	return true, nil
 }
 
-func (m Model) loadHistoryIntoViewport() (tea.Model, tea.Cmd) {
-	if m.session == nil {
-		m.addMessage(ChatMessage{Type: MsgError, Content: "No session manager"})
-		m.refreshViewport()
-		return m, nil
-	}
-	msgs, err := m.session.GetMessages()
-	if err != nil {
-		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Load history: %v", err)})
-		m.refreshViewport()
-		return m, nil
-	}
-	if len(msgs) == 0 {
-		m.addMessage(ChatMessage{Type: MsgSystem, Content: "No messages in session history."})
-		m.refreshViewport()
-		return m, nil
-	}
-
-	// Prepend history messages before current messages
-	var history []ChatMessage
-	for _, msg := range msgs {
-		var msgType MessageType
-		switch msg.Type {
-		case "user":
-			msgType = MsgUser
-		case "assistant":
-			msgType = MsgAssistant
-		case "tool_use":
-			msgType = MsgToolUse
-		case "tool_result":
-			msgType = MsgToolResult
-		case "error":
-			msgType = MsgError
-		default:
-			msgType = MsgSystem
-		}
-		history = append(history, ChatMessage{
-			Type:     msgType,
-			Content:  msg.Content,
-			ToolName: msg.ToolName,
-		})
-	}
-
-	// Replace current messages with history (avoid duplicates)
-	m.messages = history
-	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Loaded %d messages from session history.", len(msgs))})
-	m.refreshViewport()
-	return m, nil
-}
 
 func (m *Model) renameCurrentSession() (bool, tea.Cmd) {
 	m.addMessage(ChatMessage{Type: MsgSystem, Content: "Use /rename <title> to rename this session"})
