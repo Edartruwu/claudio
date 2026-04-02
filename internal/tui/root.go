@@ -1823,6 +1823,7 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 		case "user":
 			content, _ := json.Marshal(msg.Content)
 			result = append(result, api.Message{Role: "user", Content: content})
+			pendingIDs = nil // tool_results cannot bridge past a plain user message
 			i++
 
 		case "assistant":
