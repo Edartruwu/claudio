@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Abraxas-365/claudio/internal/auth"
 )
@@ -42,9 +41,11 @@ type Client struct {
 // NewClient creates a new API client.
 func NewClient(resolver *auth.Resolver, opts ...ClientOption) *Client {
 	c := &Client{
-		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
+		// No timeout on the HTTP client — streaming responses (especially with
+		// extended thinking on Opus) can run for 30+ minutes. Cancellation is
+		// handled via the request context (ctx), which the TUI passes and can
+		// cancel at any time with Ctrl+C.
+		httpClient: &http.Client{},
 		authResolver:  resolver,
 		baseURL:       defaultBaseURL,
 		apiVersion:    defaultAPIVersion,
