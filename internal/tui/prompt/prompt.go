@@ -638,6 +638,11 @@ func (m *Model) ImageCount() int {
 }
 
 // View renders the prompt with a left accent bar.
+// Height returns the rendered height of the prompt in terminal rows.
+func (m Model) Height() int {
+	return lipgloss.Height(m.View())
+}
+
 func (m Model) View() string {
 	bar := styles.PromptBarFocused
 	if !m.focused {

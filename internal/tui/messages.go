@@ -756,9 +756,14 @@ func renderMarkdown(content string, width int) string {
 
 	// Reuse renderer unless width changed
 	if cachedRenderer == nil || cachedWidth != width {
+		// Subtract 4 for glamour's document margin (2 chars each side)
+		wrapWidth := width - 4
+		if wrapWidth < 10 {
+			wrapWidth = 10
+		}
 		r, err := glamour.NewTermRenderer(
 			glamour.WithStylesFromJSONBytes(styles.GruvboxGlamourJSON()),
-			glamour.WithWordWrap(width),
+			glamour.WithWordWrap(wrapWidth),
 		)
 		if err != nil {
 			return content
