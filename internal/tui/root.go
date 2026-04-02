@@ -125,6 +125,7 @@ type (
 		mediaType string
 		err       error
 	}
+	timerTickMsg struct{}
 )
 
 // ModelOption configures optional TUI model fields.
@@ -739,6 +740,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prompt.Reset()
 		return m.handleCommand(msg.Name, "")
 
+	case filepicker.BrowseDirMsg:
+		// User selected a directory: update prompt to browse into it
+		val := m.prompt.Value()
+		atIdx := strings.LastIndex(val, "@")
+		if atIdx >= 0 {
+			m.prompt.SetValue(val[:atIdx] + "@" + msg.Query)
+		}
+		return m, nil
+
 	case filepicker.SelectMsg:
 		m.filePicker.Deactivate()
 		// Check if selected file is an image
@@ -875,6 +885,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshViewport()
 		} else {
 			m.prompt.SetValueWithCollapse(msg.content)
+		}
+		return m, nil
+
+	case timerTickMsg:
+		if m.streaming {
+			m.refreshViewport()
+			return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return timerTickMsg{} })
 		}
 		return m, nil
 
@@ -1059,7 +1076,8 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 		m.eventCh <- tuiEvent{typ: "done", err: err}
 	}()
 
-	return m, tea.Batch(m.spinner.Tick(), m.waitForEvent())
+	timerTick := tea.Tick(time.Second, func(time.Time) tea.Msg { return timerTickMsg{} })
+	return m, tea.Batch(m.spinner.Tick(), m.waitForEvent(), timerTick)
 }
 
 func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
@@ -1177,6 +1195,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		// Find the most recent Agent MsgToolUse and update the last matching sub-agent tool
 		if event.result != nil {
 			brief := resultBrief(event.result.Content)
+			summary := formatToolSummary(event.toolUse)
 			for i := len(m.messages) - 1; i >= 0; i-- {
 				if m.messages[i].Type == MsgToolUse && m.messages[i].ToolName == "Agent" {
 					subs := m.messages[i].SubagentTools
@@ -1184,6 +1203,9 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 						if subs[j].ToolName == event.toolUse.Name && subs[j].Result == nil {
 							m.messages[i].SubagentTools[j].Result = &brief
 							m.messages[i].SubagentTools[j].IsError = event.result.IsError
+							if summary != "" {
+								m.messages[i].SubagentTools[j].Summary = summary
+							}
 							break
 						}
 					}

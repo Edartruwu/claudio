@@ -20,7 +20,13 @@ type Item struct {
 
 // SelectMsg is sent when the user selects a file.
 type SelectMsg struct {
-	Path string // the selected path to insert
+	Path  string // the selected path to insert
+	IsDir bool   // true when the selection is a directory
+}
+
+// BrowseDirMsg is sent when the user selects a directory to browse into it.
+type BrowseDirMsg struct {
+	Query string // the new query (directory path with trailing /)
 }
 
 // Model is the file picker palette.
@@ -94,8 +100,18 @@ func (m *Model) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case "tab", "enter":
 		if len(m.filtered) > 0 && m.selected < len(m.filtered) {
 			item := m.filtered[m.selected]
+			if item.IsDir {
+				// Navigate into the directory instead of selecting it
+				newQuery := item.Path + "/"
+				m.query = newQuery
+				m.scan()
+				m.selected = 0
+				return func() tea.Msg {
+					return BrowseDirMsg{Query: newQuery}
+				}, true
+			}
 			return func() tea.Msg {
-				return SelectMsg{Path: item.Path}
+				return SelectMsg{Path: item.Path, IsDir: false}
 			}, true
 		}
 		return nil, false
