@@ -85,6 +85,9 @@ type Model struct {
 	// Message pinning — maps ChatMessage index to pinned state
 	pinnedMsgIndices map[int]bool
 
+	// Concurrent session runtimes — keeps background sessions alive
+	sessionRuntimes map[string]*SessionRuntime
+
 	// App context for panels
 	appCtx *AppContext
 
@@ -153,10 +156,11 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		systemPrompt:   systemPrompt,
 		streamText:     &strings.Builder{},
 		session:        sess,
-		expandedGroups: make(map[int]bool),
-		lastToolGroup:  -1,
-		vpCursor:       -1,
-		whichKey:       whichkey.New(),
+		expandedGroups:  make(map[int]bool),
+		lastToolGroup:   -1,
+		vpCursor:        -1,
+		whichKey:        whichkey.New(),
+		sessionRuntimes: make(map[string]*SessionRuntime),
 	}
 
 	// Apply options
@@ -377,6 +381,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "ctrl+c":
+			if m.streaming && m.cancelFunc != nil {
+				// First Ctrl+C during streaming: cancel and preserve partial response
+				m.cancelFunc()
+				m.finalizeStreamingMessage()
+				m.streaming = false
+				m.spinText = ""
+				m.spinner.Stop()
+				m.prompt.Focus()
+				m.focus = FocusPrompt
+				m.addMessage(ChatMessage{Type: MsgSystem, Content: "Cancelled — partial response preserved"})
+				m.refreshViewport()
+				return m, nil
+			}
+			// Not streaming: quit
 			if m.cancelFunc != nil {
 				m.cancelFunc()
 			}
@@ -417,15 +435,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.prompt.IsVimEnabled() && !m.prompt.IsVimNormal() {
 				break // fall through to prompt.Update below
 			}
-			// In Normal mode (or vim disabled), Escape cancels streaming
-			if m.streaming && m.cancelFunc != nil {
-				m.cancelFunc()
-				m.streaming = false
-				m.spinText = ""
-				m.spinner.Stop()
-				m.prompt.Focus()
-				m.focus = FocusPrompt
-				m.refreshViewport()
+			// In Normal mode during streaming: do nothing (use Ctrl+C to cancel)
+			// This allows navigating (Space+wk, etc.) without killing the stream
+			if m.streaming {
 				return m, nil
 			}
 			if m.filePicker.IsActive() {
@@ -656,7 +668,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					recent, _ := m.session.RecentForProject(3)
 					if idx < len(recent) {
 						m.doSwitchSession(recent[idx].ID)
-						return m, nil
+						return m, m.resumeStreamingCmds()
 					}
 				}
 			}
@@ -807,7 +819,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focus = FocusPrompt
 		m.prompt.Focus()
 		m.doSwitchSession(msg.SessionID)
-		return m, nil
+		return m, m.resumeStreamingCmds()
 
 	case skillspanel.InvokeSkillMsg:
 		m.closePanel()
@@ -817,6 +829,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case panelsessions.DeleteSessionMsg:
 		m.closePanel()
+		return m, nil
+
+	case panelconfig.ConfigChangedMsg:
+		m.applyConfigChange(msg.Key, msg.Value)
 		return m, nil
 
 	case memorypanel.EditorDoneMsg:
@@ -1025,6 +1041,9 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelFunc = cancel
 
+	// Inject sub-agent observer so agent tool events flow to TUI in real time
+	ctx = tools.WithSubAgentObserver(ctx, &tuiSubAgentObserver{ch: m.eventCh})
+
 	// Build content blocks: images + file contents + user text
 	hasAttachments := len(imageBlocks) > 0 || len(fileAttachments) > 0
 
@@ -1134,6 +1153,34 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "subagent_tool_start":
+		// Update spinner to show sub-agent activity
+		summary := formatToolSummary(event.toolUse)
+		label := fmt.Sprintf("Agent → %s %s", event.toolUse.Name, summary)
+		m.spinText = label
+		m.spinner.SetText(label)
+
+		// Add nested tool-use message to chat (will appear in current tool group)
+		m.addMessage(ChatMessage{
+			Type:         MsgToolUse,
+			ToolName:     event.toolUse.Name,
+			ToolInput:    summary,
+			ToolInputRaw: event.toolUse.Input,
+			IsSubagent:   true,
+		})
+		m.refreshViewport()
+
+	case "subagent_tool_end":
+		if event.result != nil {
+			m.addMessage(ChatMessage{
+				Type:       MsgToolResult,
+				Content:    event.result.Content,
+				IsError:    event.result.IsError,
+				IsSubagent: true,
+			})
+			m.refreshViewport()
+		}
+
 	case "error":
 		m.addMessage(ChatMessage{Type: MsgError, Content: event.err.Error()})
 		m.refreshViewport()
@@ -1149,6 +1196,70 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		m.modelSelector.SetWidth(m.width)
 		m.focus = FocusModelSelector
 		m.prompt.Blur()
+		return m, nil
+	}
+
+	// /compact → handle directly because closures from New() capture a stale m
+	if name == "compact" {
+		keepLast := 10
+		if args != "" {
+			if _, err := fmt.Sscanf(args, "%d", &keepLast); err != nil {
+				m.addMessage(ChatMessage{Type: MsgSystem, Content: "Usage: /compact [number-of-messages-to-keep]"})
+				m.refreshViewport()
+				return m, nil
+			}
+		}
+		if m.engine == nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "No active conversation to compact."})
+			m.refreshViewport()
+			return m, nil
+		}
+		msgs := m.engine.Messages()
+		pinned := m.buildPinnedEngineIndices()
+		compacted, summary, err := compact.Compact(
+			context.Background(), m.apiClient, msgs, keepLast, pinned,
+		)
+		if err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Compaction failed: %v", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		if summary == "" {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Nothing to compact (conversation too short)."})
+			m.refreshViewport()
+			return m, nil
+		}
+		m.engine.SetMessages(compacted)
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Compacted conversation. Summary:\n%s", summary)})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	// /memory extract → handle directly because closures from New() capture a stale m
+	if name == "memory" && strings.TrimSpace(args) == "extract" {
+		if m.engine == nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "No active conversation."})
+			m.refreshViewport()
+			return m, nil
+		}
+		if m.appCtx == nil || m.appCtx.Memory == nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Memory store not available."})
+			m.refreshViewport()
+			return m, nil
+		}
+		msgs := m.engine.Messages()
+		if len(msgs) == 0 {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "No messages in conversation."})
+			m.refreshViewport()
+			return m, nil
+		}
+		count := memory.ExtractFromMessages(m.apiClient, m.appCtx.Memory, msgs)
+		if count == 0 {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "No new memories extracted from this conversation."})
+		} else {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Extracted %d memory(ies) from this conversation.", count)})
+		}
+		m.refreshViewport()
 		return m, nil
 	}
 
@@ -1380,6 +1491,9 @@ func (m *Model) switchSessionRelative(dir int) (bool, tea.Cmd) {
 		arrow = "←"
 	}
 	toastCmd := m.toast.Show(fmt.Sprintf(" %s %s (%d of %d) ", arrow, title, next+1, len(sessions)))
+	if resumeCmd := m.resumeStreamingCmds(); resumeCmd != nil {
+		return true, tea.Batch(toastCmd, resumeCmd)
+	}
 	return true, toastCmd
 }
 
@@ -1404,19 +1518,37 @@ func (m *Model) switchToAlternateSession() (bool, tea.Cmd) {
 			title = short
 		}
 		toastCmd := m.toast.Show(fmt.Sprintf(" ⇄ %s ", title))
+		if resumeCmd := m.resumeStreamingCmds(); resumeCmd != nil {
+			return true, tea.Batch(toastCmd, resumeCmd)
+		}
 		return true, toastCmd
 	}
-	return true, nil
+	return true, m.resumeStreamingCmds()
 }
 
 func (m *Model) doSwitchSession(id string) {
 	if m.session == nil {
 		return
 	}
-	// Save previous session ID for alternate switching
+
+	// Save current session's runtime state (keep streaming in background)
 	if cur := m.session.Current(); cur != nil {
 		m.prevSessionID = cur.ID
+		if m.streaming {
+			m.saveSessionRuntime(cur.ID)
+		}
 	}
+
+	// Check if we're switching to a session that has a background runtime
+	if rt, ok := m.sessionRuntimes[id]; ok {
+		m.restoreSessionRuntime(rt)
+		delete(m.sessionRuntimes, id)
+		m.session.Resume(id)
+		m.refreshViewport()
+		// Note: caller must check m.streaming and issue waitForEvent()+spinner.Tick() if true
+		return
+	}
+
 	resumed, err := m.session.Resume(id)
 	if err != nil {
 		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Switch failed: %v", err)})
@@ -1479,6 +1611,101 @@ func (m *Model) doSwitchSession(id string) {
 		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
 	}
 	m.refreshViewport()
+}
+
+// countBackgroundSessions returns the number of sessions still streaming in the background.
+// Also cleans up finished runtimes.
+func (m *Model) countBackgroundSessions() int {
+	count := 0
+	var finished []string
+	for id, rt := range m.sessionRuntimes {
+		rt.mu.Lock()
+		if rt.Streaming {
+			count++
+		} else {
+			finished = append(finished, id)
+		}
+		rt.mu.Unlock()
+	}
+	// Clean up finished runtimes (keep their state for when user switches back)
+	// Don't delete — user may want to see the completed results
+	_ = finished
+	return count
+}
+
+// resumeStreamingCmds returns tea.Cmds needed if we just restored a streaming session.
+func (m *Model) resumeStreamingCmds() tea.Cmd {
+	if !m.streaming {
+		return nil
+	}
+	return tea.Batch(m.spinner.Tick(), m.waitForEvent())
+}
+
+// saveSessionRuntime saves the current session's streaming state into a background runtime.
+func (m *Model) saveSessionRuntime(sessionID string) {
+	rt := NewSessionRuntime(sessionID)
+	rt.Engine = m.engine
+	rt.CancelFunc = m.cancelFunc
+	rt.EventCh = m.eventCh
+	rt.ApprovalCh = m.approvalCh
+	rt.Messages = m.messages
+	rt.StreamText = *m.streamText
+	rt.Streaming = m.streaming
+	rt.TotalTokens = m.totalTokens
+	rt.TotalCost = m.totalCost
+	rt.Turns = m.turns
+	rt.ExpandedGroups = m.expandedGroups
+	rt.LastToolGroup = m.lastToolGroup
+	rt.SpinText = m.spinText
+	rt.MessageQueue = m.messageQueue
+
+	m.sessionRuntimes[sessionID] = rt
+	rt.StartBackgroundDrain()
+
+	// Reset Model state for the new session
+	m.engine = nil
+	m.cancelFunc = nil
+	m.eventCh = make(chan tuiEvent, 64)
+	m.approvalCh = nil
+	m.messages = nil
+	m.streamText = &strings.Builder{}
+	m.streaming = false
+	m.totalTokens = 0
+	m.totalCost = 0
+	m.turns = 0
+	m.expandedGroups = make(map[int]bool)
+	m.lastToolGroup = -1
+	m.spinText = ""
+	m.spinner.Stop()
+	m.messageQueue = nil
+}
+
+// restoreSessionRuntime restores a background session's state back into the Model.
+func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
+	rt.StopBackgroundDrain()
+
+	// Grab the accumulated state under lock
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	m.engine = rt.Engine
+	m.cancelFunc = rt.CancelFunc
+	m.eventCh = rt.EventCh
+	m.approvalCh = rt.ApprovalCh
+	m.messages = rt.Messages
+	m.streamText = &rt.StreamText
+	m.streaming = rt.Streaming
+	m.totalTokens = rt.TotalTokens
+	m.totalCost = rt.TotalCost
+	m.turns = rt.Turns
+	m.expandedGroups = rt.ExpandedGroups
+	m.lastToolGroup = rt.LastToolGroup
+	m.spinText = rt.SpinText
+	m.messageQueue = rt.MessageQueue
+
+	if m.streaming {
+		m.spinner.Start(m.spinText)
+	}
 }
 
 func (m *Model) createNewSession() (bool, tea.Cmd) {
@@ -1618,6 +1845,27 @@ func (m *Model) openPanel(id PanelID) {
 	m.focus = FocusPanel
 	m.prompt.Blur()
 	m.refreshViewport()
+}
+
+// applyConfigChange applies a config change to the live session immediately.
+func (m *Model) applyConfigChange(key, value string) {
+	switch key {
+	case "model":
+		m.model = value
+		m.apiClient.SetModel(value)
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Model changed to %s", value)})
+		m.refreshViewport()
+	case "permissionMode":
+		if m.engineConfig != nil {
+			m.engineConfig.PermissionMode = value
+		}
+	case "outputStyle":
+		if m.appCtx != nil && m.appCtx.Config != nil {
+			m.appCtx.Config.OutputStyle = value
+		}
+	}
+	// Other settings (autoMemoryExtract, memorySelection, compactMode, etc.)
+	// are read from config at the point of use, so saving to disk is sufficient.
 }
 
 func (m *Model) closePanel() {
@@ -2011,8 +2259,9 @@ func (m Model) View() string {
 		VimMode:     m.vimModeDisplay(),
 		SessionName: m.sessionName(),
 		PanelName:   m.panelName(),
-		ContextUsed: ctxUsed,
-		ContextMax:  ctxMax,
+		ContextUsed:        ctxUsed,
+		ContextMax:         ctxMax,
+		BackgroundSessions: m.countBackgroundSessions(),
 	}))
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -2261,7 +2510,7 @@ func (m Model) statusHint() string {
 		return "\u2191\u2193 navigate · enter select · esc close"
 	}
 	if m.streaming {
-		return "esc stop"
+		return "ctrl+c cancel · <Space>wk viewport"
 	}
 	if m.lastToolGroup >= 0 {
 		return "<Space>. sessions · <Space>wk viewport · ctrl+o expand"
@@ -2320,6 +2569,19 @@ func (h *tuiEventHandler) OnCostConfirmNeeded(currentCost, threshold float64) bo
 
 func (h *tuiEventHandler) OnError(err error) {
 	h.ch <- tuiEvent{typ: "error", err: err}
+}
+
+// tuiSubAgentObserver forwards sub-agent tool events to the TUI event channel.
+type tuiSubAgentObserver struct {
+	ch chan<- tuiEvent
+}
+
+func (o *tuiSubAgentObserver) OnSubAgentToolStart(desc string, tu tools.ToolUse) {
+	o.ch <- tuiEvent{typ: "subagent_tool_start", text: desc, toolUse: tu}
+}
+
+func (o *tuiSubAgentObserver) OnSubAgentToolEnd(desc string, tu tools.ToolUse, result *tools.Result) {
+	o.ch <- tuiEvent{typ: "subagent_tool_end", text: desc, toolUse: tu, result: result}
 }
 
 func shortModelName(model string) string {

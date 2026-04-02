@@ -97,7 +97,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					Decision: DecisionAllow,
 				}
 			}
-		case "n":
+		case "n", "esc", "ctrl+c":
 			m.active = false
 			return m, func() tea.Msg {
 				return ResponseMsg{

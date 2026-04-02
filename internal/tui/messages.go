@@ -34,6 +34,7 @@ type ChatMessage struct {
 	ToolInputRaw json.RawMessage // full input JSON for expanded view
 	IsError      bool
 	Pinned       bool // pinned messages survive compaction
+	IsSubagent   bool // true if this is a sub-agent tool call
 }
 
 // ── Rendering ─────────────────────────────────────────────
@@ -196,12 +197,17 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 		}
 
 		// Left side: icon + name + summary
+		// Sub-agent tools are indented and use dimmer styling
+		subPrefix := ""
+		if p.use.IsSubagent {
+			subPrefix = "   "
+		}
 		icon := styles.ToolIcon.Render("⚡ ")
 		name := styles.ToolName.Width(nameW).Render(p.use.ToolName)
 		summaryText := formatRichSummary(p.use)
-		summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-25))
+		summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-25-len(subPrefix)))
 
-		left := connector + icon + name + summary
+		left := subPrefix + connector + icon + name + summary
 
 		// Right side: status
 		var status string
@@ -570,6 +576,8 @@ type StatusBarState struct {
 	// Context budget
 	ContextUsed int // total tokens used in context window
 	ContextMax  int // max context window size
+	// Background sessions
+	BackgroundSessions int // number of sessions running in background
 }
 
 func renderStatusBar(width int, s StatusBarState) string {
@@ -624,6 +632,12 @@ func renderStatusBar(width int, s StatusBarState) string {
 	// Context budget bar
 	if s.ContextMax > 0 && s.ContextUsed > 0 {
 		parts = append(parts, renderContextBar(s.ContextUsed, s.ContextMax))
+	}
+
+	// Background sessions indicator
+	if s.BackgroundSessions > 0 {
+		bgStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+		parts = append(parts, bgStyle.Render(fmt.Sprintf("⚡%d bg", s.BackgroundSessions)))
 	}
 
 	if s.Cost > 0 {

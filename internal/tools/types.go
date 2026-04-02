@@ -64,6 +64,28 @@ type APIToolDef struct {
 	DeferLoading bool            `json:"defer_loading,omitempty"`
 }
 
+// SubAgentObserver receives forwarded events from sub-agent execution.
+// Defined in tools to avoid circular imports with query.
+type SubAgentObserver interface {
+	OnSubAgentToolStart(agentDesc string, tu ToolUse)
+	OnSubAgentToolEnd(agentDesc string, tu ToolUse, result *Result)
+}
+
+type subAgentObserverKey struct{}
+
+// WithSubAgentObserver injects a SubAgentObserver into the context.
+func WithSubAgentObserver(ctx context.Context, obs SubAgentObserver) context.Context {
+	return context.WithValue(ctx, subAgentObserverKey{}, obs)
+}
+
+// GetSubAgentObserver retrieves the SubAgentObserver from context, or nil.
+func GetSubAgentObserver(ctx context.Context) SubAgentObserver {
+	if obs, ok := ctx.Value(subAgentObserverKey{}).(SubAgentObserver); ok {
+		return obs
+	}
+	return nil
+}
+
 // SecurityChecker validates file paths and commands against security policies.
 type SecurityChecker interface {
 	CheckPath(path string) error

@@ -352,36 +352,56 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		}
 	}
 
-	// Create a collector handler that captures text output
-	collector := &agentOutputCollector{}
-	engine := query.NewEngine(apiClient, subRegistry, collector)
+	// Extract sub-agent observer from context (set by TUI for real-time forwarding)
+	observer := tools.GetSubAgentObserver(ctx)
+
+	// Build description for labeling events
+	desc := prompt
+	if len(desc) > 50 {
+		desc = desc[:50]
+	}
+
+	// Create a forwarder that captures text AND forwards tool events to parent
+	forwarder := &subAgentForwarder{desc: desc, observer: observer}
+	engine := query.NewEngine(apiClient, subRegistry, forwarder)
 	engine.SetSystem(system)
 
 	if err := engine.Run(ctx, prompt); err != nil {
-		if collector.text.Len() > 0 {
+		if forwarder.text.Len() > 0 {
 			// Return partial output even on error
-			return collector.text.String() + fmt.Sprintf("\n\n[Agent error: %v]", err), nil
+			return forwarder.text.String() + fmt.Sprintf("\n\n[Agent error: %v]", err), nil
 		}
 		return "", fmt.Errorf("sub-agent failed: %w", err)
 	}
 
-	result := strings.TrimSpace(collector.text.String())
+	result := strings.TrimSpace(forwarder.text.String())
 	if result == "" {
 		return "(agent produced no output)", nil
 	}
 	return result, nil
 }
 
-// agentOutputCollector captures text output from a sub-agent engine.
-type agentOutputCollector struct {
-	text strings.Builder
+// subAgentForwarder captures text output from a sub-agent engine and forwards
+// tool events to the parent TUI for real-time display.
+type subAgentForwarder struct {
+	text     strings.Builder
+	desc     string
+	observer tools.SubAgentObserver // may be nil
 }
 
-func (c *agentOutputCollector) OnTextDelta(text string)                              { c.text.WriteString(text) }
-func (c *agentOutputCollector) OnThinkingDelta(text string)                          {}
-func (c *agentOutputCollector) OnToolUseStart(tu tools.ToolUse)                      {}
-func (c *agentOutputCollector) OnToolUseEnd(tu tools.ToolUse, result *tools.Result)  {}
-func (c *agentOutputCollector) OnTurnComplete(usage api.Usage)                       {}
-func (c *agentOutputCollector) OnToolApprovalNeeded(tu tools.ToolUse) bool           { return true } // auto-approve in sub-agents
-func (c *agentOutputCollector) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true } // auto-continue in sub-agents
-func (c *agentOutputCollector) OnError(err error)                                    {}
+func (f *subAgentForwarder) OnTextDelta(text string)     { f.text.WriteString(text) }
+func (f *subAgentForwarder) OnThinkingDelta(text string) {}
+func (f *subAgentForwarder) OnToolUseStart(tu tools.ToolUse) {
+	if f.observer != nil {
+		f.observer.OnSubAgentToolStart(f.desc, tu)
+	}
+}
+func (f *subAgentForwarder) OnToolUseEnd(tu tools.ToolUse, result *tools.Result) {
+	if f.observer != nil {
+		f.observer.OnSubAgentToolEnd(f.desc, tu, result)
+	}
+}
+func (f *subAgentForwarder) OnTurnComplete(usage api.Usage)                        {}
+func (f *subAgentForwarder) OnToolApprovalNeeded(tu tools.ToolUse) bool            { return true }
+func (f *subAgentForwarder) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true }
+func (f *subAgentForwarder) OnError(err error)                                     {}

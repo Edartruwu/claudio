@@ -9,13 +9,19 @@ import (
 func TestModeTransitions(t *testing.T) {
 	s := vim.New()
 
-	// Start in insert mode
+	// Start in normal mode
+	if s.Mode != vim.ModeNormal {
+		t.Fatalf("expected ModeNormal, got %v", s.Mode)
+	}
+
+	// i → Insert
+	action := s.HandleKey('i', "hello", 3)
 	if s.Mode != vim.ModeInsert {
-		t.Fatalf("expected ModeInsert, got %v", s.Mode)
+		t.Fatalf("expected ModeInsert after i, got %v", s.Mode)
 	}
 
 	// Escape → Normal
-	action := s.HandleKey(27, "hello", 3)
+	action = s.HandleKey(27, "hello", 3)
 	if s.Mode != vim.ModeNormal {
 		t.Fatalf("expected ModeNormal after Escape, got %v", s.Mode)
 	}

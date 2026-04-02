@@ -17,6 +17,13 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ConfigChangedMsg is sent when a setting is toggled in the panel.
+// The root model should apply the change to the live session.
+type ConfigChangedMsg struct {
+	Key   string // setting key that changed
+	Value string // new value
+}
+
 // Scope identifies where a setting lives.
 type Scope int
 
@@ -223,40 +230,49 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 	case "enter", " ":
 		if p.cursor < len(p.entries) && p.entries[p.cursor].Editable {
-			p.toggleEntry(p.cursor)
+			key, val := p.toggleEntry(p.cursor)
 			p.buildEntries()
+			return func() tea.Msg {
+				return ConfigChangedMsg{Key: key, Value: val}
+			}, true
 		}
 		return nil, true
 	}
 	return nil, false
 }
 
-func (p *Panel) toggleEntry(idx int) {
+func (p *Panel) toggleEntry(idx int) (string, string) {
 	e := p.entries[idx]
-
-	// Determine which settings object to modify
 	target := p.targetSettings()
+	var newVal string
 
 	switch e.Key {
 	case "model":
 		models := []string{"claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"}
 		target.Model = cycleValue(p.merged.Model, models, "claude-sonnet-4-6")
+		newVal = target.Model
 	case "autoCompact":
 		target.AutoCompact = !p.merged.AutoCompact
+		newVal = fmt.Sprintf("%v", target.AutoCompact)
 	case "sessionPersist":
 		target.SessionPersist = !p.merged.SessionPersist
+		newVal = fmt.Sprintf("%v", target.SessionPersist)
 	case "autoMemoryExtract":
 		val := !p.merged.IsAutoMemoryExtract()
 		target.AutoMemoryExtract = &val
+		newVal = fmt.Sprintf("%v", val)
 	case "permissionMode":
 		modes := []string{"default", "auto", "plan"}
 		target.PermissionMode = cycleValue(p.merged.PermissionMode, modes, "default")
+		newVal = target.PermissionMode
 	case "memorySelection":
 		modes := []string{"ai", "keyword", "none"}
 		target.MemorySelection = cycleValue(p.merged.GetMemorySelection(), modes, "ai")
+		newVal = target.MemorySelection
 	case "compactMode":
 		modes := []string{"auto", "manual", "strategic"}
 		target.CompactMode = cycleValue(p.merged.CompactMode, modes, "auto")
+		newVal = target.CompactMode
 	case "outputStyle":
 		modes := []string{"normal", "concise", "verbose", "markdown"}
 		current := p.merged.OutputStyle
@@ -264,11 +280,12 @@ func (p *Panel) toggleEntry(idx int) {
 			current = "normal"
 		}
 		target.OutputStyle = cycleValue(current, modes, "normal")
+		newVal = target.OutputStyle
 	}
 
-	// Save and reload merged config
 	p.saveTarget()
 	p.reloadMerged()
+	return e.Key, newVal
 }
 
 // targetSettings returns the settings object for the current edit scope.

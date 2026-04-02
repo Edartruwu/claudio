@@ -66,7 +66,7 @@ type State struct {
 
 // New creates a new vim state starting in insert mode.
 func New() *State {
-	return &State{Mode: ModeInsert}
+	return &State{Mode: ModeNormal}
 }
 
 // Action represents the result of processing a key in vim mode.
