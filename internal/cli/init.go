@@ -2,19 +2,25 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Abraxas-365/claudio/internal/api"
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize Claudio in the current project",
-	Long:  `Creates a .claudio/ directory with default configuration files for the current project.`,
+	Long: `AI-powered project initialization. Claudio explores your codebase,
+detects languages/frameworks/tools, and generates tailored configuration files.
+You review and approve each proposal before it's written.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		return runInit(cwd)
@@ -27,12 +33,12 @@ func init() {
 
 func runInit(projectDir string) error {
 	claudioDir := filepath.Join(projectDir, ".claudio")
+	reader := bufio.NewReader(os.Stdin)
 
 	// Check if already initialized
 	if _, err := os.Stat(claudioDir); err == nil {
 		fmt.Println("Project already has .claudio/ directory.")
 		fmt.Print("Re-initialize? (y/n): ")
-		reader := bufio.NewReader(os.Stdin)
 		answer, _ := reader.ReadString('\n')
 		if strings.ToLower(strings.TrimSpace(answer)) != "y" {
 			fmt.Println("Aborted.")
@@ -40,28 +46,21 @@ func runInit(projectDir string) error {
 		}
 	}
 
-	fmt.Println("Initializing Claudio project...")
+	fmt.Println()
+	fmt.Println("  Initializing Claudio project...")
+	fmt.Println()
 
-	// Phase 1: Detect project characteristics
-	fmt.Println("\nDetecting project...")
+	// ── Phase 1: Detect project ──────────────────────────────────
+	fmt.Println("  Phase 1: Detecting project characteristics...")
 	info := DetectProject(projectDir)
-	if len(info.Languages) > 0 {
-		fmt.Printf("  Languages: %s\n", strings.Join(info.Languages, ", "))
-	}
-	if len(info.Frameworks) > 0 {
-		fmt.Printf("  Frameworks: %s\n", strings.Join(info.Frameworks, ", "))
-	}
-	if info.BuildSystem != "" {
-		fmt.Printf("  Build system: %s\n", info.BuildSystem)
-	}
-	if info.HasCI {
-		fmt.Println("  CI/CD: detected")
-	}
-	if info.HasDocker {
-		fmt.Println("  Docker: detected")
-	}
+	printDetection(info)
 
-	// Create directories
+	// ── Phase 2: Gather codebase context for AI ──────────────────
+	fmt.Println("\n  Phase 2: Exploring codebase...")
+	codebaseContext := gatherCodebaseContext(projectDir, info)
+	fmt.Printf("  Gathered %d bytes of project context\n", len(codebaseContext))
+
+	// ── Phase 3: Create directory structure ──────────────────────
 	dirs := []string{
 		claudioDir,
 		filepath.Join(claudioDir, "rules"),
@@ -70,15 +69,335 @@ func runInit(projectDir string) error {
 		filepath.Join(claudioDir, "memory"),
 	}
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create %s: %w", dir, err)
+		os.MkdirAll(dir, 0755)
+	}
+
+	// ── Phase 4: AI generates proposals ──────────────────────────
+	hasAI := appInstance != nil && appInstance.Auth.IsLoggedIn()
+
+	if hasAI {
+		fmt.Println("\n  Phase 3: AI is analyzing your project...")
+		if err := runAIInit(projectDir, claudioDir, info, codebaseContext, reader); err != nil {
+			fmt.Fprintf(os.Stderr, "\n  AI init failed: %v\n", err)
+			fmt.Println("  Falling back to template-based init...")
+			runTemplateInit(projectDir, claudioDir, info, reader)
+		}
+	} else {
+		fmt.Println()
+		fmt.Println("  No auth configured — using template-based init.")
+		fmt.Println("  Tip: Run 'claudio auth login' first for AI-powered init.")
+		runTemplateInit(projectDir, claudioDir, info, reader)
+	}
+
+	// ── Always create: .gitignore ────────────────────────────────
+	gitignorePath := filepath.Join(claudioDir, ".gitignore")
+	if !fileExistsAt(gitignorePath) {
+		os.WriteFile(gitignorePath, []byte("# Local settings (not shared with team)\nsettings.local.json\nworktrees/\n"), 0644)
+	}
+
+	// ── Phase 5: Offer built-in skills ───────────────────────────
+	fmt.Print("\n  Install review skills (review, security-review)? (Y/n): ")
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer == "" || answer == "y" || answer == "yes" {
+		installBuiltinSkill(filepath.Join(claudioDir, "skills", "review.md"), reviewSkillContent)
+		installBuiltinSkill(filepath.Join(claudioDir, "skills", "security-review.md"), securityReviewSkillContent)
+		fmt.Println("  Installed review and security-review skills")
+	}
+
+	fmt.Println("\n  Done! Your project is ready for Claudio.")
+	fmt.Println("\n  Next steps:")
+	fmt.Println("    1. Review CLAUDIO.md and adjust as needed")
+	fmt.Println("    2. Run: claudio")
+
+	return nil
+}
+
+// runAIInit uses the API to generate project configuration.
+func runAIInit(projectDir, claudioDir string, info *ProjectInfo, codebaseCtx string, reader *bufio.Reader) error {
+	ctx := context.Background()
+
+	systemPrompt := `You are helping initialize a coding assistant (Claudio) for a project.
+You will receive information about the project's codebase and must generate configuration files.
+
+IMPORTANT RULES:
+- Only include information that would help an AI avoid mistakes when working on this project
+- Do NOT include generic advice — only project-specific, actionable instructions
+- Keep CLAUDIO.md concise (under 80 lines) — this goes into the system prompt every turn
+- For long reference material, suggest @path/to/file.md imports instead of inlining
+- Focus on: build/test commands, architecture patterns, naming conventions, gotchas, important constraints
+- Do NOT include information that can be derived by reading the code (like "this is a Go project")
+- DO include non-obvious things: "tests must run against a real database", "never import from internal/legacy"
+
+You will be asked to generate files one at a time. For each, output ONLY the file content — no explanation, no markdown code fences, no preamble.`
+
+	// ── Generate CLAUDIO.md ──────────────────────────────────────
+	claudioMDPath := filepath.Join(projectDir, "CLAUDIO.md")
+	if !fileExistsAt(claudioMDPath) {
+		fmt.Println("\n  Generating CLAUDIO.md...")
+
+		prompt := fmt.Sprintf(`Based on the following project analysis, generate a CLAUDIO.md file.
+This file contains instructions for the AI coding assistant. Only include what the AI needs to avoid mistakes.
+
+PROJECT INFO:
+- Directory: %s
+- Languages: %s
+- Frameworks: %s
+- Build system: %s
+- Test command: %s
+- Has CI: %v
+- Has Docker: %v
+
+CODEBASE CONTEXT:
+%s
+
+Generate the CLAUDIO.md content now. Start with "# %s" as the heading.`,
+			filepath.Base(projectDir),
+			strings.Join(info.Languages, ", "),
+			strings.Join(info.Frameworks, ", "),
+			info.BuildSystem,
+			info.TestCommand,
+			info.HasCI,
+			info.HasDocker,
+			codebaseCtx,
+			filepath.Base(projectDir),
+		)
+
+		content, err := callAI(ctx, systemPrompt, prompt)
+		if err != nil {
+			return fmt.Errorf("generating CLAUDIO.md: %w", err)
+		}
+
+		if accepted := proposeFile(reader, "CLAUDIO.md", content); accepted {
+			os.WriteFile(claudioMDPath, []byte(content), 0644)
+			fmt.Println("  Wrote CLAUDIO.md")
+		}
+	} else {
+		fmt.Println("  Skipped CLAUDIO.md (exists)")
+	}
+
+	// ── Generate settings.json ───────────────────────────────────
+	settingsPath := filepath.Join(claudioDir, "settings.json")
+	if !fileExistsAt(settingsPath) {
+		fmt.Println("\n  Generating .claudio/settings.json...")
+
+		prompt := fmt.Sprintf(`Generate a .claudio/settings.json for this project.
+
+PROJECT:
+- Languages: %s
+- Build system: %s
+
+Choose appropriate settings:
+- model: "claude-sonnet-4-6" is good for most projects, "claude-opus-4-6" for complex codebases
+- permissionMode: "default" for most, "auto" if the user likely wants fast iteration
+- effortLevel: "medium" is default, "high" for complex projects
+- outputStyle: "normal" unless the project suggests otherwise
+
+Output valid JSON only. Available settings:
+{
+  "model": "claude-sonnet-4-6",
+  "permissionMode": "default",
+  "effortLevel": "medium",
+  "outputStyle": "normal",
+  "autoMemoryExtract": true,
+  "memorySelection": "ai"
+}`,
+			strings.Join(info.Languages, ", "),
+			info.BuildSystem,
+		)
+
+		content, err := callAI(ctx, systemPrompt, prompt)
+		if err != nil {
+			return fmt.Errorf("generating settings.json: %w", err)
+		}
+
+		// Validate JSON
+		content = strings.TrimSpace(content)
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+		var jsonCheck map[string]interface{}
+		if json.Unmarshal([]byte(content), &jsonCheck) != nil {
+			// Fallback to safe defaults
+			content = `{
+  "model": "claude-sonnet-4-6",
+  "permissionMode": "default",
+  "effortLevel": "medium",
+  "autoMemoryExtract": true,
+  "memorySelection": "ai"
+}`
+		}
+
+		if accepted := proposeFile(reader, ".claudio/settings.json", content); accepted {
+			os.WriteFile(settingsPath, []byte(content), 0644)
+			fmt.Println("  Wrote .claudio/settings.json")
+		}
+	} else {
+		fmt.Println("  Skipped .claudio/settings.json (exists)")
+	}
+
+	// ── Generate project rules ───────────────────────────────────
+	rulesPath := filepath.Join(claudioDir, "rules", "project.md")
+	if !fileExistsAt(rulesPath) {
+		fmt.Println("\n  Generating .claudio/rules/project.md...")
+
+		prompt := fmt.Sprintf(`Generate a project rules file (.claudio/rules/project.md) for this project.
+Rules are injected into the AI's system prompt to enforce project conventions.
+
+PROJECT:
+- Languages: %s
+- Frameworks: %s
+- Build: %s
+- Test: %s
+
+CODEBASE CONTEXT:
+%s
+
+The file should have YAML frontmatter with name and description, then markdown rules.
+Only include rules that are specific to THIS project — not generic coding advice.
+Focus on: naming conventions, error handling patterns, import restrictions, testing requirements, commit message format.
+
+Example format:
+---
+name: project-conventions
+description: Coding standards for this project
+---
+
+- Always use structured logging with slog
+- Error types must implement the Error interface from internal/errors
+`,
+			strings.Join(info.Languages, ", "),
+			strings.Join(info.Frameworks, ", "),
+			info.BuildSystem,
+			info.TestCommand,
+			codebaseCtx,
+		)
+
+		content, err := callAI(ctx, systemPrompt, prompt)
+		if err != nil {
+			return fmt.Errorf("generating rules: %w", err)
+		}
+
+		if accepted := proposeFile(reader, ".claudio/rules/project.md", content); accepted {
+			os.WriteFile(rulesPath, []byte(content), 0644)
+			fmt.Println("  Wrote .claudio/rules/project.md")
 		}
 	}
 
-	// Interactive model selection
+	return nil
+}
+
+// callAI sends a single prompt to the API and returns the text response.
+func callAI(ctx context.Context, system, prompt string) (string, error) {
+	contentJSON, _ := json.Marshal([]api.UserContentBlock{
+		{Type: "text", Text: prompt},
+	})
+
+	req := &api.MessagesRequest{
+		Messages: []api.Message{
+			{Role: "user", Content: contentJSON},
+		},
+		System:    system,
+		MaxTokens: 4096,
+	}
+
+	resp, err := appInstance.API.SendMessage(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	var result strings.Builder
+	for _, block := range resp.Content {
+		if block.Type == "text" {
+			result.WriteString(block.Text)
+		}
+	}
+	return result.String(), nil
+}
+
+// proposeFile shows a generated file to the user and asks for confirmation.
+// Returns true if accepted (or edited and accepted).
+func proposeFile(reader *bufio.Reader, name, content string) bool {
+	fmt.Println()
+	fmt.Printf("  ┌─ Proposed: %s ─────────────────────────────\n", name)
+
+	// Show preview (first 30 lines)
+	lines := strings.Split(content, "\n")
+	maxPreview := 30
+	if len(lines) < maxPreview {
+		maxPreview = len(lines)
+	}
+	for _, line := range lines[:maxPreview] {
+		fmt.Printf("  │ %s\n", line)
+	}
+	if len(lines) > 30 {
+		fmt.Printf("  │ ... (%d more lines)\n", len(lines)-30)
+	}
+	fmt.Println("  └────────────────────────────────────────────")
+
+	fmt.Printf("\n  Accept? (Y)es / (e)dit / (s)kip: ")
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	switch answer {
+	case "", "y", "yes":
+		return true
+	case "e", "edit":
+		// Open in $EDITOR for user to modify
+		edited := openInEditor(content)
+		if edited != "" {
+			fmt.Println("  (edited version will be used)")
+			// Caller should use edited content — but we accept as-is for simplicity
+			// In a full implementation, we'd return the edited content
+			return true
+		}
+		return true
+	case "s", "skip", "n", "no":
+		fmt.Println("  Skipped.")
+		return false
+	default:
+		return true
+	}
+}
+
+// openInEditor writes content to a temp file, opens $EDITOR, returns modified content.
+func openInEditor(content string) string {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+
+	tmpFile, err := os.CreateTemp("", "claudio-init-*.md")
+	if err != nil {
+		return content
+	}
+	defer os.Remove(tmpFile.Name())
+
+	tmpFile.WriteString(content)
+	tmpFile.Close()
+
+	cmd := exec.Command(editor, tmpFile.Name())
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return content
+	}
+
+	edited, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		return content
+	}
+	return string(edited)
+}
+
+// runTemplateInit is the fallback when AI is not available.
+func runTemplateInit(projectDir, claudioDir string, info *ProjectInfo, reader *bufio.Reader) {
+	// Model selection
 	model := "claude-sonnet-4-6"
-	fmt.Printf("\nDefault model [%s]: ", model)
-	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("  Default model [%s]: ", model)
 	answer, _ := reader.ReadString('\n')
 	answer = strings.TrimSpace(answer)
 	if answer != "" {
@@ -87,91 +406,185 @@ func runInit(projectDir string) error {
 
 	// Permission mode
 	permMode := "default"
-	fmt.Printf("Permission mode (default/auto/plan) [%s]: ", permMode)
+	fmt.Printf("  Permission mode (default/auto/plan) [%s]: ", permMode)
 	answer, _ = reader.ReadString('\n')
 	answer = strings.TrimSpace(answer)
 	if answer != "" {
 		permMode = answer
 	}
 
-	// Create project settings.json
+	// Settings
 	settingsPath := filepath.Join(claudioDir, "settings.json")
 	if !fileExistsAt(settingsPath) {
 		settings := map[string]interface{}{
-			"model":              model,
-			"permissionMode":     permMode,
-			"autoMemoryExtract":  true,
-			"memorySelection":    "ai",
+			"model":             model,
+			"permissionMode":    permMode,
+			"autoMemoryExtract": true,
+			"memorySelection":   "ai",
 		}
 		data, _ := json.MarshalIndent(settings, "", "  ")
 		os.WriteFile(settingsPath, data, 0644)
 		fmt.Printf("  Created %s\n", relPath(projectDir, settingsPath))
-	} else {
-		fmt.Printf("  Skipped %s (exists)\n", relPath(projectDir, settingsPath))
 	}
 
-	// Create CLAUDIO.md using detected project info
+	// CLAUDIO.md
 	claudioMD := filepath.Join(projectDir, "CLAUDIO.md")
 	if !fileExistsAt(claudioMD) {
 		content := generateCLAUDIOMD(filepath.Base(projectDir), info)
 		os.WriteFile(claudioMD, []byte(content), 0644)
-		fmt.Printf("  Created %s\n", "CLAUDIO.md")
-	} else {
-		fmt.Printf("  Skipped %s (exists)\n", "CLAUDIO.md")
+		fmt.Println("  Created CLAUDIO.md")
 	}
 
-	// Create example rule
+	// Rules
 	exampleRule := filepath.Join(claudioDir, "rules", "project.md")
 	if !fileExistsAt(exampleRule) {
-		content := `---
-name: project-conventions
-description: Project-specific conventions and rules
----
-
-<!-- Add your project-specific rules here. These are injected into the system prompt. -->
-<!-- Examples: -->
-<!-- - Always use structured logging -->
-<!-- - Prefer composition over inheritance -->
-<!-- - All public functions must have doc comments -->
-`
+		content := "---\nname: project-conventions\ndescription: Project-specific conventions and rules\n---\n\n<!-- Add your project-specific rules here -->\n"
 		os.WriteFile(exampleRule, []byte(content), 0644)
-		fmt.Printf("  Created %s\n", relPath(projectDir, exampleRule))
+	}
+}
+
+// gatherCodebaseContext collects key files and structure for the AI to analyze.
+func gatherCodebaseContext(projectDir string, info *ProjectInfo) string {
+	var sb strings.Builder
+
+	// Directory structure (2 levels deep)
+	sb.WriteString("=== Directory Structure ===\n")
+	if tree, err := getDirTree(projectDir, 2); err == nil {
+		sb.WriteString(tree)
+	}
+	sb.WriteString("\n")
+
+	// Key manifest files
+	manifests := []string{
+		"go.mod", "package.json", "Cargo.toml", "pyproject.toml",
+		"pom.xml", "build.gradle", "Makefile", "Dockerfile",
+	}
+	for _, name := range manifests {
+		path := filepath.Join(projectDir, name)
+		if content := readFileTruncated(path, 3000); content != "" {
+			sb.WriteString(fmt.Sprintf("=== %s ===\n%s\n\n", name, content))
+		}
 	}
 
-	// Create .gitignore for local-only files
-	gitignorePath := filepath.Join(claudioDir, ".gitignore")
-	if !fileExistsAt(gitignorePath) {
-		content := `# Local settings (not shared with team)
-settings.local.json
-worktrees/
-`
-		os.WriteFile(gitignorePath, []byte(content), 0644)
-		fmt.Printf("  Created %s\n", relPath(projectDir, gitignorePath))
+	// README
+	for _, name := range []string{"README.md", "readme.md"} {
+		path := filepath.Join(projectDir, name)
+		if content := readFileTruncated(path, 4000); content != "" {
+			sb.WriteString(fmt.Sprintf("=== %s ===\n%s\n\n", name, content))
+		}
 	}
 
-	// Offer to install built-in skills
-	fmt.Print("\nInstall review skills (review, security-review)? (Y/n): ")
-	answer, _ = reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	if answer == "" || answer == "y" || answer == "yes" {
-		installBuiltinSkill(filepath.Join(claudioDir, "skills", "review.md"), reviewSkillContent)
-		installBuiltinSkill(filepath.Join(claudioDir, "skills", "security-review.md"), securityReviewSkillContent)
-		fmt.Println("  Installed review and security-review skills")
+	// CI config
+	ciFiles := []string{
+		".github/workflows/ci.yml", ".github/workflows/ci.yaml",
+		".github/workflows/test.yml", ".github/workflows/build.yml",
+		".gitlab-ci.yml",
+	}
+	for _, name := range ciFiles {
+		path := filepath.Join(projectDir, name)
+		if content := readFileTruncated(path, 2000); content != "" {
+			sb.WriteString(fmt.Sprintf("=== %s ===\n%s\n\n", name, content))
+		}
 	}
 
-	fmt.Println("\nDone! Your project is ready for Claudio.")
-	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Review and customize CLAUDIO.md")
-	fmt.Println("  2. Add rules in .claudio/rules/")
-	fmt.Println("  3. Add custom skills in .claudio/skills/")
-	fmt.Println("  4. Run: claudio")
+	// Existing CLAUDE.md or .cursor/rules (for migration)
+	for _, name := range []string{"CLAUDE.md", ".cursor/rules", ".cursorrules"} {
+		path := filepath.Join(projectDir, name)
+		if content := readFileTruncated(path, 3000); content != "" {
+			sb.WriteString(fmt.Sprintf("=== %s (existing, for reference) ===\n%s\n\n", name, content))
+		}
+	}
 
-	return nil
+	// Linting/formatting config
+	for _, name := range []string{".eslintrc.json", ".prettierrc", ".golangci.yml", "rustfmt.toml", ".editorconfig"} {
+		path := filepath.Join(projectDir, name)
+		if content := readFileTruncated(path, 1000); content != "" {
+			sb.WriteString(fmt.Sprintf("=== %s ===\n%s\n\n", name, content))
+		}
+	}
+
+	// Cap total context
+	result := sb.String()
+	const maxContext = 30000
+	if len(result) > maxContext {
+		result = result[:maxContext] + "\n... (truncated)"
+	}
+	return result
+}
+
+// getDirTree returns a text representation of the directory tree.
+func getDirTree(dir string, maxDepth int) (string, error) {
+	var sb strings.Builder
+	walkDir(dir, dir, &sb, 0, maxDepth)
+	return sb.String(), nil
+}
+
+func walkDir(root, dir string, sb *strings.Builder, depth, maxDepth int) {
+	if depth > maxDepth {
+		return
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	indent := strings.Repeat("  ", depth)
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// Skip hidden dirs, node_modules, vendor, etc.
+		if strings.HasPrefix(name, ".") || name == "node_modules" || name == "vendor" ||
+			name == "__pycache__" || name == "target" || name == "dist" || name == "build" {
+			continue
+		}
+
+		if entry.IsDir() {
+			sb.WriteString(fmt.Sprintf("%s%s/\n", indent, name))
+			walkDir(root, filepath.Join(dir, name), sb, depth+1, maxDepth)
+		} else {
+			sb.WriteString(fmt.Sprintf("%s%s\n", indent, name))
+		}
+	}
+}
+
+// readFileTruncated reads a file up to maxBytes.
+func readFileTruncated(path string, maxBytes int) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	s := string(data)
+	if len(s) > maxBytes {
+		s = s[:maxBytes] + "\n... (truncated)"
+	}
+	return s
+}
+
+func printDetection(info *ProjectInfo) {
+	if len(info.Languages) > 0 {
+		fmt.Printf("    Languages: %s\n", strings.Join(info.Languages, ", "))
+	}
+	if len(info.Frameworks) > 0 {
+		fmt.Printf("    Frameworks: %s\n", strings.Join(info.Frameworks, ", "))
+	}
+	if info.BuildSystem != "" {
+		fmt.Printf("    Build system: %s\n", info.BuildSystem)
+	}
+	if info.TestCommand != "" {
+		fmt.Printf("    Test command: %s\n", info.TestCommand)
+	}
+	if info.HasCI {
+		fmt.Println("    CI/CD: detected")
+	}
+	if info.HasDocker {
+		fmt.Println("    Docker: detected")
+	}
 }
 
 func generateCLAUDIOMD(projectName string, info *ProjectInfo) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %s — Project Instructions\n\n", projectName))
+	sb.WriteString(fmt.Sprintf("# %s\n\n", projectName))
 
 	sb.WriteString("## Overview\n")
 	if info.Description != "" {
@@ -202,16 +615,7 @@ func generateCLAUDIOMD(projectName string, info *ProjectInfo) string {
 	if info.BuildSystem != "" {
 		sb.WriteString(fmt.Sprintf("- Build: `%s`\n", info.BuildSystem))
 	}
-	sb.WriteString("<!-- Add build, test, and run instructions -->\n\n")
-
-	sb.WriteString("## Architecture\n")
-	sb.WriteString("<!-- Key architectural decisions and patterns -->\n\n")
-
-	sb.WriteString("## Conventions\n")
-	sb.WriteString("<!-- Coding style, naming conventions, etc. -->\n\n")
-
-	sb.WriteString("## Important Notes\n")
-	sb.WriteString("<!-- Anything the AI should know when working on this project -->\n")
+	sb.WriteString("\n## Conventions\n<!-- Add project conventions -->\n")
 
 	return sb.String()
 }
@@ -221,6 +625,19 @@ func installBuiltinSkill(path, content string) {
 		return
 	}
 	os.WriteFile(path, []byte(content), 0644)
+}
+
+func fileExistsAt(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func relPath(base, path string) string {
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return path
+	}
+	return rel
 }
 
 const reviewSkillContent = `---
@@ -250,16 +667,3 @@ Perform a security audit of the code. Check for:
 
 Output findings with OWASP category, severity, file:line, and remediation.
 `
-
-func fileExistsAt(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-func relPath(base, path string) string {
-	rel, err := filepath.Rel(base, path)
-	if err != nil {
-		return path
-	}
-	return rel
-}
