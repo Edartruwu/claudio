@@ -190,6 +190,9 @@ var (
 
 	SpinnerText = lipgloss.NewStyle().
 			Foreground(Dim)
+
+	SpinnerTimer = lipgloss.NewStyle().
+			Foreground(Muted)
 )
 
 // ── Palette / Picker ─────────────────────────────────────

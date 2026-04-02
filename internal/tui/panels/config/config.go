@@ -164,15 +164,27 @@ func (p *Panel) buildEntries() {
 
 	// Permission rules (deletable with d)
 	if len(m.PermissionRules) > 0 {
-		addR("── Permission Rules ──", "", ScopeGlobal)
+		p.entries = append(p.entries, configEntry{
+			Key: "permissions", Value: fmt.Sprintf("%d rules", len(m.PermissionRules)),
+			RuleIndex: -1,
+		})
 		for i, rule := range m.PermissionRules {
-			display := fmt.Sprintf("%s %s(%s)", rule.Behavior, rule.Tool, rule.Pattern)
+			pattern := shortenPath(rule.Pattern)
 			p.entries = append(p.entries, configEntry{
-				Key: "rule", Value: display, Source: ScopeProject,
+				Key: rule.Tool, Value: pattern, Source: p.ruleSource(i),
 				Deletable: true, RuleIndex: i,
+				EditType:  rule.Behavior, // stash behavior in EditType for rendering
 			})
 		}
 	}
+}
+
+// ruleSource determines if a permission rule came from project or global config.
+func (p *Panel) ruleSource(idx int) Scope {
+	if p.project != nil && idx < len(p.project.PermissionRules) {
+		return ScopeProject
+	}
+	return ScopeGlobal
 }
 
 // source determines which scope a setting's value came from.
@@ -432,6 +444,12 @@ func (p *Panel) View() string {
 		endIdx = len(p.entries)
 	}
 
+	allowBadge := lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Success)
+	denyBadge := lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Error)
+	ruleToolStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	rulePatternStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+	sectionHeader := lipgloss.NewStyle().Foreground(styles.Muted).Bold(true)
+
 	for i := startIdx; i < endIdx; i++ {
 		e := p.entries[i]
 		selected := i == p.cursor
@@ -441,6 +459,44 @@ func (p *Panel) View() string {
 			prefix = styles.ViewportCursor.Render("▸ ")
 		}
 
+		// Permission rules section header
+		if e.Key == "permissions" {
+			b.WriteString("\n")
+			header := sectionHeader.Render("── Permission Rules ──")
+			count := valDimStyle.Render(" " + e.Value)
+			b.WriteString(prefix + header + count)
+			b.WriteString("\n")
+			continue
+		}
+
+		// Permission rule entries
+		if e.RuleIndex >= 0 {
+			var behaviorTag string
+			if e.EditType == "allow" {
+				behaviorTag = allowBadge.Render(" allow ")
+			} else {
+				behaviorTag = denyBadge.Render(" " + e.EditType + " ")
+			}
+			tool := ruleToolStyle.Render(e.Key)
+			pattern := rulePatternStyle.Render(e.Value)
+
+			// Source badge
+			var badge string
+			if p.hasProject {
+				if e.Source == ScopeProject {
+					badge = " " + projBadge.Render(" P ")
+				} else {
+					badge = " " + globalBadge.Render(" G ")
+				}
+			}
+
+			line := prefix + behaviorTag + " " + tool + " " + pattern + badge
+			b.WriteString("    " + line)
+			b.WriteString("\n")
+			continue
+		}
+
+		// Regular config entries
 		key := keyStyle.Render(e.Key)
 		var val string
 		if isDefault(e.Value) {
@@ -502,6 +558,21 @@ func valOrDefault(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// shortenPath trims an absolute path to a relative one from the git root.
+func shortenPath(pattern string) string {
+	if !filepath.IsAbs(pattern) {
+		return pattern
+	}
+	cwd, _ := os.Getwd()
+	root := config.FindGitRoot(cwd)
+	if rel, err := filepath.Rel(root, pattern); err == nil {
+		return rel
+	}
+	// Fall back to just the base name with parent hint
+	dir := filepath.Base(filepath.Dir(pattern))
+	return dir + "/" + filepath.Base(pattern)
 }
 
 func isDefault(v string) bool {

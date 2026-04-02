@@ -168,8 +168,8 @@ Generate the CLAUDIO.md content now. Start with "# %s" as the heading.`,
 			return fmt.Errorf("generating CLAUDIO.md: %w", err)
 		}
 
-		if accepted := proposeFile(reader, "CLAUDIO.md", content); accepted {
-			os.WriteFile(claudioMDPath, []byte(content), 0644)
+		if final, accepted := proposeFile(reader, "CLAUDIO.md", content); accepted {
+			os.WriteFile(claudioMDPath, []byte(final), 0644)
 			fmt.Println("  Wrote CLAUDIO.md")
 		}
 	} else {
@@ -229,8 +229,8 @@ Output valid JSON only. Available settings:
 }`
 		}
 
-		if accepted := proposeFile(reader, ".claudio/settings.json", content); accepted {
-			os.WriteFile(settingsPath, []byte(content), 0644)
+		if final, accepted := proposeFile(reader, ".claudio/settings.json", content); accepted {
+			os.WriteFile(settingsPath, []byte(final), 0644)
 			fmt.Println("  Wrote .claudio/settings.json")
 		}
 	} else {
@@ -279,8 +279,8 @@ description: Coding standards for this project
 			return fmt.Errorf("generating rules: %w", err)
 		}
 
-		if accepted := proposeFile(reader, ".claudio/rules/project.md", content); accepted {
-			os.WriteFile(rulesPath, []byte(content), 0644)
+		if final, accepted := proposeFile(reader, ".claudio/rules/project.md", content); accepted {
+			os.WriteFile(rulesPath, []byte(final), 0644)
 			fmt.Println("  Wrote .claudio/rules/project.md")
 		}
 	}
@@ -317,8 +317,8 @@ func callAI(ctx context.Context, system, prompt string) (string, error) {
 }
 
 // proposeFile shows a generated file to the user and asks for confirmation.
-// Returns true if accepted (or edited and accepted).
-func proposeFile(reader *bufio.Reader, name, content string) bool {
+// Returns the final content (potentially edited) and whether it was accepted.
+func proposeFile(reader *bufio.Reader, name, content string) (string, bool) {
 	fmt.Println()
 	fmt.Printf("  ┌─ Proposed: %s ─────────────────────────────\n", name)
 
@@ -342,22 +342,16 @@ func proposeFile(reader *bufio.Reader, name, content string) bool {
 
 	switch answer {
 	case "", "y", "yes":
-		return true
+		return content, true
 	case "e", "edit":
-		// Open in $EDITOR for user to modify
 		edited := openInEditor(content)
-		if edited != "" {
-			fmt.Println("  (edited version will be used)")
-			// Caller should use edited content — but we accept as-is for simplicity
-			// In a full implementation, we'd return the edited content
-			return true
-		}
-		return true
+		fmt.Println("  (edited version will be used)")
+		return edited, true
 	case "s", "skip", "n", "no":
 		fmt.Println("  Skipped.")
-		return false
+		return "", false
 	default:
-		return true
+		return content, true
 	}
 }
 

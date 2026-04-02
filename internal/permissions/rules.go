@@ -134,6 +134,14 @@ func matchPattern(pattern, content string) bool {
 		return true
 	}
 
+	// For directory patterns like "/path/to/dir/*", match any file under that directory
+	if strings.HasSuffix(pattern, "/*") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		if strings.HasPrefix(content, prefix) {
+			return true
+		}
+	}
+
 	// For command-like patterns (e.g., "git *"), try prefix matching
 	// Convert "git *" to prefix check "git "
 	if strings.HasSuffix(pattern, " *") {

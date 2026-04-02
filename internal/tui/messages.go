@@ -26,6 +26,14 @@ const (
 )
 
 // ChatMessage represents a rendered message in the conversation.
+// SubagentToolCall represents a tool call made by a sub-agent.
+type SubagentToolCall struct {
+	ToolName string
+	Summary  string
+	Result   *string // nil if still running
+	IsError  bool
+}
+
 type ChatMessage struct {
 	Type         MessageType
 	Content      string
@@ -35,6 +43,10 @@ type ChatMessage struct {
 	IsError      bool
 	Pinned       bool // pinned messages survive compaction
 	IsSubagent   bool // true if this is a sub-agent tool call
+
+	// SubagentTools holds nested tool calls made by a sub-agent.
+	// Only populated on MsgToolUse messages where ToolName == "Agent".
+	SubagentTools []SubagentToolCall
 }
 
 // ── Rendering ─────────────────────────────────────────────
@@ -69,6 +81,8 @@ func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, 
 	i := 0
 	sectionIdx := 0
 
+	lastWasToolGroup := false
+
 	for i < len(msgs) {
 		msg := msgs[i]
 
@@ -82,10 +96,17 @@ func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, 
 			block = renderToolGroup(group, maxW, expanded)
 			sec = Section{MsgIndex: i, IsToolGroup: true}
 			i += countGroupMessages(group)
+			lastWasToolGroup = true
 		} else {
-			block = renderMessage(msg, maxW)
+			// Assistant text after a tool group is a continuation — render without ● prefix
+			if msg.Type == MsgAssistant && lastWasToolGroup {
+				block = renderAssistantContinuation(msg, maxW)
+			} else {
+				block = renderMessage(msg, maxW)
+			}
 			sec = Section{MsgIndex: i}
 			i++
+			lastWasToolGroup = false
 		}
 
 		// Apply cursor highlight
@@ -197,17 +218,12 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 		}
 
 		// Left side: icon + name + summary
-		// Sub-agent tools are indented and use dimmer styling
-		subPrefix := ""
-		if p.use.IsSubagent {
-			subPrefix = "   "
-		}
 		icon := styles.ToolIcon.Render("⚡ ")
 		name := styles.ToolName.Width(nameW).Render(p.use.ToolName)
 		summaryText := formatRichSummary(p.use)
-		summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-25-len(subPrefix)))
+		summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-25))
 
-		left := subPrefix + connector + icon + name + summary
+		left := connector + icon + name + summary
 
 		// Right side: status
 		var status string
@@ -226,6 +242,11 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 			gap = 1
 		}
 		lines = append(lines, left+strings.Repeat(" ", gap)+status)
+
+		// Render sub-agent tool calls nested under Agent tools
+		if len(p.use.SubagentTools) > 0 {
+			lines = append(lines, renderSubagentTools(p.use.SubagentTools, maxW, nameW)...)
+		}
 
 		// Tree continuation prefix for detail lines
 		var detailPrefix string
@@ -258,6 +279,48 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// renderSubagentTools renders nested sub-agent tool calls under an Agent tool.
+func renderSubagentTools(subs []SubagentToolCall, maxW, nameW int) []string {
+	var lines []string
+	indent := "   " // 3-space indent for nesting
+	for si, sub := range subs {
+		isLast := si == len(subs)-1
+
+		// Tree connector
+		var connector string
+		if len(subs) > 1 {
+			if isLast {
+				connector = styles.ToolConnector.Render("└─ ")
+			} else if si == 0 {
+				connector = styles.ToolConnector.Render("┌─ ")
+			} else {
+				connector = styles.ToolConnector.Render("├─ ")
+			}
+		}
+
+		icon := styles.ToolIcon.Render("⚡ ")
+		name := styles.ToolName.Width(nameW).Render(sub.ToolName)
+		summary := styles.ToolSummary.Render(truncate(sub.Summary, maxW-nameW-30))
+		left := indent + connector + icon + name + summary
+
+		var status string
+		if sub.Result == nil {
+			status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(" running")
+		} else if sub.IsError {
+			status = styles.ToolError.Render("✗ " + truncate(*sub.Result, 30))
+		} else {
+			status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+*sub.Result)
+		}
+
+		gap := maxW - lipgloss.Width(left) - lipgloss.Width(status)
+		if gap < 1 {
+			gap = 1
+		}
+		lines = append(lines, left+strings.Repeat(" ", gap)+status)
+	}
+	return lines
 }
 
 // formatRichSummary produces a one-line summary with richer context per tool type.
@@ -764,6 +827,19 @@ func indentContinuation(s, prefix string) string {
 		lines[i] = prefix + lines[i]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// renderAssistantContinuation renders assistant text that follows a tool group.
+// Uses a dimmer prefix (no ● ) to visually connect it to the previous response.
+func renderAssistantContinuation(msg ChatMessage, maxW int) string {
+	pinPrefix := ""
+	if msg.Pinned {
+		pinPrefix = styles.PinIcon.Render("📌 ")
+	}
+	prefix := styles.AssistantPrefix.Render("  ")
+	rendered := renderMarkdown(msg.Content, maxW-3)
+	indented := indentContinuation(rendered, indent)
+	return pinPrefix + prefix + indented
 }
 
 // renderContextBar renders a compact context budget indicator: [████░░] 72%

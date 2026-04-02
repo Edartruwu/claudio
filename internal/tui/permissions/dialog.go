@@ -19,6 +19,7 @@ const (
 	DecisionAllow
 	DecisionDeny
 	DecisionAllowAlways
+	DecisionAllowAllTool // allow this tool for any input (pattern: *)
 )
 
 // ResponseMsg is sent when the user makes a permission decision.
@@ -50,6 +51,7 @@ func New(tu tools.ToolUse) Model {
 			{label: "Allow", decision: DecisionAllow},
 			{label: "Deny", decision: DecisionDeny},
 			{label: "Always allow", decision: DecisionAllowAlways},
+			{label: fmt.Sprintf("Allow all %s", tu.Name), decision: DecisionAllowAllTool},
 		},
 	}
 }
@@ -136,7 +138,7 @@ func (m Model) View() string {
 			switch opt.decision {
 			case DecisionDeny:
 				s = styles.ButtonDeny
-			case DecisionAllowAlways:
+			case DecisionAllowAlways, DecisionAllowAllTool:
 				s = styles.ButtonAllowAlways
 			default:
 				s = styles.ButtonAllow

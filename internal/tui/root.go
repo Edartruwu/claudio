@@ -1161,24 +1161,35 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		m.spinText = label
 		m.spinner.SetText(label)
 
-		// Add nested tool-use message to chat (will appear in current tool group)
-		m.addMessage(ChatMessage{
-			Type:         MsgToolUse,
-			ToolName:     event.toolUse.Name,
-			ToolInput:    summary,
-			ToolInputRaw: event.toolUse.Input,
-			IsSubagent:   true,
-		})
+		// Append as a child of the most recent Agent MsgToolUse
+		for i := len(m.messages) - 1; i >= 0; i-- {
+			if m.messages[i].Type == MsgToolUse && m.messages[i].ToolName == "Agent" {
+				m.messages[i].SubagentTools = append(m.messages[i].SubagentTools, SubagentToolCall{
+					ToolName: event.toolUse.Name,
+					Summary:  summary,
+				})
+				break
+			}
+		}
 		m.refreshViewport()
 
 	case "subagent_tool_end":
+		// Find the most recent Agent MsgToolUse and update the last matching sub-agent tool
 		if event.result != nil {
-			m.addMessage(ChatMessage{
-				Type:       MsgToolResult,
-				Content:    event.result.Content,
-				IsError:    event.result.IsError,
-				IsSubagent: true,
-			})
+			brief := resultBrief(event.result.Content)
+			for i := len(m.messages) - 1; i >= 0; i-- {
+				if m.messages[i].Type == MsgToolUse && m.messages[i].ToolName == "Agent" {
+					subs := m.messages[i].SubagentTools
+					for j := len(subs) - 1; j >= 0; j-- {
+						if subs[j].ToolName == event.toolUse.Name && subs[j].Result == nil {
+							m.messages[i].SubagentTools[j].Result = &brief
+							m.messages[i].SubagentTools[j].IsError = event.result.IsError
+							break
+						}
+					}
+					break
+				}
+			}
 			m.refreshViewport()
 		}
 
@@ -1338,6 +1349,16 @@ func (m Model) handlePermissionResponse(resp permissions.ResponseMsg) (tea.Model
 		rule := buildPermissionRule(resp.ToolUse)
 		m.persistPermissionRule(rule)
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Saved rule: allow %s(%s)", rule.Tool, rule.Pattern)})
+	case permissions.DecisionAllowAllTool:
+		m.approvalCh <- true
+		// Persist a wildcard rule for this tool
+		rule := config.PermissionRule{
+			Tool:     resp.ToolUse.Name,
+			Pattern:  "*",
+			Behavior: "allow",
+		}
+		m.persistPermissionRule(rule)
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Saved rule: allow %s(*)", rule.Tool)})
 	case permissions.DecisionDeny:
 		m.approvalCh <- false
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Denied %s", resp.ToolUse.Name)})

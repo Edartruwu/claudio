@@ -1,6 +1,9 @@
 package components
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -8,11 +11,12 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
-// SpinnerModel is an animated spinner with a status message.
+// SpinnerModel is an animated spinner with a status message and elapsed timer.
 type SpinnerModel struct {
-	spinner spinner.Model
-	text    string
-	active  bool
+	spinner   spinner.Model
+	text      string
+	active    bool
+	startTime time.Time
 }
 
 // NewSpinner creates a new spinner.
@@ -23,10 +27,11 @@ func NewSpinner() SpinnerModel {
 	return SpinnerModel{spinner: s}
 }
 
-// Start activates the spinner with a message.
+// Start activates the spinner with a message and starts the timer.
 func (m *SpinnerModel) Start(text string) {
 	m.active = true
 	m.text = text
+	m.startTime = time.Now()
 }
 
 // Stop deactivates the spinner.
@@ -63,11 +68,19 @@ func (m SpinnerModel) Tick() tea.Cmd {
 	return m.spinner.Tick
 }
 
-// View renders the spinner.
+// View renders the spinner with elapsed time.
 func (m SpinnerModel) View() string {
 	if !m.active {
 		return ""
 	}
+	elapsed := time.Since(m.startTime)
+	var timer string
+	if elapsed >= time.Minute {
+		timer = fmt.Sprintf("%dm%02ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+	} else {
+		timer = fmt.Sprintf("%ds", int(elapsed.Seconds()))
+	}
+	timerStr := styles.SpinnerTimer.Render(timer)
 	text := styles.SpinnerText.Render(m.text)
-	return lipgloss.JoinHorizontal(lipgloss.Center, m.spinner.View(), " ", text)
+	return lipgloss.JoinHorizontal(lipgloss.Center, m.spinner.View(), " ", text, " ", timerStr)
 }
