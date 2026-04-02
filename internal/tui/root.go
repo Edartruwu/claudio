@@ -1874,6 +1874,84 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 			i++
 		}
 	}
+	return sanitizeToolPairs(result)
+}
+
+// sanitizeToolPairs removes unmatched tool_use/tool_result pairs from a
+// reconstructed message list. Two cases are handled:
+//
+//  1. An assistant message has tool_use blocks but the immediately following
+//     message is not a user message whose content contains only tool_results
+//     (orphaned tool_use — session ended before results were saved). The
+//     tool_use blocks are stripped; any text content is kept.
+//
+//  2. A user message contains only tool_result blocks but the previous
+//     message is not an assistant message with tool_use blocks (orphaned
+//     tool_result). The entire user message is dropped.
+func sanitizeToolPairs(msgs []api.Message) []api.Message {
+	type contentBlock struct {
+		Type string `json:"type"`
+	}
+
+	hasType := func(content json.RawMessage, typ string) bool {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return false
+		}
+		for _, b := range blocks {
+			var block contentBlock
+			if json.Unmarshal(b, &block) == nil && block.Type == typ {
+				return true
+			}
+		}
+		return false
+	}
+
+	stripToolUse := func(content json.RawMessage) json.RawMessage {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return content
+		}
+		var kept []json.RawMessage
+		for _, b := range blocks {
+			var block contentBlock
+			if json.Unmarshal(b, &block) == nil && block.Type == "tool_use" {
+				continue
+			}
+			kept = append(kept, b)
+		}
+		if len(kept) == 0 {
+			return nil
+		}
+		out, _ := json.Marshal(kept)
+		return out
+	}
+
+	result := make([]api.Message, 0, len(msgs))
+	for i, msg := range msgs {
+		if msg.Role == "assistant" && hasType(msg.Content, "tool_use") {
+			// Valid only if immediately followed by a user message with tool_results
+			if i+1 < len(msgs) && msgs[i+1].Role == "user" && hasType(msgs[i+1].Content, "tool_result") {
+				result = append(result, msg)
+			} else {
+				// Strip tool_use blocks; keep any text content
+				stripped := stripToolUse(msg.Content)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "assistant", Content: stripped})
+				}
+			}
+			continue
+		}
+		if msg.Role == "user" && hasType(msg.Content, "tool_result") {
+			// Valid only if immediately preceded by an assistant message with tool_use
+			if len(result) > 0 && result[len(result)-1].Role == "assistant" && hasType(result[len(result)-1].Content, "tool_use") {
+				result = append(result, msg)
+			}
+			// Otherwise drop the orphaned tool_result message
+			continue
+		}
+		result = append(result, msg)
+	}
 	return result
 }
 
