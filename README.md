@@ -109,7 +109,26 @@ claudio --headless
 
 ### `claudio init`
 
-Run `claudio init` in any project to create the per-project configuration:
+Run `claudio init` in any project to create the per-project configuration.
+
+**When authenticated (AI-powered):**
+
+1. Detects project characteristics (Go, JS, Python, Rust, Java, frameworks, CI, Docker)
+2. Gathers codebase context — reads README, manifests (`go.mod`, `package.json`, etc.), CI config, linting config, directory tree, and any existing `CLAUDIO.md`
+3. Sends everything to the AI with a focused prompt: only include what would prevent the AI from making mistakes
+4. Generates three files one by one:
+   - `CLAUDIO.md` — project instructions
+   - `.claudio/settings.json` — model, permissions, effort level
+   - `.claudio/rules/project.md` — project conventions
+5. Shows each proposal in a bordered preview and asks: **(Y)es / (e)dit / (s)kip**
+   - **Yes** → writes as-is
+   - **Edit** → opens in `$EDITOR` for modification
+   - **Skip** → skips that file
+6. Offers built-in skills (`review`, `security-review`)
+
+**When not authenticated (fallback):**
+
+Template-based init with interactive model and permission selection.
 
 ```
 .claudio/
