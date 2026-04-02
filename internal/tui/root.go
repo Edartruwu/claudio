@@ -1854,6 +1854,14 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 			}
 
 		case "tool_result":
+			// Skip orphaned tool_results with no preceding tool_use — they would
+			// cause a 400 from the API ("unexpected tool_use_id").
+			if len(pendingIDs) == 0 {
+				for i < len(storedMsgs) && storedMsgs[i].Type == "tool_result" {
+					i++
+				}
+				continue
+			}
 			var trs []trBlock
 			j := 0
 			for i < len(storedMsgs) && storedMsgs[i].Type == "tool_result" {
@@ -2507,7 +2515,8 @@ func (m Model) View() string {
 		sections = append(sections, pickerView)
 	}
 
-	// 4. Prompt (full width)
+	// 4. Divider + Prompt (full width)
+	sections = append(sections, styles.SeparatorLine(mw))
 	sections = append(sections, m.prompt.View())
 
 	// 5. Mode line (full width) — or search bar when searching
