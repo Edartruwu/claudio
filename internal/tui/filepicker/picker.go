@@ -140,6 +140,7 @@ var skipDirs = map[string]bool{
 
 // scan finds files/dirs matching the query.
 // Supports relative paths like ../, ../../, ../internal/cli, etc.
+// Also supports ~ home-directory expansion like ~/Documents/foo.
 func (m *Model) scan() {
 	m.filtered = nil
 
@@ -148,24 +149,47 @@ func (m *Model) scan() {
 	// e.g. "../"              → scanDir="..",              fuzzy=""
 	// e.g. "cl"               → scanDir=".",               fuzzy="cl"
 	// e.g. ""                 → scanDir=".",               fuzzy=""
-	scanRel, fuzzy := splitQueryPath(m.query)
+	// e.g. "~/Documents/foo"  → scanDir="~/Documents",     fuzzy="foo"  (expanded)
 
-	// Resolve the scan directory relative to baseDir
-	scanAbs := filepath.Join(m.baseDir, scanRel)
-	scanAbs = filepath.Clean(scanAbs)
+	var scanAbs string
+	var fuzzy string
+	var displayPrefix string
+
+	if m.query == "~" || strings.HasPrefix(m.query, "~/") {
+		// Expand ~ to home directory
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		// Replace ~ with absolute home path for path computations
+		expanded := home + strings.TrimPrefix(m.query, "~")
+		scanRel, fz := splitQueryPath(expanded)
+		fuzzy = fz
+		scanAbs = filepath.Clean(scanRel)
+		// Build display prefix: keep ~/... notation for readability
+		expandedPrefix := strings.TrimPrefix(scanRel, home)
+		if scanRel == home {
+			displayPrefix = "~/"
+		} else {
+			displayPrefix = "~" + expandedPrefix + string(filepath.Separator)
+		}
+	} else {
+		scanRel, fz := splitQueryPath(m.query)
+		fuzzy = fz
+		// Resolve the scan directory relative to baseDir
+		scanAbs = filepath.Clean(filepath.Join(m.baseDir, scanRel))
+		// The display prefix: what we prepend to results so they look like
+		// what the user typed. e.g. if they typed "../", results show "../foo".
+		if scanRel != "." {
+			displayPrefix = filepath.Clean(scanRel) + string(filepath.Separator)
+		} else {
+			displayPrefix = ""
+		}
+	}
 
 	info, err := os.Stat(scanAbs)
 	if err != nil || !info.IsDir() {
 		return
-	}
-
-	// The display prefix: what we prepend to results so they look like
-	// what the user typed. e.g. if they typed "../", results show "../foo".
-	displayPrefix := scanRel
-	if displayPrefix != "." {
-		displayPrefix = filepath.Clean(displayPrefix) + string(filepath.Separator)
-	} else {
-		displayPrefix = ""
 	}
 
 	var candidates []Item

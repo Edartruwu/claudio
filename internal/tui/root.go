@@ -759,7 +759,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Check if selected file is an image
 		if IsImageFile(msg.Path) {
 			absPath := msg.Path
-			if !filepath.IsAbs(absPath) {
+			if strings.HasPrefix(absPath, "~/") {
+				home, _ := os.UserHomeDir()
+				absPath = home + absPath[1:]
+			} else if !filepath.IsAbs(absPath) {
 				cwd, _ := os.Getwd()
 				absPath = filepath.Join(cwd, absPath)
 			}
