@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // LSPTool provides Language Server Protocol operations.
@@ -23,7 +25,7 @@ type lspInput struct {
 func (t *LSPTool) Name() string { return "LSP" }
 
 func (t *LSPTool) Description() string {
-	return `Provides code intelligence via Language Server Protocol. Operations: goToDefinition (find where a symbol is defined), findReferences (find all usages), hover (get type info), documentSymbol (list symbols in a file).`
+	return prompts.LSPDescription()
 }
 
 func (t *LSPTool) InputSchema() json.RawMessage {

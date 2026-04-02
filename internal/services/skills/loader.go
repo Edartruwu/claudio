@@ -1,7 +1,6 @@
 package skills
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,30 +184,419 @@ func bundledSkills() []*Skill {
 		},
 		{
 			Name:        "simplify",
-			Description: "Review changed code for reuse, quality, and efficiency",
+			Description: "Review changed code for reuse, quality, and efficiency, then fix any issues found",
 			Content:     simplifySkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "update-config",
+			Description: "Configure Claudio settings via settings.json — hooks, permissions, env vars, MCP servers",
+			Content:     updateConfigSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "debug",
+			Description: "Diagnose issues with the current session — check logs, environment, and configuration",
+			Content:     debugSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "batch",
+			Description: "Orchestrate parallel work across multiple worktrees for large-scale changes",
+			Content:     batchSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "pr",
+			Description: "Create a pull request with a well-structured description",
+			Content:     prSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "test",
+			Description: "Run tests and fix failures",
+			Content:     testSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "security-review",
+			Description: "OWASP Top 10 security review of code changes",
+			Content:     securityReviewSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "refactor",
+			Description: "Refactor code for clarity, performance, and maintainability",
+			Content:     refactorSkillContent,
 			Source:      "bundled",
 		},
 	}
 }
 
-var commitSkillContent = `Analyze all staged and unstaged changes, then create a git commit:
-1. Run git status and git diff to understand changes
-2. Draft a concise commit message focusing on "why" not "what"
-3. Stage relevant files (avoid secrets, .env files)
-4. Create the commit`
+var commitSkillContent = `You are being asked to create a git commit. Follow these steps carefully:
 
-var reviewSkillContent = `Review the code changes for:
-1. Correctness — does it do what it claims?
-2. Security — OWASP top 10, injection, XSS, etc.
-3. Performance — unnecessary allocations, N+1 queries
-4. Maintainability — clear naming, reasonable complexity
-5. Tests — are changes covered?
+1. Run the following bash commands in parallel, each using the Bash tool:
+  - Run a git status command to see all untracked files. IMPORTANT: Never use the -uall flag.
+  - Run a git diff command to see both staged and unstaged changes that will be committed.
+  - Run a git log --oneline -10 command to see recent commit messages, so that you can follow this repository's commit message style.
 
-Provide specific, actionable feedback.`
+2. Analyze all staged changes (both previously staged and newly added) and draft a commit message:
+  - Summarize the nature of the changes (eg. new feature, enhancement, bug fix, refactoring, test, docs, etc.)
+  - Ensure the message accurately reflects the changes and their purpose (i.e. "add" means a wholly new feature, "update" means an enhancement, "fix" means a bug fix, etc.)
+  - Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
+  - Draft a concise (1-2 sentences) commit message that focuses on the "why" rather than the "what"
 
-var simplifySkillContent = fmt.Sprintf(`Review changed code for:
-1. Reuse — are there existing utilities that could be used?
-2. Quality — is the code clear and idiomatic?
-3. Efficiency — are there unnecessary operations?
-Fix any issues found.`)
+3. Run the following commands:
+   - Add relevant untracked files to the staging area (prefer specific files over "git add -A")
+   - Create the commit using a HEREDOC for the message:
+     git commit -m "$(cat <<'EOF'
+     Your commit message here.
+     EOF
+     )"
+   - Run git status after the commit to verify success
+
+4. If the commit fails due to pre-commit hook: fix the issue and create a NEW commit (never amend)
+
+Important:
+- NEVER run additional commands to read or explore code, besides git bash commands
+- DO NOT push to the remote repository unless the user explicitly asks
+- Never use git commands with the -i flag (interactive mode is not supported)
+- If there are no changes to commit, do not create an empty commit`
+
+var reviewSkillContent = `You are being asked to review code changes. Follow this checklist:
+
+## Review Process
+
+1. **Gather context**: Run ` + "`git diff`" + ` and ` + "`git diff --cached`" + ` to see all changes
+2. **Read the changed files** in full to understand the broader context
+
+## Review Checklist
+
+### Correctness
+- Does the code do what it claims to do?
+- Are there off-by-one errors, null pointer issues, or race conditions?
+- Are edge cases handled?
+
+### Security (OWASP Top 10)
+- Input validation: SQL injection, command injection, XSS, path traversal
+- Authentication/authorization: proper access controls
+- Sensitive data: no hardcoded secrets, proper handling of PII
+- Dependencies: known vulnerabilities in new dependencies
+
+### Performance
+- Unnecessary allocations or copies
+- N+1 query patterns
+- Missing indices for new queries
+- Unbounded growth (memory leaks, unbounded channels/slices)
+
+### Maintainability
+- Clear naming conventions
+- Reasonable function complexity (single responsibility)
+- Adequate error handling at system boundaries
+- Tests cover the critical paths
+
+### API Design
+- Backwards compatibility (if applicable)
+- Consistent with existing patterns in the codebase
+- Proper error responses and status codes
+
+## Output Format
+
+For each issue found, provide:
+- **Severity**: Critical / Warning / Suggestion
+- **File:Line**: The specific location
+- **Issue**: What's wrong
+- **Fix**: How to fix it
+
+End with a summary: APPROVE, REQUEST CHANGES, or NEEDS DISCUSSION.`
+
+var simplifySkillContent = `You are being asked to review changed code for reuse, quality, and efficiency, then fix any issues found.
+
+## Process
+
+1. Run ` + "`git diff`" + ` to see what changed
+2. Read the changed files in full
+
+## Review Dimensions
+
+### Reuse
+- Are there existing utilities in the codebase that could replace new code?
+- Is there duplicated logic that could be consolidated?
+- Could any new helper be replaced by a standard library function?
+
+### Quality
+- Is the code clear and idiomatic for the language?
+- Are naming conventions consistent with the rest of the codebase?
+- Is the abstraction level appropriate (not too abstract, not too concrete)?
+- Are there any code smells (long functions, deep nesting, magic numbers)?
+
+### Efficiency
+- Are there unnecessary operations (redundant loops, repeated computations)?
+- Could data structures be chosen more appropriately?
+- Are there obvious performance improvements without sacrificing readability?
+
+## Action
+
+After identifying issues, **fix them directly** using the Edit tool. Don't just report — actually make the improvements.
+
+Report what you changed and why.`
+
+var updateConfigSkillContent = `You are being asked to configure Claudio settings. Help the user modify their settings.json file.
+
+## Configuration Locations
+
+- **User settings**: ~/.claudio/settings.json (applies to all projects)
+- **Project settings**: .claudio/settings.json (applies to this project only)
+- **Local settings**: ~/.claudio/local-settings.json (machine-specific overrides)
+
+## Available Settings
+
+` + "```json" + `
+{
+  "model": "claude-sonnet-4-6",       // Default model
+  "permissionMode": "default",        // "default", "auto", "headless"
+  "autoCompact": false,               // Auto-compact conversation
+  "sessionPersist": true,             // Persist sessions to SQLite
+  "denyPaths": [],                    // Paths tools cannot access
+  "denyTools": [],                    // Tools to disable
+  "allowPaths": [],                   // Additional allowed paths
+  "mcpServers": {},                   // MCP server configurations
+  "apiBaseUrl": "https://api.anthropic.com",
+  "maxBudget": 0                      // Session cost limit in USD (0 = unlimited)
+}
+` + "```" + `
+
+## MCP Server Configuration
+
+` + "```json" + `
+{
+  "mcpServers": {
+    "server-name": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+      "env": {},
+      "type": "stdio"
+    }
+  }
+}
+` + "```" + `
+
+## Process
+
+1. Read the current settings file(s) to understand what's already configured
+2. Ask the user what they want to change if not clear
+3. Make the changes using the Edit or Write tool
+4. Verify the JSON is valid`
+
+var debugSkillContent = `You are being asked to diagnose issues with the current Claudio session.
+
+## Diagnostic Steps
+
+1. **Check environment**:
+   - Run ` + "`which claudio`" + ` to verify installation
+   - Run ` + "`claudio version`" + ` to check version
+   - Check if required tools are available: git, rg (ripgrep), gopls, node
+
+2. **Check configuration**:
+   - Read ~/.claudio/settings.json (user settings)
+   - Read .claudio/settings.json (project settings) if it exists
+   - Check for ANTHROPIC_API_KEY or auth status
+
+3. **Check logs**:
+   - Look for debug logs in ~/.claudio/logs/
+   - Check for recent error patterns
+
+4. **Check connectivity**:
+   - Verify API endpoint is reachable
+   - Check for proxy configuration
+
+## Report
+
+Provide a structured diagnostic report:
+- Environment: OK / Issues found
+- Configuration: OK / Issues found
+- Authentication: OK / Issues found
+- Connectivity: OK / Issues found
+
+For each issue, suggest a fix.`
+
+var batchSkillContent = `You are being asked to orchestrate parallel work across multiple worktrees.
+
+## Process
+
+### Phase 1: Plan
+1. Enter plan mode to understand the scope of work
+2. Decompose the task into independent units of work
+3. Each unit should be independently testable and mergeable
+4. Get user approval on the plan
+
+### Phase 2: Execute
+1. For each unit of work, spawn an Agent with isolation: "worktree"
+2. Each agent works in its own worktree with its own branch
+3. Each agent should create a commit when done
+4. Run up to 5 agents in parallel
+
+### Phase 3: Aggregate
+1. Track progress of all agents
+2. Report results: which succeeded, which failed
+3. List all branches/PRs created
+
+## Important
+- Each worktree agent gets a clear, self-contained task description
+- Include file paths and specific instructions in each agent prompt
+- Never delegate understanding — each prompt must be complete`
+
+var prSkillContent = `You are being asked to create a pull request. Follow these steps carefully:
+
+1. Run the following bash commands in parallel:
+   - Run git status to see all untracked files (never use -uall flag)
+   - Run git diff to see both staged and unstaged changes
+   - Check if the current branch tracks a remote branch
+   - Run git log and ` + "`git diff main...HEAD`" + ` (or master) to understand the full commit history
+
+2. Analyze ALL changes that will be included (all commits, not just the latest):
+   - Keep the PR title short (under 70 characters)
+   - Use the description/body for details, not the title
+
+3. Run the following commands:
+   - Create new branch if needed
+   - Push to remote with -u flag if needed
+   - Create PR using ` + "`gh pr create`" + `:
+     ` + "```" + `
+     gh pr create --title "the pr title" --body "$(cat <<'EOF'
+     ## Summary
+     <1-3 bullet points>
+
+     ## Test plan
+     [Bulleted markdown checklist of testing TODOs...]
+     EOF
+     )"
+     ` + "```" + `
+
+Important:
+- Return the PR URL when you're done
+- DO NOT push to the remote unless creating the PR requires it`
+
+var testSkillContent = `You are being asked to run tests and fix any failures.
+
+## Process
+
+1. **Discover test commands**: Check for:
+   - Go: ` + "`go test ./...`" + `
+   - Node: ` + "`npm test`" + ` or ` + "`npx jest`" + ` or ` + "`npx vitest`" + `
+   - Python: ` + "`pytest`" + ` or ` + "`python -m pytest`" + `
+   - Rust: ` + "`cargo test`" + `
+   - Look at package.json scripts, Makefile targets, or CI config for the canonical test command
+
+2. **Run the full test suite** using the appropriate command
+
+3. **Analyze failures**:
+   - Read the test file to understand what's being tested
+   - Read the implementation code that the test exercises
+   - Identify the root cause (not just the symptom)
+
+4. **Fix failures**:
+   - Fix the implementation, not the test (unless the test is wrong)
+   - Run the specific failing test to verify the fix
+   - Run the full suite again to check for regressions
+
+5. **Report results**: Which tests passed/failed, what you fixed, any remaining issues`
+
+var securityReviewSkillContent = `You are being asked to perform an OWASP Top 10 security review.
+
+## Process
+
+1. Run ` + "`git diff`" + ` and ` + "`git diff --cached`" + ` to identify changes
+2. Read all changed files completely
+
+## OWASP Top 10 Checklist
+
+### A01: Broken Access Control
+- Are there authorization checks on all endpoints/routes?
+- Is there path traversal risk in file operations?
+- Are CORS policies properly configured?
+
+### A02: Cryptographic Failures
+- Are secrets hardcoded or stored in plaintext?
+- Is sensitive data encrypted at rest and in transit?
+- Are deprecated crypto algorithms used (MD5, SHA1 for security)?
+
+### A03: Injection
+- SQL injection: Are queries parameterized?
+- Command injection: Is user input passed to shell commands?
+- XSS: Is user input properly escaped in HTML output?
+- Template injection: Is user input used in template rendering?
+
+### A04: Insecure Design
+- Are rate limits in place for sensitive operations?
+- Are there proper input validation boundaries?
+
+### A05: Security Misconfiguration
+- Are debug modes disabled in production?
+- Are default credentials removed?
+- Are unnecessary features disabled?
+
+### A06: Vulnerable Components
+- Are there known CVEs in dependencies?
+- Are dependency versions pinned?
+
+### A07: Authentication Failures
+- Are passwords properly hashed (bcrypt, argon2)?
+- Is MFA supported for sensitive operations?
+- Are session tokens properly managed?
+
+### A08: Data Integrity Failures
+- Are CI/CD pipelines secure?
+- Is code signing in place?
+- Are software updates verified?
+
+### A09: Logging & Monitoring
+- Are security events logged?
+- Are logs sanitized (no secrets in logs)?
+- Is there alerting for suspicious patterns?
+
+### A10: Server-Side Request Forgery (SSRF)
+- Can user input control outbound requests?
+- Are internal endpoints protected from SSRF?
+
+## Output
+
+For each finding:
+- **Severity**: Critical / High / Medium / Low / Info
+- **Category**: OWASP A01-A10
+- **Location**: file:line
+- **Issue**: Description
+- **Remediation**: How to fix
+
+End with: SECURE / NEEDS FIXES / CRITICAL ISSUES`
+
+var refactorSkillContent = `You are being asked to refactor code.
+
+## Process
+
+1. **Understand the scope**: Read the files to be refactored and their dependencies
+2. **Identify issues**:
+   - Code duplication (DRY violations)
+   - Functions that are too long (>50 lines)
+   - Deep nesting (>3 levels)
+   - Poor naming (unclear variable/function names)
+   - God objects (classes/structs doing too much)
+   - Missing abstractions or over-abstractions
+   - Unused code (dead code)
+
+3. **Plan changes**: Identify the minimal set of changes that improve quality without changing behavior
+
+4. **Execute**:
+   - Make changes incrementally (one logical change at a time)
+   - Preserve all external behavior (this is refactoring, not rewriting)
+   - Run tests after each change to verify no regressions
+
+5. **Verify**:
+   - Run the full test suite
+   - Compare behavior before/after
+
+## Rules
+- Do NOT change behavior — only structure
+- Do NOT add new features during refactoring
+- Keep changes reviewable (small, focused diffs)
+- If tests don't exist, write them BEFORE refactoring`

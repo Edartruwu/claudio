@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // --- EnterPlanModeTool ---
@@ -15,7 +17,7 @@ type EnterPlanModeTool struct{}
 
 func (t *EnterPlanModeTool) Name() string { return "EnterPlanMode" }
 func (t *EnterPlanModeTool) Description() string {
-	return `Enters plan mode for structured thinking. Creates a plan file that can be edited. In plan mode, only read-only tools are available until the plan is approved.`
+	return prompts.EnterPlanModeDescription()
 }
 func (t *EnterPlanModeTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type": "object", "properties": {}}`)
@@ -41,7 +43,7 @@ type ExitPlanModeTool struct{}
 
 func (t *ExitPlanModeTool) Name() string { return "ExitPlanMode" }
 func (t *ExitPlanModeTool) Description() string {
-	return `Exits plan mode and requests user approval of the plan.`
+	return prompts.ExitPlanModeDescription()
 }
 func (t *ExitPlanModeTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type": "object", "properties": {}}`)

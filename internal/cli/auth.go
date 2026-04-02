@@ -41,6 +41,13 @@ var authLoginCmd = &cobra.Command{
 			return fmt.Errorf("failed to save credentials: %w", err)
 		}
 
+		// Save API key if one was created
+		if tokens.APIKey != "" {
+			if err := appInstance.Storage.SaveAPIKey(tokens.APIKey); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to save API key: %v\n", err)
+			}
+		}
+
 		if tokens.Account != nil {
 			fmt.Printf("Logged in as: %s\n", tokens.Account.EmailAddress)
 		}

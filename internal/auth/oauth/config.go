@@ -7,13 +7,17 @@ const (
 	DefaultClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
 	// DefaultAuthorizeURL is the OAuth authorization endpoint.
-	DefaultAuthorizeURL = "https://claude.ai/oauth/authorize"
+	// Uses claude.com/cai/ path to match official Claude Code's attribution flow.
+	DefaultAuthorizeURL = "https://claude.com/cai/oauth/authorize"
 
 	// DefaultTokenURL is the OAuth token exchange endpoint.
 	DefaultTokenURL = "https://platform.claude.com/v1/oauth/token"
 
 	// DefaultProfileURL is the user profile endpoint.
 	DefaultProfileURL = "https://api.anthropic.com/api/oauth/profile"
+
+	// DefaultAPIKeyURL is the endpoint to create an API key from an OAuth token.
+	DefaultAPIKeyURL = "https://api.anthropic.com/api/oauth/claude_cli/create_api_key"
 
 	// DefaultManualRedirectURI is used when browser redirect isn't available.
 	DefaultManualRedirectURI = "https://platform.claude.com/oauth/code/callback"
@@ -40,6 +44,7 @@ type Config struct {
 	AuthorizeURL string
 	TokenURL     string
 	ProfileURL   string
+	APIKeyURL    string
 	Scopes       []string
 }
 
@@ -50,6 +55,7 @@ func DefaultConfig() Config {
 		AuthorizeURL: DefaultAuthorizeURL,
 		TokenURL:     DefaultTokenURL,
 		ProfileURL:   DefaultProfileURL,
+		APIKeyURL:    DefaultAPIKeyURL,
 		Scopes:       DefaultScopes,
 	}
 

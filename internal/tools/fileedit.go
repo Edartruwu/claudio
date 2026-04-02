@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // FileEditTool performs exact string replacement in files.
-type FileEditTool struct{}
+type FileEditTool struct {
+	Security SecurityChecker
+}
 
 type fileEditInput struct {
 	FilePath   string `json:"file_path"`
@@ -21,7 +25,7 @@ type fileEditInput struct {
 func (t *FileEditTool) Name() string { return "Edit" }
 
 func (t *FileEditTool) Description() string {
-	return `Performs exact string replacement in a file. The old_string must be unique in the file (unless replace_all is true). Use this for making targeted changes to existing files.`
+	return prompts.EditDescription()
 }
 
 func (t *FileEditTool) InputSchema() json.RawMessage {
@@ -62,6 +66,14 @@ func (t *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	if in.FilePath == "" {
 		return &Result{Content: "No file path provided", IsError: true}, nil
 	}
+
+	// Security check
+	if t.Security != nil {
+		if err := t.Security.CheckPath(in.FilePath); err != nil {
+			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}, nil
+		}
+	}
+
 	if in.OldString == "" {
 		return &Result{Content: "old_string cannot be empty", IsError: true}, nil
 	}

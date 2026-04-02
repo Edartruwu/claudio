@@ -8,20 +8,28 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 )
 
 // BashTool executes shell commands.
-type BashTool struct{}
+type BashTool struct {
+	Security     SecurityChecker
+	TaskRuntime  *tasks.Runtime
+}
 
 type bashInput struct {
-	Command string `json:"command"`
-	Timeout int    `json:"timeout,omitempty"` // milliseconds, default 120000
+	Command          string `json:"command"`
+	Description      string `json:"description,omitempty"`
+	Timeout          int    `json:"timeout,omitempty"` // milliseconds, default 120000
+	RunInBackground  bool   `json:"run_in_background,omitempty"`
 }
 
 func (t *BashTool) Name() string { return "Bash" }
 
 func (t *BashTool) Description() string {
-	return `Executes a bash command and returns its output. Use this for running shell commands, installing packages, running tests, git operations, etc. The working directory persists between calls.`
+	return prompts.BashDescription()
 }
 
 func (t *BashTool) InputSchema() json.RawMessage {
@@ -30,11 +38,19 @@ func (t *BashTool) InputSchema() json.RawMessage {
 		"properties": {
 			"command": {
 				"type": "string",
-				"description": "The bash command to execute"
+				"description": "The command to execute"
+			},
+			"description": {
+				"type": "string",
+				"description": "Clear, concise description of what this command does in active voice"
 			},
 			"timeout": {
 				"type": "number",
-				"description": "Timeout in milliseconds (default: 120000)"
+				"description": "Optional timeout in milliseconds (max 600000)"
+			},
+			"run_in_background": {
+				"type": "boolean",
+				"description": "Set to true to run this command in the background"
 			}
 		},
 		"required": ["command"]
@@ -57,9 +73,30 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		return &Result{Content: "No command provided", IsError: true}, nil
 	}
 
-	// Safety checks
-	if err := checkCommandSafety(in.Command); err != nil {
+	// Safety checks — use injected security if available, fallback to built-in
+	if t.Security != nil {
+		if err := t.Security.CheckCommand(in.Command); err != nil {
+			return &Result{Content: fmt.Sprintf("Command blocked: %v", err), IsError: true}, nil
+		}
+	} else if err := checkCommandSafety(in.Command); err != nil {
 		return &Result{Content: fmt.Sprintf("Command blocked: %v", err), IsError: true}, nil
+	}
+
+	// Background execution
+	if in.RunInBackground && t.TaskRuntime != nil {
+		taskTimeout := time.Duration(0)
+		if in.Timeout > 0 {
+			taskTimeout = time.Duration(in.Timeout) * time.Millisecond
+		}
+		state, err := tasks.SpawnShellTask(t.TaskRuntime, tasks.ShellTaskInput{
+			Command:     in.Command,
+			Description: in.Description,
+			Timeout:     taskTimeout,
+		})
+		if err != nil {
+			return &Result{Content: fmt.Sprintf("Failed to start background task: %v", err), IsError: true}, nil
+		}
+		return &Result{Content: fmt.Sprintf("Background task started: %s\nTask ID: %s\nUse TaskOutput to check results.", state.Description, state.ID)}, nil
 	}
 
 	timeout := 120 * time.Second

@@ -41,16 +41,28 @@ func (c *Client) BuildAuthorizeURL(challenge, state, redirectURI string) string 
 }
 
 // ExchangeCode exchanges an authorization code for tokens.
-func (c *Client) ExchangeCode(code, verifier, redirectURI string) (*Tokens, error) {
-	body := url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"code_verifier": {verifier},
-		"client_id":     {c.config.ClientID},
-		"redirect_uri":  {redirectURI},
+func (c *Client) ExchangeCode(code, verifier, redirectURI, state string) (*Tokens, error) {
+	body := map[string]string{
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"code_verifier": verifier,
+		"client_id":     c.config.ClientID,
+		"redirect_uri":  redirectURI,
+		"state":         state,
 	}
 
-	resp, err := c.httpClient.PostForm(c.config.TokenURL, body)
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal token request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.config.TokenURL, strings.NewReader(string(jsonBody)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange request failed: %w", err)
 	}
@@ -87,14 +99,25 @@ func (c *Client) ExchangeCode(code, verifier, redirectURI string) (*Tokens, erro
 
 // RefreshToken refreshes an expired access token.
 func (c *Client) RefreshToken(refreshToken string, scopes []string) (*Tokens, error) {
-	body := url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {refreshToken},
-		"client_id":     {c.config.ClientID},
-		"scope":         {strings.Join(scopes, " ")},
+	body := map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": refreshToken,
+		"client_id":     c.config.ClientID,
+		"scope":         strings.Join(scopes, " "),
 	}
 
-	resp, err := c.httpClient.PostForm(c.config.TokenURL, body)
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal refresh request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.config.TokenURL, strings.NewReader(string(jsonBody)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("token refresh request failed: %w", err)
 	}
@@ -120,6 +143,39 @@ func (c *Client) RefreshToken(refreshToken string, scopes []string) (*Tokens, er
 	}
 
 	return tokens, nil
+}
+
+// CreateAPIKey exchanges an OAuth access token for a persistent API key.
+func (c *Client) CreateAPIKey(accessToken string) (string, error) {
+	req, err := http.NewRequest("POST", c.config.APIKeyURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create API key request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("API key creation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API key creation failed (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		RawKey string `json:"raw_key"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode API key response: %w", err)
+	}
+
+	if result.RawKey == "" {
+		return "", fmt.Errorf("server returned empty API key")
+	}
+
+	return result.RawKey, nil
 }
 
 // FetchProfile retrieves the user profile using an access token.

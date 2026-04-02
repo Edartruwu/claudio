@@ -13,11 +13,13 @@ type ModelPricing struct {
 }
 
 // Known model pricing (USD per million tokens).
+// Source: https://platform.claude.com/docs/en/about-claude/pricing
 var modelPricing = map[string]ModelPricing{
-	"claude-opus-4-6":            {InputPerMillion: 5.0, OutputPerMillion: 25.0, CacheReadPerMillion: 0.5},
+	"claude-opus-4-6":            {InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5},
+	"claude-opus-4-5":            {InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5},
 	"claude-sonnet-4-6":          {InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3},
-	"claude-haiku-4-5":           {InputPerMillion: 0.8, OutputPerMillion: 4.0, CacheReadPerMillion: 0.08},
-	"claude-sonnet-4-5-20250514": {InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3},
+	"claude-sonnet-4-5":          {InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3},
+	"claude-haiku-4-5":           {InputPerMillion: 0.25, OutputPerMillion: 1.25, CacheReadPerMillion: 0.025},
 }
 
 // UsageTracker accumulates token usage and cost across a session.
@@ -90,15 +92,51 @@ func (t *UsageTracker) Snapshot() (totalTokens int, cost float64) {
 }
 
 func (t *UsageTracker) calculateCost() float64 {
-	pricing, ok := modelPricing[t.model]
-	if !ok {
-		// Default to Sonnet pricing
-		pricing = ModelPricing{InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3}
-	}
+	pricing := lookupPricing(t.model)
 
 	inputCost := float64(t.InputTokens) * pricing.InputPerMillion / 1_000_000
 	outputCost := float64(t.OutputTokens) * pricing.OutputPerMillion / 1_000_000
 	cacheCost := float64(t.CacheRead) * pricing.CacheReadPerMillion / 1_000_000
 
 	return inputCost + outputCost + cacheCost
+}
+
+// lookupPricing finds pricing by exact match or prefix match.
+// API model IDs often include date suffixes (e.g., claude-sonnet-4-6-20260301).
+func lookupPricing(model string) ModelPricing {
+	// Exact match
+	if p, ok := modelPricing[model]; ok {
+		return p
+	}
+	// Prefix match (longest prefix wins)
+	var bestKey string
+	for key := range modelPricing {
+		if len(model) >= len(key) && model[:len(key)] == key {
+			if len(key) > len(bestKey) {
+				bestKey = key
+			}
+		}
+	}
+	if bestKey != "" {
+		return modelPricing[bestKey]
+	}
+	// Keyword fallback
+	switch {
+	case contains(model, "opus"):
+		return ModelPricing{InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5}
+	case contains(model, "haiku"):
+		return ModelPricing{InputPerMillion: 0.25, OutputPerMillion: 1.25, CacheReadPerMillion: 0.025}
+	default:
+		// Default to Sonnet pricing
+		return ModelPricing{InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3}
+	}
+}
+
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

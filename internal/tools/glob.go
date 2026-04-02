@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // GlobTool finds files matching glob patterns.
@@ -21,7 +23,7 @@ type globInput struct {
 func (t *GlobTool) Name() string { return "Glob" }
 
 func (t *GlobTool) Description() string {
-	return `Finds files matching a glob pattern (e.g., "**/*.go", "src/**/*.ts"). Returns matching file paths sorted by modification time. Use this to discover files in the codebase.`
+	return prompts.GlobDescription()
 }
 
 func (t *GlobTool) InputSchema() json.RawMessage {

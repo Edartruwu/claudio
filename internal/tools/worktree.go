@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // --- EnterWorktreeTool ---
@@ -22,7 +24,7 @@ type worktreeEnterInput struct {
 
 func (t *EnterWorktreeTool) Name() string { return "EnterWorktree" }
 func (t *EnterWorktreeTool) Description() string {
-	return `Creates and enters a git worktree for isolated development. The worktree gets its own branch and working directory. Use this for parallel work that shouldn't interfere with the main branch.`
+	return prompts.EnterWorktreeDescription()
 }
 func (t *EnterWorktreeTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
@@ -77,7 +79,7 @@ type worktreeExitInput struct {
 
 func (t *ExitWorktreeTool) Name() string { return "ExitWorktree" }
 func (t *ExitWorktreeTool) Description() string {
-	return `Exits the current git worktree. Use action "keep" to preserve changes or "remove" to clean up.`
+	return prompts.ExitWorktreeDescription()
 }
 func (t *ExitWorktreeTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{

@@ -18,15 +18,16 @@ func NewDefaultStorage() SecureStorage {
 	paths := config.GetPaths()
 	plaintext := NewPlaintextStorage(paths.Credentials)
 
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin", "linux":
 		keychain := NewKeychainStorage()
 		return &CompositeStorage{
 			primary:  keychain,
 			fallback: plaintext,
 		}
+	default:
+		return plaintext
 	}
-
-	return plaintext
 }
 
 func (s *CompositeStorage) Name() string {

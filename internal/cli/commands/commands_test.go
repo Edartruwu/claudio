@@ -30,9 +30,22 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func testDeps() *commands.CommandDeps {
+	return &commands.CommandDeps{
+		GetModel:      func() string { return "test-model" },
+		SetModel:      func(model string) {},
+		Compact:       func(keepLast int) (string, error) { return "summary", nil },
+		GetTokens:     func() int { return 100 },
+		GetCost:       func() float64 { return 0.01 },
+		ListSessions:  func(limit int) ([]commands.SessionInfo, error) { return nil, nil },
+		RenameSession: func(title string) error { return nil },
+		ToggleVim:     func() bool { return true },
+	}
+}
+
 func TestRegistry(t *testing.T) {
 	r := commands.NewRegistry()
-	commands.RegisterCoreCommands(r)
+	commands.RegisterCoreCommands(r, testDeps())
 
 	// Test /help exists
 	cmd, ok := r.Get("help")
@@ -79,7 +92,7 @@ func TestRegistry(t *testing.T) {
 
 func TestHelpText(t *testing.T) {
 	r := commands.NewRegistry()
-	commands.RegisterCoreCommands(r)
+	commands.RegisterCoreCommands(r, testDeps())
 
 	help := r.HelpText()
 	if help == "" {

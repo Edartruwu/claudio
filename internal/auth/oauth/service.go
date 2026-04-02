@@ -70,7 +70,7 @@ func (s *Service) Login(ctx context.Context) (*Tokens, error) {
 	}
 
 	// Step 5: Exchange code for tokens
-	tokens, err := s.client.ExchangeCode(code, verifier, redirectURI)
+	tokens, err := s.client.ExchangeCode(code, verifier, redirectURI, state)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
 	}

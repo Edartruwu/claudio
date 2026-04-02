@@ -14,6 +14,34 @@ type Command struct {
 	Execute     func(args string) (string, error)
 }
 
+// CommandDeps provides access to app state for commands that need it.
+type CommandDeps struct {
+	GetModel      func() string
+	SetModel      func(model string)
+	Compact       func(keepLast int) (string, error)
+	GetTokens     func() int
+	GetCost       func() float64
+	ListSessions  func(limit int) ([]SessionInfo, error)
+	RenameSession func(title string) error
+	ToggleVim     func() bool // returns new state (true=enabled)
+	// Skills for dynamic registration
+	ListSkills    func() []SkillInfo
+}
+
+// SkillInfo holds skill data for command registration.
+type SkillInfo struct {
+	Name        string
+	Description string
+}
+
+// SessionInfo holds session data for display.
+type SessionInfo struct {
+	ID        string
+	Title     string
+	Model     string
+	UpdatedAt string
+}
+
 // Registry holds all registered slash commands.
 type Registry struct {
 	commands map[string]*Command
@@ -52,6 +80,22 @@ func Parse(input string) (name, args string, isCommand bool) {
 		args = parts[1]
 	}
 	return name, args, true
+}
+
+// ListCommands returns all unique commands (deduplicating aliases), sorted by name.
+func (r *Registry) ListCommands() []*Command {
+	seen := make(map[*Command]bool)
+	var cmds []*Command
+	for _, cmd := range r.commands {
+		if !seen[cmd] {
+			seen[cmd] = true
+			cmds = append(cmds, cmd)
+		}
+	}
+	sort.Slice(cmds, func(i, j int) bool {
+		return cmds[i].Name < cmds[j].Name
+	})
+	return cmds
 }
 
 // HelpText returns formatted help for all commands.

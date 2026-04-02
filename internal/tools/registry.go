@@ -57,6 +57,33 @@ func (r *Registry) APIDefinitions() json.RawMessage {
 	return data
 }
 
+// Remove removes a tool from the registry by name.
+func (r *Registry) Remove(name string) {
+	delete(r.tools, name)
+	for i, n := range r.order {
+		if n == name {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
+}
+
+// Clone creates a copy of the registry (for sub-agent filtered registries).
+func (r *Registry) Clone() *Registry {
+	clone := NewRegistry()
+	for _, name := range r.order {
+		clone.Register(r.tools[name])
+	}
+	return clone
+}
+
+// Names returns the names of all registered tools.
+func (r *Registry) Names() []string {
+	result := make([]string, len(r.order))
+	copy(result, r.order)
+	return result
+}
+
 // DefaultRegistry creates a registry with all core tools.
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
@@ -93,6 +120,10 @@ func DefaultRegistry() *Registry {
 
 	// Agent
 	r.Register(&AgentTool{})
+
+	// Background task management (TaskStop and TaskOutput need Runtime injected later)
+	r.Register(&TaskStopTool{})
+	r.Register(&TaskOutputTool{})
 
 	return r
 }

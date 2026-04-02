@@ -7,26 +7,36 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 )
 
 // AgentTool spawns sub-agents for complex, multi-step tasks.
 type AgentTool struct {
 	// ParentRegistry is set by the registry after construction.
 	ParentRegistry *Registry
-	// APIClient is set externally for sub-agent API access.
-	APIClientFactory func() interface{}
+	// RunAgent executes a sub-agent synchronously. Set by app initialization.
+	// Receives (ctx, systemPrompt, userPrompt) and returns the text output.
+	RunAgent func(ctx context.Context, system, prompt string) (string, error)
+	// TaskRuntime for background agent execution.
+	TaskRuntime *tasks.Runtime
 }
 
 type agentInput struct {
-	Prompt      string `json:"prompt"`
-	Description string `json:"description,omitempty"`
-	Model       string `json:"model,omitempty"`
+	Prompt          string `json:"prompt"`
+	Description     string `json:"description,omitempty"`
+	SubagentType    string `json:"subagent_type,omitempty"`
+	Model           string `json:"model,omitempty"`
+	RunInBackground bool   `json:"run_in_background,omitempty"`
+	Isolation       string `json:"isolation,omitempty"` // "worktree"
 }
 
 func (t *AgentTool) Name() string { return "Agent" }
 
 func (t *AgentTool) Description() string {
-	return `Launch a sub-agent to handle complex, multi-step tasks autonomously. The sub-agent has access to the same tools (Bash, Read, Write, Edit, Glob, Grep) and will return a summary of its work. Use this for tasks that benefit from isolated context or parallel execution.`
+	return prompts.AgentDescription(agents.AgentTypesList())
 }
 
 func (t *AgentTool) InputSchema() json.RawMessage {
@@ -35,14 +45,32 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 		"properties": {
 			"prompt": {
 				"type": "string",
-				"description": "The task for the sub-agent to perform"
+				"description": "The task for the agent to perform"
 			},
 			"description": {
 				"type": "string",
 				"description": "A short (3-5 word) description of the task"
+			},
+			"subagent_type": {
+				"type": "string",
+				"description": "The type of specialized agent to use for this task"
+			},
+			"model": {
+				"type": "string",
+				"description": "Optional model override for this agent",
+				"enum": ["sonnet", "opus", "haiku"]
+			},
+			"run_in_background": {
+				"type": "boolean",
+				"description": "Set to true to run this agent in the background"
+			},
+			"isolation": {
+				"type": "string",
+				"description": "Isolation mode. \"worktree\" creates a temporary git worktree.",
+				"enum": ["worktree"]
 			}
 		},
-		"required": ["prompt"]
+		"required": ["description", "prompt"]
 	}`)
 }
 
@@ -59,19 +87,54 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		return &Result{Content: "No prompt provided", IsError: true}, nil
 	}
 
-	// For now, sub-agents execute tools directly in a simplified loop.
-	// In production, this would spawn a full query.Engine with its own API client.
 	desc := in.Description
 	if desc == "" {
 		desc = truncateStr(in.Prompt, 50)
 	}
 
-	// Collect sub-agent output
-	var output strings.Builder
-	output.WriteString(fmt.Sprintf("[Sub-agent: %s]\n", desc))
-	output.WriteString(fmt.Sprintf("Task: %s\n\n", in.Prompt))
-	output.WriteString("(Sub-agent execution requires API client integration — returning task description for now)\n")
+	// Resolve agent type
+	agentType := in.SubagentType
+	if agentType == "" {
+		agentType = "general-purpose"
+	}
+	agentDef := agents.GetAgent(agentType)
 
+	// Background execution via task runtime
+	if in.RunInBackground && t.TaskRuntime != nil {
+		runFn := t.RunAgent
+		state, err := tasks.SpawnAgentTask(t.TaskRuntime, tasks.AgentTaskInput{
+			Prompt:      in.Prompt,
+			Description: desc,
+			AgentType:   agentDef.Type,
+			Model:       in.Model,
+			System:      agentDef.SystemPrompt,
+			RunAgent: func(ctx context.Context, system, prompt string) (string, error) {
+				if runFn != nil {
+					return runFn(ctx, system, prompt)
+				}
+				return "", fmt.Errorf("agent execution not configured")
+			},
+		})
+		if err != nil {
+			return &Result{Content: fmt.Sprintf("Failed to start background agent: %v", err), IsError: true}, nil
+		}
+		return &Result{Content: fmt.Sprintf("Background agent started: %s\nTask ID: %s\nAgent type: %s\nUse TaskOutput to check results.", desc, state.ID, agentDef.Type)}, nil
+	}
+
+	// Foreground execution
+	if t.RunAgent != nil {
+		result, err := t.RunAgent(ctx, agentDef.SystemPrompt, in.Prompt)
+		if err != nil {
+			return &Result{Content: fmt.Sprintf("Agent error: %v", err), IsError: true}, nil
+		}
+		return &Result{Content: result}, nil
+	}
+
+	// Fallback: no RunAgent callback configured
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("[Agent: %s (%s)]\n", desc, agentDef.Type))
+	output.WriteString(fmt.Sprintf("Task: %s\n\n", in.Prompt))
+	output.WriteString("(Sub-agent execution requires API client configuration)\n")
 	return &Result{Content: output.String()}, nil
 }
 

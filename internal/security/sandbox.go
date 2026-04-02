@@ -131,6 +131,40 @@ func expandHome(pattern, home string) string {
 	return pattern
 }
 
+// NetworkEgressCheck validates if a command might make unauthorized network requests.
+// Returns true if the command contains network activity, along with a description.
+func NetworkEgressCheck(command string) (bool, string) {
+	lower := strings.ToLower(command)
+
+	checks := []struct {
+		pattern string
+		reason  string
+	}{
+		{"curl ", "HTTP request via curl"},
+		{"wget ", "HTTP request via wget"},
+		{"nc -", "netcat connection"},
+		{"netcat ", "netcat connection"},
+		{"ssh ", "SSH connection"},
+		{"scp ", "SCP file transfer"},
+		{"rsync ", "rsync transfer"},
+		{"ftp ", "FTP connection"},
+		{"telnet ", "telnet connection"},
+		{"nmap ", "network scan"},
+	}
+
+	for _, c := range checks {
+		if strings.Contains(lower, c.pattern) {
+			return true, c.reason
+		}
+	}
+	return false, ""
+}
+
+// SanitizeForLog removes sensitive data from strings before logging.
+func SanitizeForLog(s string) string {
+	return RedactSecrets(s)
+}
+
 func matchPath(path, pattern string) bool {
 	// Handle ** patterns
 	if strings.Contains(pattern, "**") {

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // TaskStore holds in-memory tasks (backed by SQLite in production).
@@ -43,14 +45,15 @@ type taskCreateInput struct {
 
 func (t *TaskCreateTool) Name() string { return "TaskCreate" }
 func (t *TaskCreateTool) Description() string {
-	return `Creates a new task for tracking work. Use this to break complex work into discrete steps.`
+	return prompts.TaskCreateDescription()
 }
 func (t *TaskCreateTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"subject": {"type": "string", "description": "Brief title for the task"},
-			"description": {"type": "string", "description": "What needs to be done"}
+			"subject": {"type": "string", "description": "A brief title for the task"},
+			"description": {"type": "string", "description": "What needs to be done"},
+			"activeForm": {"type": "string", "description": "Present continuous form shown in spinner when in_progress (e.g., \"Running tests\")"}
 		},
 		"required": ["subject", "description"]
 	}`)
@@ -87,7 +90,7 @@ type TaskListTool struct{}
 
 func (t *TaskListTool) Name() string { return "TaskList" }
 func (t *TaskListTool) Description() string {
-	return `Lists all current tasks with their status.`
+	return prompts.TaskListDescription()
 }
 func (t *TaskListTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type": "object", "properties": {}}`)
@@ -134,7 +137,7 @@ type taskUpdateInput struct {
 
 func (t *TaskUpdateTool) Name() string { return "TaskUpdate" }
 func (t *TaskUpdateTool) Description() string {
-	return `Updates a task's status (pending, in_progress, completed, deleted), subject, or description.`
+	return prompts.TaskUpdateDescription()
 }
 func (t *TaskUpdateTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
@@ -189,7 +192,7 @@ type taskGetInput struct {
 
 func (t *TaskGetTool) Name() string { return "TaskGet" }
 func (t *TaskGetTool) Description() string {
-	return `Gets full details of a specific task by ID.`
+	return prompts.TaskGetDescription()
 }
 func (t *TaskGetTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{

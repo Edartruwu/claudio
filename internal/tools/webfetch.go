@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // WebFetchTool fetches and converts web pages to markdown.
@@ -22,7 +24,7 @@ type webFetchInput struct {
 func (t *WebFetchTool) Name() string { return "WebFetch" }
 
 func (t *WebFetchTool) Description() string {
-	return `Fetches content from a URL and converts it to readable text. Use this to read documentation, web pages, or API responses. Returns cleaned-up text content.`
+	return prompts.WebFetchDescription()
 }
 
 func (t *WebFetchTool) InputSchema() json.RawMessage {

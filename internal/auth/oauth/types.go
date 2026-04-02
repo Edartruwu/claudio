@@ -12,6 +12,7 @@ type Tokens struct {
 	RateLimitTier    string    `json:"rateLimitTier,omitempty"`
 	Account          *Account  `json:"tokenAccount,omitempty"`
 	Profile          *Profile  `json:"profile,omitempty"`
+	APIKey           string    `json:"apiKey,omitempty"` // API key created from OAuth token
 }
 
 // Account holds OAuth account info from the token exchange response.

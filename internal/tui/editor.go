@@ -1,0 +1,66 @@
+package tui
+
+import (
+	"os"
+	"os/exec"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// editorFinishedMsg is sent when the external editor process exits.
+type editorFinishedMsg struct {
+	content string
+	err     error
+}
+
+// getEditor returns the user's preferred editor from $VISUAL or $EDITOR,
+// falling back to "vi".
+func getEditor() string {
+	if e := os.Getenv("VISUAL"); e != "" {
+		return e
+	}
+	if e := os.Getenv("EDITOR"); e != "" {
+		return e
+	}
+	return "vi"
+}
+
+// openExternalEditor writes content to a temp file, opens the user's editor,
+// and returns the edited content via editorFinishedMsg.
+func openExternalEditor(content string) tea.Cmd {
+	tmpFile, err := os.CreateTemp("", "claudio-prompt-*.md")
+	if err != nil {
+		return func() tea.Msg {
+			return editorFinishedMsg{err: err}
+		}
+	}
+	tmpPath := tmpFile.Name()
+
+	if _, err := tmpFile.WriteString(content); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return func() tea.Msg {
+			return editorFinishedMsg{err: err}
+		}
+	}
+	tmpFile.Close()
+
+	editor := getEditor()
+	parts := strings.Fields(editor)
+	name := parts[0]
+	args := append(parts[1:], tmpPath)
+
+	c := exec.Command(name, args...)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		defer os.Remove(tmpPath)
+		if err != nil {
+			return editorFinishedMsg{err: err}
+		}
+		data, readErr := os.ReadFile(tmpPath)
+		if readErr != nil {
+			return editorFinishedMsg{err: readErr}
+		}
+		return editorFinishedMsg{content: strings.TrimRight(string(data), "\n")}
+	})
+}

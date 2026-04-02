@@ -52,3 +52,9 @@ type APIToolDef struct {
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"input_schema"`
 }
+
+// SecurityChecker validates file paths and commands against security policies.
+type SecurityChecker interface {
+	CheckPath(path string) error
+	CheckCommand(cmd string) error
+}

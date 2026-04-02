@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // WebSearchTool searches the web.
@@ -23,7 +25,7 @@ type webSearchInput struct {
 func (t *WebSearchTool) Name() string { return "WebSearch" }
 
 func (t *WebSearchTool) Description() string {
-	return `Searches the web for information. Returns search results with titles, URLs, and snippets. Use this when you need current information not in your training data.`
+	return prompts.WebSearchDescription()
 }
 
 func (t *WebSearchTool) InputSchema() json.RawMessage {

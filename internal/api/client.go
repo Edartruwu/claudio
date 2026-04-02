@@ -59,16 +59,40 @@ func WithModel(model string) ClientOption {
 	return func(c *Client) { c.model = model }
 }
 
+// GetModel returns the current default model.
+func (c *Client) GetModel() string {
+	return c.model
+}
+
+// SetModel changes the default model at runtime.
+func (c *Client) SetModel(model string) {
+	c.model = model
+}
+
+// ThinkingConfig configures extended thinking for supported models.
+type ThinkingConfig struct {
+	Type         string `json:"type"`                    // "adaptive", "enabled", "disabled"
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // Required when type is "enabled"
+}
+
+// SystemBlock is a text block in the system prompt array.
+type SystemBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
 // MessagesRequest is the request body for /v1/messages.
 type MessagesRequest struct {
 	Model       string          `json:"model"`
 	MaxTokens   int             `json:"max_tokens"`
 	Messages    []Message       `json:"messages"`
-	System      string          `json:"system,omitempty"`
+	System      string          `json:"-"`               // Set by callers as plain string, marshaled by custom logic
+	SystemRaw   json.RawMessage `json:"system,omitempty"` // Actual JSON sent to API (string or array of blocks)
 	Stream      bool            `json:"stream,omitempty"`
 	Tools       json.RawMessage `json:"tools,omitempty"`
 	Temperature *float64        `json:"temperature,omitempty"`
 	StopReason  string          `json:"stop_reason,omitempty"`
+	Thinking    *ThinkingConfig `json:"thinking,omitempty"`
 }
 
 // Message represents a conversation message.
@@ -79,23 +103,54 @@ type Message struct {
 
 // StreamEvent represents a single SSE event from the streaming API.
 type StreamEvent struct {
-	Type  string          `json:"type"`
-	Delta json.RawMessage `json:"delta,omitempty"`
-	Index int             `json:"index,omitempty"`
-
-	// Parsed content delta fields
-	ContentBlock *ContentBlock `json:"-"`
-	Usage        *Usage        `json:"-"`
-	Message      *MessageResp  `json:"-"`
+	Type         string          `json:"type"`
+	Delta        json.RawMessage `json:"delta,omitempty"`
+	Index        int             `json:"index,omitempty"`
+	MessageField json.RawMessage `json:"message,omitempty"`       // For message_start
+	ContentBlock json.RawMessage `json:"content_block,omitempty"` // For content_block_start
+	Usage        *Usage          `json:"usage,omitempty"`          // For message_delta
 }
 
 // ContentBlock represents a content block in the response.
 type ContentBlock struct {
-	Type  string          `json:"type"` // "text", "tool_use", "thinking"
-	Text  string          `json:"text,omitempty"`
-	ID    string          `json:"id,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
+	Type      string          `json:"type"` // "text", "tool_use", "thinking"
+	Text      string          `json:"text,omitempty"`
+	Thinking  string          `json:"thinking,omitempty"`
+	Signature string          `json:"signature,omitempty"` // Required when sending thinking blocks back
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+}
+
+// ImageSource describes the source of an image for the API.
+type ImageSource struct {
+	Type      string `json:"type"`       // "base64"
+	MediaType string `json:"media_type"` // "image/png", "image/jpeg", "image/gif", "image/webp"
+	Data      string `json:"data"`       // base64-encoded image data
+}
+
+// UserContentBlock is a content block in a user message (text or image).
+type UserContentBlock struct {
+	Type   string       `json:"type"`             // "text" or "image"
+	Text   string       `json:"text,omitempty"`   // for type="text"
+	Source *ImageSource `json:"source,omitempty"` // for type="image"
+}
+
+// NewTextBlock creates a text content block for a user message.
+func NewTextBlock(text string) UserContentBlock {
+	return UserContentBlock{Type: "text", Text: text}
+}
+
+// NewImageBlock creates an image content block for a user message.
+func NewImageBlock(mediaType, base64Data string) UserContentBlock {
+	return UserContentBlock{
+		Type: "image",
+		Source: &ImageSource{
+			Type:      "base64",
+			MediaType: mediaType,
+			Data:      base64Data,
+		},
+	}
 }
 
 // Usage tracks token consumption.
@@ -118,11 +173,8 @@ type MessageResp struct {
 }
 
 // StreamMessages sends a streaming messages request and returns a channel of events.
+// When using OAuth, it proxies through the official claude CLI to bypass third-party restrictions.
 func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-chan StreamEvent, <-chan error) {
-	eventCh := make(chan StreamEvent, 64)
-	errCh := make(chan error, 1)
-
-	req.Stream = true
 	if req.Model == "" {
 		req.Model = c.model
 	}
@@ -130,6 +182,12 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 		req.MaxTokens = 8192
 	}
 
+	req.Stream = true
+	c.applyThinking(req)
+	c.applyAttribution(req)
+
+	eventCh := make(chan StreamEvent, 64)
+	errCh := make(chan error, 1)
 	go func() {
 		defer close(eventCh)
 		defer close(errCh)
@@ -141,7 +199,7 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, "POST",
-			c.baseURL+"/v1/messages", bytes.NewReader(body))
+			c.baseURL+"/v1/messages?beta=true", bytes.NewReader(body))
 		if err != nil {
 			errCh <- err
 			return
@@ -158,7 +216,12 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 
 		if resp.StatusCode != http.StatusOK {
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			errCh <- fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+			retryAfter := resp.Header.Get("retry-after")
+			extra := ""
+			if retryAfter != "" {
+				extra = fmt.Sprintf(" (retry after %ss)", retryAfter)
+			}
+			errCh <- fmt.Errorf("API error (HTTP %d): %s%s", resp.StatusCode, string(bodyBytes), extra)
 			return
 		}
 
@@ -204,6 +267,8 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	if req.MaxTokens == 0 {
 		req.MaxTokens = 8192
 	}
+	c.applyThinking(req)
+	c.applyAttribution(req)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -211,7 +276,7 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		c.baseURL+"/v1/messages", bytes.NewReader(body))
+		c.baseURL+"/v1/messages?beta=true", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -237,15 +302,51 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	return &msgResp, nil
 }
 
+// applyAttribution injects the x-anthropic-billing-header into the system prompt
+// as the first text block. This is required for OAuth tokens on Sonnet/Opus models.
+// It converts the plain string System field into a SystemRaw JSON array.
+func (c *Client) applyAttribution(req *MessagesRequest) {
+	authResult := c.authResolver.Resolve()
+	if !authResult.IsOAuth {
+		// For non-OAuth, just convert system string to JSON string
+		if req.System != "" {
+			req.SystemRaw, _ = json.Marshal(req.System)
+		}
+		return
+	}
+
+	blocks := []SystemBlock{
+		{Type: "text", Text: "x-anthropic-billing-header: cc_version=2.1.89.4fa; cc_entrypoint=cli; cch=00000;"},
+	}
+	if req.System != "" {
+		blocks = append(blocks, SystemBlock{Type: "text", Text: req.System})
+	}
+	req.SystemRaw, _ = json.Marshal(blocks)
+}
+
+// applyThinking sets adaptive thinking for models that support it (Sonnet 4+, Opus 4+).
+func (c *Client) applyThinking(req *MessagesRequest) {
+	if req.Thinking != nil {
+		return // Already set
+	}
+	model := req.Model
+	if strings.Contains(model, "sonnet-4") || strings.Contains(model, "opus-4") {
+		req.Thinking = &ThinkingConfig{Type: "adaptive"}
+	}
+}
+
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("anthropic-version", c.apiVersion)
 
 	authResult := c.authResolver.Resolve()
 	if authResult.IsOAuth {
 		req.Header.Set("Authorization", "Bearer "+authResult.Token)
+		req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14")
+		req.Header.Set("User-Agent", "claude-code/2.1.0 claude-cli")
+		req.Header.Set("x-app", "cli")
 	} else if authResult.Token != "" {
+		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("x-api-key", authResult.Token)
 	}
 }

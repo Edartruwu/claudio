@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // GrepTool searches file contents using ripgrep.
@@ -19,14 +21,20 @@ type grepInput struct {
 	Type       string `json:"type,omitempty"`         // file type e.g. "go", "py"
 	OutputMode string `json:"output_mode,omitempty"`  // "content", "files_with_matches", "count"
 	Context    int    `json:"context,omitempty"`       // lines of context (-C)
-	IgnoreCase bool   `json:"ignore_case,omitempty"`  // -i flag
-	MaxResults int    `json:"max_results,omitempty"`   // limit results
+	ContextC   int    `json:"-C,omitempty"`            // alias for context
+	BeforeCtx  int    `json:"-B,omitempty"`            // lines before match
+	AfterCtx   int    `json:"-A,omitempty"`            // lines after match
+	IgnoreCase bool   `json:"-i,omitempty"`            // case insensitive
+	LineNumbers bool  `json:"-n,omitempty"`            // show line numbers
+	HeadLimit  int    `json:"head_limit,omitempty"`    // limit output entries
+	Offset     int    `json:"offset,omitempty"`        // skip first N entries
+	Multiline  bool   `json:"multiline,omitempty"`     // enable multiline mode
 }
 
 func (t *GrepTool) Name() string { return "Grep" }
 
 func (t *GrepTool) Description() string {
-	return `Searches file contents using ripgrep. Supports regex patterns, file type filtering, and context lines. Use output_mode "files_with_matches" to just get file paths, or "content" for matching lines.`
+	return prompts.GrepDescription()
 }
 
 func (t *GrepTool) InputSchema() json.RawMessage {
@@ -35,36 +43,56 @@ func (t *GrepTool) InputSchema() json.RawMessage {
 		"properties": {
 			"pattern": {
 				"type": "string",
-				"description": "Regex pattern to search for"
+				"description": "The regular expression pattern to search for in file contents"
 			},
 			"path": {
 				"type": "string",
-				"description": "Directory or file to search in (defaults to cwd)"
+				"description": "File or directory to search in (rg PATH). Defaults to current working directory."
 			},
 			"glob": {
 				"type": "string",
-				"description": "Glob pattern to filter files (e.g., '*.go')"
+				"description": "Glob pattern to filter files (e.g. \"*.js\", \"*.{ts,tsx}\") - maps to rg --glob"
 			},
 			"type": {
 				"type": "string",
-				"description": "File type to search (e.g., 'go', 'py', 'js')"
+				"description": "File type to search (rg --type). Common types: js, py, rust, go, java, etc."
 			},
 			"output_mode": {
 				"type": "string",
 				"enum": ["content", "files_with_matches", "count"],
-				"description": "Output mode (default: files_with_matches)"
+				"description": "Output mode: \"content\" shows matching lines, \"files_with_matches\" shows file paths (default), \"count\" shows match counts."
 			},
 			"context": {
 				"type": "number",
-				"description": "Lines of context around matches"
+				"description": "Number of lines to show before and after each match (rg -C). Requires output_mode: \"content\"."
 			},
-			"ignore_case": {
-				"type": "boolean",
-				"description": "Case-insensitive search"
-			},
-			"max_results": {
+			"-A": {
 				"type": "number",
-				"description": "Maximum number of results (default: 250)"
+				"description": "Number of lines to show after each match (rg -A). Requires output_mode: \"content\"."
+			},
+			"-B": {
+				"type": "number",
+				"description": "Number of lines to show before each match (rg -B). Requires output_mode: \"content\"."
+			},
+			"-i": {
+				"type": "boolean",
+				"description": "Case insensitive search (rg -i)"
+			},
+			"-n": {
+				"type": "boolean",
+				"description": "Show line numbers in output (rg -n). Defaults to true."
+			},
+			"head_limit": {
+				"type": "number",
+				"description": "Limit output to first N lines/entries. Defaults to 250 when unspecified. Pass 0 for unlimited."
+			},
+			"offset": {
+				"type": "number",
+				"description": "Skip first N lines/entries before applying head_limit."
+			},
+			"multiline": {
+				"type": "boolean",
+				"description": "Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false."
 			}
 		},
 		"required": ["pattern"]
@@ -106,8 +134,22 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		args = append(args, "-i")
 	}
 
-	if in.Context > 0 && mode == "content" {
-		args = append(args, fmt.Sprintf("-C%d", in.Context))
+	if in.Multiline {
+		args = append(args, "-U", "--multiline-dotall")
+	}
+
+	ctxLines := in.Context
+	if in.ContextC > 0 {
+		ctxLines = in.ContextC
+	}
+	if ctxLines > 0 && mode == "content" {
+		args = append(args, fmt.Sprintf("-C%d", ctxLines))
+	}
+	if in.BeforeCtx > 0 && mode == "content" {
+		args = append(args, fmt.Sprintf("-B%d", in.BeforeCtx))
+	}
+	if in.AfterCtx > 0 && mode == "content" {
+		args = append(args, fmt.Sprintf("-A%d", in.AfterCtx))
 	}
 
 	if in.Glob != "" {
@@ -118,7 +160,7 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		args = append(args, "--type", in.Type)
 	}
 
-	maxResults := in.MaxResults
+	maxResults := in.HeadLimit
 	if maxResults == 0 {
 		maxResults = 250
 	}

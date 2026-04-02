@@ -28,7 +28,7 @@ type KeychainStorage struct {
 }
 
 // NewKeychainStorage creates a new macOS Keychain storage.
-func NewKeychainStorage() *KeychainStorage {
+func NewKeychainStorage() SecureStorage {
 	return &KeychainStorage{}
 }
 

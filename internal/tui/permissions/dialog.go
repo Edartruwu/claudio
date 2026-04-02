@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
@@ -116,63 +117,74 @@ func (m Model) View() string {
 		return ""
 	}
 
-	w := m.width
-	if w == 0 {
-		w = 60
+	boxW := m.width - 8
+	if boxW > 72 {
+		boxW = 72
 	}
 
 	// Title
-	title := styles.PermissionTitle.Render(fmt.Sprintf("🔒 %s wants to use: %s", "Claudio", m.toolUse.Name))
+	title := styles.PermissionTitle.Render("🔒  Claudio wants to run:")
 
 	// Tool input summary
 	inputSummary := formatToolInput(m.toolUse)
 
-	// Options
-	var opts string
+	// Buttons
+	var buttons []string
 	for i, opt := range m.options {
-		style := styles.FooterPill
+		var s lipgloss.Style
 		if i == m.selected {
-			if opt.decision == DecisionDeny {
-				style = styles.PermissionDeny
-			} else {
-				style = styles.PermissionAllow
+			switch opt.decision {
+			case DecisionDeny:
+				s = styles.ButtonDeny
+			case DecisionAllowAlways:
+				s = styles.ButtonAllowAlways
+			default:
+				s = styles.ButtonAllow
 			}
+		} else {
+			s = styles.ButtonInactive
 		}
-		if i > 0 {
-			opts += "  "
-		}
-		opts += style.Render(opt.label)
+		buttons = append(buttons, s.Render(opt.label))
 	}
 
-	hint := styles.SpinnerText.Render("  (y)es  (n)o  ←/→ select  enter confirm")
+	hint := styles.StatusHint.Render("  y/n · ←→ · enter")
+	buttonRow := lipgloss.JoinHorizontal(lipgloss.Center, buttons...) + hint
 
-	content := title + "\n\n" + inputSummary + "\n\n" + opts + hint
+	content := title + "\n\n" + inputSummary + "\n\n" + buttonRow
 
-	return styles.PermissionBox.Width(w - 4).Render(content)
+	box := styles.PermissionBox.Width(boxW).Render(content)
+
+	// Center horizontally
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Align(lipgloss.Center).
+		Render(box)
 }
 
 func formatToolInput(tu tools.ToolUse) string {
+	s := styles.ToolSummary
 	switch tu.Name {
 	case "Bash":
 		var in struct{ Command string }
 		json.Unmarshal(tu.Input, &in)
-		return styles.ToolInput.Render("$ " + in.Command)
+		return s.Render(fmt.Sprintf("$ %s", in.Command))
 	case "Write":
 		var in struct {
 			FilePath string
 			Content  string
 		}
 		json.Unmarshal(tu.Input, &in)
-		return styles.ToolInput.Render("→ " + in.FilePath)
+		lines := len([]byte(in.Content))
+		return s.Render(fmt.Sprintf("→ %s (%d bytes)", in.FilePath, lines))
 	case "Edit":
 		var in struct{ FilePath string }
 		json.Unmarshal(tu.Input, &in)
-		return styles.ToolInput.Render("✎ " + in.FilePath)
+		return s.Render(fmt.Sprintf("✎ %s", in.FilePath))
 	default:
-		s := string(tu.Input)
-		if len(s) > 200 {
-			s = s[:200] + "..."
+		raw := string(tu.Input)
+		if len(raw) > 200 {
+			raw = raw[:200] + "…"
 		}
-		return styles.ToolInput.Render(s)
+		return s.Render(raw)
 	}
 }

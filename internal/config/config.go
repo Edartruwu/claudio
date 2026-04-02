@@ -60,7 +60,13 @@ type Paths struct {
 	Skills      string // ~/.claudio/skills/
 	Audit       string // ~/.claudio/audit/
 	Contexts    string // ~/.claudio/contexts/
+	Rules       string // ~/.claudio/rules/
+	Agents      string // ~/.claudio/agents/
+	Memory      string // ~/.claudio/memory/
+	Logs        string // ~/.claudio/logs/
+	Plans       string // ~/.claudio/plans/
 	DB          string // ~/.claudio/claudio.db
+	Instincts   string // ~/.claudio/instincts.json
 }
 
 var (
@@ -86,32 +92,55 @@ func GetPaths() *Paths {
 			Skills:      filepath.Join(base, "skills"),
 			Audit:       filepath.Join(base, "audit"),
 			Contexts:    filepath.Join(base, "contexts"),
+			Rules:       filepath.Join(base, "rules"),
+			Agents:      filepath.Join(base, "agents"),
+			Memory:      filepath.Join(base, "memory"),
+			Logs:        filepath.Join(base, "logs"),
+			Plans:       filepath.Join(base, "plans"),
 			DB:          filepath.Join(base, "claudio.db"),
+			Instincts:   filepath.Join(base, "instincts.json"),
 		}
 	})
 	return paths
 }
 
-// EnsureDirs creates all required directories.
+// EnsureDirs creates all required directories and bootstraps default config files.
 func EnsureDirs() error {
 	p := GetPaths()
-	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts}
+	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts, p.Rules, p.Agents, p.Memory, p.Logs, p.Plans}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
 		}
 	}
+
+	// Bootstrap default settings.json if it doesn't exist
+	if _, err := os.Stat(p.Settings); os.IsNotExist(err) {
+		defaults := DefaultSettings()
+		data, _ := json.MarshalIndent(defaults, "", "  ")
+		os.WriteFile(p.Settings, data, 0644)
+	}
+
 	return nil
+}
+
+// DefaultSettings returns settings with sensible defaults.
+func DefaultSettings() *Settings {
+	return &Settings{
+		Model:          "claude-sonnet-4-6",
+		SmallModel:     "claude-haiku-4-5-20251001",
+		PermissionMode: "default",
+		CompactMode:    "strategic",
+		SessionPersist: true,
+		HookProfile:    "standard",
+		APIBaseURL:     "https://api.anthropic.com",
+	}
 }
 
 // Load reads and merges settings from all sources.
 // Priority (highest to lowest): env vars > project > local > user
 func Load(projectDir string) (*Settings, error) {
-	merged := &Settings{
-		CompactMode:    "strategic",
-		SessionPersist: true,
-		HookProfile:    "standard",
-	}
+	merged := DefaultSettings()
 
 	p := GetPaths()
 

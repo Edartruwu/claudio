@@ -1,53 +1,88 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
 
-// Colors
-var (
-	Primary   = lipgloss.Color("#7C3AED") // purple
-	Secondary = lipgloss.Color("#06B6D4") // cyan
-	Success   = lipgloss.Color("#22C55E") // green
-	Warning   = lipgloss.Color("#F59E0B") // amber
-	Error     = lipgloss.Color("#EF4444") // red
-	Muted     = lipgloss.Color("#6B7280") // gray
-	Surface   = lipgloss.Color("#1F2937") // dark gray
-	Text      = lipgloss.Color("#F9FAFB") // white
-	Dim       = lipgloss.Color("#9CA3AF") // light gray
+	"github.com/charmbracelet/lipgloss"
 )
 
-// Component styles
+// Gruvbox Dark palette
 var (
-	// App frame
-	AppStyle = lipgloss.NewStyle().Padding(0, 1)
+	Primary    = lipgloss.Color("#d3869b") // gruvbox purple - assistant, focus
+	Secondary  = lipgloss.Color("#83a598") // gruvbox blue - user input
+	Success    = lipgloss.Color("#b8bb26") // gruvbox green - tool success, allow
+	Warning    = lipgloss.Color("#fabd2f") // gruvbox yellow - tool calls, permissions
+	Error      = lipgloss.Color("#fb4934") // gruvbox red - errors, deny
+	Muted      = lipgloss.Color("#928374") // gruvbox gray - secondary text
+	Surface    = lipgloss.Color("#282828") // gruvbox bg - backgrounds
+	SurfaceAlt = lipgloss.Color("#3c3836") // gruvbox bg1 - pills, borders
+	Text       = lipgloss.Color("#ebdbb2") // gruvbox fg - primary text
+	Dim        = lipgloss.Color("#bdae93") // gruvbox fg2 - tertiary text
+	Subtle     = lipgloss.Color("#504945") // gruvbox bg2 - tree lines
+	Orange     = lipgloss.Color("#fe8019") // gruvbox orange - inline code, accents
+	Aqua       = lipgloss.Color("#8ec07c") // gruvbox aqua - headings, decorators
+)
 
-	// Status bar
-	StatusBar = lipgloss.NewStyle().
-			Background(lipgloss.Color("#374151")).
-			Foreground(Text).
-			Padding(0, 1)
+// ── Messages ──────────────────────────────────────────────
 
-	StatusLabel = lipgloss.NewStyle().
-			Foreground(Primary).
-			Bold(true)
-
-	StatusValue = lipgloss.NewStyle().
-			Foreground(Dim)
-
-	// Messages
-	UserMessage = lipgloss.NewStyle().
-			Foreground(Secondary).
-			Bold(true)
-
+var (
 	UserPrefix = lipgloss.NewStyle().
 			Foreground(Secondary).
-			Bold(true).
-			SetString("❯ ")
+			Bold(true)
+
+	UserContent = lipgloss.NewStyle().
+			Foreground(Text)
 
 	AssistantPrefix = lipgloss.NewStyle().
 			Foreground(Primary).
-			Bold(true).
-			SetString("● ")
+			Bold(true)
 
+	// Tool calls
+	ToolIcon = lipgloss.NewStyle().
+			Foreground(Warning)
+
+	ToolName = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	ToolSummary = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	ToolSuccess = lipgloss.NewStyle().
+			Foreground(Success)
+
+	ToolError = lipgloss.NewStyle().
+			Foreground(Error).
+			Bold(true)
+
+	ToolConnector = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	ToolFilePath = lipgloss.NewStyle().
+			Foreground(Aqua)
+
+	ToolDescription = lipgloss.NewStyle().
+			Foreground(Muted).
+			Italic(true)
+
+	ToolDiffOld = lipgloss.NewStyle().
+			Foreground(Error)
+
+	ToolDiffNew = lipgloss.NewStyle().
+			Foreground(Success)
+
+	ToolExpandHint = lipgloss.NewStyle().
+			Foreground(Subtle).
+			Italic(true)
+
+	ToolResultPreview = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	ViewportCursor = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	// Other message types
 	ThinkingStyle = lipgloss.NewStyle().
 			Foreground(Muted).
 			Italic(true)
@@ -56,88 +91,154 @@ var (
 			Foreground(Error).
 			Bold(true)
 
-	// Tool use
-	ToolHeader = lipgloss.NewStyle().
-			Foreground(Warning).
+	SystemStyle = lipgloss.NewStyle().
+			Foreground(Muted)
+)
+
+// ── Prompt ────────────────────────────────────────────────
+
+var (
+	PromptBarFocused = lipgloss.NewStyle().
+				BorderStyle(lipgloss.Border{Left: "▌"}).
+				BorderLeft(true).
+				BorderForeground(Primary).
+				PaddingLeft(1)
+
+	PromptBarBlurred = lipgloss.NewStyle().
+				BorderStyle(lipgloss.Border{Left: "▎"}).
+				BorderLeft(true).
+				BorderForeground(Muted).
+				PaddingLeft(1)
+
+	PromptHint = lipgloss.NewStyle().
+			Foreground(Subtle).
+			Italic(true).
+			PaddingLeft(3)
+)
+
+// ── Status Bar ────────────────────────────────────────────
+
+var (
+	StatusBar = lipgloss.NewStyle().
+			Background(SurfaceAlt).
+			Foreground(Dim).
+			Padding(0, 1)
+
+	StatusModel = lipgloss.NewStyle().
+			Foreground(Text).
 			Bold(true)
 
-	ToolName = lipgloss.NewStyle().
-			Foreground(Warning)
+	StatusSeparator = lipgloss.NewStyle().
+			Foreground(Subtle)
 
-	ToolInput = lipgloss.NewStyle().
+	StatusHint = lipgloss.NewStyle().
 			Foreground(Dim)
 
-	ToolResult = lipgloss.NewStyle().
-			Foreground(Muted)
+	StatusActive = lipgloss.NewStyle().
+			Foreground(Warning)
+)
 
-	ToolError = lipgloss.NewStyle().
-			Foreground(Error)
+// ── Overlays / Dialogs ───────────────────────────────────
 
-	// Prompt
-	PromptBorder = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(Primary).
-			Padding(0, 1)
-
-	PromptFocused = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7C3AED")).
-			Padding(0, 1)
-
-	PromptBlurred = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(Muted).
-			Padding(0, 1)
-
-	// Permission dialog
+var (
 	PermissionBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(Warning).
-			Padding(1, 2).
-			Margin(1, 0)
+			Padding(1, 2)
 
 	PermissionTitle = lipgloss.NewStyle().
 			Foreground(Warning).
 			Bold(true)
 
-	PermissionAllow = lipgloss.NewStyle().
-			Foreground(Success).
-			Bold(true)
+	ButtonAllow = lipgloss.NewStyle().
+			Background(Success).
+			Foreground(Surface).
+			Bold(true).
+			Padding(0, 1)
 
-	PermissionDeny = lipgloss.NewStyle().
-			Foreground(Error).
-			Bold(true)
+	ButtonDeny = lipgloss.NewStyle().
+			Background(Error).
+			Foreground(Text).
+			Bold(true).
+			Padding(0, 1)
 
-	// Spinner
+	ButtonAllowAlways = lipgloss.NewStyle().
+				Background(Primary).
+				Foreground(Text).
+				Bold(true).
+				Padding(0, 1)
+
+	ButtonInactive = lipgloss.NewStyle().
+			Foreground(Dim).
+			Padding(0, 1)
+
+	DialogBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(Primary).
+			Padding(1, 2)
+)
+
+// ── Spinner ──────────────────────────────────────────────
+
+var (
 	SpinnerStyle = lipgloss.NewStyle().
 			Foreground(Primary)
 
 	SpinnerText = lipgloss.NewStyle().
 			Foreground(Dim)
+)
 
-	// Footer
+// ── Palette / Picker ─────────────────────────────────────
+
+var (
+	PaletteItem = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	PaletteItemSelected = lipgloss.NewStyle().
+				Foreground(Text).
+				Bold(true)
+
+	PaletteDesc = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	PaletteDescSelected = lipgloss.NewStyle().
+				Foreground(Dim)
+
+	PalettePrefix = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true)
+
+	PickerAdd = lipgloss.NewStyle().
+			Foreground(Success).
+			Bold(true)
+)
+
+// ── Footer (legacy compat) ───────────────────────────────
+
+var (
 	FooterPill = lipgloss.NewStyle().
-			Background(lipgloss.Color("#374151")).
+			Background(SurfaceAlt).
 			Foreground(Dim).
 			Padding(0, 1).
 			Margin(0, 1)
 
 	FooterPillActive = lipgloss.NewStyle().
-			Background(Primary).
-			Foreground(Text).
-			Padding(0, 1).
-			Margin(0, 1)
-
-	// Separator
-	Separator = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#374151"))
+				Background(Primary).
+				Foreground(Text).
+				Padding(0, 1).
+				Margin(0, 1)
 )
+
+// ── Utilities ────────────────────────────────────────────
 
 // SeparatorLine returns a horizontal line of the given width.
 func SeparatorLine(width int) string {
-	line := ""
-	for i := 0; i < width; i++ {
-		line += "─"
-	}
-	return Separator.Render(line)
+	return lipgloss.NewStyle().
+		Foreground(SurfaceAlt).
+		Render(strings.Repeat("─", width))
+}
+
+// Sep returns a styled │ separator for the status bar.
+func Sep() string {
+	return StatusSeparator.Render(" │ ")
 }

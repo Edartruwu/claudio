@@ -7,10 +7,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // FileReadTool reads file contents with optional line range.
-type FileReadTool struct{}
+type FileReadTool struct {
+	Security SecurityChecker
+}
 
 type fileReadInput struct {
 	FilePath string `json:"file_path"`
@@ -21,7 +25,7 @@ type fileReadInput struct {
 func (t *FileReadTool) Name() string { return "Read" }
 
 func (t *FileReadTool) Description() string {
-	return `Reads a file from the filesystem. Returns the file content with line numbers. Use offset and limit to read specific ranges of large files.`
+	return prompts.ReadDescription()
 }
 
 func (t *FileReadTool) InputSchema() json.RawMessage {
@@ -57,6 +61,13 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 
 	if in.FilePath == "" {
 		return &Result{Content: "No file path provided", IsError: true}, nil
+	}
+
+	// Security check
+	if t.Security != nil {
+		if err := t.Security.CheckPath(in.FilePath); err != nil {
+			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}, nil
+		}
 	}
 
 	if in.Limit == 0 {

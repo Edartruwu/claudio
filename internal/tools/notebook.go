@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // NotebookEditTool edits Jupyter notebook cells.
@@ -19,7 +21,7 @@ type notebookInput struct {
 
 func (t *NotebookEditTool) Name() string { return "NotebookEdit" }
 func (t *NotebookEditTool) Description() string {
-	return `Edits Jupyter notebook (.ipynb) cells. Actions: insert (add new cell), delete (remove cell), update (replace cell contents).`
+	return prompts.NotebookEditDescription()
 }
 func (t *NotebookEditTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{

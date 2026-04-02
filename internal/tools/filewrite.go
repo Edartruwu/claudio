@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // FileWriteTool creates or overwrites files.
-type FileWriteTool struct{}
+type FileWriteTool struct {
+	Security SecurityChecker
+}
 
 type fileWriteInput struct {
 	FilePath string `json:"file_path"`
@@ -19,7 +23,7 @@ type fileWriteInput struct {
 func (t *FileWriteTool) Name() string { return "Write" }
 
 func (t *FileWriteTool) Description() string {
-	return `Writes content to a file, creating it if it doesn't exist or overwriting if it does. Creates parent directories as needed.`
+	return prompts.WriteDescription()
 }
 
 func (t *FileWriteTool) InputSchema() json.RawMessage {
@@ -51,6 +55,13 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 
 	if in.FilePath == "" {
 		return &Result{Content: "No file path provided", IsError: true}, nil
+	}
+
+	// Security check
+	if t.Security != nil {
+		if err := t.Security.CheckPath(in.FilePath); err != nil {
+			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}, nil
+		}
 	}
 
 	// Create parent directories
