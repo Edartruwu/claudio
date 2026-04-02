@@ -1137,6 +1137,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			ToolName:     event.toolUse.Name,
 			ToolInput:    formatToolSummary(event.toolUse),
 			ToolInputRaw: event.toolUse.Input,
+			ToolUseID:    event.toolUse.ID,
 		})
 		m.refreshViewport()
 
@@ -1153,9 +1154,10 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		}
 		if event.result != nil {
 			m.addMessage(ChatMessage{
-				Type:    MsgToolResult,
-				Content: event.result.Content,
-				IsError: event.result.IsError,
+				Type:      MsgToolResult,
+				Content:   event.result.Content,
+				IsError:   event.result.IsError,
+				ToolUseID: event.toolUse.ID,
 			})
 			m.refreshViewport()
 		}
@@ -1752,9 +1754,10 @@ func (m *Model) doSwitchSession(id string) {
 				continue
 			}
 			m.messages = append(m.messages, ChatMessage{
-				Type:     msgType,
-				Content:  msg.Content,
-				ToolName: msg.ToolName,
+				Type:      msgType,
+				Content:   msg.Content,
+				ToolName:  msg.ToolName,
+				ToolUseID: msg.ToolUseID,
 			})
 		}
 
@@ -1817,8 +1820,12 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 			i++
 			pendingIDs = nil
 			for i < len(storedMsgs) && storedMsgs[i].Type == "tool_use" {
-				tuCounter++
-				id := fmt.Sprintf("toolu_%04d", tuCounter)
+				// Prefer the stored ID; fall back to synthetic only for old rows
+				id := storedMsgs[i].ToolUseID
+				if id == "" {
+					tuCounter++
+					id = fmt.Sprintf("toolu_%04d", tuCounter)
+				}
 				pendingIDs = append(pendingIDs, id)
 				input := json.RawMessage(storedMsgs[i].Content)
 				if len(input) == 0 || !json.Valid(input) {
@@ -1838,8 +1845,7 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 			}
 
 		case "tool_result":
-			// Skip orphaned tool_results with no preceding tool_use — they would
-			// cause a 400 from the API ("unexpected tool_use_id").
+			// Skip orphaned tool_results with no preceding tool_use.
 			if len(pendingIDs) == 0 {
 				for i < len(storedMsgs) && storedMsgs[i].Type == "tool_result" {
 					i++
@@ -1849,12 +1855,15 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 			var trs []trBlock
 			j := 0
 			for i < len(storedMsgs) && storedMsgs[i].Type == "tool_result" {
-				id := ""
-				if j < len(pendingIDs) {
-					id = pendingIDs[j]
-				} else {
-					tuCounter++
-					id = fmt.Sprintf("toolu_%04d", tuCounter)
+				// Prefer the stored ID; fall back to positional pendingIDs
+				id := storedMsgs[i].ToolUseID
+				if id == "" {
+					if j < len(pendingIDs) {
+						id = pendingIDs[j]
+					} else {
+						tuCounter++
+						id = fmt.Sprintf("toolu_%04d", tuCounter)
+					}
 				}
 				trs = append(trs, trBlock{
 					Type:      "tool_result",
@@ -2229,8 +2238,8 @@ func (m *Model) persistMessage(msg ChatMessage) {
 	default:
 		return // Don't persist system/error/thinking messages
 	}
-	if msg.ToolName != "" {
-		m.session.AddToolMessage(role, msg.Content, msgType, "", msg.ToolName)
+	if msg.ToolName != "" || msg.ToolUseID != "" {
+		m.session.AddToolMessage(role, msg.Content, msgType, msg.ToolUseID, msg.ToolName)
 	} else {
 		m.session.AddMessage(role, msg.Content, msgType)
 	}

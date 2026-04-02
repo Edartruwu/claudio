@@ -40,6 +40,7 @@ type ChatMessage struct {
 	ToolName     string
 	ToolInput    string          // one-line summary
 	ToolInputRaw json.RawMessage // full input JSON for expanded view
+	ToolUseID    string          // real tool_use_id from API (tool_use and tool_result messages)
 	IsError      bool
 	Pinned       bool // pinned messages survive compaction
 	IsSubagent   bool // true if this is a sub-agent tool call
