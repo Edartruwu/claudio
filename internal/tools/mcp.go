@@ -241,9 +241,20 @@ func (c *MCPClient) notify(method string, params interface{}) error {
 
 // MCPProxyTool wraps an MCP server tool as a Claudio tool.
 type MCPProxyTool struct {
+	deferrable
 	client     *MCPClient
 	toolDef    MCPToolDef
 	serverName string
+}
+
+// NewMCPProxyTool creates an MCP proxy tool from an MCP client tool definition.
+func NewMCPProxyTool(client *MCPClient, serverName string, def MCPToolDef) *MCPProxyTool {
+	return &MCPProxyTool{
+		deferrable: newDeferrable(fmt.Sprintf("MCP %s %s", serverName, def.Name)),
+		client:     client,
+		toolDef:    def,
+		serverName: serverName,
+	}
 }
 
 func (t *MCPProxyTool) Name() string {

@@ -46,11 +46,22 @@ type ToolResult struct {
 	IsError   bool   `json:"is_error,omitempty"`
 }
 
+// DeferrableTool is an optional interface tools can implement to support deferred loading.
+// Deferred tools are sent to the API with only their name (no description/schema),
+// saving tokens. The model can fetch full schemas on demand via ToolSearch.
+type DeferrableTool interface {
+	// ShouldDefer returns true if this tool should be deferred (not sent with full schema).
+	ShouldDefer() bool
+	// SearchHint returns a 3-10 word hint for ToolSearch keyword matching.
+	SearchHint() string
+}
+
 // APIToolDef is the format the Anthropic API expects for tool definitions.
 type APIToolDef struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"input_schema"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	InputSchema  json.RawMessage `json:"input_schema"`
+	DeferLoading bool            `json:"defer_loading,omitempty"`
 }
 
 // SecurityChecker validates file paths and commands against security policies.

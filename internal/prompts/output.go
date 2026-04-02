@@ -12,6 +12,8 @@ const (
 	StyleConcise OutputStyle = "concise"
 	// StyleBrief provides the most terse output possible.
 	StyleBrief OutputStyle = "brief"
+	// StyleMarkdown forces well-structured markdown output.
+	StyleMarkdown OutputStyle = "markdown"
 )
 
 // OutputStyleSection returns the system prompt section for the given output style.
@@ -47,6 +49,17 @@ Ultra-minimal output. Rules:
 - Only speak when you need user input or hit a blocker
 - Code and tool calls need no accompanying text
 - If you can answer with just a tool call, do that`
+
+	case StyleMarkdown:
+		return `# Output Style: Markdown
+
+Always format your output as well-structured Markdown. Rules:
+- Use headers (##, ###) to organize sections
+- Use code blocks with language identifiers for all code
+- Use bullet points and numbered lists for structured information
+- Use bold and italic for emphasis
+- Use tables when comparing or listing structured data
+- Include horizontal rules between major sections`
 
 	default:
 		return "" // default style, no extra instructions needed

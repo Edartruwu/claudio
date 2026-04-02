@@ -104,6 +104,42 @@ func (db *DB) ListSessions(limit int) ([]Session, error) {
 	return sessions, rows.Err()
 }
 
+// DeleteSession removes a session and its messages.
+func (db *DB) DeleteSession(id string) error {
+	// Messages have ON DELETE CASCADE, but be explicit
+	if _, err := db.conn.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := db.conn.Exec(`DELETE FROM sessions WHERE id = ?`, id)
+	return err
+}
+
+// SearchSessions returns sessions matching the query string (fuzzy on title and project_dir).
+func (db *DB) SearchSessions(query string, limit int) ([]Session, error) {
+	pattern := "%" + query + "%"
+	rows, err := db.conn.Query(
+		`SELECT id, title, project_dir, model, created_at, updated_at, summary
+		 FROM sessions
+		 WHERE title LIKE ? OR project_dir LIKE ?
+		 ORDER BY updated_at DESC LIMIT ?`,
+		pattern, pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		var s Session
+		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
 // AddMessage persists a message to a session.
 func (db *DB) AddMessage(sessionID, role, content, msgType, toolUseID, toolName string) error {
 	_, err := db.conn.Exec(

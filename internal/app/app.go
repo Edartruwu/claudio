@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/auth"
 	authstorage "github.com/Abraxas-365/claudio/internal/auth/storage"
@@ -13,13 +15,17 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/learning"
+	"github.com/Abraxas-365/claudio/internal/models"
+	"github.com/Abraxas-365/claudio/internal/plugins"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
+	"github.com/Abraxas-365/claudio/internal/services/mcp"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
 )
 
@@ -35,10 +41,14 @@ type App struct {
 	Hooks     *hooks.Manager
 	Learning  *learning.Store
 	Skills    *skills.Registry
-	Memory    *memory.Store
+	Memory    *memory.ScopedStore
 	Analytics    *analytics.Tracker
 	Auditor      *security.Auditor
 	TaskRuntime  *tasks.Runtime
+	Teams        *teams.Manager
+	TeamRunner   *teams.TeammateRunner
+	Plugins      *plugins.Registry
+	Cron         *tasks.CronStore
 }
 
 // SecurityContext wraps config-based security settings for tool injection.
@@ -59,7 +69,8 @@ func (s *SecurityContext) CheckCommand(cmd string) error {
 }
 
 // New creates a new App with all dependencies wired up.
-func New(settings *config.Settings) (*App, error) {
+// projectRoot is the git root (or cwd) used for project-scoped memory.
+func New(settings *config.Settings, projectRoot string) (*App, error) {
 	if err := config.EnsureDirs(); err != nil {
 		return nil, err
 	}
@@ -83,6 +94,17 @@ func New(settings *config.Settings) (*App, error) {
 	}
 
 	apiClient := api.NewClient(resolver, apiOpts...)
+
+	// Apply thinking and effort settings from config
+	if settings.ThinkingMode != "" {
+		apiClient.SetThinkingMode(settings.ThinkingMode)
+	}
+	if settings.BudgetTokens > 0 {
+		apiClient.SetBudgetTokens(settings.BudgetTokens)
+	}
+	if settings.EffortLevel != "" {
+		apiClient.SetEffortLevel(settings.EffortLevel)
+	}
 
 	// Register core tools with security
 	registry := tools.DefaultRegistry()
@@ -133,8 +155,22 @@ func New(settings *config.Settings) (*App, error) {
 	// Load skills
 	skillsRegistry := skills.LoadAll(paths.Skills, cwd+"/.claudio/skills")
 
-	// Load memory
-	memoryStore := memory.NewStore(paths.Memory)
+	// Register custom agent directories so GetAgent() can discover them
+	agents.SetCustomDirs(paths.Agents, cwd+"/.claudio/agents")
+
+	// Load memory (project-scoped + global fallback)
+	projectMemDir := ""
+	if projectRoot != "" {
+		projectMemDir = config.ProjectMemoryDir(projectRoot)
+	}
+	memoryStore := memory.NewScopedStore(projectMemDir, paths.Memory)
+
+	// Model capabilities cache (check for user-provided cache, fallback to defaults)
+	modelCache := models.LoadCache(filepath.Join(paths.Cache, "model-capabilities.json"))
+	if modelCache.MaxContext("claude-opus-4-6") == 0 {
+		modelCache = models.NewDefaultCache()
+	}
+	models.SetGlobalCache(modelCache)
 
 	// Analytics tracker
 	analyticsTracker := analytics.NewTracker(settings.Model, settings.MaxBudget, paths.Home+"/analytics")
@@ -144,6 +180,23 @@ func New(settings *config.Settings) (*App, error) {
 
 	// Task runtime for background execution
 	taskRuntime := tasks.NewRuntime(paths.Home + "/task-output")
+
+	// Plugins
+	pluginReg := plugins.NewRegistry()
+	pluginReg.LoadDir(paths.Plugins)
+	pluginReg.LoadDir(cwd + "/.claudio/plugins")
+
+	// Cron store
+	cronStore := tasks.NewCronStore(filepath.Join(paths.Home, "cron.json"))
+	cronStore.Load()
+
+	// Team manager
+	teamMgr := teams.NewManager(paths.Home + "/teams")
+
+	// Team runner (uses the same runSubAgent callback)
+	teamRunner := teams.NewTeammateRunner(teamMgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return runSubAgent(ctx, apiClient, registry, system, prompt)
+	})
 
 	// Inject task runtime into tools that support background execution
 	if bash, err := registry.Get("Bash"); err == nil {
@@ -159,6 +212,9 @@ func New(settings *config.Settings) (*App, error) {
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
 			}
+			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
+				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
+			}
 		}
 	}
 	if stop, err := registry.Get("TaskStop"); err == nil {
@@ -169,6 +225,62 @@ func New(settings *config.Settings) (*App, error) {
 	if output, err := registry.Get("TaskOutput"); err == nil {
 		if ot, ok := output.(*tools.TaskOutputTool); ok {
 			ot.Runtime = taskRuntime
+		}
+	}
+
+	// Start configured MCP servers and register their tools
+	if len(settings.MCPServers) > 0 {
+		mcpMgr := mcp.NewManager(settings.MCPServers, registry, eventBus)
+		ctx := context.Background()
+		for name := range settings.MCPServers {
+			if err := mcpMgr.StartServer(ctx, name); err != nil {
+				// Log but don't fail startup
+				fmt.Fprintf(os.Stderr, "Warning: MCP server %q failed to start: %v\n", name, err)
+				continue
+			}
+			// Register MCP tools into main registry
+			for _, state := range mcpMgr.Status() {
+				if state.Name == name && state.Status == "running" && state.Client != nil {
+					for _, mcpToolDef := range state.Client.Tools() {
+						proxy := tools.NewMCPProxyTool(state.Client, name, mcpToolDef)
+						registry.Register(proxy)
+					}
+				}
+			}
+		}
+	}
+
+	// Inject team manager into team tools
+	if tc, err := registry.Get("TeamCreate"); err == nil {
+		if tool, ok := tc.(*tools.TeamCreateTool); ok {
+			tool.Manager = teamMgr
+		}
+	}
+	if td, err := registry.Get("TeamDelete"); err == nil {
+		if tool, ok := td.(*tools.TeamDeleteTool); ok {
+			tool.Manager = teamMgr
+		}
+	}
+	if sm, err := registry.Get("SendMessage"); err == nil {
+		if tool, ok := sm.(*tools.SendMessageTool); ok {
+			tool.Manager = teamMgr
+		}
+	}
+
+	// Inject cron store into cron tools
+	if cc, err := registry.Get("CronCreate"); err == nil {
+		if tool, ok := cc.(*tools.CronCreateTool); ok {
+			tool.Store = cronStore
+		}
+	}
+	if cd, err := registry.Get("CronDelete"); err == nil {
+		if tool, ok := cd.(*tools.CronDeleteTool); ok {
+			tool.Store = cronStore
+		}
+	}
+	if cl, err := registry.Get("CronList"); err == nil {
+		if tool, ok := cl.(*tools.CronListTool); ok {
+			tool.Store = cronStore
 		}
 	}
 
@@ -187,7 +299,27 @@ func New(settings *config.Settings) (*App, error) {
 		Analytics: analyticsTracker,
 		Auditor:     auditor,
 		TaskRuntime: taskRuntime,
+		Teams:       teamMgr,
+		TeamRunner:  teamRunner,
+		Plugins:     pluginReg,
+		Cron:        cronStore,
 	}, nil
+}
+
+// MemoryExtractor returns a callback for background memory extraction at end-of-turn.
+// Returns nil if the app doesn't have the required dependencies or if disabled in config.
+func (a *App) MemoryExtractor() func(messages []api.Message) {
+	if a.API == nil || a.Memory == nil {
+		return nil
+	}
+	if !a.Config.IsAutoMemoryExtract() {
+		return nil
+	}
+	return memory.BuildExtractorCallback(memory.ExtractorConfig{
+		Client:   a.API,
+		Store:    a.Memory,
+		MinTurns: 4,
+	})
 }
 
 // Close cleans up resources.
@@ -201,11 +333,24 @@ func (a *App) Close() error {
 // runSubAgent creates a new query.Engine with the given system prompt and
 // runs a single prompt through it, capturing all text output.
 func runSubAgent(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt string) (string, error) {
+	return runSubAgentWithMemory(ctx, apiClient, parentRegistry, system, prompt, "")
+}
+
+// runSubAgentWithMemory is like runSubAgent but also injects agent-scoped memories into the system prompt.
+func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string) (string, error) {
 	// Clone the registry so sub-agent has its own copy
 	subRegistry := parentRegistry.Clone()
 
 	// Remove the Agent tool from sub-agents to prevent infinite recursion
 	subRegistry.Remove("Agent")
+
+	// Inject agent-scoped memories if available
+	if memoryDir != "" {
+		agentMem := memory.NewStore(memoryDir)
+		if memContent := agentMem.ForSystemPrompt(); memContent != "" {
+			system = system + "\n\n" + memContent
+		}
+	}
 
 	// Create a collector handler that captures text output
 	collector := &agentOutputCollector{}
@@ -238,4 +383,5 @@ func (c *agentOutputCollector) OnToolUseStart(tu tools.ToolUse)                 
 func (c *agentOutputCollector) OnToolUseEnd(tu tools.ToolUse, result *tools.Result)  {}
 func (c *agentOutputCollector) OnTurnComplete(usage api.Usage)                       {}
 func (c *agentOutputCollector) OnToolApprovalNeeded(tu tools.ToolUse) bool           { return true } // auto-approve in sub-agents
+func (c *agentOutputCollector) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true } // auto-continue in sub-agents
 func (c *agentOutputCollector) OnError(err error)                                    {}

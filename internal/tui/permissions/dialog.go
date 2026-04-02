@@ -165,21 +165,42 @@ func formatToolInput(tu tools.ToolUse) string {
 	s := styles.ToolSummary
 	switch tu.Name {
 	case "Bash":
-		var in struct{ Command string }
+		var in struct {
+			Command string `json:"command"`
+		}
 		json.Unmarshal(tu.Input, &in)
 		return s.Render(fmt.Sprintf("$ %s", in.Command))
 	case "Write":
 		var in struct {
-			FilePath string
-			Content  string
+			FilePath string `json:"file_path"`
+			Content  string `json:"content"`
 		}
 		json.Unmarshal(tu.Input, &in)
-		lines := len([]byte(in.Content))
-		return s.Render(fmt.Sprintf("→ %s (%d bytes)", in.FilePath, lines))
+		preview := in.Content
+		if len(preview) > 200 {
+			preview = preview[:200] + "…"
+		}
+		return s.Render(fmt.Sprintf("→  %s\n\n%s", in.FilePath, preview))
 	case "Edit":
-		var in struct{ FilePath string }
+		var in struct {
+			FilePath  string `json:"file_path"`
+			OldString string `json:"old_string"`
+			NewString string `json:"new_string"`
+		}
 		json.Unmarshal(tu.Input, &in)
-		return s.Render(fmt.Sprintf("✎ %s", in.FilePath))
+		detail := fmt.Sprintf("✎  %s", in.FilePath)
+		if in.OldString != "" {
+			old := in.OldString
+			if len(old) > 100 {
+				old = old[:100] + "…"
+			}
+			new := in.NewString
+			if len(new) > 100 {
+				new = new[:100] + "…"
+			}
+			detail += fmt.Sprintf("\n  - %s\n  + %s", old, new)
+		}
+		return s.Render(detail)
 	default:
 		raw := string(tu.Input)
 		if len(raw) > 200 {

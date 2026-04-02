@@ -33,6 +33,7 @@ type ChatMessage struct {
 	ToolInput    string          // one-line summary
 	ToolInputRaw json.RawMessage // full input JSON for expanded view
 	IsError      bool
+	Pinned       bool // pinned messages survive compaction
 }
 
 // ── Rendering ─────────────────────────────────────────────
@@ -158,11 +159,27 @@ func collectToolGroup(msgs []ChatMessage, idx int) []toolPair {
 	return group
 }
 
+// isToolGroupPinned checks if any tool in the group is pinned.
+func isToolGroupPinned(group []toolPair) bool {
+	for _, p := range group {
+		if p.use.Pinned {
+			return true
+		}
+	}
+	return false
+}
+
 // renderToolGroup renders a compact block of tool calls with tree connectors.
 func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 	nameW := 8 // fixed column for tool name
 
 	var lines []string
+
+	// Pin indicator for the group
+	if isToolGroupPinned(group) {
+		lines = append(lines, styles.PinIcon.Render("📌 pinned"))
+	}
+
 	for gi, p := range group {
 		isLast := gi == len(group)-1
 
@@ -489,18 +506,23 @@ func humanSize(bytes int) string {
 
 // renderMessage renders a single ChatMessage.
 func renderMessage(msg ChatMessage, maxW int) string {
+	pinPrefix := ""
+	if msg.Pinned {
+		pinPrefix = styles.PinIcon.Render("📌 ")
+	}
+
 	switch msg.Type {
 	case MsgUser:
 		prefix := styles.UserPrefix.Render("❯ ")
-		content := styles.UserContent.Width(maxW - 2).Render(msg.Content)
-		return prefix + content
+		content := styles.UserContent.Render(msg.Content)
+		return pinPrefix + prefix + content
 
 	case MsgAssistant:
 		prefix := styles.AssistantPrefix.Render("● ")
 		rendered := renderMarkdown(msg.Content, maxW-3)
 		// Indent continuation lines to align under prefix
 		indented := indentContinuation(rendered, indent)
-		return prefix + indented
+		return pinPrefix + prefix + indented
 
 	case MsgToolUse:
 		// Standalone tool use (no grouping fallback)
@@ -535,14 +557,19 @@ func renderMessage(msg ChatMessage, maxW int) string {
 
 // StatusBarState holds info for the status bar.
 type StatusBarState struct {
-	Model     string
-	Tokens    int
-	Cost      float64
-	Turns     int
-	Streaming bool
-	SpinText  string
-	Hint      string
-	VimMode   string // "", "NORMAL", "INSERT", "VISUAL"
+	Model       string
+	Tokens      int
+	Cost        float64
+	Turns       int
+	Streaming   bool
+	SpinText    string
+	Hint        string
+	VimMode     string // "", "NORMAL", "INSERT", "VISUAL"
+	SessionName string // current session title (empty = untitled)
+	PanelName   string // active panel name (empty = none)
+	// Context budget
+	ContextUsed int // total tokens used in context window
+	ContextMax  int // max context window size
 }
 
 func renderStatusBar(width int, s StatusBarState) string {
@@ -566,10 +593,22 @@ func renderStatusBar(width int, s StatusBarState) string {
 		parts = append(parts, modeStyle.Render(s.VimMode))
 	}
 
+	// Session name
+	if s.SessionName != "" {
+		sessStyle := lipgloss.NewStyle().Foreground(styles.Aqua)
+		parts = append(parts, sessStyle.Render(s.SessionName))
+	}
+
 	parts = append(parts, styles.StatusModel.Render(s.Model))
 
 	if s.Streaming && s.SpinText != "" {
 		parts = append(parts, styles.StatusActive.Render("● "+s.SpinText))
+	}
+
+	// Panel indicator
+	if s.PanelName != "" {
+		panelStyle := lipgloss.NewStyle().Foreground(styles.Primary)
+		parts = append(parts, panelStyle.Render("◧ "+s.PanelName))
 	}
 
 	if s.Tokens > 0 {
@@ -580,6 +619,11 @@ func renderStatusBar(width int, s StatusBarState) string {
 			tokStr = fmt.Sprintf("%d tokens", s.Tokens)
 		}
 		parts = append(parts, tokStr)
+	}
+
+	// Context budget bar
+	if s.ContextMax > 0 && s.ContextUsed > 0 {
+		parts = append(parts, renderContextBar(s.ContextUsed, s.ContextMax))
 	}
 
 	if s.Cost > 0 {
@@ -706,4 +750,38 @@ func indentContinuation(s, prefix string) string {
 		lines[i] = prefix + lines[i]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// renderContextBar renders a compact context budget indicator: [████░░] 72%
+func renderContextBar(used, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	pct := used * 100 / max
+	if pct > 100 {
+		pct = 100
+	}
+
+	barWidth := 8
+	filled := pct * barWidth / 100
+
+	// Color based on pressure
+	var barColor lipgloss.Color
+	switch {
+	case pct >= 90:
+		barColor = styles.Error // red — critical
+	case pct >= 70:
+		barColor = styles.Warning // yellow — caution
+	default:
+		barColor = styles.Success // green — healthy
+	}
+
+	filledStyle := lipgloss.NewStyle().Foreground(barColor)
+	emptyStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
+	pctStyle := lipgloss.NewStyle().Foreground(barColor)
+
+	bar := filledStyle.Render(strings.Repeat("█", filled)) +
+		emptyStyle.Render(strings.Repeat("░", barWidth-filled))
+
+	return fmt.Sprintf("[%s] %s", bar, pctStyle.Render(fmt.Sprintf("%d%%", pct)))
 }

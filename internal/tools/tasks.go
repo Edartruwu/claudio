@@ -36,7 +36,9 @@ var GlobalTaskStore = &TaskStore{
 
 // --- TaskCreateTool ---
 
-type TaskCreateTool struct{}
+type TaskCreateTool struct {
+	deferrable
+}
 
 type taskCreateInput struct {
 	Subject     string `json:"subject"`
@@ -86,7 +88,9 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 
 // --- TaskListTool ---
 
-type TaskListTool struct{}
+type TaskListTool struct {
+	deferrable
+}
 
 func (t *TaskListTool) Name() string { return "TaskList" }
 func (t *TaskListTool) Description() string {
@@ -126,7 +130,9 @@ func (t *TaskListTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 
 // --- TaskUpdateTool ---
 
-type TaskUpdateTool struct{}
+type TaskUpdateTool struct {
+	deferrable
+}
 
 type taskUpdateInput struct {
 	TaskID      string `json:"taskId"`
@@ -184,7 +190,9 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 
 // --- TaskGetTool ---
 
-type TaskGetTool struct{}
+type TaskGetTool struct {
+	deferrable
+}
 
 type taskGetInput struct {
 	TaskID string `json:"taskId"`

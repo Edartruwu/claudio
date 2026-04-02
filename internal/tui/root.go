@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,26 +17,26 @@ import (
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
+	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/session"
+	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/commandpalette"
 	"github.com/Abraxas-365/claudio/internal/tui/components"
 	"github.com/Abraxas-365/claudio/internal/tui/filepicker"
 	"github.com/Abraxas-365/claudio/internal/tui/modelselector"
+	"github.com/Abraxas-365/claudio/internal/tui/panels"
+	panelsessions "github.com/Abraxas-365/claudio/internal/tui/panels/sessions"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/analyticspanel"
+	panelconfig "github.com/Abraxas-365/claudio/internal/tui/panels/config"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/memorypanel"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/skillspanel"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
-)
-
-// Focus tracks which component has input focus.
-type Focus int
-
-const (
-	FocusPrompt Focus = iota
-	FocusViewport // vim-navigable chat viewport
-	FocusPermission
-	FocusModelSelector
 )
 
 // Model is the root Bubble Tea model for the TUI.
@@ -47,7 +48,14 @@ type Model struct {
 	permission    permissions.Model
 	palette       commandpalette.Model
 	filePicker    filepicker.Model
-	modelSelector modelselector.Model
+	modelSelector  modelselector.Model
+	whichKey       whichkey.Model
+	sessionPicker  *panelsessions.Panel
+	toast          Toast
+
+	// Panels
+	activePanel   panels.Panel
+	activePanelID PanelID
 
 	// State
 	messages       []ChatMessage
@@ -62,11 +70,23 @@ type Model struct {
 	spinText       string // current spinner status text
 	expandedGroups  map[int]bool // tool group msg indices that are expanded
 	lastToolGroup   int          // msg index of the last tool group start (-1 = none)
-	leaderPending   bool         // space leader key pressed, waiting for next key
-	leaderW         bool         // space+w pressed, waiting for window direction
+	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
+	prevSessionID   string       // for alternate session switching
 	vpCursor        int          // viewport section cursor (-1 = none)
 	vpSections      []Section    // cached section metadata from last render
-	autoEdit        bool         // auto-accept edits mode (shift+tab cycles)
+	messageQueue    []string     // messages queued while streaming
+
+	// Viewport search
+	vpSearchActive  bool     // true when search input is shown
+	vpSearchQuery   string   // current search text
+	vpSearchMatches []int    // section indices that match
+	vpSearchIdx     int      // current match index in vpSearchMatches
+
+	// Message pinning — maps ChatMessage index to pinned state
+	pinnedMsgIndices map[int]bool
+
+	// App context for panels
+	appCtx *AppContext
 
 	// Engine integration
 	engine       *query.Engine
@@ -136,6 +156,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		expandedGroups: make(map[int]bool),
 		lastToolGroup:  -1,
 		vpCursor:       -1,
+		whichKey:       whichkey.New(),
 	}
 
 	// Apply options
@@ -150,13 +171,16 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			m.model = model
 			apiClient.SetModel(model)
 		},
+		GetThinkingLabel: func() string { return apiClient.ThinkingLabel() },
 		Compact: func(keepLast int) (string, error) {
 			if m.engine == nil {
 				return "", fmt.Errorf("no active conversation")
 			}
 			msgs := m.engine.Messages()
+			// Build pinned indices from ChatMessages
+			pinned := m.buildPinnedEngineIndices()
 			compacted, summary, err := compact.Compact(
-				context.Background(), apiClient, msgs, keepLast,
+				context.Background(), apiClient, msgs, keepLast, pinned,
 			)
 			if err != nil {
 				return "", err
@@ -194,6 +218,51 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		ToggleVim: func() bool {
 			m.prompt.ToggleVim()
 			return m.prompt.IsVimEnabled()
+		},
+		LoadHistory: func() (string, error) {
+			if sess == nil {
+				return "", fmt.Errorf("no session manager")
+			}
+			msgs, err := sess.GetMessages()
+			if err != nil {
+				return "", err
+			}
+			if len(msgs) == 0 {
+				return "No messages in this session.", nil
+			}
+			return fmt.Sprintf("__load_history__%d", len(msgs)), nil
+		},
+		NewSession: func() error {
+			if sess == nil {
+				return fmt.Errorf("no session manager")
+			}
+			if cur := sess.Current(); cur != nil {
+				m.prevSessionID = cur.ID
+			}
+			if _, err := sess.Start(m.model); err != nil {
+				return err
+			}
+			m.messages = nil
+			m.streamText.Reset()
+			m.turns = 0
+			m.totalTokens = 0
+			m.totalCost = 0
+			m.refreshViewport()
+			return nil
+		},
+		ExtractMemories: func() (int, error) {
+			if m.engine == nil {
+				return 0, fmt.Errorf("no active conversation")
+			}
+			if m.appCtx == nil || m.appCtx.Memory == nil {
+				return 0, fmt.Errorf("memory store not available")
+			}
+			msgs := m.engine.Messages()
+			if len(msgs) == 0 {
+				return 0, fmt.Errorf("no messages in conversation")
+			}
+			count := memory.ExtractFromMessages(m.apiClient, m.appCtx.Memory, msgs)
+			return count, nil
 		},
 		ListSkills: func() []commands.SkillInfo {
 			if m.skills == nil {
@@ -264,15 +333,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.palette.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
-		m.modelSelector.SetWidth(m.width)
+		m.modelSelector.SetWidth(mainWidth(m.width, m.activePanel))
 		m.layout()
+		m.refreshViewport()
 		return m, nil
 
 	case prompt.VimEscapeMsg:
 		// Vim consumed Escape (Insert→Normal). Don't dismiss anything.
 		return m, nil
 
+	case ToastDismissMsg:
+		m.toast.Dismiss()
+		return m, nil
+
+	case whichkey.TimeoutMsg:
+		// Show which-key popup based on current leader sequence
+		switch m.leaderSeq {
+		case "pending":
+			m.whichKey.ShowDefault()
+			m.whichKey.SetWidth(m.width)
+		case "w":
+			m.whichKey.ShowWindow()
+			m.whichKey.SetWidth(m.width)
+		case "b":
+			m.whichKey.Show(whichkey.SessionBindings())
+			m.whichKey.SetWidth(m.width)
+		case "i":
+			m.whichKey.Show(whichkey.PanelBindings())
+			m.whichKey.SetWidth(m.width)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
+		// Dismiss which-key popup on any keypress
+		if m.whichKey.IsActive() {
+			m.whichKey.Hide()
+		}
 		switch msg.String() {
 		case "shift+tab":
 			// Cycle permission mode: default → auto → plan → default
@@ -286,7 +382,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "ctrl+o":
-			// Toggle expand/collapse on the last tool group
+			// In viewport mode, let the viewport handler deal with cursor-aware expansion
+			if m.focus == FocusViewport {
+				break
+			}
+			// Outside viewport: toggle the last tool group
 			if m.lastToolGroup >= 0 {
 				m.expandedGroups[m.lastToolGroup] = !m.expandedGroups[m.lastToolGroup]
 				m.refreshViewport()
@@ -313,10 +413,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "esc":
-			// If vim is in Insert mode, let the prompt handle Escape first
-			// (it will send VimEscapeMsg, handled above)
+			// In Insert mode, Escape always goes to Normal (standard vim)
 			if m.prompt.IsVimEnabled() && !m.prompt.IsVimNormal() {
 				break // fall through to prompt.Update below
+			}
+			// In Normal mode (or vim disabled), Escape cancels streaming
+			if m.streaming && m.cancelFunc != nil {
+				m.cancelFunc()
+				m.streaming = false
+				m.spinText = ""
+				m.spinner.Stop()
+				m.prompt.Focus()
+				m.focus = FocusPrompt
+				m.refreshViewport()
+				return m, nil
 			}
 			if m.filePicker.IsActive() {
 				m.filePicker.Deactivate()
@@ -327,40 +437,86 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.prompt.Reset()
 				return m, nil
 			}
-			if m.streaming && m.cancelFunc != nil {
-				m.cancelFunc()
-				m.streaming = false
-				m.spinText = ""
-				m.spinner.Stop()
-				m.prompt.Focus()
+		}
+
+		// Session picker overlay (Telescope-style)
+		if m.sessionPicker != nil && m.sessionPicker.IsActive() {
+			cmd, _ := m.sessionPicker.Update(msg)
+			if !m.sessionPicker.IsActive() {
+				m.sessionPicker = nil
 				m.focus = FocusPrompt
+				m.prompt.Focus()
 			}
+			return m, cmd
+		}
+
+		// Panel focus mode: delegate all keys to active panel
+		if m.focus == FocusPanel && m.activePanel != nil {
+			cmd, consumed := m.activePanel.Update(msg)
+			if !consumed {
+				// Panel didn't consume — check for close keys
+				switch msg.String() {
+				case "esc", "q":
+					m.closePanel()
+					return m, nil
+				}
+			}
+			// Check if panel closed itself
+			if !m.activePanel.IsActive() {
+				m.closePanel()
+			}
+			return m, cmd
 		}
 
 		// Viewport focus mode: section-based navigation with cursor
 		if m.focus == FocusViewport {
-			// Leader key sequences
-			if m.leaderPending {
-				m.leaderPending = false
-				if msg.String() == "w" {
-					m.leaderW = true
-					return m, nil
-				}
-				return m, nil
-			}
-			if m.leaderW {
-				m.leaderW = false
+			// Search input mode
+			if m.vpSearchActive {
 				switch msg.String() {
-				case "j", "p":
-					m.focus = FocusPrompt
-					m.vpCursor = -1
-					m.prompt.Focus()
+				case "esc":
+					m.vpSearchActive = false
+					m.vpSearchQuery = ""
+					m.vpSearchMatches = nil
 					m.refreshViewport()
 					return m, nil
-				case "k":
+				case "enter":
+					m.vpSearchActive = false
+					// Keep matches and cursor on first match
+					if len(m.vpSearchMatches) > 0 {
+						m.vpCursor = m.vpSearchMatches[m.vpSearchIdx]
+						m.refreshViewport()
+						m.scrollToSection(m.vpCursor)
+					}
+					return m, nil
+				case "backspace":
+					if len(m.vpSearchQuery) > 0 {
+						m.vpSearchQuery = m.vpSearchQuery[:len(m.vpSearchQuery)-1]
+						m.updateSearchMatches()
+						m.refreshViewport()
+					}
+					return m, nil
+				default:
+					// Only accept printable characters
+					if len(msg.String()) == 1 && msg.String()[0] >= 32 {
+						m.vpSearchQuery += msg.String()
+						m.updateSearchMatches()
+						if len(m.vpSearchMatches) > 0 {
+							m.vpCursor = m.vpSearchMatches[0]
+							m.vpSearchIdx = 0
+							m.scrollToSection(m.vpCursor)
+						}
+						m.refreshViewport()
+					}
 					return m, nil
 				}
-				return m, nil
+			}
+
+			// Leader key sequences
+			if m.leaderSeq != "" {
+				result, cmd := m.handleLeaderKey(msg.String())
+				if result {
+					return m, cmd
+				}
 			}
 
 			maxSection := len(m.vpSections) - 1
@@ -377,6 +533,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Move cursor to previous section
 				if m.vpCursor > 0 {
 					m.vpCursor--
+					m.refreshViewport()
+					m.scrollToSection(m.vpCursor)
+				}
+				return m, nil
+			case "n":
+				// Next search match
+				if len(m.vpSearchMatches) > 0 {
+					m.vpSearchIdx = (m.vpSearchIdx + 1) % len(m.vpSearchMatches)
+					m.vpCursor = m.vpSearchMatches[m.vpSearchIdx]
+					m.refreshViewport()
+					m.scrollToSection(m.vpCursor)
+				}
+				return m, nil
+			case "N":
+				// Previous search match
+				if len(m.vpSearchMatches) > 0 {
+					m.vpSearchIdx--
+					if m.vpSearchIdx < 0 {
+						m.vpSearchIdx = len(m.vpSearchMatches) - 1
+					}
+					m.vpCursor = m.vpSearchMatches[m.vpSearchIdx]
 					m.refreshViewport()
 					m.scrollToSection(m.vpCursor)
 				}
@@ -417,55 +594,71 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.scrollToSection(m.vpCursor)
 				}
 				return m, nil
+			case "p":
+				// Toggle pin on current section's message
+				if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
+					msgIdx := m.vpSections[m.vpCursor].MsgIndex
+					if msgIdx >= 0 && msgIdx < len(m.messages) {
+						m.messages[msgIdx].Pinned = !m.messages[msgIdx].Pinned
+						// Also pin the paired tool result if this is a tool use
+						if m.messages[msgIdx].Type == MsgToolUse && msgIdx+1 < len(m.messages) && m.messages[msgIdx+1].Type == MsgToolResult {
+							m.messages[msgIdx+1].Pinned = m.messages[msgIdx].Pinned
+						}
+						m.refreshViewport()
+					}
+				}
+				return m, nil
+			case "/":
+				// Enter search mode
+				m.vpSearchActive = true
+				m.vpSearchQuery = ""
+				m.vpSearchMatches = nil
+				m.vpSearchIdx = 0
+				return m, nil
 			case "i", "esc", "q":
 				m.focus = FocusPrompt
 				m.vpCursor = -1
+				m.vpSearchActive = false
+				m.vpSearchQuery = ""
+				m.vpSearchMatches = nil
 				m.prompt.Focus()
 				m.refreshViewport()
 				return m, nil
 			case " ":
-				m.leaderPending = true
-				return m, nil
+				m.leaderSeq = "pending"
+				return m, whichkey.ScheduleTimeout()
 			}
 			return m, nil
 		}
 
 		// Leader key: <Space> in Normal mode (works with or without text)
 		if m.focus == FocusPrompt && m.prompt.IsVimNormal() {
-			if m.leaderPending {
-				m.leaderPending = false
-				if msg.String() == "w" {
-					m.leaderW = true
-					return m, nil
+			// Active leader sequence — dispatch to handler
+			if m.leaderSeq != "" {
+				result, cmd := m.handleLeaderKey(msg.String())
+				if result {
+					return m, cmd
 				}
-				// Not a recognized leader sequence — re-inject space as normal key
-				return m, nil
 			}
-			if m.leaderW {
-				m.leaderW = false
-				switch msg.String() {
-				case "k":
-					// Switch to viewport (viewport is "above" prompt)
-					m.focus = FocusViewport
-					m.prompt.Blur()
-					// Place cursor on last section
-					if len(m.vpSections) > 0 {
-						m.vpCursor = len(m.vpSections) - 1
-					} else {
-						m.vpCursor = 0
-					}
-					m.refreshViewport()
-					m.scrollToSection(m.vpCursor)
-					return m, nil
-				case "j":
-					// Already at prompt (prompt is "below"), stay
-					return m, nil
-				}
-				return m, nil
-			}
+			// Start leader sequence on Space
 			if msg.String() == " " {
-				m.leaderPending = true
-				return m, nil
+				m.leaderSeq = "pending"
+				return m, whichkey.ScheduleTimeout()
+			}
+		}
+
+		// Welcome screen number keys: 1-3 to resume recent sessions
+		if m.focus == FocusPrompt && m.isWelcomeScreen() {
+			switch msg.String() {
+			case "1", "2", "3":
+				idx := int(msg.String()[0] - '1') // 0, 1, or 2
+				if m.session != nil {
+					recent, _ := m.session.RecentForProject(3)
+					if idx < len(recent) {
+						m.doSwitchSession(recent[idx].ID)
+						return m, nil
+					}
+				}
 			}
 		}
 
@@ -571,7 +764,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prompt.Focus()
 		m.model = msg.Label
 		m.apiClient.SetModel(msg.ModelID)
-		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Model set to: %s (%s)", msg.Label, msg.ModelID)})
+		m.apiClient.SetThinkingMode(msg.ThinkingMode)
+		if msg.BudgetTokens > 0 {
+			m.apiClient.SetBudgetTokens(msg.BudgetTokens)
+		}
+		m.apiClient.SetEffortLevel(msg.EffortLevel)
+		thinkLabel := m.apiClient.ThinkingLabel()
+		effortLabel := m.apiClient.EffortLabel()
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Model: %s (%s) | Thinking: %s | %s", msg.Label, msg.ModelID, thinkLabel, effortLabel)})
 		m.refreshViewport()
 		return m, nil
 
@@ -595,6 +795,59 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prompt.AddImage("clipboard.png", msg.mediaType, msg.data)
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: "📎 Image pasted from clipboard"})
 		m.refreshViewport()
+		return m, nil
+
+	case panelsessions.ResumeSessionMsg:
+		// Close picker/panel
+		if m.sessionPicker != nil {
+			m.sessionPicker.Deactivate()
+			m.sessionPicker = nil
+		}
+		m.closePanel()
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		m.doSwitchSession(msg.SessionID)
+		return m, nil
+
+	case skillspanel.InvokeSkillMsg:
+		m.closePanel()
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Running skill: %s", msg.Name)})
+		m.refreshViewport()
+		return m.handleSubmit(msg.Content)
+
+	case panelsessions.DeleteSessionMsg:
+		m.closePanel()
+		return m, nil
+
+	case memorypanel.EditorDoneMsg:
+		// Memory was edited in external editor — refresh panel
+		if m.activePanel != nil {
+			if mp, ok := m.activePanel.(*memorypanel.Panel); ok {
+				mp.Activate() // refreshes entries
+			}
+		}
+		return m, nil
+
+	case memorypanel.NewMemoryMsg:
+		// New memory was created via temp file
+		if msg.Err == nil && msg.TmpPath != "" {
+			data, err := os.ReadFile(msg.TmpPath)
+			os.Remove(msg.TmpPath) // cleanup temp file
+			if err == nil && len(data) > 0 {
+				// Parse the temp file as a memory entry and save it
+				content := string(data)
+				entry := parseNewMemory(content)
+				if entry != nil && m.appCtx != nil && m.appCtx.Memory != nil {
+					m.appCtx.Memory.Save(entry)
+				}
+			}
+		}
+		// Refresh panel
+		if m.activePanel != nil {
+			if mp, ok := m.activePanel.(*memorypanel.Panel); ok {
+				mp.Activate()
+			}
+		}
 		return m, nil
 
 	case editorFinishedMsg:
@@ -621,6 +874,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addMessage(ChatMessage{Type: MsgError, Content: msg.err.Error()})
 		}
 		m.refreshViewport()
+		// Process queued messages
+		if len(m.messageQueue) > 0 {
+			next := m.messageQueue[0]
+			m.messageQueue = m.messageQueue[1:]
+			return m.handleSubmit(next)
+		}
 		return m, nil
 	}
 
@@ -690,6 +949,17 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 		return m.handleCommand(cmdName, cmdArgs)
 	}
 
+	// If already streaming, enqueue the message for later
+	if m.streaming {
+		m.messageQueue = append(m.messageQueue, text)
+		m.addMessage(ChatMessage{
+			Type:    MsgSystem,
+			Content: fmt.Sprintf("⏳ Queued: %s", truncateStr(text, 60)),
+		})
+		m.refreshViewport()
+		return m, nil
+	}
+
 	// Collect image attachments before clearing them
 	var imageBlocks []api.UserContentBlock
 	for _, img := range m.prompt.Images() {
@@ -717,6 +987,22 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 		}
 		displayText = fmt.Sprintf("[%d file(s): %s] %s", len(fileAttachments), strings.Join(names, ", "), cleanedText)
 	}
+	// Lazy session creation: create session BEFORE persisting the first message
+	if m.session != nil && m.session.Current() == nil {
+		m.session.Start(m.model)
+		// Auto-title from first message
+		title := cleanedText
+		if len(title) > 50 {
+			// Truncate at word boundary
+			if idx := strings.LastIndex(title[:50], " "); idx > 10 {
+				title = title[:idx] + "..."
+			} else {
+				title = title[:47] + "..."
+			}
+		}
+		m.session.SetTitle(title)
+	}
+
 	m.addMessage(ChatMessage{Type: MsgUser, Content: displayText})
 	m.refreshViewport()
 
@@ -724,7 +1010,6 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	m.streamText.Reset()
 	m.spinText = "Thinking..."
 	m.spinner.Start("Thinking...")
-	m.prompt.Blur()
 
 	m.approvalCh = make(chan bool, 1)
 	handler := &tuiEventHandler{ch: m.eventCh, approvalCh: m.approvalCh}
@@ -824,7 +1109,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 
 	case "turn_complete":
 		m.finalizeStreamingMessage()
-		m.totalTokens += event.usage.InputTokens + event.usage.OutputTokens
+		m.totalTokens += event.usage.OutputTokens
 		m.totalCost += float64(event.usage.InputTokens) * 3.0 / 1_000_000
 		m.totalCost += float64(event.usage.OutputTokens) * 15.0 / 1_000_000
 		m.turns++
@@ -840,6 +1125,13 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			m.addMessage(ChatMessage{Type: MsgError, Content: event.err.Error()})
 		}
 		m.refreshViewport()
+
+		// Process queued messages
+		if len(m.messageQueue) > 0 {
+			next := m.messageQueue[0]
+			m.messageQueue = m.messageQueue[1:]
+			return m.handleSubmit(next)
+		}
 		return m, nil
 
 	case "error":
@@ -853,7 +1145,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 	// /model without args → interactive selector
 	if name == "model" && args == "" {
-		m.modelSelector = modelselector.New(m.apiClient.GetModel())
+		m.modelSelector = modelselector.New(m.apiClient.GetModel(), m.apiClient.GetThinkingMode(), m.apiClient.GetBudgetTokens(), m.apiClient.GetEffortLevel())
 		m.modelSelector.SetWidth(m.width)
 		m.focus = FocusModelSelector
 		m.prompt.Blur()
@@ -890,6 +1182,14 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 	}
 
 	if output != "" {
+		// New session: clear viewport (already done in dep callback)
+		if output == "__new_session__" {
+			return m, nil
+		}
+		// Load history: load messages from DB into current viewport
+		if strings.HasPrefix(output, "__load_history__") {
+			return m.loadHistoryIntoViewport()
+		}
 		// Skill invocation: intercept [skill:NAME] and send skill content to engine
 		if strings.HasPrefix(output, "[skill:") && strings.Contains(output, "]") {
 			skillName := output[7:strings.Index(output, "]")]
@@ -929,10 +1229,470 @@ func (m Model) handlePermissionResponse(resp permissions.ResponseMsg) (tea.Model
 	return m, tea.Batch(m.spinner.Tick(), m.waitForEvent())
 }
 
+// ── Leader Key State Machine ────────────────────────────
+
+// handleLeaderKey processes the next key in a leader sequence.
+// Returns (handled bool, cmd). If handled is false, the key was not consumed.
+func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
+	seq := m.leaderSeq
+	m.leaderSeq = "" // reset by default
+
+	switch seq {
+	case "pending":
+		// First key after Space
+		switch key {
+		case "w":
+			m.leaderSeq = "w"
+			return true, whichkey.ScheduleTimeout()
+		case "b":
+			m.leaderSeq = "b"
+			return true, whichkey.ScheduleTimeout()
+		case "i":
+			m.leaderSeq = "i"
+			return true, whichkey.ScheduleTimeout()
+		case ",":
+			m.leaderSeq = ","
+			return true, nil
+		case ".":
+			// Session picker (like <leader>. for telescope buffers)
+			return m.openSessionPicker()
+		case ";":
+			// Recent sessions (same as . for now)
+			return m.openSessionPicker()
+		case "/":
+			// Search sessions (open picker with search focused)
+			return m.openSessionPicker()
+		}
+		return true, nil // consumed but no match
+
+	case "w":
+		// Window sub-menu
+		switch key {
+		case "k":
+			m.focus = FocusViewport
+			m.prompt.Blur()
+			if len(m.vpSections) > 0 {
+				m.vpCursor = len(m.vpSections) - 1
+			} else {
+				m.vpCursor = 0
+			}
+			m.refreshViewport()
+			m.scrollToSection(m.vpCursor)
+			return true, nil
+		case "j", "p":
+			m.focus = FocusPrompt
+			m.vpCursor = -1
+			m.prompt.Focus()
+			m.refreshViewport()
+			return true, nil
+		}
+		return true, nil
+
+	case "b":
+		// Buffer/session sub-menu
+		switch key {
+		case "n":
+			return m.switchSessionRelative(1)
+		case "p":
+			return m.switchSessionRelative(-1)
+		case "k":
+			return m.deleteCurrentSession()
+		case "r":
+			return m.renameCurrentSession()
+		case "c":
+			return m.createNewSession()
+		}
+		return true, nil
+
+	case "i":
+		// Info panels sub-menu
+		return m.handlePanelToggleByKey(key)
+
+	case ",":
+		// Alternate session: <Space>,<CR>
+		if key == "enter" {
+			return m.switchToAlternateSession()
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (m *Model) openSessionPicker() (bool, tea.Cmd) {
+	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
+		m.sessionPicker.Deactivate()
+		m.sessionPicker = nil
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+	} else if m.session != nil {
+		picker := panelsessions.New(m.session)
+		picker.SetSize(m.width, m.height)
+		picker.Activate()
+		m.sessionPicker = picker
+		m.focus = FocusPanel
+		m.prompt.Blur()
+	}
+	return true, nil
+}
+
+func (m *Model) switchSessionRelative(dir int) (bool, tea.Cmd) {
+	if m.session == nil {
+		return true, nil
+	}
+	sessions, err := m.session.RecentForProject(20)
+	if err != nil || len(sessions) < 2 {
+		return true, nil
+	}
+	cur := m.session.Current()
+	if cur == nil {
+		return true, nil
+	}
+	idx := -1
+	for i, s := range sessions {
+		if s.ID == cur.ID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return true, nil
+	}
+	next := idx + dir
+	if next < 0 {
+		next = len(sessions) - 1
+	} else if next >= len(sessions) {
+		next = 0
+	}
+	m.doSwitchSession(sessions[next].ID)
+
+	// Show toast
+	title := sessions[next].Title
+	if title == "" {
+		short := sessions[next].ID
+		if len(short) > 8 {
+			short = short[:8]
+		}
+		title = short
+	}
+	arrow := "→"
+	if dir < 0 {
+		arrow = "←"
+	}
+	toastCmd := m.toast.Show(fmt.Sprintf(" %s %s (%d of %d) ", arrow, title, next+1, len(sessions)))
+	return true, toastCmd
+}
+
+func (m *Model) switchToAlternateSession() (bool, tea.Cmd) {
+	if m.prevSessionID == "" || m.session == nil {
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: "No alternate session"})
+		m.refreshViewport()
+		return true, nil
+	}
+	targetID := m.prevSessionID
+	m.doSwitchSession(targetID)
+
+	// Show toast
+	cur := m.session.Current()
+	if cur != nil {
+		title := cur.Title
+		if title == "" {
+			short := cur.ID
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			title = short
+		}
+		toastCmd := m.toast.Show(fmt.Sprintf(" ⇄ %s ", title))
+		return true, toastCmd
+	}
+	return true, nil
+}
+
+func (m *Model) doSwitchSession(id string) {
+	if m.session == nil {
+		return
+	}
+	// Save previous session ID for alternate switching
+	if cur := m.session.Current(); cur != nil {
+		m.prevSessionID = cur.ID
+	}
+	resumed, err := m.session.Resume(id)
+	if err != nil {
+		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Switch failed: %v", err)})
+		m.refreshViewport()
+		return
+	}
+	// Clear current conversation and show resume context
+	m.messages = nil
+	m.streamText.Reset()
+	m.turns = 0
+	m.totalTokens = 0
+	m.totalCost = 0
+
+	title := resumed.Title
+	if title == "" {
+		short := resumed.ID
+		if len(short) > 8 {
+			short = short[:8]
+		}
+		title = short
+	}
+
+	// Build resume context block
+	var ctx strings.Builder
+	ctx.WriteString(fmt.Sprintf("Resumed: %s\n", title))
+	ctx.WriteString(fmt.Sprintf("  %s · %s · %s", shortModelName(resumed.Model), timeAgo(resumed.UpdatedAt), shortenDir(resumed.ProjectDir)))
+	if resumed.Summary != "" {
+		ctx.WriteString(fmt.Sprintf("\n\n  %s", resumed.Summary))
+	}
+	// Append resume header directly — don't persist to DB
+	m.messages = append(m.messages, ChatMessage{Type: MsgSystem, Content: ctx.String()})
+
+	// Load previous messages from DB
+	if storedMsgs, err := m.session.GetMessages(); err == nil && len(storedMsgs) > 0 {
+		for _, msg := range storedMsgs {
+			var msgType MessageType
+			switch msg.Type {
+			case "user":
+				msgType = MsgUser
+			case "assistant":
+				msgType = MsgAssistant
+			case "tool_use":
+				msgType = MsgToolUse
+			case "tool_result":
+				msgType = MsgToolResult
+			default:
+				continue // Skip system/error from DB
+			}
+			// Append directly — these are historical, don't re-persist
+			m.messages = append(m.messages, ChatMessage{
+				Type:     msgType,
+				Content:  msg.Content,
+				ToolName: msg.ToolName,
+			})
+		}
+	}
+
+	// Inject summary into system prompt for AI continuity
+	if resumed.Summary != "" {
+		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
+	}
+	m.refreshViewport()
+}
+
+func (m *Model) createNewSession() (bool, tea.Cmd) {
+	if m.session == nil {
+		return true, nil
+	}
+	// Save prev for alternate switching
+	if cur := m.session.Current(); cur != nil {
+		m.prevSessionID = cur.ID
+	}
+	if _, err := m.session.Start(m.model); err != nil {
+		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("New session failed: %v", err)})
+		m.refreshViewport()
+		return true, nil
+	}
+	m.messages = nil
+	m.streamText.Reset()
+	m.turns = 0
+	m.totalTokens = 0
+	m.totalCost = 0
+	m.refreshViewport()
+	return true, nil
+}
+
+func (m *Model) deleteCurrentSession() (bool, tea.Cmd) {
+	// Don't delete the only session — create a new one first
+	if m.session == nil {
+		return true, nil
+	}
+	cur := m.session.Current()
+	if cur == nil {
+		return true, nil
+	}
+	oldTitle := cur.Title
+	if oldTitle == "" {
+		oldTitle = cur.ID[:8]
+	}
+	// Create a new session first
+	if _, err := m.session.Start(m.model); err != nil {
+		return true, nil
+	}
+	// Delete the old one
+	_ = m.session.Delete(cur.ID)
+	m.messages = nil
+	m.streamText.Reset()
+	m.turns = 0
+	m.totalTokens = 0
+	m.totalCost = 0
+	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Deleted session: %s", oldTitle)})
+	m.refreshViewport()
+	return true, nil
+}
+
+func (m Model) loadHistoryIntoViewport() (tea.Model, tea.Cmd) {
+	if m.session == nil {
+		m.addMessage(ChatMessage{Type: MsgError, Content: "No session manager"})
+		m.refreshViewport()
+		return m, nil
+	}
+	msgs, err := m.session.GetMessages()
+	if err != nil {
+		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Load history: %v", err)})
+		m.refreshViewport()
+		return m, nil
+	}
+	if len(msgs) == 0 {
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: "No messages in session history."})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	// Prepend history messages before current messages
+	var history []ChatMessage
+	for _, msg := range msgs {
+		var msgType MessageType
+		switch msg.Type {
+		case "user":
+			msgType = MsgUser
+		case "assistant":
+			msgType = MsgAssistant
+		case "tool_use":
+			msgType = MsgToolUse
+		case "tool_result":
+			msgType = MsgToolResult
+		case "error":
+			msgType = MsgError
+		default:
+			msgType = MsgSystem
+		}
+		history = append(history, ChatMessage{
+			Type:     msgType,
+			Content:  msg.Content,
+			ToolName: msg.ToolName,
+		})
+	}
+
+	// Replace current messages with history (avoid duplicates)
+	m.messages = history
+	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Loaded %d messages from session history.", len(msgs))})
+	m.refreshViewport()
+	return m, nil
+}
+
+func (m *Model) renameCurrentSession() (bool, tea.Cmd) {
+	m.addMessage(ChatMessage{Type: MsgSystem, Content: "Use /rename <title> to rename this session"})
+	m.refreshViewport()
+	return true, nil
+}
+
+func (m *Model) handlePanelToggleByKey(key string) (bool, tea.Cmd) {
+	switch key {
+	case "c":
+		m.openPanel(PanelConfig)
+	case "k":
+		m.openPanel(PanelSkills)
+	case "m":
+		m.openPanel(PanelMemory)
+	case "a":
+		m.openPanel(PanelAnalytics)
+	case "t":
+		m.openPanel(PanelTasks)
+	}
+	return true, nil
+}
+
+// ── Panel Management ────────────────────────────────────
+
+func (m *Model) openPanel(id PanelID) {
+	panel := m.createPanel(id)
+	if panel == nil {
+		return
+	}
+	m.activePanel = panel
+	m.activePanelID = id
+	m.activePanel.Activate()
+	m.viewport.Width = mainWidth(m.width, m.activePanel)
+	m.focus = FocusPanel
+	m.prompt.Blur()
+	m.refreshViewport()
+}
+
+func (m *Model) closePanel() {
+	if m.activePanel != nil {
+		m.activePanel.Deactivate()
+	}
+	m.activePanel = nil
+	m.activePanelID = PanelNone
+	m.focus = FocusPrompt
+	m.prompt.Focus()
+	m.viewport.Width = m.width
+	m.refreshViewport()
+}
+
+// createPanel instantiates the appropriate panel for the given ID.
+// Returns nil if the panel cannot be created (e.g., missing dependencies).
+func (m *Model) createPanel(id PanelID) panels.Panel {
+	switch id {
+	case PanelSessions:
+		return nil // Sessions use Telescope-style overlay, not side panel
+	case PanelConfig:
+		if m.appCtx != nil && m.appCtx.Config != nil {
+			return panelconfig.New(m.appCtx.Config)
+		}
+	case PanelSkills:
+		if m.skills != nil {
+			return skillspanel.New(m.skills)
+		}
+	case PanelMemory:
+		if m.appCtx != nil && m.appCtx.Memory != nil {
+			return memorypanel.New(m.appCtx.Memory)
+		}
+	case PanelAnalytics:
+		if m.appCtx != nil && m.appCtx.Analytics != nil {
+			return analyticspanel.New(m.appCtx.Analytics)
+		}
+	case PanelTasks:
+		if m.appCtx != nil && m.appCtx.TaskRuntime != nil {
+			return taskspanel.New(m.appCtx.TaskRuntime)
+		}
+	}
+	return nil
+}
+
 // ── Message Management ───────────────────────────────────
 
 func (m *Model) addMessage(msg ChatMessage) {
 	m.messages = append(m.messages, msg)
+	// Persist to DB
+	m.persistMessage(msg)
+}
+
+func (m *Model) persistMessage(msg ChatMessage) {
+	if m.session == nil || m.session.Current() == nil {
+		return
+	}
+	// Only persist user input and assistant responses — not system/error UI messages
+	var role, msgType string
+	switch msg.Type {
+	case MsgUser:
+		role, msgType = "user", "user"
+	case MsgAssistant:
+		role, msgType = "assistant", "assistant"
+	case MsgToolUse:
+		role, msgType = "assistant", "tool_use"
+	case MsgToolResult:
+		role, msgType = "user", "tool_result"
+	default:
+		return // Don't persist system/error/thinking messages
+	}
+	if msg.ToolName != "" {
+		m.session.AddToolMessage(role, msg.Content, msgType, "", msg.ToolName)
+	} else {
+		m.session.AddMessage(role, msg.Content, msgType)
+	}
 }
 
 func (m *Model) updateStreamingMessage() {
@@ -941,8 +1701,10 @@ func (m *Model) updateStreamingMessage() {
 		return
 	}
 	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Type == MsgAssistant {
+		// Update in place — don't persist yet (finalize will do it)
 		m.messages[len(m.messages)-1].Content = text
 	} else {
+		// First chunk — append without persisting (finalize will do it)
 		m.messages = append(m.messages, ChatMessage{Type: MsgAssistant, Content: text})
 	}
 }
@@ -950,6 +1712,10 @@ func (m *Model) updateStreamingMessage() {
 func (m *Model) finalizeStreamingMessage() {
 	if m.streamText.Len() > 0 {
 		m.updateStreamingMessage()
+		// Persist the final assistant message
+		if len(m.messages) > 0 && m.messages[len(m.messages)-1].Type == MsgAssistant {
+			m.persistMessage(m.messages[len(m.messages)-1])
+		}
 		m.streamText.Reset()
 	}
 }
@@ -965,7 +1731,7 @@ func (m *Model) refreshViewport() {
 		if m.focus == FocusViewport {
 			cursorIdx = m.vpCursor
 		}
-		result := renderMessages(m.messages, m.width, m.expandedGroups, cursorIdx)
+		result := renderMessages(m.messages, m.viewport.Width, m.expandedGroups, cursorIdx)
 		content = result.Content
 		m.vpSections = result.Sections
 
@@ -978,9 +1744,22 @@ func (m *Model) refreshViewport() {
 		}
 	}
 
+	// DEBUG: log viewport state to file
+	if len(m.messages) > 0 {
+		contentLines := strings.Count(content, "\n") + 1
+		debugInfo := fmt.Sprintf("msgs=%d contentLines=%d vpH=%d vpW=%d offset=%d\n---content---\n%s\n---end---\n",
+			len(m.messages), contentLines, m.viewport.Height, m.viewport.Width, m.viewport.YOffset, content)
+		os.WriteFile("/tmp/claudio-viewport-debug.txt", []byte(debugInfo), 0644)
+	}
+
 	m.viewport.SetContent(content)
 	if m.focus != FocusViewport {
-		m.viewport.GotoBottom()
+		contentLines := strings.Count(content, "\n") + 1
+		if contentLines <= m.viewport.Height {
+			m.viewport.GotoTop()
+		} else {
+			m.viewport.GotoBottom()
+		}
 	}
 }
 
@@ -990,8 +1769,20 @@ func (m *Model) scrollToSection(idx int) {
 		return
 	}
 	sec := m.vpSections[idx]
-	// Scroll so the section's start line is near the top
-	m.viewport.SetYOffset(sec.LineStart)
+	vpH := m.viewport.Height
+
+	// If the section is already fully visible, don't scroll
+	yOff := m.viewport.YOffset
+	if sec.LineStart >= yOff && sec.LineStart+sec.LineCount <= yOff+vpH {
+		return
+	}
+
+	// Try to center the section vertically, clamping to valid range
+	target := sec.LineStart - (vpH / 3)
+	if target < 0 {
+		target = 0
+	}
+	m.viewport.SetYOffset(target)
 }
 
 // sectionToolGroupIdx returns the message index if the section is a tool group, or -1.
@@ -1018,22 +1809,110 @@ func (m *Model) welcomeScreen() string {
 
 	hints := lipgloss.NewStyle().
 		Foreground(styles.Dim).
-		Render("/help commands  ·  @file context  ·  /vim keybindings  ·  /model switch")
+		Render("/help · @file · /vim · /model · <Space>. sessions")
 
-	block := lipgloss.JoinVertical(lipgloss.Center,
-		"",
-		title,
-		subtitle,
-		"",
-		hints,
-		"",
-	)
+	var parts []string
+	parts = append(parts, "", title, subtitle, "", hints, "")
+
+	// Recent sessions box — try project-scoped first, fall back to all
+	if m.session != nil {
+		recent, _ := m.session.RecentForProject(3)
+		if len(recent) == 0 {
+			// No sessions for this project — show any recent sessions
+			recent, _ = m.session.Search("", 3)
+		}
+		if len(recent) > 0 {
+			recentBox := m.renderRecentSessions(recent)
+			parts = append(parts, recentBox, "")
+		}
+	}
+
+	block := lipgloss.JoinVertical(lipgloss.Center, parts...)
 
 	return lipgloss.Place(
-		m.width, m.viewport.Height,
+		m.viewport.Width, m.viewport.Height,
 		lipgloss.Center, lipgloss.Center,
 		block,
 	)
+}
+
+// renderRecentSessions builds the bordered recent sessions box for the welcome screen.
+func (m *Model) renderRecentSessions(sessions []storage.Session) string {
+	boxW := 52
+	if m.viewport.Width < 60 {
+		boxW = m.viewport.Width - 8
+	}
+	if boxW < 30 {
+		boxW = 30
+	}
+
+	numStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	titleStyle := lipgloss.NewStyle().Foreground(styles.Text)
+	dateStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
+	hintStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+
+	var lines []string
+	for i, s := range sessions {
+		stitle := s.Title
+		if stitle == "" {
+			short := s.ID
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			stitle = short
+		}
+
+		// Time ago
+		ago := timeAgo(s.UpdatedAt)
+
+		maxTitle := boxW - len(ago) - 8
+		if maxTitle < 10 {
+			maxTitle = 10
+		}
+		if len(stitle) > maxTitle {
+			stitle = stitle[:maxTitle-1] + "…"
+		}
+
+		left := numStyle.Render(fmt.Sprintf("  %d  ", i+1)) + titleStyle.Render(stitle)
+		right := dateStyle.Render(ago)
+		gap := boxW - lipgloss.Width(left) - lipgloss.Width(right) - 2
+		if gap < 1 {
+			gap = 1
+		}
+		lines = append(lines, left+strings.Repeat(" ", gap)+right+"  ")
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, hintStyle.Render("  [1-3] resume · <Space>. browse · type to chat"))
+
+	content := strings.Join(lines, "\n")
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.SurfaceAlt).
+		Padding(0, 1).
+		Width(boxW).
+		Render(content)
+
+	// Inject title into top border
+	boxLines := strings.Split(box, "\n")
+	if len(boxLines) > 0 {
+		label := lipgloss.NewStyle().Foreground(styles.Dim).Render(" Recent ")
+		topRunes := []rune(boxLines[0])
+		labelRunes := []rune(label)
+		pos := 3
+		if pos+len(labelRunes) < len(topRunes) {
+			copy(topRunes[pos:], labelRunes)
+			boxLines[0] = string(topRunes)
+		}
+	}
+
+	return strings.Join(boxLines, "\n")
+}
+
+// isWelcomeScreen returns true when the welcome screen is showing (no messages, not streaming).
+func (m *Model) isWelcomeScreen() bool {
+	return len(m.messages) == 0 && !m.streaming
 }
 
 // ── Layout & View ────────────────────────────────────────
@@ -1052,16 +1931,18 @@ func (m *Model) layout() {
 		vpHeight = 5
 	}
 
-	m.viewport.Width = m.width
+	mw := mainWidth(m.width, m.activePanel)
+	m.viewport.Width = mw
 	m.viewport.Height = vpHeight
-	m.prompt.SetWidth(m.width)
-	m.permission.SetWidth(m.width)
+	m.prompt.SetWidth(m.width) // prompt always full width
+	m.permission.SetWidth(mw)
 }
 
 func (m Model) View() string {
 	m.layout()
 
-	var sections []string
+	mw := mainWidth(m.width, m.activePanel)
+	hasPanel := m.activePanel != nil && m.activePanel.IsActive()
 
 	// 1. Viewport (messages + inline spinner)
 	vpView := m.viewport.View()
@@ -1069,16 +1950,36 @@ func (m Model) View() string {
 	// Overlay permission dialog or model selector on top of viewport
 	if m.permission.IsActive() {
 		overlay := m.permission.View()
-		vpView = placeOverlay(vpView, overlay, m.width, m.viewport.Height)
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
 	if m.modelSelector.IsActive() {
 		overlay := m.modelSelector.View()
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+	}
+	if m.whichKey.IsActive() {
+		overlay := m.whichKey.View()
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+	}
+	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
+		m.sessionPicker.SetSize(m.width, m.viewport.Height)
+		overlay := m.sessionPicker.View()
 		vpView = placeOverlay(vpView, overlay, m.width, m.viewport.Height)
 	}
+	if m.toast.IsActive() {
+		overlay := m.toast.View()
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+	}
 
-	sections = append(sections, vpView)
+	// 2. If panel is active, join viewport + panel side-by-side
+	topArea := vpView
+	if hasPanel {
+		topArea = splitLayout(vpView, m.activePanel, m.width, m.viewport.Height)
+	}
 
-	// 2. Command palette or file picker (between viewport and prompt)
+	var sections []string
+	sections = append(sections, topArea)
+
+	// 3. Command palette or file picker (full width, between viewport and prompt)
 	if paletteView := m.palette.View(); paletteView != "" {
 		sections = append(sections, paletteView)
 	}
@@ -1086,23 +1987,32 @@ func (m Model) View() string {
 		sections = append(sections, pickerView)
 	}
 
-	// 3. Prompt
+	// 4. Prompt (full width)
 	sections = append(sections, m.prompt.View())
 
-	// 4. Mode line (like vim's -- INSERT -- line)
-	sections = append(sections, m.renderModeLine())
+	// 5. Mode line (full width) — or search bar when searching
+	if m.vpSearchActive {
+		sections = append(sections, m.renderSearchBar())
+	} else {
+		sections = append(sections, m.renderModeLine())
+	}
 
-	// 5. Status bar
+	// 6. Status bar (full width)
 	hint := m.statusHint()
+	ctxUsed, ctxMax := m.contextBudget()
 	sections = append(sections, renderStatusBar(m.width, StatusBarState{
-		Model:     m.model,
-		Tokens:    m.totalTokens,
-		Cost:      m.totalCost,
-		Turns:     m.turns,
-		Streaming: m.streaming,
-		SpinText:  m.spinText,
-		Hint:      hint,
-		VimMode:   m.vimModeDisplay(),
+		Model:       m.model,
+		Tokens:      m.totalTokens,
+		Cost:        m.totalCost,
+		Turns:       m.turns,
+		Streaming:   m.streaming,
+		SpinText:    m.spinText,
+		Hint:        hint,
+		VimMode:     m.vimModeDisplay(),
+		SessionName: m.sessionName(),
+		PanelName:   m.panelName(),
+		ContextUsed: ctxUsed,
+		ContextMax:  ctxMax,
 	}))
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -1151,6 +2061,12 @@ func (m Model) renderModeLine() string {
 	modeIndicator := arrowStyle.Render(" ▸▸ ") +
 		hintStyle.Render(permMode+" mode")
 
+	// Show queue count
+	if len(m.messageQueue) > 0 {
+		queueStyle := lipgloss.NewStyle().Foreground(styles.Warning)
+		modeIndicator += queueStyle.Render(fmt.Sprintf("  [%d queued]", len(m.messageQueue)))
+	}
+
 	right := hintStyle.Render("(shift+tab to cycle)")
 
 	content := left + modeIndicator
@@ -1162,6 +2078,28 @@ func (m Model) renderModeLine() string {
 	return " " + content + strings.Repeat(" ", gap) + right + " "
 }
 
+// renderSearchBar renders the search input line.
+func (m Model) renderSearchBar() string {
+	searchStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	queryStyle := lipgloss.NewStyle().Foreground(styles.Text)
+	hintStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+
+	left := searchStyle.Render("/") + queryStyle.Render(m.vpSearchQuery) + searchStyle.Render("▌")
+
+	var right string
+	if len(m.vpSearchMatches) > 0 {
+		right = hintStyle.Render(fmt.Sprintf("[%d/%d]", m.vpSearchIdx+1, len(m.vpSearchMatches)))
+	} else if m.vpSearchQuery != "" {
+		right = hintStyle.Render("[no matches]")
+	}
+
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
+	if gap < 1 {
+		gap = 1
+	}
+	return " " + left + strings.Repeat(" ", gap) + right + " "
+}
+
 // statusHint returns contextual keyboard hints for the status bar.
 func (m Model) vimModeDisplay() string {
 	if m.focus == FocusViewport {
@@ -1170,12 +2108,151 @@ func (m Model) vimModeDisplay() string {
 	return m.prompt.VimModeString()
 }
 
+func (m Model) sessionName() string {
+	if m.session == nil {
+		return ""
+	}
+	cur := m.session.Current()
+	if cur == nil {
+		return ""
+	}
+	if cur.Title != "" {
+		return cur.Title
+	}
+	return cur.ID[:8]
+}
+
+// parseNewMemory parses a memory file content (with frontmatter) into an Entry.
+func parseNewMemory(content string) *memory.Entry {
+	lines := strings.Split(content, "\n")
+	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
+		return nil
+	}
+
+	endIdx := -1
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			endIdx = i
+			break
+		}
+	}
+	if endIdx < 0 {
+		return nil
+	}
+
+	entry := &memory.Entry{}
+	for _, line := range lines[1:endIdx] {
+		line = strings.TrimSpace(line)
+		if idx := strings.Index(line, ":"); idx > 0 {
+			key := strings.TrimSpace(line[:idx])
+			val := strings.TrimSpace(line[idx+1:])
+			val = strings.Trim(val, `"'`)
+			switch key {
+			case "name":
+				entry.Name = val
+			case "description":
+				entry.Description = val
+			case "type":
+				entry.Type = val
+			}
+		}
+	}
+
+	entry.Content = strings.TrimSpace(strings.Join(lines[endIdx+1:], "\n"))
+	if entry.Name == "" || entry.Name == "new-memory" {
+		return nil // User didn't fill in the name
+	}
+	if entry.Type == "" {
+		entry.Type = "project"
+	}
+	return entry
+}
+
+// buildPinnedEngineIndices maps pinned ChatMessage indices to engine message indices.
+// Engine messages and TUI messages don't have a 1:1 mapping (system/error msgs are TUI-only),
+// so we track which user/assistant/tool messages are pinned by counting only persistable messages.
+func (m *Model) buildPinnedEngineIndices() map[int]bool {
+	pinned := make(map[int]bool)
+	engineIdx := 0
+	for _, msg := range m.messages {
+		// Only user, assistant, tool_use, tool_result map to engine messages
+		switch msg.Type {
+		case MsgUser, MsgAssistant, MsgToolUse, MsgToolResult:
+			if msg.Pinned {
+				pinned[engineIdx] = true
+			}
+			engineIdx++
+		}
+	}
+	return pinned
+}
+
+// updateSearchMatches recalculates which sections match the search query.
+// Note: uses pointer-style mutation but is called from the value-receiver Update
+// method where m is a local copy that gets returned.
+func (m *Model) updateSearchMatches() {
+	m.vpSearchMatches = nil
+	m.vpSearchIdx = 0
+	if m.vpSearchQuery == "" {
+		return
+	}
+	query := strings.ToLower(m.vpSearchQuery)
+	for i, msg := range m.messages {
+		content := strings.ToLower(msg.Content + " " + msg.ToolName + " " + msg.ToolInput)
+		if strings.Contains(content, query) {
+			for si, sec := range m.vpSections {
+				if sec.MsgIndex == i {
+					m.vpSearchMatches = append(m.vpSearchMatches, si)
+					break
+				}
+			}
+		}
+	}
+}
+
+// contextBudget returns (used, max) token counts from the compact state.
+func (m Model) contextBudget() (int, int) {
+	if m.engineConfig != nil && m.engineConfig.CompactState != nil {
+		cs := m.engineConfig.CompactState
+		return cs.TotalTokens, cs.MaxTokens
+	}
+	return 0, 0
+}
+
+func (m Model) panelName() string {
+	switch m.activePanelID {
+	case PanelSessions:
+		return "sessions"
+	case PanelConfig:
+		return "config"
+	case PanelSkills:
+		return "skills"
+	case PanelMemory:
+		return "memory"
+	case PanelAnalytics:
+		return "analytics"
+	case PanelTasks:
+		return "tasks"
+	default:
+		return ""
+	}
+}
+
 func (m Model) statusHint() string {
 	if m.focus == FocusPermission {
 		return "y allow · n deny"
 	}
+	if m.focus == FocusPanel {
+		return "j/k navigate · enter select · esc close"
+	}
 	if m.focus == FocusViewport {
-		return "j/k scroll · G/gg top/bottom · ctrl+o expand · i/q back to prompt"
+		if m.vpSearchActive {
+			return "type to search · enter confirm · esc cancel"
+		}
+		if len(m.vpSearchMatches) > 0 {
+			return "j/k scroll · n/N next/prev match · / search · p pin · i/q back"
+		}
+		return "j/k scroll · / search · p pin · ctrl+o expand · i/q back"
 	}
 	if m.focus == FocusModelSelector {
 		return "\u2191\u2193 select · enter confirm · esc cancel"
@@ -1187,9 +2264,9 @@ func (m Model) statusHint() string {
 		return "esc stop"
 	}
 	if m.lastToolGroup >= 0 {
-		return "<Space>wk viewport · ctrl+o expand · ctrl+v image"
+		return "<Space>. sessions · <Space>wk viewport · ctrl+o expand"
 	}
-	return "<Space>wk viewport · ctrl+v image"
+	return "<Space>. sessions · <Space>bc new · <Space>wk viewport"
 }
 
 // placeOverlay renders an overlay string on top of a base string,
@@ -1236,8 +2313,57 @@ func (h *tuiEventHandler) OnToolApprovalNeeded(tu tools.ToolUse) bool {
 	return <-h.approvalCh
 }
 
+func (h *tuiEventHandler) OnCostConfirmNeeded(currentCost, threshold float64) bool {
+	// Auto-continue in TUI mode; budget limits are enforced via --budget flag
+	return true
+}
+
 func (h *tuiEventHandler) OnError(err error) {
 	h.ch <- tuiEvent{typ: "error", err: err}
+}
+
+func shortModelName(model string) string {
+	switch {
+	case strings.Contains(model, "opus"):
+		return "opus"
+	case strings.Contains(model, "haiku"):
+		return "haiku"
+	case strings.Contains(model, "sonnet"):
+		return "sonnet"
+	default:
+		return model
+	}
+}
+
+func shortenDir(dir string) string {
+	home, _ := os.UserHomeDir()
+	if home != "" && strings.HasPrefix(dir, home) {
+		dir = "~" + dir[len(home):]
+	}
+	return dir
+}
+
+func timeAgo(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 48*time.Hour:
+		return "yesterday"
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
+}
+
+func truncateStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-1] + "…"
 }
 
 func formatToolSummary(tu tools.ToolUse) string {

@@ -14,7 +14,9 @@ import (
 )
 
 // WebFetchTool fetches and converts web pages to markdown.
-type WebFetchTool struct{}
+type WebFetchTool struct {
+	deferrable
+}
 
 type webFetchInput struct {
 	URL    string `json:"url"`

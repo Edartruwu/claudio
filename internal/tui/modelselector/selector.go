@@ -10,11 +10,66 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// Section identifies which section of the selector is focused.
+type Section int
+
+const (
+	SectionModel Section = iota
+	SectionThinking
+	SectionBudget
+)
+
 // ModelOption represents a selectable model.
 type ModelOption struct {
-	Label       string // Display name (e.g. "Default (recommended)")
-	ID          string // Model identifier (e.g. "claude-sonnet-4-6")
-	Description string // Short description
+	Label       string
+	ID          string
+	Description string
+}
+
+// ThinkingOption represents a thinking mode option.
+type ThinkingOption struct {
+	Label       string
+	Mode        string // "adaptive", "enabled", "disabled", "" (auto)
+	Description string
+}
+
+// BudgetOption represents a thinking budget option.
+type BudgetOption struct {
+	Label  string
+	Tokens int
+}
+
+var effortLevels = []string{"low", "medium", "high"}
+
+func effortLabel(level string) string {
+	switch level {
+	case "low":
+		return "Low"
+	case "high":
+		return "High"
+	default:
+		return "Medium"
+	}
+}
+
+func effortDescription(level string) string {
+	switch level {
+	case "low":
+		return "Quick, minimal overhead"
+	case "high":
+		return "Comprehensive, extensive reasoning"
+	default:
+		return "Balanced speed and intelligence"
+	}
+}
+
+func effortIndex(level string) int {
+	for i, l := range effortLevels {
+		if l == level {
+			return i
+		}
+	}
+	return 1 // default to medium
 }
 
 // DefaultModels returns the standard model options.
@@ -22,13 +77,13 @@ func DefaultModels() []ModelOption {
 	return []ModelOption{
 		{
 			Label:       "Default (recommended)",
-			ID:          "claude-sonnet-4-6",
-			Description: "Sonnet 4.6 - Best for everyday tasks",
-		},
-		{
-			Label:       "Opus",
 			ID:          "claude-opus-4-6",
 			Description: "Opus 4.6 with 1M context - Most capable for complex work",
+		},
+		{
+			Label:       "Sonnet",
+			ID:          "claude-sonnet-4-6",
+			Description: "Sonnet 4.6 - Best for everyday tasks",
 		},
 		{
 			Label:       "Haiku",
@@ -38,53 +93,114 @@ func DefaultModels() []ModelOption {
 	}
 }
 
-// ModelSelectedMsg is sent when the user picks a model.
+// DefaultThinkingOptions returns the thinking mode options.
+func DefaultThinkingOptions() []ThinkingOption {
+	return []ThinkingOption{
+		{Label: "Auto", Mode: "", Description: "Adaptive thinking for supported models"},
+		{Label: "Adaptive", Mode: "adaptive", Description: "Model decides when and how much to think"},
+		{Label: "Enabled (fixed budget)", Mode: "enabled", Description: "Always think with a token budget"},
+		{Label: "Disabled", Mode: "disabled", Description: "No extended thinking"},
+	}
+}
+
+// DefaultBudgetOptions returns the thinking budget presets.
+func DefaultBudgetOptions() []BudgetOption {
+	return []BudgetOption{
+		{Label: "8k tokens (quick)", Tokens: 8000},
+		{Label: "16k tokens (moderate)", Tokens: 16000},
+		{Label: "32k tokens (deep)", Tokens: 32000},
+		{Label: "64k tokens (very deep)", Tokens: 64000},
+		{Label: "128k tokens (ultrathink)", Tokens: 128000},
+	}
+}
+
+// ModelSelectedMsg is sent when the user confirms all selections.
 type ModelSelectedMsg struct {
-	ModelID string
-	Label   string
+	ModelID      string
+	Label        string
+	ThinkingMode string
+	BudgetTokens int
+	EffortLevel  string
 }
 
 // DismissMsg is sent when the user cancels.
 type DismissMsg struct{}
 
-// Model is the model selector component.
+// Model is the model + thinking + effort selector component.
 type Model struct {
-	options  []ModelOption
-	selected int
-	current  string // current model ID (shown with checkmark)
-	active   bool
-	width    int
+	models   []ModelOption
+	thinking []ThinkingOption
+	budgets  []BudgetOption
+
+	modelIdx    int
+	thinkingIdx int
+	budgetIdx   int
+	effortIdx   int // index into effortLevels
+
+	currentModel    string
+	currentThinking string
+	currentBudget   int
+	currentEffort   string
+
+	section Section
+	active  bool
+	width   int
 }
 
 // New creates a new model selector.
-func New(currentModel string) Model {
-	options := DefaultModels()
-	selected := 0
-	for i, o := range options {
+func New(currentModel, currentThinking string, currentBudget int, currentEffort string) Model {
+	models := DefaultModels()
+	thinking := DefaultThinkingOptions()
+	budgets := DefaultBudgetOptions()
+
+	modelIdx := 0
+	for i, o := range models {
 		if o.ID == currentModel {
-			selected = i
+			modelIdx = i
 			break
 		}
 	}
+
+	thinkingIdx := 0
+	for i, o := range thinking {
+		if o.Mode == currentThinking {
+			thinkingIdx = i
+			break
+		}
+	}
+
+	budgetIdx := 2 // default to 32k
+	for i, o := range budgets {
+		if o.Tokens == currentBudget {
+			budgetIdx = i
+			break
+		}
+	}
+
 	return Model{
-		options:  options,
-		selected: selected,
-		current:  currentModel,
-		active:   true,
+		models:          models,
+		thinking:        thinking,
+		budgets:         budgets,
+		modelIdx:        modelIdx,
+		thinkingIdx:     thinkingIdx,
+		budgetIdx:       budgetIdx,
+		effortIdx:       effortIndex(currentEffort),
+		currentModel:    currentModel,
+		currentThinking: currentThinking,
+		currentBudget:   currentBudget,
+		currentEffort:   currentEffort,
+		section:         SectionModel,
+		active:          true,
 	}
 }
 
-// IsActive returns whether the selector is visible.
-func (m Model) IsActive() bool {
-	return m.active
+func (m Model) IsActive() bool  { return m.active }
+func (m *Model) SetWidth(w int) { m.width = w }
+
+func (m Model) selectedThinkingMode() string {
+	return m.thinking[m.thinkingIdx].Mode
 }
 
-// SetWidth updates the display width.
-func (m *Model) SetWidth(w int) {
-	m.width = w
-}
-
-// Update handles key events.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.active {
 		return m, nil
@@ -97,29 +213,95 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	switch keyMsg.String() {
 	case "up", "k":
-		if m.selected > 0 {
-			m.selected--
+		switch m.section {
+		case SectionModel:
+			if m.modelIdx > 0 {
+				m.modelIdx--
+			}
+		case SectionThinking:
+			if m.thinkingIdx > 0 {
+				m.thinkingIdx--
+			}
+		case SectionBudget:
+			if m.budgetIdx > 0 {
+				m.budgetIdx--
+			}
 		}
+
 	case "down", "j":
-		if m.selected < len(m.options)-1 {
-			m.selected++
+		switch m.section {
+		case SectionModel:
+			if m.modelIdx < len(m.models)-1 {
+				m.modelIdx++
+			}
+		case SectionThinking:
+			if m.thinkingIdx < len(m.thinking)-1 {
+				m.thinkingIdx++
+			}
+		case SectionBudget:
+			if m.budgetIdx < len(m.budgets)-1 {
+				m.budgetIdx++
+			}
 		}
-	case "1":
-		m.selected = 0
-	case "2":
-		if len(m.options) > 1 {
-			m.selected = 1
+
+	case "left", "h":
+		// Cycle effort level left
+		if m.effortIdx > 0 {
+			m.effortIdx--
 		}
-	case "3":
-		if len(m.options) > 2 {
-			m.selected = 2
+
+	case "right", "l":
+		// Cycle effort level right
+		if m.effortIdx < len(effortLevels)-1 {
+			m.effortIdx++
 		}
+
+	case "tab":
+		switch m.section {
+		case SectionModel:
+			m.section = SectionThinking
+		case SectionThinking:
+			if m.selectedThinkingMode() == "enabled" {
+				m.section = SectionBudget
+			} else {
+				m.section = SectionModel
+			}
+		case SectionBudget:
+			m.section = SectionModel
+		}
+
+	case "shift+tab":
+		switch m.section {
+		case SectionModel:
+			if m.selectedThinkingMode() == "enabled" {
+				m.section = SectionBudget
+			} else {
+				m.section = SectionThinking
+			}
+		case SectionThinking:
+			m.section = SectionModel
+		case SectionBudget:
+			m.section = SectionThinking
+		}
+
 	case "enter":
 		m.active = false
-		opt := m.options[m.selected]
-		return m, func() tea.Msg {
-			return ModelSelectedMsg{ModelID: opt.ID, Label: opt.Label}
+		opt := m.models[m.modelIdx]
+		thinkOpt := m.thinking[m.thinkingIdx]
+		budgetTokens := 0
+		if thinkOpt.Mode == "enabled" {
+			budgetTokens = m.budgets[m.budgetIdx].Tokens
 		}
+		return m, func() tea.Msg {
+			return ModelSelectedMsg{
+				ModelID:      opt.ID,
+				Label:        opt.Label,
+				ThinkingMode: thinkOpt.Mode,
+				BudgetTokens: budgetTokens,
+				EffortLevel:  effortLevels[m.effortIdx],
+			}
+		}
+
 	case "esc", "q":
 		m.active = false
 		return m, func() tea.Msg {
@@ -130,81 +312,89 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the model selector dialog.
 func (m Model) View() string {
 	if !m.active {
 		return ""
 	}
 
-	titleStyle := lipgloss.NewStyle().
-		Foreground(styles.Text).
-		Bold(true)
-
-	subtitleStyle := lipgloss.NewStyle().
-		Foreground(styles.Dim)
-
-	hintStyle := lipgloss.NewStyle().
-		Foreground(styles.Warning).
-		Italic(true)
+	titleStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	sectionTitle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	sectionTitleDim := lipgloss.NewStyle().Foreground(styles.Dim).Bold(true)
+	hintStyle := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true)
 
 	var lines []string
-	lines = append(lines, titleStyle.Render("Select model"))
-	lines = append(lines, subtitleStyle.Render(
-		"Switch between Claude models. Applies to this session and future sessions."))
+	lines = append(lines, titleStyle.Render("Model & Thinking Configuration"))
 	lines = append(lines, "")
 
-	labelWidth := 28
-	for _, opt := range m.options {
-		if len(opt.Label)+4 > labelWidth {
-			labelWidth = len(opt.Label) + 4
-		}
+	// --- Model Section ---
+	if m.section == SectionModel {
+		lines = append(lines, sectionTitle.Render("Model"))
+	} else {
+		lines = append(lines, sectionTitleDim.Render("Model"))
 	}
 
-	for i, opt := range m.options {
-		num := fmt.Sprintf("%d. ", i+1)
-		label := opt.Label
-		check := ""
-		if opt.ID == m.current {
-			check = " \u2714" // checkmark
-		}
-
-		var numStyle, nameStyle, descStyle lipgloss.Style
-
-		if i == m.selected {
-			numStyle = lipgloss.NewStyle().
-				Foreground(styles.Primary).
-				Bold(true)
-			nameStyle = lipgloss.NewStyle().
-				Foreground(styles.Text).
-				Bold(true)
-			descStyle = lipgloss.NewStyle().
-				Foreground(styles.Dim)
-		} else {
-			numStyle = lipgloss.NewStyle().
-				Foreground(styles.Dim)
-			nameStyle = lipgloss.NewStyle().
-				Foreground(styles.Dim)
-			descStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#4B5563"))
-		}
-
-		prefix := "  "
-		if i == m.selected {
-			prefix = lipgloss.NewStyle().
-				Foreground(styles.Primary).
-				Bold(true).
-				Render("\u203A ")
-		}
-
-		nameText := nameStyle.Render(label + check)
-		labelPad := strings.Repeat(" ", max(1, labelWidth-lipgloss.Width(label+check)))
-
-		line := prefix + numStyle.Render(num) + nameText + labelPad + descStyle.Render(opt.Description)
+	for i, opt := range m.models {
+		line := m.renderOption(i, opt.Label, opt.Description, opt.ID == m.currentModel, m.section == SectionModel, m.modelIdx)
 		lines = append(lines, line)
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, hintStyle.Render("Enter to confirm \u00B7 Esc to exit"))
+
+	// --- Thinking Section ---
+	if m.section == SectionThinking {
+		lines = append(lines, sectionTitle.Render("Extended Thinking"))
+	} else {
+		lines = append(lines, sectionTitleDim.Render("Extended Thinking"))
+	}
+
+	for i, opt := range m.thinking {
+		isCurrent := opt.Mode == m.currentThinking
+		line := m.renderOption(i, opt.Label, opt.Description, isCurrent, m.section == SectionThinking, m.thinkingIdx)
+		lines = append(lines, line)
+	}
+
+	// --- Budget Section (only if thinking is "enabled") ---
+	if m.selectedThinkingMode() == "enabled" {
+		lines = append(lines, "")
+
+		if m.section == SectionBudget {
+			lines = append(lines, sectionTitle.Render("Thinking Budget"))
+		} else {
+			lines = append(lines, sectionTitleDim.Render("Thinking Budget"))
+		}
+
+		for i, opt := range m.budgets {
+			isCurrent := opt.Tokens == m.currentBudget
+			line := m.renderOption(i, opt.Label, "", isCurrent, m.section == SectionBudget, m.budgetIdx)
+			lines = append(lines, line)
+		}
+	}
+
+	lines = append(lines, "")
+
+	// --- Effort Slider (always visible, controlled by ←/→) ---
+	effortStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	effortDot := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("\u25CF")
+	effortDotDim := lipgloss.NewStyle().Foreground(styles.Dim).Render("\u25CB")
+	arrowStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+
+	var dots []string
+	for i := range effortLevels {
+		if i == m.effortIdx {
+			dots = append(dots, effortDot)
+		} else {
+			dots = append(dots, effortDotDim)
+		}
+	}
+
+	effortLine := effortStyle.Render(effortLabel(effortLevels[m.effortIdx])+" effort") +
+		"  " + arrowStyle.Render("\u2190") + " " + strings.Join(dots, " ") + " " + arrowStyle.Render("\u2192") +
+		"  " + lipgloss.NewStyle().Foreground(styles.Dim).Render(effortDescription(effortLevels[m.effortIdx]))
+
+	lines = append(lines, effortLine)
+
+	lines = append(lines, "")
+	lines = append(lines, hintStyle.Render("Tab switch sections \u00B7 j/k navigate \u00B7 \u2190/\u2192 effort \u00B7 Enter confirm \u00B7 Esc cancel"))
 
 	content := strings.Join(lines, "\n")
 
@@ -212,14 +402,50 @@ func (m Model) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Primary).
 		Padding(1, 2).
-		Width(min(m.width-4, 80)).
+		Width(min(m.width-4, 85)).
 		Render(content)
 
-	// Center horizontally
 	return lipgloss.NewStyle().
 		Width(m.width).
 		Align(lipgloss.Center).
 		Render(box)
+}
+
+func (m Model) renderOption(idx int, label, description string, isCurrent, isFocusedSection bool, sectionCursor int) string {
+	selected := isFocusedSection && idx == sectionCursor
+
+	check := ""
+	if isCurrent {
+		check = " \u2714"
+	}
+
+	var numStyle, nameStyle, descStyle lipgloss.Style
+
+	if selected {
+		numStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+		nameStyle = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+		descStyle = lipgloss.NewStyle().Foreground(styles.Dim)
+	} else {
+		numStyle = lipgloss.NewStyle().Foreground(styles.Dim)
+		nameStyle = lipgloss.NewStyle().Foreground(styles.Dim)
+		descStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#4B5563"))
+	}
+
+	prefix := "  "
+	if selected {
+		prefix = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("\u203A ")
+	}
+
+	num := fmt.Sprintf("%d. ", idx+1)
+	nameText := nameStyle.Render(label + check)
+
+	line := prefix + numStyle.Render(num) + nameText
+	if description != "" {
+		padding := strings.Repeat(" ", max(1, 30-lipgloss.Width(label+check)))
+		line += padding + descStyle.Render(description)
+	}
+
+	return line
 }
 
 func max(a, b int) int {

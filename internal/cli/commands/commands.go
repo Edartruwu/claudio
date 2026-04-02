@@ -16,16 +16,32 @@ type Command struct {
 
 // CommandDeps provides access to app state for commands that need it.
 type CommandDeps struct {
-	GetModel      func() string
-	SetModel      func(model string)
-	Compact       func(keepLast int) (string, error)
-	GetTokens     func() int
-	GetCost       func() float64
-	ListSessions  func(limit int) ([]SessionInfo, error)
-	RenameSession func(title string) error
-	ToggleVim     func() bool // returns new state (true=enabled)
+	GetModel        func() string
+	SetModel        func(model string)
+	GetThinkingLabel func() string // returns human-readable thinking mode
+	Compact         func(keepLast int) (string, error)
+	GetTokens       func() int
+	GetCost         func() float64
+	ListSessions    func(limit int) ([]SessionInfo, error)
+	RenameSession   func(title string) error
+	ToggleVim       func() bool // returns new state (true=enabled)
+	// Session lifecycle
+	LoadHistory   func() (string, error)
+	NewSession    func() error
+	// Memory
+	ExtractMemories func() (int, error) // manually trigger extraction, returns count of memories saved
 	// Skills for dynamic registration
 	ListSkills    func() []SkillInfo
+	// Plugins
+	ListPlugins   func() string
+	// Diff tracking
+	GetTurnDiff   func(turn int) string
+	// Output style
+	GetOutputStyle func() string
+	SetOutputStyle func(style string)
+	// Session sharing
+	ShareSession  func(path string) (string, error)
+	TeleportSession func(path string) (string, error)
 }
 
 // SkillInfo holds skill data for command registration.

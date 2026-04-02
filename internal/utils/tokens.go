@@ -3,6 +3,8 @@ package utils
 import (
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Abraxas-365/claudio/internal/models"
 )
 
 // EstimateTokens provides a rough token count estimation.
@@ -74,7 +76,15 @@ func (tb *TokenBudget) ShouldCompact(threshold float64) bool {
 }
 
 // MaxContextForModel returns the maximum context window size for a model.
+// Checks the global model capabilities cache first, falls back to hardcoded defaults.
 func MaxContextForModel(model string) int {
+	if c := models.GetGlobalCache(); c != nil {
+		if v := c.MaxContext(model); v > 0 {
+			return v
+		}
+	}
+
+	// Hardcoded fallbacks
 	lower := strings.ToLower(model)
 	switch {
 	case strings.Contains(lower, "opus"):
@@ -84,12 +94,20 @@ func MaxContextForModel(model string) int {
 	case strings.Contains(lower, "haiku"):
 		return 200_000
 	default:
-		return 200_000 // default to 200K
+		return 200_000
 	}
 }
 
 // MaxOutputForModel returns the maximum output tokens for a model.
+// Checks the global model capabilities cache first, falls back to hardcoded defaults.
 func MaxOutputForModel(model string) int {
+	if c := models.GetGlobalCache(); c != nil {
+		if v := c.MaxOutput(model); v > 0 {
+			return v
+		}
+	}
+
+	// Hardcoded fallbacks
 	lower := strings.ToLower(model)
 	switch {
 	case strings.Contains(lower, "opus"):

@@ -13,7 +13,9 @@ import (
 
 // --- EnterPlanModeTool ---
 
-type EnterPlanModeTool struct{}
+type EnterPlanModeTool struct {
+	deferrable
+}
 
 func (t *EnterPlanModeTool) Name() string { return "EnterPlanMode" }
 func (t *EnterPlanModeTool) Description() string {
@@ -39,7 +41,9 @@ func (t *EnterPlanModeTool) Execute(ctx context.Context, input json.RawMessage) 
 
 // --- ExitPlanModeTool ---
 
-type ExitPlanModeTool struct{}
+type ExitPlanModeTool struct {
+	deferrable
+}
 
 func (t *ExitPlanModeTool) Name() string { return "ExitPlanMode" }
 func (t *ExitPlanModeTool) Description() string {

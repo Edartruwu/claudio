@@ -42,7 +42,7 @@ func (r *Registry) All() []Tool {
 	return result
 }
 
-// APIDefinitions returns tool definitions in the format expected by the Anthropic API.
+// APIDefinitions returns tool definitions with full schemas (no deferral).
 func (r *Registry) APIDefinitions() json.RawMessage {
 	defs := make([]APIToolDef, 0, len(r.order))
 	for _, name := range r.order {
@@ -55,6 +55,62 @@ func (r *Registry) APIDefinitions() json.RawMessage {
 	}
 	data, _ := json.Marshal(defs)
 	return data
+}
+
+// APIDefinitionsWithDeferral returns tool definitions with deferred loading support.
+// Tools that implement DeferrableTool and return ShouldDefer()=true are sent with
+// only their name (defer_loading: true), unless they appear in discoveredTools.
+func (r *Registry) APIDefinitionsWithDeferral(discoveredTools map[string]bool) json.RawMessage {
+	defs := make([]APIToolDef, 0, len(r.order))
+	for _, name := range r.order {
+		t := r.tools[name]
+		shouldDefer := false
+		if dt, ok := t.(DeferrableTool); ok && dt.ShouldDefer() {
+			// Defer unless the model already discovered this tool via ToolSearch
+			if discoveredTools == nil || !discoveredTools[name] {
+				shouldDefer = true
+			}
+		}
+
+		if shouldDefer {
+			defs = append(defs, APIToolDef{
+				Name:         name,
+				Description:  "",
+				InputSchema:  json.RawMessage(`{"type":"object"}`),
+				DeferLoading: true,
+			})
+		} else {
+			defs = append(defs, APIToolDef{
+				Name:        name,
+				Description: t.Description(),
+				InputSchema: t.InputSchema(),
+			})
+		}
+	}
+	data, _ := json.Marshal(defs)
+	return data
+}
+
+// DeferredToolNames returns the names of tools that support deferred loading.
+func (r *Registry) DeferredToolNames() []string {
+	var names []string
+	for _, name := range r.order {
+		if dt, ok := r.tools[name].(DeferrableTool); ok && dt.ShouldDefer() {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// ToolSearchHints returns a map of tool name → search hint for all deferrable tools.
+func (r *Registry) ToolSearchHints() map[string]string {
+	hints := make(map[string]string)
+	for _, name := range r.order {
+		if dt, ok := r.tools[name].(DeferrableTool); ok && dt.ShouldDefer() {
+			hints[name] = dt.SearchHint()
+		}
+	}
+	return hints
 }
 
 // Remove removes a tool from the registry by name.
@@ -88,7 +144,7 @@ func (r *Registry) Names() []string {
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
 
-	// Core file & shell tools
+	// Core file & shell tools (always loaded — never deferred)
 	r.Register(&BashTool{})
 	r.Register(&FileReadTool{})
 	r.Register(&FileWriteTool{})
@@ -96,34 +152,59 @@ func DefaultRegistry() *Registry {
 	r.Register(&GlobTool{})
 	r.Register(&GrepTool{})
 
-	// Web tools
-	r.Register(&WebSearchTool{})
-	r.Register(&WebFetchTool{})
-
-	// Code intelligence
-	r.Register(&LSPTool{})
-
-	// Notebook
-	r.Register(&NotebookEditTool{})
-
-	// Task management
-	r.Register(&TaskCreateTool{})
-	r.Register(&TaskListTool{})
-	r.Register(&TaskGetTool{})
-	r.Register(&TaskUpdateTool{})
-
-	// Workspace
-	r.Register(&EnterWorktreeTool{})
-	r.Register(&ExitWorktreeTool{})
-	r.Register(&EnterPlanModeTool{})
-	r.Register(&ExitPlanModeTool{})
-
-	// Agent
+	// Agent (always loaded)
 	r.Register(&AgentTool{})
 
-	// Background task management (TaskStop and TaskOutput need Runtime injected later)
-	r.Register(&TaskStopTool{})
-	r.Register(&TaskOutputTool{})
+	// ToolSearch (always loaded — needed to discover deferred tools)
+	ts := &ToolSearchTool{}
+	r.Register(ts)
+
+	// --- Deferred tools (sent with defer_loading: true to save tokens) ---
+
+	// Web tools
+	r.Register(&WebSearchTool{deferrable: newDeferrable("web search current events information")})
+	r.Register(&WebFetchTool{deferrable: newDeferrable("fetch URL content webpage")})
+
+	// Code intelligence
+	r.Register(&LSPTool{deferrable: newDeferrable("LSP code intelligence definitions references")})
+
+	// Notebook
+	r.Register(&NotebookEditTool{deferrable: newDeferrable("jupyter notebook cell edit")})
+
+	// Task management
+	r.Register(&TaskCreateTool{deferrable: newDeferrable("create task todo list tracking")})
+	r.Register(&TaskListTool{deferrable: newDeferrable("list tasks todo progress")})
+	r.Register(&TaskGetTool{deferrable: newDeferrable("get task details by ID")})
+	r.Register(&TaskUpdateTool{deferrable: newDeferrable("update task status progress")})
+
+	// Workspace
+	r.Register(&EnterWorktreeTool{deferrable: newDeferrable("git worktree isolated branch")})
+	r.Register(&ExitWorktreeTool{deferrable: newDeferrable("exit leave worktree")})
+	r.Register(&EnterPlanModeTool{deferrable: newDeferrable("plan mode design implementation approach")})
+	r.Register(&ExitPlanModeTool{deferrable: newDeferrable("exit plan mode approval")})
+
+	// Background task management (Runtime injected later)
+	r.Register(&TaskStopTool{deferrable: newDeferrable("stop cancel background task")})
+	r.Register(&TaskOutputTool{deferrable: newDeferrable("read background task output")})
+
+	// Team management (Manager injected later)
+	r.Register(&TeamCreateTool{deferrable: newDeferrable("create team multi-agent collaboration")})
+	r.Register(&TeamDeleteTool{deferrable: newDeferrable("delete remove team")})
+	r.Register(&SendMessageTool{deferrable: newDeferrable("send message to team agent")})
+
+	// Memory access (Store injected later)
+	r.Register(&MemoryTool{deferrable: newDeferrable("memory search read list persistent context")})
+
+	// Cron/scheduled tasks (Store injected later)
+	r.Register(&CronCreateTool{})
+	r.Register(&CronDeleteTool{})
+	r.Register(&CronListTool{})
+
+	// AskUser (channels injected by TUI layer)
+	r.Register(&AskUserTool{deferrable: newDeferrable("ask user question options structured")})
+
+	// Inject registry into ToolSearch so it can look up tools
+	ts.SetRegistry(r)
 
 	return r
 }

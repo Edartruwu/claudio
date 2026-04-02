@@ -1,6 +1,7 @@
 package commandpalette
 
 import (
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -112,6 +113,11 @@ func (m *Model) UpdateQuery(query string) {
 	}
 }
 
+type scoredItem struct {
+	item  Item
+	score int
+}
+
 func (m *Model) filter() {
 	if m.query == "" {
 		m.filtered = m.items
@@ -119,23 +125,57 @@ func (m *Model) filter() {
 	}
 
 	q := strings.ToLower(m.query)
-	m.filtered = nil
+	var scored []scoredItem
 	for _, item := range m.items {
-		if fuzzyMatch(strings.ToLower(item.Name), q) ||
-			fuzzyMatch(strings.ToLower(item.Description), q) {
-			m.filtered = append(m.filtered, item)
+		name := strings.ToLower(item.Name)
+		desc := strings.ToLower(item.Description)
+
+		// Prefix match on name is best
+		if strings.HasPrefix(name, q) {
+			scored = append(scored, scoredItem{item, 100 - len(name)})
+		} else if strings.Contains(name, q) {
+			scored = append(scored, scoredItem{item, 50 - len(name)})
+		} else if s, ok := fuzzyScore(name, q); ok {
+			scored = append(scored, scoredItem{item, s})
+		} else if strings.Contains(desc, q) {
+			scored = append(scored, scoredItem{item, -50})
+		} else if _, ok := fuzzyScore(desc, q); ok {
+			scored = append(scored, scoredItem{item, -100})
 		}
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	m.filtered = nil
+	for _, s := range scored {
+		m.filtered = append(m.filtered, s.item)
 	}
 }
 
-func fuzzyMatch(str, pattern string) bool {
+// fuzzyScore returns a score and whether the pattern matches.
+// Higher scores mean better matches (more consecutive chars, earlier positions).
+func fuzzyScore(str, pattern string) (int, bool) {
 	pi := 0
+	score := 0
+	consecutive := 0
 	for si := 0; si < len(str) && pi < len(pattern); si++ {
 		if str[si] == pattern[pi] {
 			pi++
+			consecutive++
+			score += consecutive * 2 // reward consecutive matches
+			if si == pi-1 {
+				score += 3 // reward matching at start
+			}
+		} else {
+			consecutive = 0
 		}
 	}
-	return pi == len(pattern)
+	if pi < len(pattern) {
+		return 0, false
+	}
+	return score, true
 }
 
 // View renders the palette.

@@ -47,22 +47,10 @@ func LoadAll(userRulesDir, projectRulesDir string) *Registry {
 }
 
 // LoadCLAUDEMD loads CLAUDE.md / CLAUDIO.md files from project root and user home.
+// Also walks from projectDir to cwd loading subdirectory CLAUDE.md files.
+// Closer directories have higher priority (loaded later in the rules list).
 func (r *Registry) LoadCLAUDEMD(projectDir, homeDir string) {
-	// Project-level CLAUDE.md / CLAUDIO.md
-	for _, name := range []string{"CLAUDIO.md", "CLAUDE.md", ".claudio/CLAUDE.md"} {
-		path := filepath.Join(projectDir, name)
-		if content := utils.ReadFileIfExists(path); content != "" {
-			r.rules = append(r.rules, &Rule{
-				Name:    name,
-				Content: content,
-				Source:  "project",
-				Path:    path,
-			})
-			break
-		}
-	}
-
-	// User-level CLAUDE.md
+	// User-level CLAUDE.md (lowest priority, loaded first)
 	if homeDir != "" {
 		path := filepath.Join(homeDir, ".claudio", "CLAUDE.md")
 		if content := utils.ReadFileIfExists(path); content != "" {
@@ -74,6 +62,55 @@ func (r *Registry) LoadCLAUDEMD(projectDir, homeDir string) {
 			})
 		}
 	}
+
+	// Project-level: walk from projectDir to cwd
+	cwd, _ := os.Getwd()
+	dirs := collectDirsRootToCwd(projectDir, cwd)
+
+	for _, dir := range dirs {
+		for _, name := range []string{"CLAUDIO.md", "CLAUDE.md", ".claudio/CLAUDE.md"} {
+			path := filepath.Join(dir, name)
+			if content := utils.ReadFileIfExists(path); content != "" {
+				r.rules = append(r.rules, &Rule{
+					Name:    name,
+					Content: content,
+					Source:  "project",
+					Path:    path,
+				})
+				break // only first match per directory
+			}
+		}
+	}
+}
+
+// collectDirsRootToCwd returns directories from root down to cwd (inclusive).
+func collectDirsRootToCwd(root, cwd string) []string {
+	root = filepath.Clean(root)
+	cwd = filepath.Clean(cwd)
+
+	if root == cwd {
+		return []string{root}
+	}
+
+	var stack []string
+	current := cwd
+	for {
+		stack = append(stack, current)
+		if current == root {
+			break
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+
+	// Reverse: root first
+	for i, j := 0, len(stack)-1; i < j; i, j = i+1, j-1 {
+		stack[i], stack[j] = stack[j], stack[i]
+	}
+	return stack
 }
 
 // All returns all loaded rules.

@@ -20,6 +20,9 @@ type AgentTool struct {
 	// RunAgent executes a sub-agent synchronously. Set by app initialization.
 	// Receives (ctx, systemPrompt, userPrompt) and returns the text output.
 	RunAgent func(ctx context.Context, system, prompt string) (string, error)
+	// RunAgentWithMemory executes a sub-agent with agent-scoped memory injection.
+	// The memoryDir parameter points to the agent's own memory directory.
+	RunAgentWithMemory func(ctx context.Context, system, prompt, memoryDir string) (string, error)
 	// TaskRuntime for background agent execution.
 	TaskRuntime *tasks.Runtime
 }
@@ -122,6 +125,13 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 	}
 
 	// Foreground execution
+	if agentDef.MemoryDir != "" && t.RunAgentWithMemory != nil {
+		result, err := t.RunAgentWithMemory(ctx, agentDef.SystemPrompt, in.Prompt, agentDef.MemoryDir)
+		if err != nil {
+			return &Result{Content: fmt.Sprintf("Agent error: %v", err), IsError: true}, nil
+		}
+		return &Result{Content: result}, nil
+	}
 	if t.RunAgent != nil {
 		result, err := t.RunAgent(ctx, agentDef.SystemPrompt, in.Prompt)
 		if err != nil {

@@ -86,6 +86,11 @@ func (t *Tracker) OutputTokens() int {
 	return t.outputTokens
 }
 
+// MaxBudget returns the configured budget limit (0 = unlimited).
+func (t *Tracker) MaxBudget() float64 {
+	return t.maxBudget
+}
+
 // Cost returns the estimated cost in USD.
 func (t *Tracker) Cost() float64 {
 	t.mu.Lock()
@@ -177,7 +182,11 @@ func (t *Tracker) SaveReport(sessionID string) error {
 		return err
 	}
 
-	filename := fmt.Sprintf("%s-%s.json", time.Now().Format("2006-01-02"), sessionID[:8])
+	shortID := sessionID
+	if len(shortID) > 8 {
+		shortID = shortID[:8]
+	}
+	filename := fmt.Sprintf("%s-%s.json", time.Now().Format("2006-01-02"), shortID)
 	return os.WriteFile(filepath.Join(t.saveDir, filename), data, 0644)
 }
 

@@ -4,14 +4,18 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
 // Settings represents the merged configuration from all sources.
 type Settings struct {
 	// AI model settings
-	Model      string `json:"model,omitempty"`
-	SmallModel string `json:"smallModel,omitempty"`
+	Model        string `json:"model,omitempty"`
+	SmallModel   string `json:"smallModel,omitempty"`
+	ThinkingMode string `json:"thinkingMode,omitempty"` // "adaptive", "enabled", "disabled", "" (auto)
+	BudgetTokens int    `json:"budgetTokens,omitempty"` // thinking budget when mode is "enabled"
+	EffortLevel  string `json:"effortLevel,omitempty"`  // "low", "medium", "high", "" (default=medium)
 
 	// Permission settings
 	PermissionMode string `json:"permissionMode,omitempty"` // "default", "auto", "headless"
@@ -21,10 +25,23 @@ type Settings struct {
 	CompactMode    string `json:"compactMode,omitempty"` // "auto", "manual", "strategic"
 	SessionPersist bool   `json:"sessionPersist,omitempty"`
 
+	// Memory settings
+	AutoMemoryExtract *bool  `json:"autoMemoryExtract,omitempty"` // auto-extract memories on turn end (default: true)
+	MemorySelection   string `json:"memorySelection,omitempty"`   // "ai" (Haiku), "keyword", "none" (default: "ai")
+
 	// Security settings
 	DenyPaths  []string `json:"denyPaths,omitempty"`
 	DenyTools  []string `json:"denyTools,omitempty"`
 	AllowPaths []string `json:"allowPaths,omitempty"`
+
+	// Permission pattern rules (content-based allow/deny per tool)
+	PermissionRules []PermissionRule `json:"permissionRules,omitempty"`
+
+	// Output style
+	OutputStyle string `json:"outputStyle,omitempty"` // "normal", "concise", "verbose", "markdown"
+
+	// Cost threshold for confirmation dialog (USD, 0 = disabled)
+	CostConfirmThreshold float64 `json:"costConfirmThreshold,omitempty"`
 
 	// Hook profiles
 	HookProfile string `json:"hookProfile,omitempty"` // "minimal", "standard", "strict"
@@ -38,6 +55,13 @@ type Settings struct {
 
 	// Token budget
 	MaxBudget float64 `json:"maxBudget,omitempty"`
+}
+
+// PermissionRule defines a content-pattern permission for a specific tool.
+type PermissionRule struct {
+	Tool     string `json:"tool"`     // tool name: "Bash", "Write", "*"
+	Pattern  string `json:"pattern"`  // glob pattern matched against tool-specific content
+	Behavior string `json:"behavior"` // "allow", "deny", "ask"
 }
 
 // MCPServerConfig defines an MCP server connection.
@@ -63,8 +87,10 @@ type Paths struct {
 	Rules       string // ~/.claudio/rules/
 	Agents      string // ~/.claudio/agents/
 	Memory      string // ~/.claudio/memory/
+	Projects    string // ~/.claudio/projects/
 	Logs        string // ~/.claudio/logs/
 	Plans       string // ~/.claudio/plans/
+	Cache       string // ~/.claudio/cache/
 	DB          string // ~/.claudio/claudio.db
 	Instincts   string // ~/.claudio/instincts.json
 }
@@ -95,8 +121,10 @@ func GetPaths() *Paths {
 			Rules:       filepath.Join(base, "rules"),
 			Agents:      filepath.Join(base, "agents"),
 			Memory:      filepath.Join(base, "memory"),
+			Projects:    filepath.Join(base, "projects"),
 			Logs:        filepath.Join(base, "logs"),
 			Plans:       filepath.Join(base, "plans"),
+			Cache:       filepath.Join(base, "cache"),
 			DB:          filepath.Join(base, "claudio.db"),
 			Instincts:   filepath.Join(base, "instincts.json"),
 		}
@@ -107,7 +135,7 @@ func GetPaths() *Paths {
 // EnsureDirs creates all required directories and bootstraps default config files.
 func EnsureDirs() error {
 	p := GetPaths()
-	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts, p.Rules, p.Agents, p.Memory, p.Logs, p.Plans}
+	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts, p.Rules, p.Agents, p.Memory, p.Projects, p.Logs, p.Plans, p.Cache}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
@@ -178,6 +206,15 @@ func mergeFromFile(settings *Settings, path string) {
 	if overlay.SmallModel != "" {
 		settings.SmallModel = overlay.SmallModel
 	}
+	if overlay.ThinkingMode != "" {
+		settings.ThinkingMode = overlay.ThinkingMode
+	}
+	if overlay.BudgetTokens > 0 {
+		settings.BudgetTokens = overlay.BudgetTokens
+	}
+	if overlay.EffortLevel != "" {
+		settings.EffortLevel = overlay.EffortLevel
+	}
 	if overlay.PermissionMode != "" {
 		settings.PermissionMode = overlay.PermissionMode
 	}
@@ -210,6 +247,24 @@ func mergeFromFile(settings *Settings, path string) {
 			settings.MCPServers[k] = v
 		}
 	}
+	if len(overlay.PermissionRules) > 0 {
+		settings.PermissionRules = append(settings.PermissionRules, overlay.PermissionRules...)
+	}
+	if overlay.OutputStyle != "" {
+		settings.OutputStyle = overlay.OutputStyle
+	}
+	if overlay.CostConfirmThreshold > 0 {
+		settings.CostConfirmThreshold = overlay.CostConfirmThreshold
+	}
+	if overlay.AutoMemoryExtract != nil {
+		settings.AutoMemoryExtract = overlay.AutoMemoryExtract
+	}
+	if overlay.MemorySelection != "" {
+		settings.MemorySelection = overlay.MemorySelection
+	}
+	if len(overlay.DenyTools) > 0 {
+		settings.DenyTools = append(settings.DenyTools, overlay.DenyTools...)
+	}
 }
 
 func applyEnvOverrides(settings *Settings) {
@@ -222,4 +277,43 @@ func applyEnvOverrides(settings *Settings) {
 	if v := os.Getenv("CLAUDIO_HOOK_PROFILE"); v != "" {
 		settings.HookProfile = v
 	}
+}
+
+// SanitizeProjectPath converts a filesystem path into a safe directory name.
+// e.g. "/Users/abraxas/Personal/claudio" -> "users-abraxas-personal-claudio"
+func SanitizeProjectPath(path string) string {
+	path = strings.ToLower(filepath.Clean(path))
+	path = strings.TrimPrefix(path, "/")
+	path = strings.ReplaceAll(path, "/", "-")
+	path = strings.ReplaceAll(path, "\\", "-")
+	path = strings.ReplaceAll(path, " ", "-")
+	// Remove any double dashes
+	for strings.Contains(path, "--") {
+		path = strings.ReplaceAll(path, "--", "-")
+	}
+	return path
+}
+
+// ProjectMemoryDir returns the memory directory for a specific project.
+// Uses the git root (or cwd) to create a stable, project-scoped path.
+// IsAutoMemoryExtract returns whether automatic memory extraction is enabled.
+func (s *Settings) IsAutoMemoryExtract() bool {
+	if s.AutoMemoryExtract == nil {
+		return true // default: enabled
+	}
+	return *s.AutoMemoryExtract
+}
+
+// GetMemorySelection returns the memory selection strategy ("ai", "keyword", "none").
+func (s *Settings) GetMemorySelection() string {
+	if s.MemorySelection == "" {
+		return "ai" // default
+	}
+	return s.MemorySelection
+}
+
+func ProjectMemoryDir(projectRoot string) string {
+	p := GetPaths()
+	slug := SanitizeProjectPath(projectRoot)
+	return filepath.Join(p.Projects, slug, "memory")
 }

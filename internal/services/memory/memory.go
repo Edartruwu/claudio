@@ -26,6 +26,7 @@ type Entry struct {
 	Name        string
 	Description string
 	Type        string // user, feedback, project, reference
+	Scope       string // project, global, agent (controls where Save writes)
 	Content     string
 	FilePath    string
 }

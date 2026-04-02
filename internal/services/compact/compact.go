@@ -40,6 +40,16 @@ func (s *State) ShouldSuggest(strategy Strategy) bool {
 	return false
 }
 
+// ShouldPartialCompact returns true if partial compaction (clearing old tool results) is warranted.
+func (s *State) ShouldPartialCompact() bool {
+	return s.TotalTokens > s.MaxTokens*70/100
+}
+
+// ShouldFullCompact returns true if a full compaction (API summarization) should be suggested.
+func (s *State) ShouldFullCompact() bool {
+	return s.TotalTokens > s.MaxTokens*90/100
+}
+
 // ShouldForce returns true if compaction is mandatory (about to overflow).
 func (s *State) ShouldForce() bool {
 	return s.TotalTokens > s.MaxTokens*95/100
@@ -72,16 +82,34 @@ func (s *State) DetectPhase(recentTools []string) string {
 }
 
 // Compact summarizes old messages using the API.
-func Compact(ctx context.Context, client *api.Client, messages []api.Message, keepLast int) ([]api.Message, string, error) {
+// pinnedIndices is an optional set of message indices that should be preserved
+// verbatim through compaction (not summarized). Pass nil to compact everything.
+func Compact(ctx context.Context, client *api.Client, messages []api.Message, keepLast int, pinnedIndices ...map[int]bool) ([]api.Message, string, error) {
 	if len(messages) <= keepLast {
 		return messages, "", nil
 	}
 
-	// Split into old (to summarize) and recent (to keep)
-	oldMessages := messages[:len(messages)-keepLast]
-	recentMessages := messages[len(messages)-keepLast:]
+	pinned := map[int]bool{}
+	if len(pinnedIndices) > 0 && pinnedIndices[0] != nil {
+		pinned = pinnedIndices[0]
+	}
 
-	// Build summary prompt
+	// Split into old (to summarize) and recent (to keep)
+	cutoff := len(messages) - keepLast
+	recentMessages := messages[cutoff:]
+
+	// Separate pinned messages from old messages
+	var oldMessages []api.Message
+	var pinnedMessages []api.Message
+	for i := 0; i < cutoff; i++ {
+		if pinned[i] {
+			pinnedMessages = append(pinnedMessages, messages[i])
+		} else {
+			oldMessages = append(oldMessages, messages[i])
+		}
+	}
+
+	// Build summary prompt from non-pinned old messages
 	var summaryParts []string
 	for _, msg := range oldMessages {
 		var content string
@@ -121,13 +149,143 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 		}
 	}
 
-	// Build new message list: [system summary] + recent messages
+	// Build new message list: [system summary] + pinned messages + recent messages
 	summaryContent, _ := json.Marshal(fmt.Sprintf("[Conversation Summary]\n%s", summary))
 	compacted := []api.Message{
 		{Role: "user", Content: summaryContent},
 		{Role: "assistant", Content: json.RawMessage(`"Understood. I have the context from the summary. Let's continue."`)},
 	}
+
+	// Insert pinned messages (they need to maintain valid user/assistant alternation)
+	if len(pinnedMessages) > 0 {
+		pinnedContent, _ := json.Marshal("[Pinned context — preserved through compaction]")
+		compacted = append(compacted, api.Message{Role: "user", Content: pinnedContent})
+		for _, pm := range pinnedMessages {
+			compacted = append(compacted, pm)
+		}
+		// Ensure valid alternation — if last pinned was user, add assistant ack
+		if len(pinnedMessages) > 0 && pinnedMessages[len(pinnedMessages)-1].Role == "user" {
+			compacted = append(compacted, api.Message{
+				Role:    "assistant",
+				Content: json.RawMessage(`"Noted the pinned context."`),
+			})
+		}
+	}
+
 	compacted = append(compacted, recentMessages...)
 
 	return compacted, summary, nil
+}
+
+// readHeavyTools are tools whose output can be safely cleared (read-only, reproducible).
+var readHeavyTools = map[string]bool{
+	"Bash": true, "Read": true, "Glob": true, "Grep": true,
+	"WebFetch": true, "WebSearch": true, "LSP": true, "ToolSearch": true,
+}
+
+// ContentClearCompact replaces large tool results in old messages with a placeholder.
+// Messages in the last keepLast are preserved. Only tool_result blocks larger than
+// minSize bytes are cleared. Returns the modified message slice (in-place modification
+// of copies).
+func ContentClearCompact(messages []api.Message, keepLast int, minSize int) []api.Message {
+	if len(messages) <= keepLast {
+		return messages
+	}
+
+	cutoff := len(messages) - keepLast
+	result := make([]api.Message, len(messages))
+	copy(result, messages)
+
+	for i := 0; i < cutoff; i++ {
+		msg := result[i]
+		if msg.Role != "user" {
+			continue
+		}
+
+		// Try to parse as array of tool_result blocks
+		var blocks []json.RawMessage
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+
+		modified := false
+		for j, block := range blocks {
+			var tr struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+				IsError   bool   `json:"is_error,omitempty"`
+			}
+			if json.Unmarshal(block, &tr) != nil || tr.Type != "tool_result" {
+				continue
+			}
+			if len(tr.Content) < minSize {
+				continue
+			}
+
+			// Replace with placeholder
+			tr.Content = fmt.Sprintf("[content cleared — %d bytes]", len(tr.Content))
+			blocks[j], _ = json.Marshal(tr)
+			modified = true
+		}
+
+		if modified {
+			result[i].Content, _ = json.Marshal(blocks)
+		}
+	}
+
+	return result
+}
+
+// PartialCompact strips content from read-heavy tool results in old messages.
+// Write tool results (Write, Edit) are preserved intact.
+func PartialCompact(messages []api.Message, keepLast int) []api.Message {
+	if len(messages) <= keepLast {
+		return messages
+	}
+
+	cutoff := len(messages) - keepLast
+	result := make([]api.Message, len(messages))
+	copy(result, messages)
+
+	for i := 0; i < cutoff; i++ {
+		msg := result[i]
+
+		// Check assistant messages for tool_use blocks to identify tool names
+		if msg.Role == "assistant" {
+			continue
+		}
+
+		// For user messages, clear large tool_result blocks
+		var blocks []json.RawMessage
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+
+		modified := false
+		for j, block := range blocks {
+			var tr struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+				IsError   bool   `json:"is_error,omitempty"`
+			}
+			if json.Unmarshal(block, &tr) != nil || tr.Type != "tool_result" {
+				continue
+			}
+			if len(tr.Content) < 1024 { // only clear results > 1KB
+				continue
+			}
+
+			tr.Content = fmt.Sprintf("[result cleared — %d bytes]", len(tr.Content))
+			blocks[j], _ = json.Marshal(tr)
+			modified = true
+		}
+
+		if modified {
+			result[i].Content, _ = json.Marshal(blocks)
+		}
+	}
+
+	return result
 }

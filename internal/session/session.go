@@ -93,6 +93,24 @@ func (s *Session) SaveSummary(summary string) error {
 	return s.db.UpdateSessionSummary(s.current.ID, summary)
 }
 
+// RenameByID updates the title of any session by ID.
+func (s *Session) RenameByID(id, title string) error {
+	return s.db.UpdateSessionTitle(id, title)
+}
+
+// Delete removes a session by ID.
+func (s *Session) Delete(id string) error {
+	return s.db.DeleteSession(id)
+}
+
+// Search finds sessions matching the query string.
+func (s *Session) Search(query string, limit int) ([]storage.Session, error) {
+	if query == "" {
+		return s.db.ListSessions(limit)
+	}
+	return s.db.SearchSessions(query, limit)
+}
+
 // RecentForProject returns recent sessions for the current working directory.
 func (s *Session) RecentForProject(limit int) ([]storage.Session, error) {
 	all, err := s.db.ListSessions(limit * 3) // over-fetch, then filter

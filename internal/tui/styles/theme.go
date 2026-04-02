@@ -82,6 +82,10 @@ var (
 			Foreground(Warning).
 			Bold(true)
 
+	PinIcon = lipgloss.NewStyle().
+		Foreground(Orange).
+		Bold(true)
+
 	// Other message types
 	ThinkingStyle = lipgloss.NewStyle().
 			Foreground(Muted).
@@ -227,6 +231,63 @@ var (
 				Foreground(Text).
 				Padding(0, 1).
 				Margin(0, 1)
+)
+
+// ── Panels ──────────────────────────────────────────────
+
+var (
+	PanelBorder = lipgloss.NewStyle().
+			Border(lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "╭",
+			TopRight:    "╮",
+			BottomLeft:  "╰",
+			BottomRight: "╯",
+		}).
+		BorderForeground(SurfaceAlt)
+
+	PanelTitle = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true).
+			Padding(0, 1)
+
+	PanelItem = lipgloss.NewStyle().
+			Foreground(Dim).
+			PaddingLeft(2)
+
+	PanelItemSelected = lipgloss.NewStyle().
+				Foreground(Text).
+				Bold(true).
+				PaddingLeft(1)
+
+	PanelBadge = lipgloss.NewStyle().
+			Foreground(Surface).
+			Background(Primary).
+			Padding(0, 1)
+
+	PanelBadgeUser = lipgloss.NewStyle().
+			Foreground(Surface).
+			Background(Secondary)
+
+	PanelBadgeProject = lipgloss.NewStyle().
+				Foreground(Surface).
+				Background(Orange)
+
+	PanelBadgeBundled = lipgloss.NewStyle().
+				Foreground(Surface).
+				Background(Aqua)
+
+	PanelHint = lipgloss.NewStyle().
+			Foreground(Subtle).
+			Italic(true).
+			PaddingLeft(2)
+
+	PanelSearch = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
 )
 
 // ── Utilities ────────────────────────────────────────────

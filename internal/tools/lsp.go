@@ -12,7 +12,9 @@ import (
 )
 
 // LSPTool provides Language Server Protocol operations.
-type LSPTool struct{}
+type LSPTool struct {
+	deferrable
+}
 
 type lspInput struct {
 	Operation string `json:"operation"` // goToDefinition, findReferences, hover, documentSymbol

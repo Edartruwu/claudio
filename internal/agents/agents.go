@@ -4,9 +4,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
+
+var (
+	customDirsMu sync.RWMutex
+	customDirs   []string
+)
+
+// SetCustomDirs registers directories to search for custom agent definitions.
+// Call this during app initialization before agents are resolved.
+func SetCustomDirs(dirs ...string) {
+	customDirsMu.Lock()
+	defer customDirsMu.Unlock()
+	customDirs = dirs
+}
+
+// getCustomDirs returns the registered custom agent directories.
+func getCustomDirs() []string {
+	customDirsMu.RLock()
+	defer customDirsMu.RUnlock()
+	return customDirs
+}
 
 // AgentDefinition describes a built-in agent type.
 type AgentDefinition struct {
@@ -30,6 +51,15 @@ type AgentDefinition struct {
 
 	// ReadOnly indicates the agent cannot modify files.
 	ReadOnly bool
+
+	// MemoryDir is the agent's own memory directory (for crystallized session-agents).
+	MemoryDir string
+
+	// SourceSession is the session ID this agent was crystallized from.
+	SourceSession string
+
+	// SourceProject is the project directory this agent was originally created in.
+	SourceProject string
 }
 
 // BuiltInAgents returns all built-in agent definitions.
@@ -43,8 +73,9 @@ func BuiltInAgents() []AgentDefinition {
 }
 
 // GetAgent returns the agent definition for the given type, or the general-purpose agent if not found.
+// Searches both built-in and custom agents from registered directories.
 func GetAgent(agentType string) AgentDefinition {
-	for _, a := range BuiltInAgents() {
+	for _, a := range AllAgents(getCustomDirs()...) {
 		if a.Type == agentType {
 			return a
 		}
@@ -54,7 +85,7 @@ func GetAgent(agentType string) AgentDefinition {
 
 // AgentTypesList returns a formatted string of all agent types for use in the Agent tool prompt.
 func AgentTypesList() string {
-	agents := BuiltInAgents()
+	agents := AllAgents(getCustomDirs()...)
 	var lines string
 	for _, a := range agents {
 		toolsStr := "all tools"
@@ -243,11 +274,19 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 				SystemPrompt: body,
 				Tools:        fm.GetList("tools"),
 				DisallowedTools: fm.GetList("disallowedTools"),
-				Model:        fm.Get("model"),
+				Model:         fm.Get("model"),
+				SourceSession: fm.Get("sourceSession"),
+				SourceProject: fm.Get("sourceProject"),
 			}
 
 			if len(def.Tools) == 0 {
 				def.Tools = []string{"*"}
+			}
+
+			// Check for sibling memory directory: <name>/memory/
+			memDir := filepath.Join(dir, agentType, "memory")
+			if info, err := os.Stat(memDir); err == nil && info.IsDir() {
+				def.MemoryDir = memDir
 			}
 
 			custom = append(custom, def)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -37,7 +38,11 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		Description: "Show or change the AI model",
 		Execute: func(args string) (string, error) {
 			if args == "" {
-				return fmt.Sprintf("Current model: %s", deps.GetModel()), nil
+				info := fmt.Sprintf("Current model: %s", deps.GetModel())
+				if deps.GetThinkingLabel != nil {
+					info += fmt.Sprintf("\nThinking: %s", deps.GetThinkingLabel())
+				}
+				return info, nil
 			}
 			deps.SetModel(args)
 			return fmt.Sprintf("Model set to: %s", args), nil
@@ -72,6 +77,33 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 			tokens := deps.GetTokens()
 			cost := deps.GetCost()
 			return fmt.Sprintf("Session usage:\n  Tokens: %d\n  Cost:   $%.4f", tokens, cost), nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "memory",
+		Aliases:     []string{"mem"},
+		Description: "Memory management: /memory extract (extract from current conversation)",
+		Execute: func(args string) (string, error) {
+			args = strings.TrimSpace(args)
+			switch args {
+			case "extract":
+				if deps.ExtractMemories == nil {
+					return "Memory extraction not available.", nil
+				}
+				count, err := deps.ExtractMemories()
+				if err != nil {
+					return fmt.Sprintf("Extraction failed: %v", err), nil
+				}
+				if count == 0 {
+					return "No new memories extracted from this conversation.", nil
+				}
+				return fmt.Sprintf("Extracted %d memory(ies) from this conversation.", count), nil
+			case "":
+				return "Usage: /memory extract — extract memories from current conversation\n  Use <Space>im to browse memories", nil
+			default:
+				return fmt.Sprintf("Unknown subcommand: %s. Use: /memory extract", args), nil
+			}
 		},
 	})
 
@@ -233,8 +265,23 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 
 	r.Register(&Command{
 		Name:        "diff",
-		Description: "Show git diff",
+		Description: "Show git diff (or /diff turn N for per-turn changes)",
 		Execute: func(args string) (string, error) {
+			// Check for "turn N" subcommand
+			args = strings.TrimSpace(args)
+			if strings.HasPrefix(args, "turn ") || strings.HasPrefix(args, "--turn ") {
+				turnStr := strings.TrimPrefix(strings.TrimPrefix(args, "--turn "), "turn ")
+				turnStr = strings.TrimSpace(turnStr)
+				var turnNum int
+				if _, err := fmt.Sscanf(turnStr, "%d", &turnNum); err != nil {
+					return "Usage: /diff turn <number>", nil
+				}
+				if deps.GetTurnDiff != nil {
+					return deps.GetTurnDiff(turnNum), nil
+				}
+				return "Turn diff tracking not available.", nil
+			}
+
 			cmd := exec.Command("git", "diff")
 			if args != "" {
 				cmd = exec.Command("git", "diff", args)
@@ -339,6 +386,31 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	})
 
 	r.Register(&Command{
+		Name:        "history",
+		Description: "Load full conversation history from previous session",
+		Execute: func(args string) (string, error) {
+			if deps.LoadHistory == nil {
+				return "No session manager available", nil
+			}
+			return deps.LoadHistory()
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "new",
+		Description: "Start a new session",
+		Execute: func(args string) (string, error) {
+			if deps.NewSession == nil {
+				return "No session manager available", nil
+			}
+			if err := deps.NewSession(); err != nil {
+				return "", err
+			}
+			return "__new_session__", nil
+		},
+	})
+
+	r.Register(&Command{
 		Name:        "resume",
 		Description: "Resume a previous session by ID prefix",
 		Execute: func(args string) (string, error) {
@@ -369,9 +441,9 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 
 	r.Register(&Command{
 		Name:        "mcp",
-		Description: "Manage MCP servers",
+		Description: "Manage MCP servers: /mcp [status|list]",
 		Execute: func(args string) (string, error) {
-			return "MCP server management: /mcp status, /mcp start <name>, /mcp stop <name>", nil
+			return "MCP server management:\n  /mcp status  — show running servers\n  /mcp list    — list configured servers\n\nConfigure in settings.json under \"mcpServers\".", nil
 		},
 	})
 
@@ -380,6 +452,211 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		Description: "Show recent tool audit log",
 		Execute: func(args string) (string, error) {
 			return "Audit log (stored in ~/.claudio/claudio.db)", nil
+		},
+	})
+
+	// --- New commands ---
+
+	r.Register(&Command{
+		Name:        "clear",
+		Description: "Clear conversation history (keeps session)",
+		Execute: func(args string) (string, error) {
+			return "[action:clear]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "undo",
+		Description: "Undo the last exchange (removes last user + assistant message)",
+		Execute: func(args string) (string, error) {
+			return "[action:undo]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "fork",
+		Description: "Fork current conversation to a background agent",
+		Execute: func(args string) (string, error) {
+			prompt := args
+			if prompt == "" {
+				prompt = "Continue working on the current task"
+			}
+			return "[action:fork:" + prompt + "]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "export",
+		Description: "Export conversation: /export [markdown|json|txt]",
+		Execute: func(args string) (string, error) {
+			format := "markdown"
+			if args != "" {
+				format = strings.TrimSpace(args)
+			}
+			return "[action:export:" + format + "]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "tasks",
+		Description: "Show background tasks and team status",
+		Execute: func(args string) (string, error) {
+			return "[action:tasks]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "bug",
+		Aliases:     []string{"feedback"},
+		Description: "Report a bug or give feedback",
+		Execute: func(args string) (string, error) {
+			var lines []string
+			lines = append(lines, "Report issues or give feedback:")
+			lines = append(lines, "  https://github.com/Abraxas-365/claudio/issues")
+			lines = append(lines, "")
+			lines = append(lines, "Include:")
+			lines = append(lines, fmt.Sprintf("  Version: claudio %s", "dev"))
+			lines = append(lines, fmt.Sprintf("  OS: %s/%s", runtime.GOOS, runtime.GOARCH))
+			lines = append(lines, fmt.Sprintf("  Model: %s", deps.GetModel()))
+			return strings.Join(lines, "\n"), nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "team",
+		Description: "Manage agent teams: /team [create|status|spawn|message|kill|delete]",
+		Execute: func(args string) (string, error) {
+			parts := strings.Fields(args)
+			if len(parts) == 0 {
+				return "Usage:\n  /team create <name>         — create a new team\n  /team status                — show team status\n  /team spawn <name> <prompt> — spawn a teammate\n  /team message <name> <text> — send message to teammate\n  /team kill <name>           — kill a teammate\n  /team delete                — delete the team", nil
+			}
+
+			subCmd := parts[0]
+			subArgs := ""
+			if len(parts) > 1 {
+				subArgs = strings.Join(parts[1:], " ")
+			}
+
+			switch subCmd {
+			case "create":
+				if subArgs == "" {
+					return "Usage: /team create <name>", nil
+				}
+				return "[action:team_create:" + subArgs + "]", nil
+			case "status":
+				return "[action:team_status]", nil
+			case "spawn":
+				if len(parts) < 3 {
+					return "Usage: /team spawn <agent-name> <prompt>", nil
+				}
+				return "[action:team_spawn:" + parts[1] + ":" + strings.Join(parts[2:], " ") + "]", nil
+			case "message", "msg":
+				if len(parts) < 3 {
+					return "Usage: /team message <agent-name> <text>", nil
+				}
+				return "[action:team_message:" + parts[1] + ":" + strings.Join(parts[2:], " ") + "]", nil
+			case "kill":
+				if subArgs == "" {
+					return "Usage: /team kill <agent-name>", nil
+				}
+				return "[action:team_kill:" + subArgs + "]", nil
+			case "delete":
+				return "[action:team_delete]", nil
+			default:
+				return fmt.Sprintf("Unknown team command: %s. Use /team for help.", subCmd), nil
+			}
+		},
+	})
+
+	// /plugins — list installed plugins
+	r.Register(&Command{
+		Name:        "plugins",
+		Description: "List installed plugins",
+		Execute: func(args string) (string, error) {
+			if deps.ListPlugins == nil {
+				return "Plugin system not available.", nil
+			}
+			return deps.ListPlugins(), nil
+		},
+	})
+
+	// /share — export session for sharing
+	r.Register(&Command{
+		Name:        "share",
+		Description: "Export current session for sharing",
+		Execute: func(args string) (string, error) {
+			if deps.ShareSession == nil {
+				return "Session sharing not available.", nil
+			}
+			path := strings.TrimSpace(args)
+			if path == "" {
+				path = fmt.Sprintf("claudio-session-%s.json", time.Now().Format("20060102-150405"))
+			}
+			return deps.ShareSession(path)
+		},
+	})
+
+	// /teleport — import shared session
+	r.Register(&Command{
+		Name:        "teleport",
+		Description: "Import a shared session file",
+		Execute: func(args string) (string, error) {
+			if deps.TeleportSession == nil {
+				return "Session teleport not available.", nil
+			}
+			path := strings.TrimSpace(args)
+			if path == "" {
+				return "Usage: /teleport <path-to-session-file>", nil
+			}
+			return deps.TeleportSession(path)
+		},
+	})
+
+	// /keybindings — open keybindings config in editor
+	r.Register(&Command{
+		Name:        "keybindings",
+		Description: "Open keybindings.json in your editor",
+		Execute: func(args string) (string, error) {
+			kbPath := filepath.Join(config.GetPaths().Home, "keybindings.json")
+
+			// Create template if file doesn't exist
+			if _, err := os.Stat(kbPath); os.IsNotExist(err) {
+				// Import and write template
+				template := []byte("[\n  // Customize your keybindings here.\n  // See default bindings with: claudio keybindings --defaults\n]\n")
+				os.WriteFile(kbPath, template, 0644)
+			}
+
+			editor := os.Getenv("EDITOR")
+			if editor == "" {
+				editor = "vi"
+			}
+			return fmt.Sprintf("[action:edit:%s:%s]", editor, kbPath), nil
+		},
+	})
+
+	// /output-style — show or set output formatting style
+	r.Register(&Command{
+		Name:        "output-style",
+		Description: "Show or set output style (normal, concise, verbose, markdown)",
+		Execute: func(args string) (string, error) {
+			if deps.GetOutputStyle == nil {
+				return "Output style not available.", nil
+			}
+			if args == "" {
+				style := deps.GetOutputStyle()
+				if style == "" {
+					style = "normal"
+				}
+				return fmt.Sprintf("Current output style: %s\nAvailable: normal, concise, verbose, markdown", style), nil
+			}
+			args = strings.TrimSpace(strings.ToLower(args))
+			switch args {
+			case "normal", "concise", "verbose", "markdown":
+				deps.SetOutputStyle(args)
+				return fmt.Sprintf("Output style set to: %s", args), nil
+			default:
+				return fmt.Sprintf("Unknown style %q. Available: normal, concise, verbose, markdown", args), nil
+			}
 		},
 	})
 }
@@ -434,6 +711,88 @@ func runDoctor() string {
 		} else {
 			lines = append(lines, "  ✗ Auth: not configured (run: claudio auth login)")
 		}
+	}
+
+	// Network connectivity
+	lines = append(lines, "\nNetwork:")
+	if netCmd := exec.Command("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", "https://api.anthropic.com"); true {
+		output, err := netCmd.Output()
+		if err != nil {
+			lines = append(lines, "  ✗ API connectivity: unreachable")
+		} else {
+			code := strings.TrimSpace(string(output))
+			if code == "200" || code == "301" || code == "401" || code == "403" {
+				lines = append(lines, fmt.Sprintf("  ✓ API connectivity: ok (HTTP %s)", code))
+			} else {
+				lines = append(lines, fmt.Sprintf("  ○ API connectivity: HTTP %s", code))
+			}
+		}
+	}
+
+	// Memory system health
+	lines = append(lines, "\nMemory:")
+	memoryDir := paths.Memory
+	if entries, err := os.ReadDir(memoryDir); err == nil {
+		mdCount := 0
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+				mdCount++
+			}
+		}
+		lines = append(lines, fmt.Sprintf("  ✓ Global memory: %d files", mdCount))
+	} else {
+		lines = append(lines, "  ○ Global memory: empty")
+	}
+
+	// Database integrity
+	if _, err := os.Stat(paths.DB); err == nil {
+		dbCheck := exec.Command("sqlite3", paths.DB, "PRAGMA integrity_check;")
+		if out, err := dbCheck.Output(); err == nil {
+			result := strings.TrimSpace(string(out))
+			if result == "ok" {
+				lines = append(lines, "  ✓ Database: integrity ok")
+			} else {
+				lines = append(lines, fmt.Sprintf("  ✗ Database: %s", result))
+			}
+		}
+	}
+
+	// Plugins
+	if entries, err := os.ReadDir(paths.Plugins); err == nil {
+		pluginCount := 0
+		for _, e := range entries {
+			if !e.IsDir() {
+				pluginCount++
+			}
+		}
+		if pluginCount > 0 {
+			lines = append(lines, fmt.Sprintf("  ✓ Plugins: %d installed", pluginCount))
+		}
+	}
+
+	// Platform info
+	lines = append(lines, fmt.Sprintf("\nPlatform: %s/%s", runtime.GOOS, runtime.GOARCH))
+	lines = append(lines, fmt.Sprintf("  Go: %s", runtime.Version()))
+
+	// Disk space for ~/.claudio/
+	if info, err := os.Stat(paths.Home); err == nil && info.IsDir() {
+		var totalSize int64
+		filepath.Walk(paths.Home, func(_ string, info os.FileInfo, _ error) error {
+			if info != nil && !info.IsDir() {
+				totalSize += info.Size()
+			}
+			return nil
+		})
+		lines = append(lines, fmt.Sprintf("  Disk usage: %.1f MB (%s)", float64(totalSize)/1024/1024, paths.Home))
+	}
+
+	// Project config
+	cwd, _ := os.Getwd()
+	projectConfig := filepath.Join(cwd, ".claudio")
+	if _, err := os.Stat(projectConfig); err == nil {
+		lines = append(lines, fmt.Sprintf("  ✓ Project config: %s", projectConfig))
+	} else {
+		lines = append(lines, "  ○ Project config: not initialized (run: claudio init)")
 	}
 
 	lines = append(lines, fmt.Sprintf("\n  Time: %s", time.Now().Format(time.RFC3339)))

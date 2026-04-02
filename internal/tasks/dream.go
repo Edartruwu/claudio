@@ -10,6 +10,7 @@ import (
 type DreamTaskInput struct {
 	SessionSummary string // summary of what happened in the session
 	ProjectDir     string // current project directory
+	MemoryDir      string // target memory directory for writing memories
 
 	// RunDream is the callback that executes the dream agent.
 	// It receives context and a prompt describing what to consolidate.
@@ -54,7 +55,7 @@ func runDreamTask(ctx context.Context, rt *Runtime, state *TaskState, output *Ta
 
 	output.Write([]byte("[Dream] Starting memory consolidation...\n\n"))
 
-	prompt := buildDreamPrompt(input.SessionSummary, input.ProjectDir)
+	prompt := buildDreamPrompt(input.SessionSummary, input.ProjectDir, input.MemoryDir)
 
 	result, err := input.RunDream(ctx, prompt)
 	if err != nil {
@@ -72,13 +73,20 @@ func runDreamTask(ctx context.Context, rt *Runtime, state *TaskState, output *Ta
 	rt.SetStatus(state.ID, StatusCompleted, "")
 }
 
-func buildDreamPrompt(sessionSummary, projectDir string) string {
+func buildDreamPrompt(sessionSummary, projectDir, memoryDir string) string {
+	memoryPath := "memory/"
+	if memoryDir != "" {
+		memoryPath = memoryDir + "/"
+	}
 	return fmt.Sprintf(`You are a memory consolidation agent. Your job is to review the session activity and extract valuable patterns into persistent memory.
 
 ## Session Summary
 %s
 
 ## Project Directory
+%s
+
+## Memory Directory
 %s
 
 ## Instructions
@@ -106,7 +114,7 @@ Review what happened in this session and extract:
    - Project-specific conventions
 
 For each finding, save it as a memory file using the Write tool:
-- Path: memory/<type>_<descriptive_name>.md
+- Path: %s<type>_<descriptive_name>.md
 - Include YAML frontmatter with name, description, and type fields
 - Keep each memory focused and under 50 lines
 
@@ -117,5 +125,5 @@ Only extract NON-OBVIOUS patterns. Do not save things that are:
 - Standard best practices (obvious to any developer)
 - Ephemeral (only relevant to this exact moment)
 
-If there's nothing worth extracting, say so and exit.`, sessionSummary, projectDir)
+If there's nothing worth extracting, say so and exit.`, sessionSummary, projectDir, memoryPath, memoryPath)
 }

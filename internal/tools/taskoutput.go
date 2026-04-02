@@ -11,6 +11,7 @@ import (
 
 // TaskOutputTool retrieves output from a background task.
 type TaskOutputTool struct {
+	deferrable
 	Runtime *tasks.Runtime
 }
 

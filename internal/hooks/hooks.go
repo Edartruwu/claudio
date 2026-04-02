@@ -33,6 +33,30 @@ const (
 	SessionEnd Event = "SessionEnd"
 	// Stop fires when the assistant finishes responding.
 	Stop Event = "Stop"
+	// PostCompact fires after conversation compaction completes.
+	PostCompact Event = "PostCompact"
+	// SubagentStart fires before a sub-agent is launched.
+	SubagentStart Event = "SubagentStart"
+	// SubagentStop fires after a sub-agent completes.
+	SubagentStop Event = "SubagentStop"
+	// UserPromptSubmit fires before processing user input.
+	UserPromptSubmit Event = "UserPromptSubmit"
+	// TaskCreated fires when a new task is created.
+	TaskCreated Event = "TaskCreated"
+	// TaskCompleted fires when a task is marked complete.
+	TaskCompleted Event = "TaskCompleted"
+	// WorktreeCreate fires when a git worktree is created.
+	WorktreeCreate Event = "WorktreeCreate"
+	// WorktreeRemove fires when a git worktree is removed.
+	WorktreeRemove Event = "WorktreeRemove"
+	// ConfigChange fires when a settings value is changed.
+	ConfigChange Event = "ConfigChange"
+	// CwdChanged fires when the working directory changes.
+	CwdChanged Event = "CwdChanged"
+	// FileChanged fires when a watched file is modified.
+	FileChanged Event = "FileChanged"
+	// Notification fires when a system notification is triggered.
+	Notification Event = "Notification"
 )
 
 // HookDef defines a single hook configuration.
@@ -57,19 +81,36 @@ type HooksConfig struct {
 	PostToolUse        []HookMatcher `json:"PostToolUse,omitempty"`
 	PostToolUseFailure []HookMatcher `json:"PostToolUseFailure,omitempty"`
 	PreCompact         []HookMatcher `json:"PreCompact,omitempty"`
+	PostCompact        []HookMatcher `json:"PostCompact,omitempty"`
 	SessionStart       []HookMatcher `json:"SessionStart,omitempty"`
 	SessionEnd         []HookMatcher `json:"SessionEnd,omitempty"`
 	Stop               []HookMatcher `json:"Stop,omitempty"`
+	SubagentStart      []HookMatcher `json:"SubagentStart,omitempty"`
+	SubagentStop       []HookMatcher `json:"SubagentStop,omitempty"`
+	UserPromptSubmit   []HookMatcher `json:"UserPromptSubmit,omitempty"`
+	TaskCreated        []HookMatcher `json:"TaskCreated,omitempty"`
+	TaskCompleted      []HookMatcher `json:"TaskCompleted,omitempty"`
+	WorktreeCreate     []HookMatcher `json:"WorktreeCreate,omitempty"`
+	WorktreeRemove     []HookMatcher `json:"WorktreeRemove,omitempty"`
+	ConfigChange       []HookMatcher `json:"ConfigChange,omitempty"`
+	CwdChanged         []HookMatcher `json:"CwdChanged,omitempty"`
+	FileChanged        []HookMatcher `json:"FileChanged,omitempty"`
+	Notification       []HookMatcher `json:"Notification,omitempty"`
 }
 
 // HookContext provides data to hook scripts via environment variables.
 type HookContext struct {
-	Event     Event  `json:"event"`
-	ToolName  string `json:"tool_name,omitempty"`
-	ToolInput string `json:"tool_input,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Model     string `json:"model,omitempty"`
-	CWD       string `json:"cwd,omitempty"`
+	Event        Event  `json:"event"`
+	ToolName     string `json:"tool_name,omitempty"`
+	ToolInput    string `json:"tool_input,omitempty"`
+	ToolOutput   string `json:"tool_output,omitempty"`
+	SessionID    string `json:"session_id,omitempty"`
+	Model        string `json:"model,omitempty"`
+	CWD          string `json:"cwd,omitempty"`
+	TaskID       string `json:"task_id,omitempty"`
+	WorktreePath string `json:"worktree_path,omitempty"`
+	ConfigKey    string `json:"config_key,omitempty"`
+	FilePath     string `json:"file_path,omitempty"`
 }
 
 // HookResult holds the result of running a hook.
@@ -199,6 +240,10 @@ func (m *Manager) executeHook(ctx context.Context, hook HookDef, hctx HookContex
 		"CLAUDIO_TOOL_NAME="+hctx.ToolName,
 		"CLAUDIO_SESSION_ID="+hctx.SessionID,
 		"CLAUDIO_MODEL="+hctx.Model,
+		"CLAUDIO_TASK_ID="+hctx.TaskID,
+		"CLAUDIO_WORKTREE_PATH="+hctx.WorktreePath,
+		"CLAUDIO_CONFIG_KEY="+hctx.ConfigKey,
+		"CLAUDIO_FILE_PATH="+hctx.FilePath,
 	)
 
 	if hctx.CWD != "" {
@@ -248,12 +293,36 @@ func (m *Manager) matchersForEvent(event Event) []HookMatcher {
 		return m.config.PostToolUseFailure
 	case PreCompact:
 		return m.config.PreCompact
+	case PostCompact:
+		return m.config.PostCompact
 	case SessionStart:
 		return m.config.SessionStart
 	case SessionEnd:
 		return m.config.SessionEnd
 	case Stop:
 		return m.config.Stop
+	case SubagentStart:
+		return m.config.SubagentStart
+	case SubagentStop:
+		return m.config.SubagentStop
+	case UserPromptSubmit:
+		return m.config.UserPromptSubmit
+	case TaskCreated:
+		return m.config.TaskCreated
+	case TaskCompleted:
+		return m.config.TaskCompleted
+	case WorktreeCreate:
+		return m.config.WorktreeCreate
+	case WorktreeRemove:
+		return m.config.WorktreeRemove
+	case ConfigChange:
+		return m.config.ConfigChange
+	case CwdChanged:
+		return m.config.CwdChanged
+	case FileChanged:
+		return m.config.FileChanged
+	case Notification:
+		return m.config.Notification
 	default:
 		return nil
 	}
@@ -273,8 +342,20 @@ func mergeConfigs(base, overlay HooksConfig) HooksConfig {
 	base.PostToolUse = append(base.PostToolUse, overlay.PostToolUse...)
 	base.PostToolUseFailure = append(base.PostToolUseFailure, overlay.PostToolUseFailure...)
 	base.PreCompact = append(base.PreCompact, overlay.PreCompact...)
+	base.PostCompact = append(base.PostCompact, overlay.PostCompact...)
 	base.SessionStart = append(base.SessionStart, overlay.SessionStart...)
 	base.SessionEnd = append(base.SessionEnd, overlay.SessionEnd...)
 	base.Stop = append(base.Stop, overlay.Stop...)
+	base.SubagentStart = append(base.SubagentStart, overlay.SubagentStart...)
+	base.SubagentStop = append(base.SubagentStop, overlay.SubagentStop...)
+	base.UserPromptSubmit = append(base.UserPromptSubmit, overlay.UserPromptSubmit...)
+	base.TaskCreated = append(base.TaskCreated, overlay.TaskCreated...)
+	base.TaskCompleted = append(base.TaskCompleted, overlay.TaskCompleted...)
+	base.WorktreeCreate = append(base.WorktreeCreate, overlay.WorktreeCreate...)
+	base.WorktreeRemove = append(base.WorktreeRemove, overlay.WorktreeRemove...)
+	base.ConfigChange = append(base.ConfigChange, overlay.ConfigChange...)
+	base.CwdChanged = append(base.CwdChanged, overlay.CwdChanged...)
+	base.FileChanged = append(base.FileChanged, overlay.FileChanged...)
+	base.Notification = append(base.Notification, overlay.Notification...)
 	return base
 }

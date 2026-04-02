@@ -13,31 +13,95 @@ import (
 
 func TestRegistry(t *testing.T) {
 	r := tools.DefaultRegistry()
-	defs := r.APIDefinitions()
-	if len(defs) == 0 {
-		t.Fatal("expected non-empty API definitions")
-	}
-
-	var parsed []tools.APIToolDef
-	if err := json.Unmarshal(defs, &parsed); err != nil {
-		t.Fatalf("failed to parse API definitions: %v", err)
-	}
 
 	expectedTools := []string{
 		"Bash", "Read", "Write", "Edit", "Glob", "Grep",
+		"Agent", "ToolSearch",
 		"WebSearch", "WebFetch", "LSP", "NotebookEdit",
 		"TaskCreate", "TaskList", "TaskGet", "TaskUpdate",
 		"EnterWorktree", "ExitWorktree", "EnterPlanMode", "ExitPlanMode",
-		"Agent",
-	}
-	if len(parsed) != len(expectedTools) {
-		t.Fatalf("expected %d tools, got %d", len(expectedTools), len(parsed))
+		"TaskStop", "TaskOutput",
+		"TeamCreate", "TeamDelete", "SendMessage",
+		"Memory",
+		"CronCreate", "CronDelete", "CronList",
+		"AskUser",
 	}
 
+	// Test full definitions (no deferral)
+	fullDefs := r.APIDefinitions()
+	var fullParsed []tools.APIToolDef
+	if err := json.Unmarshal(fullDefs, &fullParsed); err != nil {
+		t.Fatalf("failed to parse full API definitions: %v", err)
+	}
+	if len(fullParsed) != len(expectedTools) {
+		t.Fatalf("expected %d tools, got %d", len(expectedTools), len(fullParsed))
+	}
 	for i, name := range expectedTools {
-		if parsed[i].Name != name {
-			t.Errorf("tool %d: expected %q, got %q", i, name, parsed[i].Name)
+		if fullParsed[i].Name != name {
+			t.Errorf("tool %d: expected %q, got %q", i, name, fullParsed[i].Name)
 		}
+		if fullParsed[i].Description == "" {
+			t.Errorf("full tool %q should have a description", name)
+		}
+	}
+
+	// Test deferred definitions
+	deferredDefs := r.APIDefinitionsWithDeferral(nil)
+	var deferredParsed []tools.APIToolDef
+	if err := json.Unmarshal(deferredDefs, &deferredParsed); err != nil {
+		t.Fatalf("failed to parse deferred API definitions: %v", err)
+	}
+
+	deferredNames := map[string]bool{
+		"WebSearch": true, "WebFetch": true, "LSP": true, "NotebookEdit": true,
+		"TaskCreate": true, "TaskList": true, "TaskGet": true, "TaskUpdate": true,
+		"EnterWorktree": true, "ExitWorktree": true, "EnterPlanMode": true, "ExitPlanMode": true,
+		"TaskStop": true, "TaskOutput": true, "TeamCreate": true, "TeamDelete": true, "SendMessage": true,
+		"Memory": true,
+		"CronCreate": true, "CronDelete": true, "CronList": true,
+		"AskUser": true,
+	}
+	for _, def := range deferredParsed {
+		if deferredNames[def.Name] {
+			if !def.DeferLoading {
+				t.Errorf("tool %q should have defer_loading=true", def.Name)
+			}
+			if def.Description != "" {
+				t.Errorf("deferred tool %q should have empty description, got %q", def.Name, def.Description)
+			}
+			if string(def.InputSchema) != `{"type":"object"}` {
+				t.Errorf("deferred tool %q should have minimal input_schema", def.Name)
+			}
+		} else {
+			if def.DeferLoading {
+				t.Errorf("tool %q should not have defer_loading=true", def.Name)
+			}
+			if def.Description == "" {
+				t.Errorf("non-deferred tool %q should have a description", def.Name)
+			}
+		}
+	}
+
+	// Test that discovered tools get full schemas
+	discovered := map[string]bool{"WebSearch": true, "TaskCreate": true}
+	partialDefs := r.APIDefinitionsWithDeferral(discovered)
+	var partialParsed []tools.APIToolDef
+	json.Unmarshal(partialDefs, &partialParsed)
+	for _, def := range partialParsed {
+		if def.Name == "WebSearch" || def.Name == "TaskCreate" {
+			if def.DeferLoading {
+				t.Errorf("discovered tool %q should not have defer_loading=true", def.Name)
+			}
+			if def.Description == "" {
+				t.Errorf("discovered tool %q should have a description", def.Name)
+			}
+		}
+	}
+
+	// Verify deferred definitions are significantly smaller than full
+	if len(deferredDefs) >= len(fullDefs) {
+		t.Errorf("deferred defs (%d bytes) should be smaller than full defs (%d bytes)",
+			len(deferredDefs), len(fullDefs))
 	}
 }
 

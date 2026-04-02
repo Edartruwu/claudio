@@ -237,6 +237,7 @@ func (c *responseCollector) OnToolUseStart(tu tools.ToolUse)                    
 func (c *responseCollector) OnToolUseEnd(tu tools.ToolUse, result *tools.Result)  {}
 func (c *responseCollector) OnTurnComplete(usage api.Usage)                       { c.usage = usage }
 func (c *responseCollector) OnToolApprovalNeeded(tu tools.ToolUse) bool           { return true }
+func (c *responseCollector) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true }
 func (c *responseCollector) OnError(err error)                                    {}
 
 type sseHandler struct {
@@ -275,6 +276,7 @@ func (h *sseHandler) OnTurnComplete(usage api.Usage) {
 }
 
 func (h *sseHandler) OnToolApprovalNeeded(tu tools.ToolUse) bool { return true }
+func (h *sseHandler) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true }
 
 func (h *sseHandler) OnError(err error) {
 	fmt.Fprintf(h.w, "event: error\ndata: %s\n\n", err.Error())

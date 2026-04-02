@@ -16,7 +16,9 @@ import (
 
 // --- EnterWorktreeTool ---
 
-type EnterWorktreeTool struct{}
+type EnterWorktreeTool struct {
+	deferrable
+}
 
 type worktreeEnterInput struct {
 	Name string `json:"name,omitempty"`
@@ -70,7 +72,9 @@ func (t *EnterWorktreeTool) Execute(ctx context.Context, input json.RawMessage) 
 
 // --- ExitWorktreeTool ---
 
-type ExitWorktreeTool struct{}
+type ExitWorktreeTool struct {
+	deferrable
+}
 
 type worktreeExitInput struct {
 	Action         string `json:"action"` // "keep" or "remove"

@@ -10,6 +10,7 @@ import (
 
 // TaskStopTool stops a running background task.
 type TaskStopTool struct {
+	deferrable
 	Runtime *tasks.Runtime
 }
 

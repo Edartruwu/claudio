@@ -14,7 +14,9 @@ import (
 )
 
 // WebSearchTool searches the web.
-type WebSearchTool struct{}
+type WebSearchTool struct {
+	deferrable
+}
 
 type webSearchInput struct {
 	Query          string   `json:"query"`

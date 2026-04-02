@@ -1,14 +1,17 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/Abraxas-365/claudio/internal/app"
 	"github.com/Abraxas-365/claudio/internal/auth/refresh"
@@ -16,7 +19,9 @@ import (
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/rules"
+	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/session"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/tui"
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
@@ -29,6 +34,7 @@ var (
 	flagBudget             float64
 	flagResume             string
 	flagDangerouslySkipPerm bool
+	flagPrint              bool
 )
 
 // appInstance is initialized before command execution.
@@ -87,7 +93,7 @@ Built in Go with a focus on performance, security, and extensibility.`,
 			fmt.Fprintln(os.Stderr, "\033[33m⚠ WARNING: All permission checks are disabled. Tools will execute without approval.\033[0m")
 		}
 
-		a, err := app.New(settings)
+		a, err := app.New(settings, projectRoot)
 		if err != nil {
 			return fmt.Errorf("failed to initialize: %w", err)
 		}
@@ -95,6 +101,24 @@ Built in Go with a focus on performance, security, and extensibility.`,
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Detect pipe mode: if stdout is not a terminal, use print mode
+		isPiped := !isTerminal()
+		if isPiped || flagPrint {
+			if len(args) == 0 {
+				// Read prompt from stdin when piped
+				scanner := bufio.NewScanner(os.Stdin)
+				var lines []string
+				for scanner.Scan() {
+					lines = append(lines, scanner.Text())
+				}
+				if len(lines) == 0 {
+					return fmt.Errorf("no prompt provided")
+				}
+				return runSinglePrompt(strings.Join(lines, "\n"))
+			}
+			return runSinglePrompt(strings.Join(args, " "))
+		}
+
 		if len(args) > 0 {
 			return runSinglePrompt(strings.Join(args, " "))
 		}
@@ -110,9 +134,11 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagHeadless, "headless", false, "Run in headless server mode (no TUI)")
 	rootCmd.PersistentFlags().StringVar(&flagContext, "context", "", "Load context profile (dev, review, research, or path)")
 	rootCmd.PersistentFlags().Float64Var(&flagBudget, "budget", 0, "Session budget limit in USD (0 = unlimited)")
-	rootCmd.PersistentFlags().StringVar(&flagResume, "resume", "", "Resume a previous session by ID prefix")
+	rootCmd.PersistentFlags().StringVarP(&flagResume, "resume", "r", "", "Resume a previous session (no value = most recent)")
+	rootCmd.PersistentFlags().Lookup("resume").NoOptDefVal = "last"
 	rootCmd.PersistentFlags().BoolVar(&flagDangerouslySkipPerm, "dangerously-skip-permissions", false, "Skip all permission prompts (use with caution)")
 	rootCmd.PersistentFlags().BoolVar(&flagDangerouslySkipPerm, "yolo", false, "Alias for --dangerously-skip-permissions")
+	rootCmd.PersistentFlags().BoolVar(&flagPrint, "print", false, "Print-only mode (no TUI, clean stdout for piping)")
 }
 
 func Execute() error {
@@ -142,10 +168,16 @@ func runSinglePrompt(prompt string) error {
 		TaskRuntime:    appInstance.TaskRuntime,
 		Model:          appInstance.Config.Model,
 		PermissionMode: appInstance.Config.PermissionMode,
+		OnTurnEnd:      appInstance.MemoryExtractor(),
 	})
 	engine.SetSystem(buildFullSystemPrompt())
 
-	return engine.Run(ctx, prompt)
+	err := engine.Run(ctx, prompt)
+
+	// Print cost summary to stderr
+	printCostSummary()
+
+	return err
 }
 
 func loadContextProfile(name string) (string, error) {
@@ -199,10 +231,23 @@ func buildFullSystemPrompt() string {
 		sections = append(sections, rulesContent)
 	}
 
-	// 4. Session memory
+	// 4. Session memory (selection strategy from config)
 	if appInstance.Memory != nil {
-		if memContent := appInstance.Memory.ForSystemPrompt(); memContent != "" {
-			sections = append(sections, memContent)
+		switch appInstance.Config.GetMemorySelection() {
+		case "ai":
+			ctx := context.Background()
+			selector := &memory.AISelector{Client: appInstance.API}
+			if memContent := appInstance.Memory.ForSystemPromptWithSelection(ctx, cwd, selector); memContent != "" {
+				sections = append(sections, memContent)
+			}
+		case "keyword":
+			ctx := context.Background()
+			selector := &memory.KeywordSelector{}
+			if memContent := appInstance.Memory.ForSystemPromptWithSelection(ctx, cwd, selector); memContent != "" {
+				sections = append(sections, memContent)
+			}
+		case "none":
+			// Skip memory loading entirely
 		}
 	}
 
@@ -213,6 +258,13 @@ func buildFullSystemPrompt() string {
 		}
 	}
 
+	// 6. Output style
+	if appInstance.Config.OutputStyle != "" {
+		if styleContent := prompts.OutputStyleSection(prompts.OutputStyle(appInstance.Config.OutputStyle)); styleContent != "" {
+			sections = append(sections, styleContent)
+		}
+	}
+
 	// Combine all additional context
 	additionalCtx := strings.Join(sections, "\n\n")
 
@@ -220,15 +272,109 @@ func buildFullSystemPrompt() string {
 }
 
 // loadCLAUDEMD finds and loads CLAUDE.md or CLAUDIO.md from the project.
+// Walks from git root to cwd, loading files at each level (closer = higher priority).
+// Also resolves @path/to/file.md imports inline.
 func loadCLAUDEMD(projectDir, homeDir string) string {
-	// Check project directory
-	for _, name := range []string{"CLAUDIO.md", "CLAUDE.md", ".claudio/CLAUDE.md"} {
-		path := projectDir + "/" + name
-		if content := utils.ReadFileIfExists(path); content != "" {
-			return content
+	cwd, _ := os.Getwd()
+
+	// Collect directories from project root to cwd
+	dirs := collectDirsRootToCwd(projectDir, cwd)
+
+	var parts []string
+	for _, dir := range dirs {
+		for _, name := range []string{"CLAUDIO.md", "CLAUDE.md", ".claudio/CLAUDE.md"} {
+			path := filepath.Join(dir, name)
+			if content := utils.ReadFileIfExists(path); content != "" {
+				content = resolveImports(content, dir, nil)
+				parts = append(parts, content)
+				break // only first match per directory
+			}
 		}
 	}
-	return ""
+
+	return strings.Join(parts, "\n\n")
+}
+
+// collectDirsRootToCwd returns directories from projectRoot down to cwd (inclusive).
+// The result is ordered root-first so closer-to-cwd dirs appear later (higher priority).
+func collectDirsRootToCwd(projectRoot, cwd string) []string {
+	projectRoot = filepath.Clean(projectRoot)
+	cwd = filepath.Clean(cwd)
+
+	if projectRoot == cwd {
+		return []string{projectRoot}
+	}
+
+	// Walk from cwd upward to projectRoot, collecting dirs
+	var stack []string
+	current := cwd
+	for {
+		stack = append(stack, current)
+		if current == projectRoot {
+			break
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached filesystem root without finding projectRoot
+			break
+		}
+		current = parent
+	}
+
+	// Reverse so project root comes first
+	for i, j := 0, len(stack)-1; i < j; i, j = i+1, j-1 {
+		stack[i], stack[j] = stack[j], stack[i]
+	}
+	return stack
+}
+
+// resolveImports replaces @path/to/file.md references in content with the file's contents.
+// Prevents circular imports by tracking already-processed paths.
+func resolveImports(content, baseDir string, seen map[string]bool) string {
+	if seen == nil {
+		seen = make(map[string]bool)
+	}
+
+	var result strings.Builder
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+
+		// Check for @import pattern: line is just "@path/to/file.md"
+		if strings.HasPrefix(trimmed, "@") && strings.HasSuffix(trimmed, ".md") && !strings.Contains(trimmed, " ") {
+			importPath := trimmed[1:] // strip leading @
+
+			// Resolve relative paths
+			if !filepath.IsAbs(importPath) {
+				if strings.HasPrefix(importPath, "~/") {
+					home, _ := os.UserHomeDir()
+					importPath = filepath.Join(home, importPath[2:])
+				} else {
+					importPath = filepath.Join(baseDir, importPath)
+				}
+			}
+
+			importPath = filepath.Clean(importPath)
+
+			if seen[importPath] {
+				result.WriteString(line)
+				result.WriteString("\n")
+				continue
+			}
+			seen[importPath] = true
+
+			if imported := utils.ReadFileIfExists(importPath); imported != "" {
+				imported = resolveImports(imported, filepath.Dir(importPath), seen)
+				result.WriteString(imported)
+				result.WriteString("\n")
+				continue
+			}
+		}
+
+		result.WriteString(line)
+		result.WriteString("\n")
+	}
+
+	return strings.TrimRight(result.String(), "\n")
 }
 
 func runInteractive() error {
@@ -250,20 +396,35 @@ func runInteractive() error {
 	// Start or resume session
 	sess := session.New(appInstance.DB)
 	if flagResume != "" {
-		// Resume a previous session
-		resumed, err := sess.Resume(flagResume)
-		if err != nil {
-			return fmt.Errorf("failed to resume session %q: %w", flagResume, err)
-		}
-		if flagVerbose {
-			fmt.Fprintf(os.Stderr, "Resumed session: %s (%s)\n", resumed.Title, resumed.ID[:8])
-		}
-	} else {
-		if _, err := sess.Start(appInstance.Config.Model); err != nil {
+		if flagResume == "last" {
+			// Resume most recent session in this project
+			recent, err := sess.RecentForProject(1)
+			if err != nil || len(recent) == 0 {
+				// No previous session — start fresh
+				if _, err := sess.Start(appInstance.Config.Model); err != nil && flagVerbose {
+					fmt.Fprintf(os.Stderr, "Warning: failed to start session: %v\n", err)
+				}
+			} else {
+				if _, err := sess.Resume(recent[0].ID); err != nil {
+					return fmt.Errorf("failed to resume last session: %w", err)
+				}
+				if flagVerbose {
+					fmt.Fprintf(os.Stderr, "Resumed session: %s (%s)\n", recent[0].Title, recent[0].ID[:8])
+				}
+			}
+		} else {
+			// Resume by ID prefix
+			resumed, err := sess.Resume(flagResume)
+			if err != nil {
+				return fmt.Errorf("failed to resume session %q: %w", flagResume, err)
+			}
 			if flagVerbose {
-				fmt.Fprintf(os.Stderr, "Warning: failed to start session: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Resumed session: %s (%s)\n", resumed.Title, resumed.ID[:8])
 			}
 		}
+	} else {
+		// Don't create a session yet — it will be created lazily on first message.
+		// This avoids polluting the session list with empty sessions.
 	}
 
 	engineCfg := &query.EngineConfig{
@@ -272,10 +433,24 @@ func runInteractive() error {
 		TaskRuntime:    appInstance.TaskRuntime,
 		Model:          appInstance.Config.Model,
 		PermissionMode: appInstance.Config.PermissionMode,
+		OnTurnEnd:      appInstance.MemoryExtractor(),
+	}
+	appCtx := &tui.AppContext{
+		Session:     sess,
+		Memory:      appInstance.Memory,
+		Config:      appInstance.Config,
+		Analytics:   appInstance.Analytics,
+		Learning:    appInstance.Learning,
+		TaskRuntime: appInstance.TaskRuntime,
+		DB:          appInstance.DB,
+		Hooks:       appInstance.Hooks,
+		Rules:       nil, // Rules are loaded separately in system prompt building
+		Auditor:     appInstance.Auditor,
 	}
 	model := tui.New(appInstance.API, appInstance.Tools, systemPrompt, sess,
 		tui.WithSkills(appInstance.Skills),
 		tui.WithEngineConfig(engineCfg),
+		tui.WithAppContext(appCtx),
 	)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
@@ -283,5 +458,98 @@ func runInteractive() error {
 		return fmt.Errorf("TUI error: %w", err)
 	}
 
+	// Trigger dream task if enough activity has accumulated
+	triggerDreamIfNeeded(sess)
+
+	// Print cost summary to stderr on exit
+	printCostSummary()
+
 	return nil
+}
+
+// isTerminal checks if stdout is connected to a terminal.
+func isTerminal() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+// triggerDreamIfNeeded spawns a background dream task if enough sessions have
+// accumulated since the last memory consolidation.
+func triggerDreamIfNeeded(sess *session.Session) {
+	if appInstance == nil || appInstance.TaskRuntime == nil {
+		return
+	}
+
+	paths := config.GetPaths()
+	dreamStatePath := paths.Home + "/dream-state.json"
+
+	state := tasks.LoadDreamState(dreamStatePath)
+	state.RecordSession()
+
+	if !state.ShouldDream() {
+		state.Save(dreamStatePath)
+		return
+	}
+
+	// Get session summary for the dream prompt
+	summary := ""
+	if sess != nil && sess.Current() != nil {
+		summary = sess.Current().Summary
+	}
+	if summary == "" {
+		summary, _, _ = sess.LastSessionSummary()
+	}
+	if summary == "" {
+		state.Save(dreamStatePath)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	projectRoot := config.FindGitRoot(cwd)
+	memDir := config.ProjectMemoryDir(projectRoot)
+
+	_, err := tasks.SpawnDreamTask(appInstance.TaskRuntime, tasks.DreamTaskInput{
+		SessionSummary: summary,
+		ProjectDir:     cwd,
+		MemoryDir:      memDir,
+		RunDream: func(ctx context.Context, prompt string) (string, error) {
+			if appInstance.API == nil || appInstance.Tools == nil {
+				return "", fmt.Errorf("API client not available for dream task")
+			}
+			handler := &query.StdoutHandler{Verbose: false}
+			engine := query.NewEngine(appInstance.API, appInstance.Tools, handler)
+			engine.SetSystem("You are a memory consolidation agent.")
+			var result strings.Builder
+			if runErr := engine.Run(ctx, prompt); runErr != nil {
+				return "", runErr
+			}
+			return result.String(), nil
+		},
+	})
+	if err != nil {
+		if flagVerbose {
+			fmt.Fprintf(os.Stderr, "Warning: failed to spawn dream task: %v\n", err)
+		}
+	} else {
+		state.RecordDream()
+	}
+	state.Save(dreamStatePath)
+}
+
+// printCostSummary prints session analytics to stderr on exit.
+func printCostSummary() {
+	if appInstance == nil || appInstance.Analytics == nil {
+		return
+	}
+	tokens := appInstance.Analytics.TotalTokens()
+	if tokens == 0 {
+		return
+	}
+	cost := appInstance.Analytics.Cost()
+	fmt.Fprintf(os.Stderr, "\n\033[2m%s\033[0m\n", appInstance.Analytics.Report())
+	// Save report
+	if appInstance.Analytics != nil {
+		sessID := "unknown"
+		appInstance.Analytics.SaveReport(sessID)
+	}
+	_ = cost // used by Report() internally
 }

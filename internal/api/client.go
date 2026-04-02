@@ -27,6 +27,13 @@ type Client struct {
 	baseURL      string
 	apiVersion   string
 	model        string
+
+	// Thinking configuration
+	thinkingMode string // "adaptive", "enabled", "disabled", "" (auto-detect)
+	budgetTokens int    // Used when thinkingMode is "enabled"
+
+	// Effort level (controls reasoning depth, separate from thinking)
+	effortLevel string // "low", "medium", "high", "" (default/high)
 }
 
 // NewClient creates a new API client.
@@ -69,10 +76,82 @@ func (c *Client) SetModel(model string) {
 	c.model = model
 }
 
+// GetThinkingMode returns the current thinking mode ("adaptive", "enabled", "disabled", or "" for auto).
+func (c *Client) GetThinkingMode() string {
+	return c.thinkingMode
+}
+
+// SetThinkingMode sets the thinking mode. Use "" for auto-detect based on model.
+func (c *Client) SetThinkingMode(mode string) {
+	c.thinkingMode = mode
+}
+
+// GetBudgetTokens returns the thinking budget token limit.
+func (c *Client) GetBudgetTokens() int {
+	return c.budgetTokens
+}
+
+// SetBudgetTokens sets the thinking budget token limit (used when mode is "enabled").
+func (c *Client) SetBudgetTokens(tokens int) {
+	c.budgetTokens = tokens
+}
+
+// ThinkingLabel returns a human-readable label for the current thinking configuration.
+func (c *Client) ThinkingLabel() string {
+	switch c.thinkingMode {
+	case "disabled":
+		return "Disabled"
+	case "enabled":
+		if c.budgetTokens > 0 {
+			return fmt.Sprintf("Enabled (%dk tokens)", c.budgetTokens/1000)
+		}
+		return "Enabled"
+	case "adaptive":
+		return "Adaptive"
+	default:
+		return "Auto (adaptive)"
+	}
+}
+
+// GetEffortLevel returns the current effort level ("low", "medium", "high", or "" for default).
+func (c *Client) GetEffortLevel() string {
+	return c.effortLevel
+}
+
+// SetEffortLevel sets the reasoning effort level. Use "" for default (high).
+func (c *Client) SetEffortLevel(level string) {
+	c.effortLevel = level
+}
+
+// EffortLabel returns a human-readable label for the current effort level.
+func (c *Client) EffortLabel() string {
+	switch c.effortLevel {
+	case "low":
+		return "Low effort"
+	case "high":
+		return "High effort"
+	case "medium", "":
+		return "Medium effort (default)"
+	default:
+		return "Medium effort (default)"
+	}
+}
+
+// modelSupportsEffort returns true if the model supports the effort parameter.
+func modelSupportsEffort(model string) bool {
+	m := strings.ToLower(model)
+	return strings.Contains(m, "opus-4-6") || strings.Contains(m, "sonnet-4-6") || strings.Contains(m, "opus-4") || strings.Contains(m, "sonnet-4")
+}
+
 // ThinkingConfig configures extended thinking for supported models.
 type ThinkingConfig struct {
 	Type         string `json:"type"`                    // "adaptive", "enabled", "disabled"
 	BudgetTokens int    `json:"budget_tokens,omitempty"` // Required when type is "enabled"
+}
+
+// OutputConfig configures output behavior including effort level.
+type OutputConfig struct {
+	Effort string `json:"effort,omitempty"` // "low", "medium", "high"
 }
 
 // SystemBlock is a text block in the system prompt array.
@@ -91,8 +170,9 @@ type MessagesRequest struct {
 	Stream      bool            `json:"stream,omitempty"`
 	Tools       json.RawMessage `json:"tools,omitempty"`
 	Temperature *float64        `json:"temperature,omitempty"`
-	StopReason  string          `json:"stop_reason,omitempty"`
-	Thinking    *ThinkingConfig `json:"thinking,omitempty"`
+	StopReason   string          `json:"stop_reason,omitempty"`
+	Thinking     *ThinkingConfig `json:"thinking,omitempty"`
+	OutputConfig *OutputConfig   `json:"output_config,omitempty"`
 }
 
 // Message represents a conversation message.
@@ -184,6 +264,7 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 
 	req.Stream = true
 	c.applyThinking(req)
+	c.applyEffort(req)
 	c.applyAttribution(req)
 
 	eventCh := make(chan StreamEvent, 64)
@@ -268,6 +349,7 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 		req.MaxTokens = 8192
 	}
 	c.applyThinking(req)
+	c.applyEffort(req)
 	c.applyAttribution(req)
 
 	body, err := json.Marshal(req)
@@ -324,15 +406,55 @@ func (c *Client) applyAttribution(req *MessagesRequest) {
 	req.SystemRaw, _ = json.Marshal(blocks)
 }
 
-// applyThinking sets adaptive thinking for models that support it (Sonnet 4+, Opus 4+).
+// applyThinking configures extended thinking based on client settings and model capability.
 func (c *Client) applyThinking(req *MessagesRequest) {
 	if req.Thinking != nil {
+		return // Already set explicitly on the request
+	}
+
+	model := req.Model
+	supportsThinking := strings.Contains(model, "sonnet-4") || strings.Contains(model, "opus-4")
+
+	switch c.thinkingMode {
+	case "disabled":
+		// Explicitly disabled — don't set thinking at all
+		return
+	case "enabled":
+		if supportsThinking {
+			budget := c.budgetTokens
+			if budget <= 0 {
+				budget = 10000 // default budget when enabled without explicit value
+			}
+			req.Thinking = &ThinkingConfig{Type: "enabled", BudgetTokens: budget}
+		}
+	case "adaptive":
+		if supportsThinking {
+			req.Thinking = &ThinkingConfig{Type: "adaptive"}
+		}
+	default:
+		// Auto-detect: use adaptive for supported models
+		if supportsThinking {
+			req.Thinking = &ThinkingConfig{Type: "adaptive"}
+		}
+	}
+}
+
+// applyEffort sets the effort level on the request for models that support it.
+func (c *Client) applyEffort(req *MessagesRequest) {
+	if req.OutputConfig != nil {
 		return // Already set
 	}
-	model := req.Model
-	if strings.Contains(model, "sonnet-4") || strings.Contains(model, "opus-4") {
-		req.Thinking = &ThinkingConfig{Type: "adaptive"}
+	if !modelSupportsEffort(req.Model) {
+		return
 	}
+
+	// Resolve effort: explicit setting or default to medium
+	effort := c.effortLevel
+	if effort == "" {
+		effort = "medium" // default
+	}
+
+	req.OutputConfig = &OutputConfig{Effort: effort}
 }
 
 func (c *Client) setHeaders(req *http.Request) {
@@ -342,11 +464,12 @@ func (c *Client) setHeaders(req *http.Request) {
 	authResult := c.authResolver.Resolve()
 	if authResult.IsOAuth {
 		req.Header.Set("Authorization", "Bearer "+authResult.Token)
-		req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14")
+		req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,advanced-tool-use-2025-11-20,effort-2025-11-24")
 		req.Header.Set("User-Agent", "claude-code/2.1.0 claude-cli")
 		req.Header.Set("x-app", "cli")
 	} else if authResult.Token != "" {
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("x-api-key", authResult.Token)
+		req.Header.Set("anthropic-beta", "advanced-tool-use-2025-11-20,effort-2025-11-24")
 	}
 }

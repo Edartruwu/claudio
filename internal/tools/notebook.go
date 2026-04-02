@@ -10,7 +10,9 @@ import (
 )
 
 // NotebookEditTool edits Jupyter notebook cells.
-type NotebookEditTool struct{}
+type NotebookEditTool struct {
+	deferrable
+}
 
 type notebookInput struct {
 	FilePath    string `json:"file_path"`

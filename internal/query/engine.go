@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
+	"github.com/Abraxas-365/claudio/internal/permissions"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
@@ -29,6 +31,10 @@ type EventHandler interface {
 	// OnToolApprovalNeeded is called when a tool requires approval.
 	// Returns true if the tool is approved, false if denied.
 	OnToolApprovalNeeded(toolUse tools.ToolUse) bool
+
+	// OnCostConfirmNeeded is called when session cost exceeds the confirmation threshold.
+	// Returns true to continue, false to stop the session.
+	OnCostConfirmNeeded(currentCost, threshold float64) bool
 }
 
 // EngineConfig holds all dependencies for the query engine.
@@ -40,31 +46,43 @@ type EngineConfig struct {
 	SessionID      string
 	Model          string
 	PermissionMode string // "default", "auto", "headless", "plan"
+	OnTurnEnd      func(messages []api.Message) // background memory extraction callback
+
+	// Permission pattern rules for content-based allow/deny
+	PermissionRules []config.PermissionRule
+
+	// Cost threshold for confirmation dialog (USD, 0 = disabled)
+	CostConfirmThreshold float64
 }
 
 // Engine orchestrates the AI conversation loop.
 type Engine struct {
-	client         *api.Client
-	registry       *tools.Registry
-	handler        EventHandler
-	messages       []api.Message
-	system         string
-	hooks          *hooks.Manager
-	analytics      *analytics.Tracker
-	compactState   *compact.State
-	taskRuntime    *tasks.Runtime
-	sessionID      string
-	model          string
-	permissionMode string
+	client          *api.Client
+	registry        *tools.Registry
+	handler         EventHandler
+	messages        []api.Message
+	system          string
+	hooks           *hooks.Manager
+	analytics       *analytics.Tracker
+	compactState    *compact.State
+	taskRuntime     *tasks.Runtime
+	sessionID       string
+	model           string
+	permissionMode    string
+	permissionRules   []config.PermissionRule
+	costConfirmThresh float64
+	discoveredTools   map[string]bool // tools discovered via ToolSearch
+	onTurnEnd         func(messages []api.Message) // called when a turn ends (end_turn stop reason)
 }
 
 // NewEngine creates a new query engine (basic constructor for backwards compatibility).
 func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandler) *Engine {
 	return &Engine{
-		client:         client,
-		registry:       registry,
-		handler:        handler,
-		permissionMode: "default",
+		client:          client,
+		registry:        registry,
+		handler:         handler,
+		permissionMode:  "default",
+		discoveredTools: make(map[string]bool),
 	}
 }
 
@@ -81,6 +99,9 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	if e.permissionMode == "" {
 		e.permissionMode = "default"
 	}
+	e.permissionRules = cfg.PermissionRules
+	e.costConfirmThresh = cfg.CostConfirmThreshold
+	e.onTurnEnd = cfg.OnTurnEnd
 	return e
 }
 
@@ -97,6 +118,12 @@ func (e *Engine) Messages() []api.Message {
 // SetMessages replaces the conversation messages (used after compaction).
 func (e *Engine) SetMessages(msgs []api.Message) {
 	e.messages = msgs
+}
+
+// SetOnTurnEnd registers a callback that fires when a turn ends (end_turn stop reason).
+// The callback receives a copy of the conversation messages.
+func (e *Engine) SetOnTurnEnd(fn func(messages []api.Message)) {
+	e.onTurnEnd = fn
 }
 
 // Run executes a single user turn: sends the message, processes the AI response,
@@ -122,18 +149,40 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		Content: content,
 	})
 
+	// Fire UserPromptSubmit hook
+	e.fireHook(ctx, hooks.UserPromptSubmit, "", string(content))
+
 	// Loop until end_turn (no more tool calls)
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		// Build request
+		// Auto-compact if approaching context limit (tiered)
+		if e.compactState != nil {
+			if e.compactState.ShouldForce() {
+				// Full compaction at 95%
+				e.fireHook(ctx, hooks.PreCompact, "", "")
+				compacted, summary, err := compact.Compact(ctx, e.client, e.messages, 10)
+				if err == nil && summary != "" {
+					e.messages = compacted
+					e.compactState.TotalTokens = 0
+					e.handler.OnTextDelta("\n[Auto-compacted conversation: " + summary[:min(len(summary), 100)] + "...]\n")
+					e.fireHook(ctx, hooks.PostCompact, "", "")
+				}
+			} else if e.compactState.ShouldPartialCompact() {
+				// Partial: clear old tool results at 70%
+				e.messages = compact.ContentClearCompact(e.messages, 20, 4096)
+				e.handler.OnTextDelta("\n[Cleared old tool results to save context]\n")
+			}
+		}
+
+		// Build request with deferred tool loading
 		req := &api.MessagesRequest{
 			Messages:  e.messages,
-			System:    e.system,
+			System:    e.buildSystemWithDeferredTools(),
 			MaxTokens: 16384,
-			Tools:     e.registry.APIDefinitions(),
+			Tools:     e.registry.APIDefinitionsWithDeferral(e.discoveredTools),
 		}
 
 		// Stream response
@@ -168,10 +217,31 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			e.compactState.TotalTokens += response.Usage.InputTokens + response.Usage.OutputTokens
 		}
 
+		// Check cost threshold
+		if e.costConfirmThresh > 0 && e.analytics != nil {
+			currentCost := e.analytics.Cost()
+			if currentCost >= e.costConfirmThresh {
+				if !e.handler.OnCostConfirmNeeded(currentCost, e.costConfirmThresh) {
+					e.handler.OnTextDelta("\n[Session stopped: cost threshold exceeded]\n")
+					return nil
+				}
+				// Double the threshold so we don't ask again immediately
+				e.costConfirmThresh *= 2
+			}
+		}
+
 		// Check if we're done
 		if response.StopReason == "end_turn" || len(response.ToolUses) == 0 {
 			// Fire Stop hook
 			e.fireHook(ctx, hooks.Stop, "", "")
+
+			// Fire turn-end callback for background memory extraction
+			if e.onTurnEnd != nil {
+				msgsCopy := make([]api.Message, len(e.messages))
+				copy(msgsCopy, e.messages)
+				go e.onTurnEnd(msgsCopy)
+			}
+
 			return nil
 		}
 
@@ -367,6 +437,22 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 		}
 
 		// 2. Permission check (mode-aware)
+		// Check if a rule explicitly denies this tool call
+		if behavior, matched := permissions.Match(tu.Name, tu.Input, e.permissionRules); matched && behavior == "deny" {
+			result := &tools.Result{
+				Content: fmt.Sprintf("Tool %s was denied by permission rule", tu.Name),
+				IsError: true,
+			}
+			e.handler.OnToolUseEnd(tu, result)
+			results = append(results, toolResultBlock{
+				Type:      "tool_result",
+				ToolUseID: tu.ID,
+				Content:   result.Content,
+				IsError:   true,
+			})
+			continue
+		}
+
 		if e.shouldRequireApproval(tool, tu.Input) {
 			if !e.handler.OnToolApprovalNeeded(tu) {
 				result := &tools.Result{
@@ -387,6 +473,11 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 		// 3. Execute
 		if e.analytics != nil {
 			e.analytics.RecordToolCall()
+		}
+
+		// Track tools discovered via ToolSearch
+		if tu.Name == "ToolSearch" {
+			e.trackDiscoveredTools(tu.Input)
 		}
 
 		result, err := tool.Execute(ctx, tu.Input)
@@ -487,6 +578,17 @@ func (e *Engine) shouldRequireApproval(tool tools.Tool, input json.RawMessage) b
 	case "plan":
 		return !tool.IsReadOnly() // block write tools in plan mode
 	default: // "default"
+		// Check content-pattern permission rules first (first match wins)
+		if behavior, matched := permissions.Match(tool.Name(), input, e.permissionRules); matched {
+			switch behavior {
+			case "allow":
+				return false
+			case "deny":
+				return true // will show dialog but auto-deny
+			case "ask":
+				return true
+			}
+		}
 		return tool.RequiresApproval(input)
 	}
 }
@@ -509,6 +611,67 @@ func (e *Engine) fireHook(ctx context.Context, event hooks.Event, toolName, tool
 
 	_, blocked := e.hooks.Run(ctx, event, hctx)
 	return blocked
+}
+
+// buildSystemWithDeferredTools returns the system prompt with a list of deferred
+// tool names appended, so the model knows they exist and can fetch them via ToolSearch.
+func (e *Engine) buildSystemWithDeferredTools() string {
+	deferred := e.registry.DeferredToolNames()
+	if len(deferred) == 0 {
+		return e.system
+	}
+
+	// Only list tools that haven't been discovered yet
+	var pending []string
+	for _, name := range deferred {
+		if !e.discoveredTools[name] {
+			pending = append(pending, name)
+		}
+	}
+	if len(pending) == 0 {
+		return e.system
+	}
+
+	return e.system + "\n\n<system-reminder>\nThe following deferred tools are available via ToolSearch:\n" +
+		strings.Join(pending, "\n") + "\n</system-reminder>"
+}
+
+// trackDiscoveredTools parses a ToolSearch input to mark which tools were requested,
+// so their full schemas are included in subsequent API requests.
+func (e *Engine) trackDiscoveredTools(input json.RawMessage) {
+	var params struct {
+		Query string `json:"query"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return
+	}
+
+	if strings.HasPrefix(params.Query, "select:") {
+		names := strings.Split(strings.TrimPrefix(params.Query, "select:"), ",")
+		for _, name := range names {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				e.discoveredTools[name] = true
+			}
+		}
+	} else {
+		// For keyword searches, we mark all matching tools as discovered after execution.
+		// The actual matching happens in ToolSearchTool.Execute, but we can pre-compute
+		// which tools would match using the same logic.
+		query := strings.ToLower(params.Query)
+		keywords := strings.Fields(query)
+		hints := e.registry.ToolSearchHints()
+		for name, hint := range hints {
+			nameL := strings.ToLower(name)
+			hintL := strings.ToLower(hint)
+			for _, kw := range keywords {
+				if strings.Contains(nameL, kw) || strings.Contains(hintL, kw) {
+					e.discoveredTools[name] = true
+					break
+				}
+			}
+		}
+	}
 }
 
 // toolResultBlock is the format the API expects for tool results.
@@ -593,6 +756,11 @@ func (h *StdoutHandler) OnTurnComplete(usage api.Usage) {
 
 func (h *StdoutHandler) OnToolApprovalNeeded(tu tools.ToolUse) bool {
 	return true // Auto-approve in non-interactive mode
+}
+
+func (h *StdoutHandler) OnCostConfirmNeeded(currentCost, threshold float64) bool {
+	fmt.Printf("\n[Cost: $%.4f exceeds threshold $%.4f — continuing in non-interactive mode]\n", currentCost, threshold)
+	return true
 }
 
 func (h *StdoutHandler) OnError(err error) {
