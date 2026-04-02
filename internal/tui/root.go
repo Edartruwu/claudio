@@ -93,8 +93,9 @@ type Model struct {
 	appCtx *AppContext
 
 	// Engine integration
-	engine       *query.Engine
-	apiClient    *api.Client
+	engine                *query.Engine
+	pendingEngineMessages []api.Message
+	apiClient             *api.Client
 	registry     *tools.Registry
 	cancelFunc   context.CancelFunc
 	eventCh      chan tuiEvent
@@ -1078,6 +1079,10 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	if m.systemPrompt != "" {
 		m.engine.SetSystem(m.systemPrompt)
 	}
+	if len(m.pendingEngineMessages) > 0 {
+		m.engine.SetMessages(m.pendingEngineMessages)
+		m.pendingEngineMessages = nil
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelFunc = cancel
@@ -1726,6 +1731,7 @@ func (m *Model) doSwitchSession(id string) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	m.pendingEngineMessages = nil
 
 	title := resumed.Title
 	if title == "" {
@@ -1770,7 +1776,12 @@ func (m *Model) doSwitchSession(id string) {
 		}
 
 		// Restore engine conversation history so the model has full context
-		m.engine.SetMessages(reconstructEngineMessages(storedMsgs))
+		engineMsgs := reconstructEngineMessages(storedMsgs)
+		if m.engine != nil {
+			m.engine.SetMessages(engineMsgs)
+		} else {
+			m.pendingEngineMessages = engineMsgs
+		}
 
 		// Restore turn count and estimate tokens from stored content
 		for _, msg := range storedMsgs {

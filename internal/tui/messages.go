@@ -593,9 +593,9 @@ func renderMessage(msg ChatMessage, maxW int) string {
 
 	switch msg.Type {
 	case MsgUser:
-		prefix := styles.UserPrefix.Render("❯ ")
 		content := styles.UserContent.Render(msg.Content)
-		return pinPrefix + prefix + content
+		block := styles.UserBlock.Render(content)
+		return pinPrefix + block
 
 	case MsgAssistant:
 		prefix := styles.AssistantPrefix.Render("● ")

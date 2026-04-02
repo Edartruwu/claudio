@@ -31,7 +31,14 @@ var (
 			Bold(true)
 
 	UserContent = lipgloss.NewStyle().
-			Foreground(Text)
+			Foreground(Text).
+			PaddingLeft(1)
+
+	UserBlock = lipgloss.NewStyle().
+			BorderStyle(lipgloss.Border{Left: "▌"}).
+			BorderLeft(true).
+			BorderForeground(Secondary).
+			PaddingLeft(1)
 
 	AssistantPrefix = lipgloss.NewStyle().
 			Foreground(Primary).
