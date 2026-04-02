@@ -192,6 +192,9 @@ func (m *Model) scan() {
 		return
 	}
 
+	// If user explicitly typed a dot (e.g. "~/.config"), allow hidden files.
+	showHidden := strings.HasPrefix(fuzzy, ".")
+
 	var candidates []Item
 
 	filepath.WalkDir(scanAbs, func(path string, d os.DirEntry, err error) error {
@@ -201,12 +204,14 @@ func (m *Model) scan() {
 
 		name := d.Name()
 
-		// Skip hidden
+		// Skip hidden unless user explicitly typed a leading dot.
 		if name != "." && strings.HasPrefix(name, ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
+			if !showHidden {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
-			return nil
 		}
 		if d.IsDir() && skipDirs[name] {
 			return filepath.SkipDir
@@ -232,7 +237,7 @@ func (m *Model) scan() {
 
 	// Filter
 	if fuzzy == "" {
-		// No fuzzy part: show shallow entries (depth ≤ 1 within scan dir)
+		// No fuzzy part: show shallow entries (depth == 0 within scan dir)
 		for _, c := range candidates {
 			relToScan := strings.TrimPrefix(c.Path, displayPrefix)
 			depth := strings.Count(relToScan, string(filepath.Separator))
@@ -243,8 +248,12 @@ func (m *Model) scan() {
 	} else {
 		fq := strings.ToLower(fuzzy)
 		for _, c := range candidates {
-			// Fuzzy match against the part after the prefix
+			// Only fuzzy-match against the direct children of the scan dir (depth 0).
+			// Deeper entries would have been unreachable without the user typing more path.
 			relToScan := strings.TrimPrefix(c.Path, displayPrefix)
+			if strings.ContainsRune(relToScan, filepath.Separator) {
+				continue // skip deeply nested entries
+			}
 			if fuzzyMatch(strings.ToLower(relToScan), fq) {
 				m.filtered = append(m.filtered, c)
 			}
