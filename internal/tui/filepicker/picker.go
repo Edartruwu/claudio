@@ -195,69 +195,36 @@ func (m *Model) scan() {
 	// If user explicitly typed a dot (e.g. "~/.config"), allow hidden files.
 	showHidden := strings.HasPrefix(fuzzy, ".")
 
-	var candidates []Item
+	// Use ReadDir to list only direct children — no deep walk needed since we
+	// always show/fuzzy-match at depth 0 only. A deep WalkDir would hit the
+	// entry cap inside large directories (e.g. ~/Applications) before reaching
+	// sibling dirs the user actually wants (e.g. ~/Personal).
+	entries, err := os.ReadDir(scanAbs)
+	if err != nil {
+		return
+	}
 
-	filepath.WalkDir(scanAbs, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		name := d.Name()
+	fq := strings.ToLower(fuzzy)
+	for _, entry := range entries {
+		name := entry.Name()
 
 		// Skip hidden unless user explicitly typed a leading dot.
-		if name != "." && strings.HasPrefix(name, ".") {
-			if !showHidden {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
+		if strings.HasPrefix(name, ".") && !showHidden {
+			continue
 		}
-		if d.IsDir() && skipDirs[name] {
-			return filepath.SkipDir
+		if entry.IsDir() && skipDirs[name] {
+			continue
 		}
 
-		// Get path relative to the scan directory
-		rel, err := filepath.Rel(scanAbs, path)
-		if err != nil || rel == "." {
-			return nil
+		// Fuzzy filter (empty fuzzy means show all)
+		if fq != "" && !fuzzyMatch(strings.ToLower(name), fq) {
+			continue
 		}
 
-		candidates = append(candidates, Item{
-			Path:  displayPrefix + rel,
-			IsDir: d.IsDir(),
+		m.filtered = append(m.filtered, Item{
+			Path:  displayPrefix + name,
+			IsDir: entry.IsDir(),
 		})
-
-		if len(candidates) > 500 {
-			return filepath.SkipAll
-		}
-
-		return nil
-	})
-
-	// Filter
-	if fuzzy == "" {
-		// No fuzzy part: show shallow entries (depth == 0 within scan dir)
-		for _, c := range candidates {
-			relToScan := strings.TrimPrefix(c.Path, displayPrefix)
-			depth := strings.Count(relToScan, string(filepath.Separator))
-			if depth == 0 {
-				m.filtered = append(m.filtered, c)
-			}
-		}
-	} else {
-		fq := strings.ToLower(fuzzy)
-		for _, c := range candidates {
-			// Only fuzzy-match against the direct children of the scan dir (depth 0).
-			// Deeper entries would have been unreachable without the user typing more path.
-			relToScan := strings.TrimPrefix(c.Path, displayPrefix)
-			if strings.ContainsRune(relToScan, filepath.Separator) {
-				continue // skip deeply nested entries
-			}
-			if fuzzyMatch(strings.ToLower(relToScan), fq) {
-				m.filtered = append(m.filtered, c)
-			}
-		}
 	}
 
 	// Sort: directories first, then alphabetically
