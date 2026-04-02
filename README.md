@@ -521,18 +521,129 @@ Crystallize a session's knowledge into a reusable agent persona with its own mem
 
 ---
 
-## Multi-Agent Teams
+## Orchestrator & Multi-Agent Teams
+
+Claudio supports spawning parallel worker agents ("teammates") coordinated by a team lead through a **file-based mailbox pattern**. The calling agent becomes the team lead and can spawn, message, and monitor teammates — each of which runs a full LLM conversation loop in its own goroutine.
+
+### How it works
+
+```
+┌─────────────┐  TeamCreate   ┌─────────┐  creates config + inboxes/
+│  Team Lead  │──────────────▶│ Manager │
+│  (you/LLM)  │               └─────────┘
+│             │  Agent tool    ┌──────────────┐
+│             │───────────────▶│TeammateRunner│  Spawn() → goroutines
+│             │               └──────┬───────┘
+│             │               ┌──────▼───────┐
+│             │               │ Teammate 1   │──┐
+│             │               │ Teammate 2   │  │ each runs its own
+│             │               │ Teammate 3   │  │ LLM conversation
+│             │               └──────────────┘  │
+│             │                      │          │
+│             │    on completion:    │          │
+│             │    mailbox → lead    ▼          │
+│             │◀──────────────── Mailbox ◀──────┘
+│             │               (file JSON        
+│             │                + flock)          
+└─────────────┘
+```
+
+1. **Team creation** — creates a team config and inbox directory under `~/.claudio/teams/{name}/`
+2. **Spawning** — each teammate launches as a goroutine running a full `query.Engine` (LLM loop with tool access). Sub-agents get a cloned tool registry with the `Agent` tool **removed** to prevent infinite recursion.
+3. **Messaging** — agents communicate via file-based JSON inboxes with file locking (`flock`). Supports direct messages, broadcasts (`*`), and structured control messages (shutdown requests, plan approvals).
+4. **Completion** — when a teammate finishes, it automatically sends a completion message to the team lead's inbox with its result.
+5. **Cleanup** — the lead can kill individual teammates or the whole team. `DeleteTeam` fails if members are still active.
+
+### Team commands
 
 ```bash
+# Create a team (you become the lead)
 /team create my-team "Research and implement auth system"
-/team spawn my-team researcher "Research OAuth libraries"
+
+# Spawn teammates with specific tasks
+/team spawn my-team researcher "Research OAuth libraries for Go"
 /team spawn my-team implementer "Implement the auth middleware"
+
+# Send a direct message to a teammate
 /team message my-team researcher "Focus on JWT-based approaches"
+
+# Broadcast to all teammates
+/team message my-team * "Wrap up, we're merging in 10 minutes"
+
+# Check team status
 /team status my-team
+
+# Delete the team when done
 /team delete my-team
 ```
 
-Teams use file-based mailbox messaging, per-member status tracking, and broadcast messaging.
+### Team tools (available to the LLM)
+
+| Tool | Description |
+|------|-------------|
+| `TeamCreate` | Create a new team (caller becomes lead) |
+| `TeamDelete` | Delete a team (fails if members still active) |
+| `SendMessage` | Send direct or broadcast messages between agents |
+
+The `Agent` tool handles spawning — when a team exists, the LLM can spawn teammates as background agents that join the team.
+
+### Example: parallel research and implementation
+
+```
+You: "Set up a team to add OAuth support to our API"
+
+Claudio (as team lead):
+  1. Creates team "oauth-team"
+  2. Spawns "researcher" → "Find the best Go OAuth2 library, compare options"
+  3. Spawns "implementer" → "Implement OAuth2 middleware once researcher reports back"
+  4. Researcher finishes → sends findings to team lead inbox
+  5. Lead forwards relevant info to implementer via SendMessage
+  6. Implementer finishes → sends completion message
+  7. Lead reviews results and reports back to you
+```
+
+### Example: code review team
+
+```
+You: "Create a review team for the changes in this PR"
+
+Claudio:
+  1. Creates team "review-team"
+  2. Spawns "security-reviewer" → "Check for security issues in the diff"
+  3. Spawns "style-reviewer" → "Check code style and naming conventions"
+  4. Spawns "test-reviewer" → "Verify test coverage for new code"
+  5. Each reviewer works in parallel, sends findings to lead
+  6. Lead consolidates all feedback into a single review summary
+```
+
+### Teammate identity and status
+
+Each teammate gets a deterministic ID (`name@team`), a color from the gruvbox palette, and a tracked status:
+
+| Status | Icon | Meaning |
+|--------|------|---------|
+| Idle | `○` | Waiting for work |
+| Working | `◐` | Currently running |
+| Complete | `●` | Finished successfully |
+| Failed | `✗` | Encountered an error |
+| Shutdown | `⊘` | Cancelled by lead |
+
+View live status in the TUI tasks panel (`<Space>it`) or with `/team status`.
+
+### Mailbox internals
+
+Messages are stored as JSON arrays in per-agent inbox files:
+
+```
+~/.claudio/teams/my-team/
+  config.json                    # team config, member list
+  inboxes/
+    team-lead.json               # lead's inbox
+    researcher.json              # researcher's inbox
+    implementer.json             # implementer's inbox
+```
+
+All inbox reads/writes are protected by file locks (`flock`) to prevent corruption from concurrent access. Messages support both plain text and structured payloads (shutdown requests, approval responses).
 
 ---
 
