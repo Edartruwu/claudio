@@ -71,6 +71,9 @@ type RenderResult struct {
 // cursorSection is the section index to highlight (-1 = none).
 func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, cursorSection int) RenderResult {
 	maxW := width - 4
+	if maxW > 110 {
+		maxW = 110
+	}
 	if maxW < 40 {
 		maxW = 40
 	}
@@ -88,6 +91,14 @@ func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, 
 
 		var block string
 		var sec Section
+
+		// Add a turn divider before each user message (except the very first)
+		if msg.Type == MsgUser && i > 0 {
+			divider := renderTurnDivider(maxW)
+			rendered = append(rendered, divider)
+			divLines := strings.Count(divider, "\n") + 1
+			currentLine += divLines + 1
+		}
 
 		// Try to group consecutive ToolUse/ToolResult pairs
 		if msg.Type == MsgToolUse {
@@ -827,6 +838,12 @@ func indentContinuation(s, prefix string) string {
 		lines[i] = prefix + lines[i]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// renderTurnDivider renders a subtle horizontal rule between conversation turns.
+func renderTurnDivider(maxW int) string {
+	line := strings.Repeat("─", maxW)
+	return lipgloss.NewStyle().Foreground(styles.Subtle).Render(line)
 }
 
 // renderAssistantContinuation renders assistant text that follows a tool group.
