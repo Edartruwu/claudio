@@ -125,7 +125,12 @@ type (
 		mediaType string
 		err       error
 	}
-	timerTickMsg struct{}
+	timerTickMsg  struct{}
+	compactDoneMsg struct {
+		compacted []api.Message
+		summary   string
+		err       error
+	}
 )
 
 // ModelOption configures optional TUI model fields.
@@ -915,6 +920,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleSubmit(next)
 		}
 		return m, nil
+
+	case compactDoneMsg:
+		m.streaming = false
+		m.spinText = ""
+		m.spinner.Stop()
+		if msg.err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Compaction failed: %v", msg.err)})
+		} else if msg.summary == "" {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Nothing to compact (conversation too short)."})
+		} else {
+			m.engine.SetMessages(msg.compacted)
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Compacted. Summary:\n%s", msg.summary)})
+		}
+		m.refreshViewport()
+		return m, nil
 	}
 
 	// Delegate to focused component
@@ -1250,23 +1270,16 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		}
 		msgs := m.engine.Messages()
 		pinned := m.buildPinnedEngineIndices()
-		compacted, summary, err := compact.Compact(
-			context.Background(), m.apiClient, msgs, keepLast, pinned,
-		)
-		if err != nil {
-			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Compaction failed: %v", err)})
-			m.refreshViewport()
-			return m, nil
-		}
-		if summary == "" {
-			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Nothing to compact (conversation too short)."})
-			m.refreshViewport()
-			return m, nil
-		}
-		m.engine.SetMessages(compacted)
-		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Compacted conversation. Summary:\n%s", summary)})
+		// Run compaction in background — it makes a blocking API call
+		m.streaming = true
+		m.spinText = "Compacting..."
 		m.refreshViewport()
-		return m, nil
+		return m, func() tea.Msg {
+			compacted, summary, err := compact.Compact(
+				context.Background(), m.apiClient, msgs, keepLast, pinned,
+			)
+			return compactDoneMsg{compacted: compacted, summary: summary, err: err}
+		}
 	}
 
 	// /memory extract → handle directly because closures from New() capture a stale m
@@ -1744,15 +1757,27 @@ func (m *Model) doSwitchSession(id string) {
 			case "tool_result":
 				msgType = MsgToolResult
 			default:
-				continue // Skip system/error from DB
+				continue
 			}
-			// Append directly — these are historical, don't re-persist
 			m.messages = append(m.messages, ChatMessage{
 				Type:     msgType,
 				Content:  msg.Content,
 				ToolName: msg.ToolName,
 			})
 		}
+
+		// Restore engine conversation history so the model has full context
+		m.engine.SetMessages(reconstructEngineMessages(storedMsgs))
+
+		// Restore turn count and estimate tokens from stored content
+		for _, msg := range storedMsgs {
+			if msg.Type == "user" {
+				m.turns++
+			}
+			m.totalTokens += (len(msg.Content) + 3) / 4 // ~4 chars per token
+		}
+		// Rough cost estimate (use Sonnet pricing as baseline)
+		m.totalCost = float64(m.totalTokens) * 3.0 / 1_000_000
 	}
 
 	// Inject summary into system prompt for AI continuity
@@ -1760,6 +1785,90 @@ func (m *Model) doSwitchSession(id string) {
 		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
 	}
 	m.refreshViewport()
+}
+
+// reconstructEngineMessages rebuilds a []api.Message slice from stored DB records so
+// the engine has full conversation history when a session is resumed.
+// Groups: "assistant" + following "tool_use" rows → one assistant message;
+// consecutive "tool_result" rows → one user message, IDs paired by position.
+func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message {
+	type trBlock struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
+		Content   string `json:"content"`
+	}
+
+	var result []api.Message
+	var pendingIDs []string
+	tuCounter := 0
+
+	i := 0
+	for i < len(storedMsgs) {
+		msg := storedMsgs[i]
+		switch msg.Type {
+		case "user":
+			content, _ := json.Marshal(msg.Content)
+			result = append(result, api.Message{Role: "user", Content: content})
+			i++
+
+		case "assistant":
+			var blocks []api.ContentBlock
+			if msg.Content != "" {
+				blocks = append(blocks, api.ContentBlock{Type: "text", Text: msg.Content})
+			}
+			i++
+			pendingIDs = nil
+			for i < len(storedMsgs) && storedMsgs[i].Type == "tool_use" {
+				tuCounter++
+				id := fmt.Sprintf("toolu_%04d", tuCounter)
+				pendingIDs = append(pendingIDs, id)
+				input := json.RawMessage(storedMsgs[i].Content)
+				if len(input) == 0 || !json.Valid(input) {
+					input = json.RawMessage("{}")
+				}
+				blocks = append(blocks, api.ContentBlock{
+					Type:  "tool_use",
+					ID:    id,
+					Name:  storedMsgs[i].ToolName,
+					Input: input,
+				})
+				i++
+			}
+			if len(blocks) > 0 {
+				content, _ := json.Marshal(blocks)
+				result = append(result, api.Message{Role: "assistant", Content: content})
+			}
+
+		case "tool_result":
+			var trs []trBlock
+			j := 0
+			for i < len(storedMsgs) && storedMsgs[i].Type == "tool_result" {
+				id := ""
+				if j < len(pendingIDs) {
+					id = pendingIDs[j]
+				} else {
+					tuCounter++
+					id = fmt.Sprintf("toolu_%04d", tuCounter)
+				}
+				trs = append(trs, trBlock{
+					Type:      "tool_result",
+					ToolUseID: id,
+					Content:   storedMsgs[i].Content,
+				})
+				i++
+				j++
+			}
+			if len(trs) > 0 {
+				content, _ := json.Marshal(trs)
+				result = append(result, api.Message{Role: "user", Content: content})
+			}
+			pendingIDs = nil
+
+		default:
+			i++
+		}
+	}
+	return result
 }
 
 // countBackgroundSessions returns the number of sessions still streaming in the background.
@@ -2316,7 +2425,7 @@ func (m *Model) isWelcomeScreen() bool {
 
 func (m *Model) layout() {
 	statusH := 1
-	promptH := 4
+	promptH := m.prompt.Height()
 	paletteH := 0
 	if m.palette.IsActive() || m.filePicker.IsActive() {
 		paletteH = 10
