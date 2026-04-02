@@ -34,6 +34,9 @@ type Client struct {
 
 	// Effort level (controls reasoning depth, separate from thinking)
 	effortLevel string // "low", "medium", "high", "" (default/high)
+
+	// Prompt caching: inject cache_control on the last system block.
+	promptCaching bool
 }
 
 // NewClient creates a new API client.
@@ -42,10 +45,11 @@ func NewClient(resolver *auth.Resolver, opts ...ClientOption) *Client {
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
-		authResolver: resolver,
-		baseURL:      defaultBaseURL,
-		apiVersion:   defaultAPIVersion,
-		model:        "claude-sonnet-4-6",
+		authResolver:  resolver,
+		baseURL:       defaultBaseURL,
+		apiVersion:    defaultAPIVersion,
+		model:         "claude-sonnet-4-6",
+		promptCaching: true, // enabled by default
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -64,6 +68,11 @@ func WithBaseURL(url string) ClientOption {
 // WithModel sets the default model.
 func WithModel(model string) ClientOption {
 	return func(c *Client) { c.model = model }
+}
+
+// WithPromptCaching enables or disables prompt caching (default: true).
+func WithPromptCaching(enabled bool) ClientOption {
+	return func(c *Client) { c.promptCaching = enabled }
 }
 
 // GetModel returns the current default model.
@@ -154,10 +163,16 @@ type OutputConfig struct {
 	Effort string `json:"effort,omitempty"` // "low", "medium", "high"
 }
 
+// CacheControlBlock instructs the API to cache content up to this point.
+type CacheControlBlock struct {
+	Type string `json:"type"` // always "ephemeral"
+}
+
 // SystemBlock is a text block in the system prompt array.
 type SystemBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type         string             `json:"type"`
+	Text         string             `json:"text"`
+	CacheControl *CacheControlBlock `json:"cache_control,omitempty"`
 }
 
 // MessagesRequest is the request body for /v1/messages.
@@ -387,12 +402,18 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 // applyAttribution injects the x-anthropic-billing-header into the system prompt
 // as the first text block. This is required for OAuth tokens on Sonnet/Opus models.
 // It converts the plain string System field into a SystemRaw JSON array.
+// When prompt caching is enabled, it marks the last block with cache_control so the
+// API caches everything up to that point (saves re-paying for static system content).
 func (c *Client) applyAttribution(req *MessagesRequest) {
 	authResult := c.authResolver.Resolve()
 	if !authResult.IsOAuth {
-		// For non-OAuth, just convert system string to JSON string
+		// For non-OAuth, emit a block array so we can attach cache_control.
 		if req.System != "" {
-			req.SystemRaw, _ = json.Marshal(req.System)
+			block := SystemBlock{Type: "text", Text: req.System}
+			if c.promptCaching {
+				block.CacheControl = &CacheControlBlock{Type: "ephemeral"}
+			}
+			req.SystemRaw, _ = json.Marshal([]SystemBlock{block})
 		}
 		return
 	}
@@ -402,6 +423,10 @@ func (c *Client) applyAttribution(req *MessagesRequest) {
 	}
 	if req.System != "" {
 		blocks = append(blocks, SystemBlock{Type: "text", Text: req.System})
+	}
+	// Mark the last block for caching — the API will cache everything up to this point.
+	if c.promptCaching && len(blocks) > 0 {
+		blocks[len(blocks)-1].CacheControl = &CacheControlBlock{Type: "ephemeral"}
 	}
 	req.SystemRaw, _ = json.Marshal(blocks)
 }

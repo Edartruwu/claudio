@@ -1,8 +1,13 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
+	"image"
+	_ "image/gif"
+	"image/jpeg"
+	_ "image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,7 +39,45 @@ func IsImageFile(path string) bool {
 	return ok
 }
 
+// imageTargetBytes is the target raw size for images sent to the API.
+// Images above this are compressed before base64 encoding.
+const imageTargetBytes = 500_000
+
+// compressImage attempts to reduce image size by re-encoding as JPEG at
+// progressively lower quality. Returns the (possibly compressed) bytes and
+// the resulting media type. Falls back to original bytes if compression fails.
+func compressImage(raw []byte, originalMediaType string) ([]byte, string) {
+	if len(raw) <= imageTargetBytes {
+		return raw, originalMediaType
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		// Can't decode — return original and let the API reject if too large
+		return raw, originalMediaType
+	}
+
+	// Try JPEG at descending quality levels
+	for _, quality := range []int{85, 70, 55, 40} {
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+			continue
+		}
+		if buf.Len() <= imageTargetBytes {
+			return buf.Bytes(), "image/jpeg"
+		}
+	}
+
+	// Still over target — return the best we got (quality 40)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 40}); err == nil {
+		return buf.Bytes(), "image/jpeg"
+	}
+	return raw, originalMediaType
+}
+
 // ReadImageFile reads an image from disk and returns its base64 data and MIME type.
+// Images larger than imageTargetBytes are compressed before encoding.
 func ReadImageFile(path string) (data string, mediaType string, err error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	mt, ok := supportedImageExts[ext]
@@ -47,13 +90,16 @@ func ReadImageFile(path string) (data string, mediaType string, err error) {
 		return "", "", fmt.Errorf("reading image: %w", err)
 	}
 
-	// Claude API limit: ~5MB base64 (~3.75MB raw)
+	// Claude API hard limit: ~5MB base64 (~3.75MB raw)
 	const maxSize = 3_750_000
-	if len(raw) > maxSize {
-		return "", "", fmt.Errorf("image too large (%s, max ~3.75MB)", humanFileSize(len(raw)))
+
+	// Compress first, then enforce hard limit
+	compressed, mt := compressImage(raw, mt)
+	if len(compressed) > maxSize {
+		return "", "", fmt.Errorf("image too large (%s, max ~3.75MB)", humanFileSize(len(compressed)))
 	}
 
-	return base64.StdEncoding.EncodeToString(raw), mt, nil
+	return base64.StdEncoding.EncodeToString(compressed), mt, nil
 }
 
 // ReadClipboardImage attempts to read an image from the system clipboard.
@@ -189,7 +235,8 @@ end try`, tmpPath, tmpPath, tmpPath)
 		mediaType = "image/jpeg"
 	}
 
-	return base64.StdEncoding.EncodeToString(raw), mediaType, nil
+	compressed, mediaType := compressImage(raw, mediaType)
+	return base64.StdEncoding.EncodeToString(compressed), mediaType, nil
 }
 
 func readClipboardImageLinux() (string, string, error) {

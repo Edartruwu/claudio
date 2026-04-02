@@ -388,6 +388,64 @@ Manual compaction: `/compact [n]` (keep last n messages). `/compact partial` cle
 
 ---
 
+## Token Efficiency
+
+Claudio implements a multi-layer token optimization stack to minimize API cost and keep long sessions within the context window.
+
+### Prompt caching
+
+Every request marks the last system prompt block with `cache_control: {type: "ephemeral"}`. The Anthropic API caches everything up to that point server-side for 5 minutes. Cached input tokens cost ~10× less than normal input tokens. In practice this means the system prompt (which can be hundreds of tokens of instructions, memories, rules, and tool descriptions) is only paid for in full once per session.
+
+Cache reads and writes are tracked in the analytics panel (`<Space>ia`). When more than 5 minutes pass between turns, Claudio warns that the cache has likely expired so the first response will be slightly slower.
+
+### Output token slot reservation
+
+`max_tokens` defaults to **8 192** rather than the model maximum. This matters because the API reserves `max_tokens` worth of capacity from the context window even if the model finishes early. A lower default leaves more room for input. If the model hits the limit mid-response, Claudio automatically retries the same request with `max_tokens = 64 000` before surfacing an error.
+
+### Diminishing returns detection
+
+When the model continues past a `max_tokens` stop with no tool calls (continuation mode), Claudio injects "Please continue from where you left off." and tracks how many output tokens each continuation produces. If output tokens drop by more than 50% compared to the prior continuation, or after 5 consecutive continuations, the loop stops — preventing wasted spend on a response that is tapering off.
+
+### Microcompaction
+
+After every tool-execution turn, `compact.MicroCompact` scans the message history and clears read-heavy tool results that are older than the last 6 results and larger than 2 KB. Affected tools: `Bash`, `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `LSP`, `ToolSearch`. Content is replaced with `[result cleared — N bytes]`. This runs continuously (no threshold required) and keeps the message payload lean throughout long sessions, complementing the tiered threshold-based compaction at 70/90/95%.
+
+### Tool result disk offload
+
+Tool results larger than **50 KB** are written to `$TMPDIR/claudio-tool-results/` and replaced in the API payload with a compact placeholder (`[tool result on disk: id, N bytes]`). The files are cleaned up when the session ends. This prevents single large outputs (e.g., a long bash command or a web fetch) from consuming a disproportionate share of the context window.
+
+### Duplicate read deduplication
+
+`FileReadTool` maintains an in-session LRU cache (256 entries) keyed by `(path, offset, limit)`. Cache entries are invalidated automatically when the file's mtime changes. If the model reads the same file section more than once, subsequent reads return the cached result without hitting disk or adding a duplicate large block to the conversation history.
+
+### Image compression
+
+Before base64-encoding an image (from file or clipboard), Claudio checks whether it exceeds **500 KB**. If it does, it decodes the image and re-encodes as JPEG at descending quality levels (85 → 70 → 55 → 40) until it fits. This keeps image tokens predictable and avoids the hard ~3.75 MB API limit for most real-world screenshots and diagrams.
+
+### Message merging
+
+Before each API call, adjacent plain-text user messages are merged into a single message. This reduces per-message overhead and avoids edge cases with consecutive same-role messages. Tool result blocks are never merged.
+
+### Deferred tool definitions
+
+Infrequently-used tools (web, LSP, notebooks, tasks, teams, etc.) are sent with a stub schema (`{"type":"object"}`) instead of their full JSON schema. The model discovers them on demand via `ToolSearch`, at which point the full schema is included in the next request. This saves the token cost of sending dozens of tool descriptions on every turn when most of them will never be used.
+
+### Summary
+
+| Technique | Where | Typical saving |
+|-----------|-------|---------------|
+| Prompt caching | `internal/api/client.go` | ~90% discount on system tokens per turn |
+| Output slot reservation | `internal/query/engine.go` | Frees input capacity equal to difference vs model max |
+| Diminishing returns stop | `internal/query/engine.go` | Avoids runaway continuation spend |
+| Microcompaction | `internal/services/compact/compact.go` | Continuous reduction of old tool result bulk |
+| Tool result disk offload | `internal/services/toolcache/` | Caps single-result payload at 50 KB |
+| Duplicate read cache | `internal/tools/readcache/` | Eliminates redundant file read tokens |
+| Image compression | `internal/tui/images.go` | Reduces image payloads to ≤500 KB |
+| Message merging | `internal/query/engine.go` | Reduces per-message overhead |
+| Deferred tool schemas | `internal/tools/registry.go` | Saves full schema cost for unused tools |
+
+---
+
 ## Memory System
 
 Three-layer memory architecture:

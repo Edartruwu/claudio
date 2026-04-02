@@ -3,6 +3,8 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
 // Registry holds all registered tools.
@@ -144,9 +146,12 @@ func (r *Registry) Names() []string {
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
 
+	// Shared read cache for deduplicating repeated file reads within a session
+	rc := readcache.New(256)
+
 	// Core file & shell tools (always loaded — never deferred)
 	r.Register(&BashTool{})
-	r.Register(&FileReadTool{})
+	r.Register(&FileReadTool{ReadCache: rc})
 	r.Register(&FileWriteTool{})
 	r.Register(&FileEditTool{})
 	r.Register(&GlobTool{})

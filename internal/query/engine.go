@@ -14,7 +14,9 @@ import (
 	"github.com/Abraxas-365/claudio/internal/permissions"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
+	"github.com/Abraxas-365/claudio/internal/services/cachetracker"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
+	"github.com/Abraxas-365/claudio/internal/services/toolcache"
 	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/tools"
 )
@@ -55,6 +57,14 @@ type EngineConfig struct {
 	CostConfirmThreshold float64
 }
 
+const (
+	// defaultMaxTokens is used for normal requests to avoid over-reserving output
+	// capacity (input capacity = context_window - max_tokens). Escalated on retry.
+	defaultMaxTokens  = 8_192
+	escalatedMaxTokens = 64_000
+	maxContinuations  = 5
+)
+
 // Engine orchestrates the AI conversation loop.
 type Engine struct {
 	client          *api.Client
@@ -73,16 +83,38 @@ type Engine struct {
 	costConfirmThresh float64
 	discoveredTools   map[string]bool // tools discovered via ToolSearch
 	onTurnEnd         func(messages []api.Message) // called when a turn ends (end_turn stop reason)
+
+	// continuation tracking for diminishing returns detection
+	continuationCount int
+	lastOutputTokens  int
+
+	// cache observability
+	cacheTracker  *cachetracker.Tracker
+	cacheExpiry   *cachetracker.ExpiryWatcher
+
+	// tool result disk offload for oversized outputs
+	toolCache *toolcache.Store
 }
 
 // NewEngine creates a new query engine (basic constructor for backwards compatibility).
 func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandler) *Engine {
+	tc, _ := toolcache.New(os.TempDir()+"/claudio-tool-results", 0)
 	return &Engine{
 		client:          client,
 		registry:        registry,
 		handler:         handler,
 		permissionMode:  "default",
 		discoveredTools: make(map[string]bool),
+		cacheTracker:    &cachetracker.Tracker{},
+		cacheExpiry:     cachetracker.NewExpiryWatcher(5 * time.Minute),
+		toolCache:       tc,
+	}
+}
+
+// Close releases resources held by the engine (cleans up persisted tool result files).
+func (e *Engine) Close() {
+	if e.toolCache != nil {
+		e.toolCache.Cleanup()
 	}
 }
 
@@ -158,6 +190,13 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			return ctx.Err()
 		}
 
+		// Warn once per turn if the cache has likely expired (>5 min since last call)
+		if e.cacheExpiry.IsExpired() {
+			e.handler.OnTextDelta("\n[Note: prompt cache likely expired — first response may be slower]\n")
+			// Reset so we don't repeat the warning every loop iteration
+			e.cacheExpiry.RecordCall()
+		}
+
 		// Auto-compact if approaching context limit (tiered)
 		if e.compactState != nil {
 			if e.compactState.ShouldForce() {
@@ -177,11 +216,14 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			}
 		}
 
+		// Merge consecutive user messages before sending (reduces message count overhead)
+		mergedMessages := mergeConsecutiveUserMessages(e.messages)
+
 		// Build request with deferred tool loading
 		req := &api.MessagesRequest{
-			Messages:  e.messages,
+			Messages:  mergedMessages,
 			System:    e.buildSystemWithDeferredTools(),
-			MaxTokens: 16384,
+			MaxTokens: defaultMaxTokens,
 			Tools:     e.registry.APIDefinitionsWithDeferral(e.discoveredTools),
 		}
 
@@ -190,6 +232,16 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		if err != nil {
 			e.handler.OnError(err)
 			return err
+		}
+
+		// If we hit the output token limit, retry once with escalated max_tokens
+		if response.StopReason == "max_tokens" && req.MaxTokens == defaultMaxTokens {
+			req.MaxTokens = escalatedMaxTokens
+			response, err = e.streamResponse(ctx, req)
+			if err != nil {
+				e.handler.OnError(err)
+				return err
+			}
 		}
 
 		// Append assistant message — strip thinking blocks since they
@@ -207,6 +259,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		})
 
 		e.handler.OnTurnComplete(response.Usage)
+
+		// Record cache observability
+		e.cacheTracker.Record(response.Usage.CacheCreate, e.system, len(e.messages))
+		e.cacheExpiry.RecordCall()
 
 		// Track analytics
 		if e.analytics != nil {
@@ -231,7 +287,11 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		}
 
 		// Check if we're done
-		if response.StopReason == "end_turn" || len(response.ToolUses) == 0 {
+		if response.StopReason == "end_turn" || (response.StopReason != "max_tokens" && len(response.ToolUses) == 0) {
+			// Reset continuation tracking on clean completion
+			e.continuationCount = 0
+			e.lastOutputTokens = 0
+
 			// Fire Stop hook
 			e.fireHook(ctx, hooks.Stop, "", "")
 
@@ -243,6 +303,30 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			}
 
 			return nil
+		}
+
+		// Handle max_tokens continuation with diminishing returns detection
+		if response.StopReason == "max_tokens" && len(response.ToolUses) == 0 {
+			e.continuationCount++
+			outputTokens := response.Usage.OutputTokens
+
+			// Diminishing returns: output tokens dropped by >50% or max continuations exceeded
+			if e.continuationCount >= maxContinuations ||
+				(e.lastOutputTokens > 0 && outputTokens < e.lastOutputTokens/2) {
+				e.handler.OnTextDelta("\n[Stopped: diminishing returns on continuation]\n")
+				e.continuationCount = 0
+				e.lastOutputTokens = 0
+				return nil
+			}
+			e.lastOutputTokens = outputTokens
+
+			// Inject continuation prompt
+			contContent, _ := json.Marshal("Please continue from where you left off.")
+			e.messages = append(e.messages, api.Message{
+				Role:    "user",
+				Content: contContent,
+			})
+			continue
 		}
 
 		// Poll background tasks and inject completed results
@@ -257,6 +341,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			Role:    "user",
 			Content: resultContent,
 		})
+
+		// Microcompact: proactively clear large old tool results on every tool turn.
+		// Keeps the last 6 results intact, clears anything larger than 2KB beyond that.
+		e.messages = compact.MicroCompact(e.messages, 6, 2048)
 	}
 }
 
@@ -503,8 +591,11 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 
 		e.handler.OnToolUseEnd(tu, result)
 
-		// Truncate very large results
+		// Offload large results to disk; truncate anything still over 100KB
 		content := result.Content
+		if e.toolCache != nil {
+			content = e.toolCache.MaybePersist(tu.ID, content)
+		}
 		const maxContent = 100000
 		if len(content) > maxContent {
 			content = content[:maxContent] + "\n... (truncated)"
@@ -672,6 +763,76 @@ func (e *Engine) trackDiscoveredTools(input json.RawMessage) {
 			}
 		}
 	}
+}
+
+// mergeConsecutiveUserMessages merges adjacent user messages into one.
+// This reduces message count overhead and avoids API issues with consecutive same-role messages.
+// Tool result blocks (type "tool_result") are never merged — only plain text and text-type blocks.
+func mergeConsecutiveUserMessages(messages []api.Message) []api.Message {
+	if len(messages) < 2 {
+		return messages
+	}
+	result := make([]api.Message, 0, len(messages))
+	for i := 0; i < len(messages); i++ {
+		msg := messages[i]
+		if msg.Role != "user" || i+1 >= len(messages) || messages[i+1].Role != "user" {
+			result = append(result, msg)
+			continue
+		}
+		// Check that neither message contains tool_result blocks
+		if hasToolResultBlocks(msg.Content) || hasToolResultBlocks(messages[i+1].Content) {
+			result = append(result, msg)
+			continue
+		}
+		// Merge: concatenate as text blocks
+		text1 := extractTextContent(msg.Content)
+		text2 := extractTextContent(messages[i+1].Content)
+		merged := text1 + "\n" + text2
+		mergedContent, _ := json.Marshal(merged)
+		result = append(result, api.Message{Role: "user", Content: mergedContent})
+		i++ // skip the next message
+	}
+	return result
+}
+
+func hasToolResultBlocks(content json.RawMessage) bool {
+	var blocks []json.RawMessage
+	if json.Unmarshal(content, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		var block struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(b, &block) == nil && block.Type == "tool_result" {
+			return true
+		}
+	}
+	return false
+}
+
+func extractTextContent(content json.RawMessage) string {
+	// Try plain string first
+	var s string
+	if json.Unmarshal(content, &s) == nil {
+		return s
+	}
+	// Try array of blocks
+	var blocks []json.RawMessage
+	if json.Unmarshal(content, &blocks) != nil {
+		return string(content)
+	}
+	var parts []string
+	for _, b := range blocks {
+		var block struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(b, &block) == nil && block.Type == "text" {
+			parts = append(parts, block.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // toolResultBlock is the format the API expects for tool results.

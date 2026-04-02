@@ -9,11 +9,13 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
 // FileReadTool reads file contents with optional line range.
 type FileReadTool struct {
-	Security SecurityChecker
+	Security  SecurityChecker
+	ReadCache *readcache.Cache
 }
 
 type fileReadInput struct {
@@ -77,6 +79,14 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		in.Offset = 1
 	}
 
+	// Check cache before hitting disk
+	if t.ReadCache != nil {
+		key := readcache.Key{FilePath: in.FilePath, Offset: in.Offset, Limit: in.Limit}
+		if cached, ok := t.ReadCache.Get(key); ok {
+			return &Result{Content: cached}, nil
+		}
+	}
+
 	file, err := os.Open(in.FilePath)
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Error opening file: %v", err), IsError: true}, nil
@@ -114,5 +124,15 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		return &Result{Content: fmt.Sprintf("No lines in range (file has %d lines)", lineNum), IsError: true}, nil
 	}
 
-	return &Result{Content: output.String()}, nil
+	content := output.String()
+
+	// Store in cache for deduplication
+	if t.ReadCache != nil {
+		if info, err := os.Stat(in.FilePath); err == nil {
+			key := readcache.Key{FilePath: in.FilePath, Offset: in.Offset, Limit: in.Limit}
+			t.ReadCache.Put(key, content, info.ModTime())
+		}
+	}
+
+	return &Result{Content: content}, nil
 }

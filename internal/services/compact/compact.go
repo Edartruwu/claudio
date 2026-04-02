@@ -183,6 +183,88 @@ var readHeavyTools = map[string]bool{
 	"WebFetch": true, "WebSearch": true, "LSP": true, "ToolSearch": true,
 }
 
+// MicroCompact proactively clears large read-heavy tool results from old messages
+// on every tool turn, without waiting for a token threshold.
+// It preserves the last keepLastResults tool results intact.
+// This runs continuously to keep the message history lean.
+func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int) []api.Message {
+	if len(messages) == 0 {
+		return messages
+	}
+
+	// Count total tool_result blocks to find cutoff
+	type resultPos struct{ msgIdx, blockIdx int }
+	var positions []resultPos
+	for i, msg := range messages {
+		if msg.Role != "user" {
+			continue
+		}
+		var blocks []json.RawMessage
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+		for j, b := range blocks {
+			var tr struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(b, &tr) == nil && tr.Type == "tool_result" {
+				positions = append(positions, resultPos{i, j})
+			}
+		}
+	}
+
+	if len(positions) <= keepLastResults {
+		return messages
+	}
+
+	// Mark positions that should be cleared (all but the last keepLastResults)
+	type clearKey struct{ msgIdx, blockIdx int }
+	toClear := make(map[clearKey]bool)
+	cutoff := len(positions) - keepLastResults
+	for _, pos := range positions[:cutoff] {
+		toClear[clearKey{pos.msgIdx, pos.blockIdx}] = true
+	}
+
+	result := make([]api.Message, len(messages))
+	copy(result, messages)
+
+	for i, msg := range result {
+		if msg.Role != "user" {
+			continue
+		}
+		var blocks []json.RawMessage
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+		modified := false
+		for j, b := range blocks {
+			if !toClear[clearKey{i, j}] {
+				continue
+			}
+			var tr struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+				IsError   bool   `json:"is_error,omitempty"`
+			}
+			if json.Unmarshal(b, &tr) != nil || tr.Type != "tool_result" {
+				continue
+			}
+			if len(tr.Content) < minSizeBytes || tr.IsError {
+				continue
+			}
+			tr.Content = fmt.Sprintf("[result cleared — %d bytes]", len(tr.Content))
+			blocks[j], _ = json.Marshal(tr)
+			modified = true
+		}
+		if modified {
+			result[i].Content, _ = json.Marshal(blocks)
+		}
+	}
+
+	return result
+}
+
 // ContentClearCompact replaces large tool results in old messages with a placeholder.
 // Messages in the last keepLast are preserved. Only tool_result blocks larger than
 // minSize bytes are cleared. Returns the modified message slice (in-place modification
