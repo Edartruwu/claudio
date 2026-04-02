@@ -163,12 +163,13 @@ func runSinglePrompt(prompt string) error {
 
 	handler := &query.StdoutHandler{Verbose: flagVerbose}
 	engine := query.NewEngineWithConfig(appInstance.API, appInstance.Tools, handler, query.EngineConfig{
-		Hooks:          appInstance.Hooks,
-		Analytics:      appInstance.Analytics,
-		TaskRuntime:    appInstance.TaskRuntime,
-		Model:          appInstance.Config.Model,
-		PermissionMode: appInstance.Config.PermissionMode,
-		OnTurnEnd:      appInstance.MemoryExtractor(),
+		Hooks:           appInstance.Hooks,
+		Analytics:       appInstance.Analytics,
+		TaskRuntime:     appInstance.TaskRuntime,
+		Model:           appInstance.Config.Model,
+		PermissionMode:  appInstance.Config.PermissionMode,
+		PermissionRules: appInstance.Config.PermissionRules,
+		OnTurnEnd:       appInstance.MemoryExtractor(),
 	})
 	engine.SetSystem(buildFullSystemPrompt())
 
@@ -428,12 +429,13 @@ func runInteractive() error {
 	}
 
 	engineCfg := &query.EngineConfig{
-		Hooks:          appInstance.Hooks,
-		Analytics:      appInstance.Analytics,
-		TaskRuntime:    appInstance.TaskRuntime,
-		Model:          appInstance.Config.Model,
-		PermissionMode: appInstance.Config.PermissionMode,
-		OnTurnEnd:      appInstance.MemoryExtractor(),
+		Hooks:           appInstance.Hooks,
+		Analytics:       appInstance.Analytics,
+		TaskRuntime:     appInstance.TaskRuntime,
+		Model:           appInstance.Config.Model,
+		PermissionMode:  appInstance.Config.PermissionMode,
+		PermissionRules: appInstance.Config.PermissionRules,
+		OnTurnEnd:       appInstance.MemoryExtractor(),
 	}
 	appCtx := &tui.AppContext{
 		Session:     sess,

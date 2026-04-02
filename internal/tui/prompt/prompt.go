@@ -171,10 +171,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			case tea.KeyTab:
 				m.pasteBuffer.WriteRune('\t')
 			}
-			return m, nil // buffer, don't pass to textarea yet
+			// Bubbletea delivers the entire bracketed paste in a single KeyMsg,
+			// so finalize immediately instead of waiting for the next keystroke.
+			m.finalizePaste()
+			return m, nil
 		}
 
-		// Finalize any pending paste on first non-paste key
+		// Finalize any pending paste on first non-paste key (safety fallback)
 		if m.isPasting {
 			m.finalizePaste()
 		}
