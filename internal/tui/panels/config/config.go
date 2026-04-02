@@ -34,11 +34,13 @@ const (
 
 // configEntry represents a single setting for display.
 type configEntry struct {
-	Key      string
-	Value    string
-	Editable bool   // can be toggled/cycled with enter
-	EditType string // "bool", "cycle"
-	Source   Scope  // where this value comes from
+	Key       string
+	Value     string
+	Editable  bool   // can be toggled/cycled with enter
+	EditType  string // "bool", "cycle"
+	Source    Scope  // where this value comes from
+	Deletable bool   // can be deleted with d
+	RuleIndex int    // index into PermissionRules (-1 if not a rule)
 }
 
 // Panel is the configuration viewer/editor side panel.
@@ -159,6 +161,18 @@ func (p *Panel) buildEntries() {
 	} else {
 		addR("denyTools", "(none)", ScopeGlobal)
 	}
+
+	// Permission rules (deletable with d)
+	if len(m.PermissionRules) > 0 {
+		addR("── Permission Rules ──", "", ScopeGlobal)
+		for i, rule := range m.PermissionRules {
+			display := fmt.Sprintf("%s %s(%s)", rule.Behavior, rule.Tool, rule.Pattern)
+			p.entries = append(p.entries, configEntry{
+				Key: "rule", Value: display, Source: ScopeProject,
+				Deletable: true, RuleIndex: i,
+			})
+		}
+	}
 }
 
 // source determines which scope a setting's value came from.
@@ -217,6 +231,23 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 	case "g":
 		p.cursor = 0
+		return nil, true
+	case "d":
+		// Delete permission rule
+		if p.cursor < len(p.entries) && p.entries[p.cursor].Deletable {
+			idx := p.entries[p.cursor].RuleIndex
+			if idx >= 0 && idx < len(p.merged.PermissionRules) {
+				p.merged.PermissionRules = append(
+					p.merged.PermissionRules[:idx],
+					p.merged.PermissionRules[idx+1:]...,
+				)
+				p.savePermissionRules()
+				p.buildEntries()
+				if p.cursor >= len(p.entries) {
+					p.cursor = max(0, len(p.entries)-1)
+				}
+			}
+		}
 		return nil, true
 	case "tab":
 		// Toggle edit scope between project and global
@@ -313,6 +344,26 @@ func (p *Panel) reloadMerged() {
 	if merged != nil {
 		*p.merged = *merged
 	}
+}
+
+// savePermissionRules saves the current permission rules to the appropriate config file.
+func (p *Panel) savePermissionRules() {
+	savePath := p.globalPath
+	if p.hasProject && p.projectPath != "" {
+		savePath = p.projectPath
+	}
+
+	data, _ := os.ReadFile(savePath)
+	var existing map[string]json.RawMessage
+	if json.Unmarshal(data, &existing) != nil {
+		existing = make(map[string]json.RawMessage)
+	}
+
+	rulesJSON, _ := json.Marshal(p.merged.PermissionRules)
+	existing["permissionRules"] = rulesJSON
+
+	out, _ := json.MarshalIndent(existing, "", "  ")
+	os.WriteFile(savePath, out, 0644)
 }
 
 func saveSettingsFile(s *config.Settings, path string) {
@@ -417,13 +468,13 @@ func (p *Panel) View() string {
 	}
 
 	b.WriteString("\n")
-	hint := "  j/k navigate · enter toggle · esc close"
+	hint := "  j/k navigate · enter toggle · d delete rule · esc close"
 	if p.hasProject {
 		scopeName := "project"
 		if p.editScope == ScopeGlobal {
 			scopeName = "global"
 		}
-		hint = fmt.Sprintf("  j/k · enter toggle (%s) · tab scope · esc close", scopeName)
+		hint = fmt.Sprintf("  j/k · enter toggle (%s) · d delete rule · tab scope · esc", scopeName)
 	}
 	b.WriteString(styles.PanelHint.Render(hint))
 

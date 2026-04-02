@@ -15,6 +15,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
+	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
@@ -1329,8 +1330,14 @@ func (m Model) handlePermissionResponse(resp permissions.ResponseMsg) (tea.Model
 	m.focus = FocusPrompt
 
 	switch resp.Decision {
-	case permissions.DecisionAllow, permissions.DecisionAllowAlways:
+	case permissions.DecisionAllow:
 		m.approvalCh <- true
+	case permissions.DecisionAllowAlways:
+		m.approvalCh <- true
+		// Persist as a permission rule
+		rule := buildPermissionRule(resp.ToolUse)
+		m.persistPermissionRule(rule)
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Saved rule: allow %s(%s)", rule.Tool, rule.Pattern)})
 	case permissions.DecisionDeny:
 		m.approvalCh <- false
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Denied %s", resp.ToolUse.Name)})
@@ -1338,6 +1345,105 @@ func (m Model) handlePermissionResponse(resp permissions.ResponseMsg) (tea.Model
 
 	m.refreshViewport()
 	return m, tea.Batch(m.spinner.Tick(), m.waitForEvent())
+}
+
+// buildPermissionRule creates a permission rule from a tool use for "Always allow".
+func buildPermissionRule(tu tools.ToolUse) config.PermissionRule {
+	pattern := extractRulePattern(tu)
+	return config.PermissionRule{
+		Tool:     tu.Name,
+		Pattern:  pattern,
+		Behavior: "allow",
+	}
+}
+
+// extractRulePattern generates a glob pattern from a tool invocation.
+// For Bash: uses the command prefix (first word + *).
+// For file tools: uses the exact path.
+// For web tools: uses the domain.
+func extractRulePattern(tu tools.ToolUse) string {
+	switch tu.Name {
+	case "Bash":
+		var in struct{ Command string `json:"command"` }
+		if json.Unmarshal(tu.Input, &in) == nil && in.Command != "" {
+			// Use first word as prefix: "go test ./..." → "go test *"
+			parts := strings.SplitN(in.Command, " ", 2)
+			return parts[0] + " *"
+		}
+	case "Read", "Write", "Edit":
+		var in struct{ FilePath string `json:"file_path"` }
+		if json.Unmarshal(tu.Input, &in) == nil && in.FilePath != "" {
+			return in.FilePath
+		}
+	case "WebFetch":
+		var in struct{ URL string `json:"url"` }
+		if json.Unmarshal(tu.Input, &in) == nil && in.URL != "" {
+			return extractDomainPattern(in.URL)
+		}
+	case "WebSearch":
+		return "*" // allow all searches
+	}
+	return "*"
+}
+
+// extractDomainPattern extracts "domain:example.com" from a URL for pattern matching.
+func extractDomainPattern(rawURL string) string {
+	// Simple extraction: strip protocol, take host
+	u := rawURL
+	for _, prefix := range []string{"https://", "http://"} {
+		u = strings.TrimPrefix(u, prefix)
+	}
+	if idx := strings.IndexByte(u, '/'); idx >= 0 {
+		u = u[:idx]
+	}
+	if u != "" {
+		return "domain:" + u
+	}
+	return "*"
+}
+
+// persistPermissionRule saves a permission rule to the project config (or global).
+func (m *Model) persistPermissionRule(rule config.PermissionRule) {
+	if m.appCtx == nil || m.appCtx.Config == nil {
+		return
+	}
+
+	// Add to live config
+	m.appCtx.Config.PermissionRules = append(m.appCtx.Config.PermissionRules, rule)
+
+	// Also add to engine config so it takes effect immediately
+	if m.engineConfig != nil {
+		m.engineConfig.PermissionRules = append(m.engineConfig.PermissionRules, rule)
+	}
+
+	// Save to project config if available, else global
+	cwd, _ := os.Getwd()
+	projectRoot := config.FindGitRoot(cwd)
+	projectSettings := filepath.Join(projectRoot, ".claudio", "settings.json")
+
+	savePath := config.GetPaths().Settings // default: global
+	if _, err := os.Stat(filepath.Join(projectRoot, ".claudio")); err == nil {
+		savePath = projectSettings // prefer project if .claudio/ exists
+	}
+
+	// Load existing, append rule, save back
+	data, _ := os.ReadFile(savePath)
+	var existing map[string]json.RawMessage
+	if json.Unmarshal(data, &existing) != nil {
+		existing = make(map[string]json.RawMessage)
+	}
+
+	// Parse existing rules
+	var rules []config.PermissionRule
+	if raw, ok := existing["permissionRules"]; ok {
+		json.Unmarshal(raw, &rules)
+	}
+	rules = append(rules, rule)
+	rulesJSON, _ := json.Marshal(rules)
+	existing["permissionRules"] = rulesJSON
+
+	out, _ := json.MarshalIndent(existing, "", "  ")
+	os.WriteFile(savePath, out, 0644)
 }
 
 // ── Leader Key State Machine ────────────────────────────

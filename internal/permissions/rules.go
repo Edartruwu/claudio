@@ -85,11 +85,37 @@ func extractMatchContent(toolName string, input json.RawMessage) string {
 		if json.Unmarshal(input, &in) == nil {
 			return in.Pattern
 		}
+	case "WebFetch":
+		var in struct {
+			URL string `json:"url"`
+		}
+		if json.Unmarshal(input, &in) == nil {
+			return "domain:" + extractDomain(in.URL)
+		}
+	case "WebSearch":
+		var in struct {
+			Query string `json:"query"`
+		}
+		if json.Unmarshal(input, &in) == nil {
+			return in.Query
+		}
 	default:
 		// For unknown tools, match against the raw JSON input
 		return string(input)
 	}
 	return ""
+}
+
+// extractDomain pulls the hostname from a URL.
+func extractDomain(rawURL string) string {
+	u := rawURL
+	for _, prefix := range []string{"https://", "http://"} {
+		u = strings.TrimPrefix(u, prefix)
+	}
+	if idx := strings.IndexByte(u, '/'); idx >= 0 {
+		u = u[:idx]
+	}
+	return u
 }
 
 // matchPattern checks if content matches a glob-like pattern.
