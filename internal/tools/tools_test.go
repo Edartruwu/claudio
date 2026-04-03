@@ -16,10 +16,10 @@ func TestRegistry(t *testing.T) {
 
 	expectedTools := []string{
 		"Bash", "Read", "Write", "Edit", "Glob", "Grep",
-		"Agent", "ToolSearch",
+		"Agent", "EnterPlanMode", "ExitPlanMode", "ToolSearch",
 		"WebSearch", "WebFetch", "LSP", "NotebookEdit",
 		"TaskCreate", "TaskList", "TaskGet", "TaskUpdate",
-		"EnterWorktree", "ExitWorktree", "EnterPlanMode", "ExitPlanMode",
+		"EnterWorktree", "ExitWorktree",
 		"TaskStop", "TaskOutput",
 		"TeamCreate", "TeamDelete", "SendMessage",
 		"Memory",
@@ -55,7 +55,7 @@ func TestRegistry(t *testing.T) {
 	deferredNames := map[string]bool{
 		"WebSearch": true, "WebFetch": true, "LSP": true, "NotebookEdit": true,
 		"TaskCreate": true, "TaskList": true, "TaskGet": true, "TaskUpdate": true,
-		"EnterWorktree": true, "ExitWorktree": true, "EnterPlanMode": true, "ExitPlanMode": true,
+		"EnterWorktree": true, "ExitWorktree": true,
 		"TaskStop": true, "TaskOutput": true, "TeamCreate": true, "TeamDelete": true, "SendMessage": true,
 		"Memory": true,
 		"CronCreate": true, "CronDelete": true, "CronList": true,
@@ -217,6 +217,46 @@ func TestBashToolSafety(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Error("expected dangerous command to be blocked")
+	}
+}
+
+func TestPlanModeToolsAreNotDeferred(t *testing.T) {
+	r := tools.DefaultRegistry()
+
+	for _, name := range []string{"EnterPlanMode", "ExitPlanMode"} {
+		tool, err := r.Get(name)
+		if err != nil {
+			t.Fatalf("tool %q not found: %v", name, err)
+		}
+
+		// If the tool implements DeferrableTool, ShouldDefer must return false.
+		if dt, ok := tool.(tools.DeferrableTool); ok {
+			if dt.ShouldDefer() {
+				t.Errorf("%s should NOT be deferred — AI must always see its description to proactively enter/exit plan mode", name)
+			}
+		}
+		// If the tool does NOT implement DeferrableTool at all, that's also correct (non-deferred).
+	}
+
+	// Also verify they appear with full descriptions in deferred definitions (no discovery needed)
+	deferredDefs := r.APIDefinitionsWithDeferral(nil) // no discovered tools
+	var parsed []tools.APIToolDef
+	json.Unmarshal(deferredDefs, &parsed)
+
+	byName := map[string]tools.APIToolDef{}
+	for _, def := range parsed {
+		byName[def.Name] = def
+	}
+
+	for _, name := range []string{"EnterPlanMode", "ExitPlanMode"} {
+		def, ok := byName[name]
+		if !ok {
+			t.Errorf("%s should be present in deferred definitions (always loaded)", name)
+			continue
+		}
+		if def.Description == "" {
+			t.Errorf("%s should have a full description even in deferred mode", name)
+		}
 	}
 }
 

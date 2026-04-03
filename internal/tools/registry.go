@@ -208,6 +208,10 @@ func DefaultRegistry() *Registry {
 	// Agent (always loaded)
 	r.Register(&AgentTool{})
 
+	// Plan mode (always loaded — AI must see full description to enter proactively)
+	r.Register(&EnterPlanModeTool{})
+	r.Register(&ExitPlanModeTool{})
+
 	// ToolSearch (always loaded — needed to discover deferred tools)
 	ts := &ToolSearchTool{}
 	r.Register(ts)
@@ -233,8 +237,7 @@ func DefaultRegistry() *Registry {
 	// Workspace
 	r.Register(&EnterWorktreeTool{deferrable: newDeferrable("git worktree isolated branch")})
 	r.Register(&ExitWorktreeTool{deferrable: newDeferrable("exit leave worktree")})
-	r.Register(&EnterPlanModeTool{deferrable: newDeferrable("plan mode design implementation approach")})
-	r.Register(&ExitPlanModeTool{deferrable: newDeferrable("exit plan mode approval")})
+
 
 	// Background task management (Runtime injected later)
 	r.Register(&TaskStopTool{deferrable: newDeferrable("stop cancel background task")})

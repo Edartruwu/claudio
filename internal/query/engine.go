@@ -82,8 +82,9 @@ type Engine struct {
 	taskRuntime     *tasks.Runtime
 	sessionID       string
 	model           string
-	permissionMode    string
-	permissionRules   []config.PermissionRule
+	permissionMode       string
+	prePlanPermMode      string // permission mode before AI-initiated plan mode
+	permissionRules      []config.PermissionRule
 	costConfirmThresh float64
 	discoveredTools        map[string]bool // tools discovered via ToolSearch
 	frozenDeferredReminder string          // deferred-tools system-reminder, frozen on first build
@@ -762,6 +763,22 @@ func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools
 		result.Content += "\n\n[WARNING: Potential secrets detected and redacted in output]"
 	}
 
+	// Switch permission mode for AI-initiated plan mode transitions.
+	if !result.IsError {
+		switch tu.Name {
+		case "EnterPlanMode":
+			e.prePlanPermMode = e.permissionMode
+			e.permissionMode = "plan"
+		case "ExitPlanMode":
+			if e.prePlanPermMode != "" {
+				e.permissionMode = e.prePlanPermMode
+				e.prePlanPermMode = ""
+			} else {
+				e.permissionMode = "default"
+			}
+		}
+	}
+
 	e.handler.OnToolUseEnd(tu, result)
 
 	content := result.Content
@@ -944,6 +961,11 @@ func (e *Engine) saveAssistantMessage(content []api.ContentBlock) {
 	var filtered []api.ContentBlock
 	for _, block := range content {
 		if block.Type == "thinking" {
+			continue
+		}
+		// Drop empty text blocks — they serialize without the required "text" field
+		// due to omitempty, causing API errors ("text: Field required").
+		if block.Type == "text" && block.Text == "" {
 			continue
 		}
 		if block.Type == "tool_use" && len(block.Input) == 0 {

@@ -1928,20 +1928,20 @@ func (m Model) handlePermissionResponse(resp permissions.ResponseMsg) (tea.Model
 	case permissions.DecisionAllow:
 		m.approvalCh <- true
 	case permissions.DecisionAllowAlways:
-		m.approvalCh <- true
-		// Persist as a permission rule
+		// Persist rule BEFORE unblocking the engine so the next tool check sees it.
 		rule := buildPermissionRule(resp.ToolUse)
 		m.persistPermissionRule(rule)
+		m.approvalCh <- true
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Saved rule: allow %s(%s)", rule.Tool, rule.Pattern)})
 	case permissions.DecisionAllowAllTool:
-		m.approvalCh <- true
-		// Persist a wildcard rule for this tool
+		// Persist rule BEFORE unblocking the engine so the next tool check sees it.
 		rule := config.PermissionRule{
 			Tool:     resp.ToolUse.Name,
 			Pattern:  "*",
 			Behavior: "allow",
 		}
 		m.persistPermissionRule(rule)
+		m.approvalCh <- true
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Saved rule: allow %s(*)", rule.Tool)})
 	case permissions.DecisionDeny:
 		m.approvalCh <- false

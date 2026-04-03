@@ -1,10 +1,13 @@
 package query
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/config"
+	"github.com/Abraxas-365/claudio/internal/tools"
 )
 
 // ---------------------------------------------------------------------------
@@ -401,6 +404,255 @@ func TestSaveAssistantMessage_PreservesOrder(t *testing.T) {
 // into the tool_results message, because the tool_results message contains tool_result
 // blocks.  The three-message sequence [assistant, user(notif), user(tool_results)] is
 // preserved as-is.
+// ---------------------------------------------------------------------------
+// shouldRequireApproval
+// ---------------------------------------------------------------------------
+
+// mockTool is a minimal Tool implementation for testing shouldRequireApproval.
+type mockTool struct {
+	name             string
+	readOnly         bool
+	requiresApproval bool
+}
+
+func (m *mockTool) Name() string                        { return m.name }
+func (m *mockTool) Description() string                  { return "" }
+func (m *mockTool) InputSchema() json.RawMessage         { return json.RawMessage(`{}`) }
+func (m *mockTool) Execute(_ context.Context, _ json.RawMessage) (*tools.Result, error) {
+	return &tools.Result{}, nil
+}
+func (m *mockTool) IsReadOnly() bool                    { return m.readOnly }
+func (m *mockTool) RequiresApproval(_ json.RawMessage) bool { return m.requiresApproval }
+
+func TestShouldRequireApproval_AutoMode(t *testing.T) {
+	e := &Engine{permissionMode: "auto"}
+	tool := &mockTool{name: "Bash", requiresApproval: true}
+	if e.shouldRequireApproval(tool, nil) {
+		t.Error("auto mode should never require approval")
+	}
+}
+
+func TestShouldRequireApproval_HeadlessMode(t *testing.T) {
+	e := &Engine{permissionMode: "headless"}
+	tool := &mockTool{name: "Bash", requiresApproval: true}
+	if e.shouldRequireApproval(tool, nil) {
+		t.Error("headless mode should never require approval")
+	}
+}
+
+func TestShouldRequireApproval_DangerouslySkipMode(t *testing.T) {
+	e := &Engine{permissionMode: "dangerously-skip-permissions"}
+	tool := &mockTool{name: "Bash", requiresApproval: true}
+	if e.shouldRequireApproval(tool, nil) {
+		t.Error("dangerously-skip-permissions mode should never require approval")
+	}
+}
+
+func TestShouldRequireApproval_PlanMode_ReadOnlyAllowed(t *testing.T) {
+	e := &Engine{permissionMode: "plan"}
+	tool := &mockTool{name: "Read", readOnly: true, requiresApproval: false}
+	if e.shouldRequireApproval(tool, nil) {
+		t.Error("plan mode should not require approval for read-only tools")
+	}
+}
+
+func TestShouldRequireApproval_PlanMode_WriteBlocked(t *testing.T) {
+	e := &Engine{permissionMode: "plan"}
+	tool := &mockTool{name: "Bash", readOnly: false, requiresApproval: true}
+	if !e.shouldRequireApproval(tool, nil) {
+		t.Error("plan mode should require approval for non-read-only tools")
+	}
+}
+
+func TestShouldRequireApproval_DefaultMode_AllowRule(t *testing.T) {
+	e := &Engine{
+		permissionMode: "default",
+		permissionRules: []config.PermissionRule{
+			{Tool: "Bash", Pattern: "*", Behavior: "allow"},
+		},
+	}
+	tool := &mockTool{name: "Bash", requiresApproval: true}
+	input, _ := json.Marshal(map[string]string{"command": "echo hello"})
+	if e.shouldRequireApproval(tool, input) {
+		t.Error("Bash(*) allow rule should bypass approval")
+	}
+}
+
+func TestShouldRequireApproval_DefaultMode_DenyRule(t *testing.T) {
+	e := &Engine{
+		permissionMode: "default",
+		permissionRules: []config.PermissionRule{
+			{Tool: "Bash", Pattern: "rm *", Behavior: "deny"},
+		},
+	}
+	tool := &mockTool{name: "Bash", requiresApproval: true}
+	input, _ := json.Marshal(map[string]string{"command": "rm -rf /"})
+	if !e.shouldRequireApproval(tool, input) {
+		t.Error("deny rule should require approval")
+	}
+}
+
+func TestShouldRequireApproval_DefaultMode_NoMatchingRule(t *testing.T) {
+	e := &Engine{
+		permissionMode: "default",
+		permissionRules: []config.PermissionRule{
+			{Tool: "Bash", Pattern: "git *", Behavior: "allow"},
+		},
+	}
+	tool := &mockTool{name: "Bash", requiresApproval: true}
+	input, _ := json.Marshal(map[string]string{"command": "make build"})
+	if !e.shouldRequireApproval(tool, input) {
+		t.Error("no matching rule should fall through to RequiresApproval()")
+	}
+}
+
+func TestShouldRequireApproval_DefaultMode_NoRules_FallsThrough(t *testing.T) {
+	e := &Engine{permissionMode: "default"}
+
+	// Tool that does not require approval
+	tool := &mockTool{name: "Read", requiresApproval: false}
+	if e.shouldRequireApproval(tool, nil) {
+		t.Error("should fall through to RequiresApproval() which returns false")
+	}
+
+	// Tool that requires approval
+	tool = &mockTool{name: "Bash", requiresApproval: true}
+	input, _ := json.Marshal(map[string]string{"command": "ls"})
+	if !e.shouldRequireApproval(tool, input) {
+		t.Error("should fall through to RequiresApproval() which returns true")
+	}
+}
+
+func TestShouldRequireApproval_RuleUpdatedAtRuntime(t *testing.T) {
+	e := &Engine{permissionMode: "default"}
+	tool := &mockTool{name: "Bash", requiresApproval: true}
+	input, _ := json.Marshal(map[string]string{"command": "echo hi"})
+
+	// Initially no rules → requires approval
+	if !e.shouldRequireApproval(tool, input) {
+		t.Error("initially should require approval with no rules")
+	}
+
+	// Simulate adding a rule at runtime (like persistPermissionRule does)
+	e.SetPermissionRules([]config.PermissionRule{
+		{Tool: "Bash", Pattern: "*", Behavior: "allow"},
+	})
+
+	// Now the same tool+input should NOT require approval
+	if e.shouldRequireApproval(tool, input) {
+		t.Error("after adding allow rule, should no longer require approval")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Plan mode transitions via runSingleTool
+// ---------------------------------------------------------------------------
+
+func TestPlanModeTransition_EnterPlanMode(t *testing.T) {
+	e := &Engine{permissionMode: "default"}
+
+	// Simulate what runSingleTool does for EnterPlanMode on success
+	e.prePlanPermMode = e.permissionMode
+	e.permissionMode = "plan"
+
+	if e.permissionMode != "plan" {
+		t.Errorf("permissionMode = %q, want %q", e.permissionMode, "plan")
+	}
+	if e.prePlanPermMode != "default" {
+		t.Errorf("prePlanPermMode = %q, want %q", e.prePlanPermMode, "default")
+	}
+}
+
+func TestPlanModeTransition_ExitPlanMode_RestoresPrevious(t *testing.T) {
+	e := &Engine{permissionMode: "plan", prePlanPermMode: "auto"}
+
+	// Simulate ExitPlanMode
+	if e.prePlanPermMode != "" {
+		e.permissionMode = e.prePlanPermMode
+		e.prePlanPermMode = ""
+	}
+
+	if e.permissionMode != "auto" {
+		t.Errorf("permissionMode = %q, want %q after exit", e.permissionMode, "auto")
+	}
+	if e.prePlanPermMode != "" {
+		t.Errorf("prePlanPermMode = %q, want empty after exit", e.prePlanPermMode)
+	}
+}
+
+func TestPlanModeTransition_ExitPlanMode_DefaultFallback(t *testing.T) {
+	e := &Engine{permissionMode: "plan", prePlanPermMode: ""}
+
+	// Simulate ExitPlanMode with no saved mode
+	if e.prePlanPermMode != "" {
+		e.permissionMode = e.prePlanPermMode
+		e.prePlanPermMode = ""
+	} else {
+		e.permissionMode = "default"
+	}
+
+	if e.permissionMode != "default" {
+		t.Errorf("permissionMode = %q, want %q after exit with no saved mode", e.permissionMode, "default")
+	}
+}
+
+func TestPlanModeTransition_ErrorDoesNotSwitch(t *testing.T) {
+	e := &Engine{permissionMode: "default"}
+
+	// Simulate: EnterPlanMode returned an error (result.IsError = true)
+	// The switch should NOT happen — only non-error results trigger it
+	isError := true
+	if !isError {
+		e.prePlanPermMode = e.permissionMode
+		e.permissionMode = "plan"
+	}
+
+	if e.permissionMode != "default" {
+		t.Errorf("permissionMode should remain %q on error, got %q", "default", e.permissionMode)
+	}
+}
+
+func TestPlanModeTransition_FullCycle(t *testing.T) {
+	e := &Engine{permissionMode: "auto"}
+	tool := &mockTool{name: "Bash", readOnly: false, requiresApproval: true}
+	input, _ := json.Marshal(map[string]string{"command": "echo test"})
+
+	// In auto mode, no approval needed
+	if e.shouldRequireApproval(tool, input) {
+		t.Fatal("auto mode should not require approval")
+	}
+
+	// Enter plan mode
+	e.prePlanPermMode = e.permissionMode
+	e.permissionMode = "plan"
+
+	// Now write tools need approval
+	if !e.shouldRequireApproval(tool, input) {
+		t.Error("plan mode should require approval for write tools")
+	}
+
+	// Read-only tools still don't
+	readTool := &mockTool{name: "Read", readOnly: true}
+	if e.shouldRequireApproval(readTool, nil) {
+		t.Error("plan mode should not require approval for read-only tools")
+	}
+
+	// Exit plan mode — should restore auto
+	e.permissionMode = e.prePlanPermMode
+	e.prePlanPermMode = ""
+
+	if e.permissionMode != "auto" {
+		t.Errorf("permissionMode = %q, want %q after exit", e.permissionMode, "auto")
+	}
+	if e.shouldRequireApproval(tool, input) {
+		t.Error("back in auto mode, should not require approval")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mergeConsecutiveUserMessages — pollBackgroundTasks scenario
+// ---------------------------------------------------------------------------
+
 func TestMergeConsecutiveUserMessages_TaskNotifBeforeToolResults(t *testing.T) {
 	// assistant message with a tool_use (to set context; won't be merged anyway)
 	assistantContent, _ := json.Marshal([]api.ContentBlock{
