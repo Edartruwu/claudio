@@ -125,11 +125,33 @@ func (r *Registry) Remove(name string) {
 }
 
 // Clone creates a copy of the registry (for sub-agent filtered registries).
+// File read/write tools get a fresh ReadCache so the sub-agent's reads don't
+// pollute the parent cache — otherwise the parent sees "File unchanged since
+// last read" for files it never read itself (the sub-agent did).
 func (r *Registry) Clone() *Registry {
 	clone := NewRegistry()
 	for _, name := range r.order {
 		clone.Register(r.tools[name])
 	}
+
+	// Give the sub-agent its own ReadCache so it doesn't share state with the
+	// parent session.
+	freshRC := readcache.New(256)
+	if t, err := clone.Get("Read"); err == nil {
+		if ft, ok := t.(*FileReadTool); ok {
+			cloned := *ft
+			cloned.ReadCache = freshRC
+			clone.tools["Read"] = &cloned
+		}
+	}
+	if t, err := clone.Get("Write"); err == nil {
+		if ft, ok := t.(*FileWriteTool); ok {
+			cloned := *ft
+			cloned.ReadCache = freshRC
+			clone.tools["Write"] = &cloned
+		}
+	}
+
 	return clone
 }
 
