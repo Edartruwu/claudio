@@ -114,6 +114,10 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			p = provider.NewOpenAI(name, pc.APIBase, apiKey)
 		}
 		apiClient.RegisterProvider(name, p)
+		// Register model shortcuts from provider config
+		for shortcut, modelID := range pc.Models {
+			apiClient.AddModelShortcut(shortcut, modelID)
+		}
 	}
 	for pattern, provName := range settings.ModelRouting {
 		apiClient.AddModelRoute(pattern, provName)

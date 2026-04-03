@@ -317,8 +317,15 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	})
 	m.commands = cmdRegistry
 
-	// Build palette items from registered commands
-	m.palette = commandpalette.New(buildPaletteItems(cmdRegistry))
+	// Build palette items from registered commands + model shortcuts
+	paletteItems := buildPaletteItems(cmdRegistry)
+	for shortcut, modelID := range m.apiClient.GetModelShortcuts() {
+		paletteItems = append(paletteItems, commandpalette.Item{
+			Name:        shortcut,
+			Description: fmt.Sprintf("Use %s for next message", modelID),
+		})
+	}
+	m.palette = commandpalette.New(paletteItems)
 
 	// File picker for @ mentions
 	cwd, _ := os.Getwd()
@@ -1428,14 +1435,19 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
-	// Model shortcut commands: /sonnet, /opus, /haiku with a prompt
+	// Model shortcut commands: /sonnet, /opus, /haiku, plus any configured provider shortcuts
 	// Temporarily switches the model for just this interaction
-	modelShortcuts := map[string]string{
+	builtinShortcuts := map[string]string{
 		"sonnet": "claude-sonnet-4-6",
 		"opus":   "claude-opus-4-6",
 		"haiku":  "claude-haiku-4-5-20251001",
 	}
-	if modelID, ok := modelShortcuts[name]; ok {
+	// Check built-in shortcuts first, then provider shortcuts
+	modelID, ok := builtinShortcuts[name]
+	if !ok {
+		modelID, ok = m.apiClient.ResolveModelShortcut(name)
+	}
+	if ok {
 		if args == "" {
 			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Usage: /%s <your question>", name)})
 			m.refreshViewport()
@@ -1450,7 +1462,16 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 
 	// /model without args → interactive selector
 	if name == "model" && args == "" {
-		m.modelSelector = modelselector.New(m.apiClient.GetModel(), m.apiClient.GetThinkingMode(), m.apiClient.GetBudgetTokens(), m.apiClient.GetEffortLevel())
+		// Build extra models from provider shortcuts
+		var extraModels []modelselector.ModelOption
+		for shortcut, modelID := range m.apiClient.GetModelShortcuts() {
+			extraModels = append(extraModels, modelselector.ModelOption{
+				Label:       shortcut,
+				ID:          modelID,
+				Description: fmt.Sprintf("Provider model: %s", modelID),
+			})
+		}
+		m.modelSelector = modelselector.NewWithModels(m.apiClient.GetModel(), m.apiClient.GetThinkingMode(), m.apiClient.GetBudgetTokens(), m.apiClient.GetEffortLevel(), extraModels)
 		m.modelSelector.SetWidth(m.width)
 		m.focus = FocusModelSelector
 		m.prompt.Blur()
@@ -2320,7 +2341,7 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 		msg := storedMsgs[i]
 		switch msg.Type {
 		case "user":
-			content, _ := json.Marshal(msg.Content)
+			content, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(msg.Content)})
 			result = append(result, api.Message{Role: "user", Content: content})
 			pendingIDs = nil // tool_results cannot bridge past a plain user message
 			i++

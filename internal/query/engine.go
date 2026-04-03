@@ -220,7 +220,7 @@ func (e *Engine) RunWithImages(ctx context.Context, userMessage string, images [
 func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBlock) error {
 	// Inject user context (CLAUDE.md) as the very first user message, once per session.
 	if !e.userContextInjected && e.userContextMsg != "" && len(e.messages) == 0 {
-		ctxContent, _ := json.Marshal(e.userContextMsg)
+		ctxContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.userContextMsg)})
 		e.messages = append(e.messages, api.Message{
 			Role:    "user",
 			Content: ctxContent,
@@ -979,7 +979,7 @@ func mergeConsecutiveUserMessages(messages []api.Message) []api.Message {
 		text1 := extractTextContent(msg.Content)
 		text2 := extractTextContent(messages[i+1].Content)
 		merged := text1 + "\n" + text2
-		mergedContent, _ := json.Marshal(merged)
+		mergedContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(merged)})
 		result = append(result, api.Message{Role: "user", Content: mergedContent})
 		i++ // skip the next message
 	}

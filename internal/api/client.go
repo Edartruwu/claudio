@@ -39,8 +39,9 @@ type Client struct {
 	promptCaching bool
 
 	// Multi-provider support
-	providers    map[string]Provider // name -> provider
-	modelRoutes  map[string]string   // glob pattern -> provider name
+	providers      map[string]Provider // name -> provider
+	modelRoutes    map[string]string   // glob pattern -> provider name
+	modelShortcuts map[string]string   // shortcut name -> model ID (e.g. "llama" -> "llama-3.3-70b-versatile")
 }
 
 // NewClient creates a new API client.
@@ -173,6 +174,59 @@ func (c *Client) ThinkingLabel() string {
 // GetEffortLevel returns the current effort level ("low", "medium", "high", or "" for default).
 func (c *Client) GetEffortLevel() string {
 	return c.effortLevel
+}
+
+// ProviderModel describes a model available through a configured provider.
+type ProviderModel struct {
+	ModelID      string // e.g. "llama-3.3-70b-versatile"
+	ProviderName string // e.g. "groq"
+}
+
+// GetProviderModels returns all model routing entries (pattern → provider).
+func (c *Client) GetProviderModels() map[string]string {
+	if c.modelRoutes == nil {
+		return nil
+	}
+	result := make(map[string]string, len(c.modelRoutes))
+	for k, v := range c.modelRoutes {
+		result[k] = v
+	}
+	return result
+}
+
+// HasProvider returns true if a provider with the given name is registered.
+func (c *Client) HasProvider(name string) bool {
+	_, ok := c.providers[name]
+	return ok
+}
+
+// AddModelShortcut registers a slash-command shortcut for a model.
+func (c *Client) AddModelShortcut(shortcut, modelID string) {
+	if c.modelShortcuts == nil {
+		c.modelShortcuts = make(map[string]string)
+	}
+	c.modelShortcuts[shortcut] = modelID
+}
+
+// GetModelShortcuts returns all registered model shortcuts (shortcut -> model ID).
+func (c *Client) GetModelShortcuts() map[string]string {
+	if c.modelShortcuts == nil {
+		return nil
+	}
+	result := make(map[string]string, len(c.modelShortcuts))
+	for k, v := range c.modelShortcuts {
+		result[k] = v
+	}
+	return result
+}
+
+// ResolveModelShortcut returns the model ID for a shortcut, or empty string if not found.
+func (c *Client) ResolveModelShortcut(shortcut string) (string, bool) {
+	if c.modelShortcuts == nil {
+		return "", false
+	}
+	id, ok := c.modelShortcuts[shortcut]
+	return id, ok
 }
 
 // RenewTransport replaces the HTTP client's transport with a fresh one that

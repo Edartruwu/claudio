@@ -162,6 +162,26 @@ func (p *Panel) buildEntries() {
 		addR("denyTools", "(none)", ScopeGlobal)
 	}
 
+	// Providers section
+	if len(m.Providers) > 0 {
+		p.entries = append(p.entries, configEntry{
+			Key: "providers", Value: fmt.Sprintf("%d configured", len(m.Providers)),
+			RuleIndex: -1,
+		})
+		for name, pc := range m.Providers {
+			p.entries = append(p.entries, configEntry{
+				Key: "  " + name, Value: fmt.Sprintf("%s (%s)", pc.APIBase, pc.Type),
+				Source: p.source("providers"), RuleIndex: -1,
+			})
+			for shortcut, modelID := range pc.Models {
+				p.entries = append(p.entries, configEntry{
+					Key: "    /" + shortcut, Value: modelID,
+					Source: p.source("providers"), RuleIndex: -1,
+				})
+			}
+		}
+	}
+
 	// Permission rules (deletable with d)
 	if len(m.PermissionRules) > 0 {
 		p.entries = append(p.entries, configEntry{
@@ -220,6 +240,10 @@ func (p *Panel) source(key string) Scope {
 		}
 	case "outputStyle":
 		if p.project.OutputStyle != "" {
+			return ScopeProject
+		}
+	case "providers":
+		if len(p.project.Providers) > 0 {
 			return ScopeProject
 		}
 	}
@@ -292,6 +316,12 @@ func (p *Panel) toggleEntry(idx int) (string, string) {
 	switch e.Key {
 	case "model":
 		models := []string{"claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"}
+		// Append provider model IDs so they can be cycled through
+		for _, pc := range p.merged.Providers {
+			for _, modelID := range pc.Models {
+				models = append(models, modelID)
+			}
+		}
 		target.Model = cycleValue(p.merged.Model, models, "claude-sonnet-4-6")
 		newVal = target.Model
 	case "autoCompact":
@@ -457,6 +487,16 @@ func (p *Panel) View() string {
 		prefix := "  "
 		if selected {
 			prefix = styles.ViewportCursor.Render("▸ ")
+		}
+
+		// Providers section header
+		if e.Key == "providers" {
+			b.WriteString("\n")
+			header := sectionHeader.Render("── Providers ──")
+			count := valDimStyle.Render(" " + e.Value)
+			b.WriteString(prefix + header + count)
+			b.WriteString("\n")
+			continue
 		}
 
 		// Permission rules section header

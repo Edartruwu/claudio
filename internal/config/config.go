@@ -63,9 +63,10 @@ type Settings struct {
 
 // ProviderConfig defines a non-default API provider.
 type ProviderConfig struct {
-	APIBase string `json:"apiBase"`           // Base URL (e.g. "https://api.groq.com/openai/v1")
-	APIKey  string `json:"apiKey,omitempty"`   // API key or "$ENV_VAR" reference
-	Type    string `json:"type"`              // "openai" or "anthropic"
+	APIBase string            `json:"apiBase"`            // Base URL (e.g. "https://api.groq.com/openai/v1")
+	APIKey  string            `json:"apiKey,omitempty"`   // API key or "$ENV_VAR" reference
+	Type    string            `json:"type"`               // "openai" or "anthropic"
+	Models  map[string]string `json:"models,omitempty"`   // shortcut -> model ID (e.g. "llama": "llama-3.3-70b-versatile")
 }
 
 // PermissionRule defines a content-pattern permission for a specific tool.

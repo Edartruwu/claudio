@@ -147,9 +147,21 @@ type Model struct {
 	width   int
 }
 
-// New creates a new model selector.
-func New(currentModel, currentThinking string, currentBudget int, currentEffort string) Model {
+// WithExtraModels creates a new model selector that includes additional provider models.
+func NewWithModels(currentModel, currentThinking string, currentBudget int, currentEffort string, extraModels []ModelOption) Model {
 	models := DefaultModels()
+	if len(extraModels) > 0 {
+		models = append(models, extraModels...)
+	}
+	return newSelector(models, currentModel, currentThinking, currentBudget, currentEffort)
+}
+
+// New creates a new model selector with only the default Anthropic models.
+func New(currentModel, currentThinking string, currentBudget int, currentEffort string) Model {
+	return newSelector(DefaultModels(), currentModel, currentThinking, currentBudget, currentEffort)
+}
+
+func newSelector(models []ModelOption, currentModel, currentThinking string, currentBudget int, currentEffort string) Model {
 	thinking := DefaultThinkingOptions()
 	budgets := DefaultBudgetOptions()
 
