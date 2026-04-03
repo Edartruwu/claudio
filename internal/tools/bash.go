@@ -11,12 +11,14 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/tools/outputfilter"
 )
 
 // BashTool executes shell commands.
 type BashTool struct {
-	Security     SecurityChecker
-	TaskRuntime  *tasks.Runtime
+	Security           SecurityChecker
+	TaskRuntime        *tasks.Runtime
+	OutputFilterEnabled bool
 }
 
 type bashInput struct {
@@ -155,6 +157,11 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 	result := output.String()
 	if result == "" {
 		result = "(no output)"
+	}
+
+	// Apply output filter to reduce token usage (RTK-style)
+	if t.OutputFilterEnabled && result != "(no output)" {
+		result = outputfilter.Filter(in.Command, result)
 	}
 
 	// Truncate large outputs — matches Claude Code's 30KB Bash cap.

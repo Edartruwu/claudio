@@ -150,6 +150,8 @@ func (p *Panel) buildEntries() {
 		addR("maxBudget", "unlimited", ScopeGlobal)
 	}
 
+	addE("outputFilter", fmt.Sprintf("%v", m.OutputFilter), "bool", p.source("outputFilter"))
+
 	if m.OutputStyle != "" {
 		addE("outputStyle", m.OutputStyle, "cycle", p.source("outputStyle"))
 	} else {
@@ -236,6 +238,10 @@ func (p *Panel) source(key string) Scope {
 		}
 	case "compactMode":
 		if p.project.CompactMode != "" {
+			return ScopeProject
+		}
+	case "outputFilter":
+		if p.project.OutputFilter {
 			return ScopeProject
 		}
 	case "outputStyle":
@@ -346,6 +352,9 @@ func (p *Panel) toggleEntry(idx int) (string, string) {
 		modes := []string{"auto", "manual", "strategic"}
 		target.CompactMode = cycleValue(p.merged.CompactMode, modes, "auto")
 		newVal = target.CompactMode
+	case "outputFilter":
+		target.OutputFilter = !p.merged.OutputFilter
+		newVal = fmt.Sprintf("%v", target.OutputFilter)
 	case "outputStyle":
 		modes := []string{"normal", "concise", "verbose", "markdown"}
 		current := p.merged.OutputStyle

@@ -1339,6 +1339,13 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			m.addMessage(ChatMessage{Type: MsgError, Content: event.err.Error()})
 		}
 
+		// Restore model if this was a one-shot model override
+		if m.pendingModelRestore != "" {
+			m.model = m.pendingModelRestore
+			m.apiClient.SetModel(m.pendingModelRestore)
+			m.pendingModelRestore = ""
+		}
+
 		// If plan mode just exited, show approval dialog instead of returning to prompt.
 		if m.planModeActive {
 			// Preserve conversation history so it's restored when the plan is approved.
@@ -2705,6 +2712,16 @@ func (m *Model) applyConfigChange(key, value string) {
 	case "outputStyle":
 		if m.appCtx != nil && m.appCtx.Config != nil {
 			m.appCtx.Config.OutputStyle = value
+		}
+	case "outputFilter":
+		enabled := value == "true"
+		if m.appCtx != nil && m.appCtx.Config != nil {
+			m.appCtx.Config.OutputFilter = enabled
+		}
+		if bash, err := m.registry.Get("Bash"); err == nil {
+			if bt, ok := bash.(*tools.BashTool); ok {
+				bt.OutputFilterEnabled = enabled
+			}
 		}
 	}
 	// Other settings (autoMemoryExtract, memorySelection, compactMode, etc.)

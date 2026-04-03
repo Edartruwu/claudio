@@ -59,6 +59,9 @@ type Settings struct {
 
 	// Token budget
 	MaxBudget float64 `json:"maxBudget,omitempty"`
+
+	// Output filter (RTK-style token reduction for command output)
+	OutputFilter bool `json:"outputFilter,omitempty"`
 }
 
 // ProviderConfig defines a non-default API provider.
@@ -300,6 +303,13 @@ func mergeFromFile(settings *Settings, path string) {
 		}
 		for k, v := range overlay.ModelRouting {
 			settings.ModelRouting[k] = v
+		}
+	}
+	// Use raw JSON to detect explicit outputFilter presence (handles both true and false)
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) == nil {
+		if _, ok := raw["outputFilter"]; ok {
+			settings.OutputFilter = overlay.OutputFilter
 		}
 	}
 }

@@ -147,6 +147,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	if bash, err := registry.Get("Bash"); err == nil {
 		if bt, ok := bash.(*tools.BashTool); ok {
 			bt.Security = sec
+			bt.OutputFilterEnabled = settings.OutputFilter
 		}
 	}
 	if read, err := registry.Get("Read"); err == nil {

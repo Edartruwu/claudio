@@ -211,6 +211,7 @@ Open with `<Space>ic`. The panel shows:
 | `denyTools` | list of tool names | Disable specific tools (e.g. `["Memory", "WebSearch"]`) |
 | `compactMode` | `auto`, `manual`, `strategic` | When to compact conversation history |
 | `maxBudget` | USD amount, 0 = unlimited | Session spend limit |
+| `outputFilter` | `true`/`false` | RTK-style command output filtering (see below) |
 
 ### CLAUDIO.md / CLAUDE.md
 
@@ -426,6 +427,75 @@ Before base64-encoding an image (from file or clipboard), Claudio checks whether
 
 Before each API call, adjacent plain-text user messages are merged into a single message. This reduces per-message overhead and avoids edge cases with consecutive same-role messages. Tool result blocks are never merged.
 
+### Output filtering (RTK-style)
+
+When `"outputFilter": true` is set in your config, Claudio applies intelligent output filtering to Bash command results before they enter the context window. Inspired by [RTK](https://github.com/rtk-ai/rtk), this can reduce token usage by 60-90% on noisy command outputs.
+
+Toggle it in the TUI config panel (`<Space>ic`) or set it in `settings.json`:
+
+```json
+{
+  "outputFilter": true
+}
+```
+
+**How it works:** after a command runs, the output passes through two filter layers:
+
+1. **Command-specific filters** — recognizes the command and strips noise particular to that tool:
+
+   | Command | What gets filtered |
+   |---------|-------------------|
+   | `git push/pull/fetch/clone` | Transfer progress (enumerating, counting, compressing objects, percentages), keeps branch results and errors |
+   | `go test` | Keeps only failures + summary line, supports both plain and JSON (`-json`) output |
+   | `go build/vet` | Keeps only error/issue lines with file locations, adds count |
+   | `cargo build/test/clippy` | Strips compile progress, keeps errors/warnings/failures |
+   | `npm/pnpm/yarn install` | Strips download progress, keeps "added N packages" and vulnerability warnings |
+   | `pip install` | Strips download/collection lines, keeps success/error |
+   | `docker build` | Strips layer download progress, keeps step headers and final result |
+   | `docker pull/push` | Strips per-layer progress, keeps digest and status |
+   | `make` | For long successful builds, applies generic filtering |
+
+2. **Generic filters** (applied to all commands, or as fallback):
+   - Strips ANSI escape codes
+   - Collapses 3+ consecutive blank lines to 1
+   - Deduplicates 3+ identical consecutive lines → `line (repeated N times)`
+   - Removes progress bars (`[=====>   ] 45%`) and spinner characters
+   - Truncates lines longer than 500 characters
+
+**Examples:**
+
+`git push` (before: ~15 lines, ~200 tokens):
+```
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 1.23 KiB | 1.23 MiB/s, done.
+Total 3 (delta 2), reused 0 (delta 0)
+remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+To github.com/user/repo.git
+   abc1234..def5678  main -> main
+```
+
+After filtering (~2 lines, ~20 tokens):
+```
+To github.com/user/repo.git
+   abc1234..def5678  main -> main
+```
+
+`go build` with errors (before: mixed with package headers):
+```
+# github.com/user/repo/pkg
+pkg/foo.go:10:5: undefined: bar
+pkg/foo.go:15:2: cannot use x (type int) as type string
+```
+
+After filtering:
+```
+Go build: 2 errors
+1. pkg/foo.go:10:5: undefined: bar
+2. pkg/foo.go:15:2: cannot use x (type int) as type string
+```
+
 ### Deferred tool definitions
 
 Infrequently-used tools (web, LSP, notebooks, tasks, teams, etc.) are sent with a stub schema (`{"type":"object"}`) instead of their full JSON schema. The model discovers them on demand via `ToolSearch`, at which point the full schema is included in the next request. This saves the token cost of sending dozens of tool descriptions on every turn when most of them will never be used.
@@ -442,6 +512,7 @@ Infrequently-used tools (web, LSP, notebooks, tasks, teams, etc.) are sent with 
 | Duplicate read cache | `internal/tools/readcache/` | Eliminates redundant file read tokens |
 | Image compression | `internal/tui/images.go` | Reduces image payloads to ≤500 KB |
 | Message merging | `internal/query/engine.go` | Reduces per-message overhead |
+| Output filtering | `internal/tools/outputfilter/` | 60-90% reduction on noisy command outputs |
 | Deferred tool schemas | `internal/tools/registry.go` | Saves full schema cost for unused tools |
 
 ---
