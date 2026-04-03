@@ -101,10 +101,11 @@ type Model struct {
 	eventCh      chan tuiEvent
 	approvalCh   chan bool
 	systemPrompt string
-	commands     *commands.Registry
-	session      *session.Session
-	skills       *skills.Registry
-	engineConfig *query.EngineConfig
+	commands       *commands.Registry
+	session        *session.Session
+	skills         *skills.Registry
+	engineConfig   *query.EngineConfig
+	planModeActive bool // true while the AI is in plan mode (EnterPlanMode called)
 }
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
@@ -1142,6 +1143,14 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 
 	case "tool_end":
+		// Track plan mode state based on EnterPlanMode / ExitPlanMode tool calls.
+		switch event.toolUse.Name {
+		case "EnterPlanMode":
+			m.planModeActive = true
+		case "ExitPlanMode":
+			m.planModeActive = false
+		}
+
 		// Update the tool_use message with the full input (now that streaming is done)
 		if event.toolUse.Input != nil {
 			for i := len(m.messages) - 1; i >= 0; i-- {
@@ -2618,13 +2627,18 @@ func (m Model) renderModeLine() string {
 		left = modeStyle.Render("-- " + vimMode + " --")
 	}
 
-	// Permission mode indicator
+	// Mode indicator: plan mode takes precedence over permission mode label.
 	permMode := "default"
 	if m.engineConfig != nil && m.engineConfig.PermissionMode != "" {
 		permMode = m.engineConfig.PermissionMode
 	}
-	modeIndicator := arrowStyle.Render(" ▸▸ ") +
-		hintStyle.Render(permMode+" mode")
+	var modeIndicator string
+	if m.planModeActive {
+		planStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+		modeIndicator = arrowStyle.Render(" ▸▸ ") + planStyle.Render("plan mode")
+	} else {
+		modeIndicator = arrowStyle.Render(" ▸▸ ") + hintStyle.Render(permMode+" mode")
+	}
 
 	// Show queue count
 	if len(m.messageQueue) > 0 {

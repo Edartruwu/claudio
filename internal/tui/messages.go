@@ -334,9 +334,23 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderCollapsedRun renders a single summary row for N consecutive same-tool calls.
+// renderCollapsedRun shows only the latest (last) item in a run, with a dim
+// "+N more" hint so the user knows there are hidden entries. ctrl+o reveals all.
 func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) string {
 	n := len(pairs)
+
+	// Show the last pair — it's the most recent and most relevant.
+	last := pairs[n-1]
+
+	icon := styles.ToolIcon.Render("⚡ ")
+	name := styles.ToolName.Width(nameW).Render(last.use.ToolName)
+	summaryText := formatRichSummary(last.use)
+	more := styles.ToolBadge.Render(fmt.Sprintf("+%d", n-1))
+	summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-30))
+	left := connector + icon + name + more + "  " + summary
+
+	var status string
+	// Count running/errors across the whole run for the status indicator.
 	running, errors := 0, 0
 	for _, p := range pairs {
 		if p.result == nil {
@@ -345,37 +359,14 @@ func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) str
 			errors++
 		}
 	}
-
-	icon := styles.ToolIcon.Render("⚡ ")
-	name := styles.ToolName.Width(nameW).Render(pairs[0].use.ToolName)
-	badge := styles.ToolBadge.Render(fmt.Sprintf("×%d", n))
-
-	// Collect unique short summaries (basename only to stay compact).
-	seen := map[string]bool{}
-	var summaries []string
-	for _, p := range pairs {
-		s := formatRichSummary(p.use)
-		if idx := strings.LastIndex(s, "/"); idx >= 0 {
-			s = s[idx+1:]
-		}
-		if !seen[s] {
-			seen[s] = true
-			summaries = append(summaries, s)
-		}
-	}
-	summaryText := strings.Join(summaries, ", ")
-	summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-35))
-
-	left := connector + icon + name + badge + "  " + summary
-
-	var status string
 	switch {
 	case running > 0:
 		status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(fmt.Sprintf(" %d/%d", n-running, n))
 	case errors > 0:
 		status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
 	default:
-		status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(fmt.Sprintf(" %d done", n))
+		brief := resultBrief(last.result.Content)
+		status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+brief)
 	}
 
 	gap := maxW - lipgloss.Width(left) - lipgloss.Width(status)
