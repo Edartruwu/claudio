@@ -295,6 +295,72 @@ func TestForSystemPrompt_Disabled(t *testing.T) {
 	}
 }
 
+func TestExpand_GoSelectorExprReturnTypes(t *testing.T) {
+	cfg := &Config{
+		Enabled: true,
+		Snippets: []SnippetDef{
+			{
+				Name:     "errw",
+				Params:   []string{"call", "msg"},
+				Lang:     "go",
+				Template: "r, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}",
+			},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		input    string
+		wantZero string
+	}{
+		{
+			name: "package struct return",
+			input: `package main
+
+import "mypackage"
+
+func GetConfig() (mypackage.Config, error) {
+	~errw(loadConfig(), "load")
+	return cfg, nil
+}`,
+			wantZero: "return mypackage.Config{},",
+		},
+		{
+			name: "context.Context return (interface)",
+			input: `package main
+
+import "context"
+
+func MakeCtx() (context.Context, error) {
+	~errw(buildCtx(), "build")
+	return nil, nil
+}`,
+			wantZero: "return nil,",
+		},
+		{
+			name: "time.Duration return (numeric alias)",
+			input: `package main
+
+import "time"
+
+func Elapsed() (time.Duration, error) {
+	~errw(measure(), "measure")
+	return 0, nil
+}`,
+			wantZero: "return 0,",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Expand(cfg, "main.go", tt.input)
+			if !strings.Contains(got, tt.wantZero) {
+				t.Errorf("expected %q in output:\n%s", tt.wantZero, got)
+			}
+		})
+	}
+}
+
 func TestResolveGoContext_RegexFallback(t *testing.T) {
 	// Invalid Go that won't parse with go/ast — should fall back to regex
 	content := `func Broken( GetUser(id int) (*User, error) {

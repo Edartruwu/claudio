@@ -230,6 +230,12 @@ func bundledSkills() []*Skill {
 			Content:     refactorSkillContent,
 			Source:      "bundled",
 		},
+		{
+			Name:        "setup-snippets",
+			Description: "Analyze the project and configure snippet expansion for common boilerplate patterns",
+			Content:     setupSnippetsSkillContent,
+			Source:      "bundled",
+		},
 	}
 }
 
@@ -569,6 +575,63 @@ For each finding:
 - **Remediation**: How to fix
 
 End with: SECURE / NEEDS FIXES / CRITICAL ISSUES`
+
+var setupSnippetsSkillContent = `You are being asked to analyze this project and configure snippet expansion.
+
+Snippet expansion lets the AI write shorthand like ` + "`~errw(db.Query(ctx, id), \"fetch user\")`" + ` instead of full boilerplate. A deterministic expander replaces it before writing to disk.
+
+## Process
+
+1. **Detect project languages**: Run ` + "`find . -maxdepth 3 -type f \\( -name '*.go' -o -name '*.py' -o -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.rs' \\) | head -50`" + ` to identify what languages are used.
+
+2. **Read existing config**: Check if ` + "`.claudio/settings.json`" + ` exists. If it does, read it — we'll merge snippets into the existing config.
+
+3. **Analyze common patterns**: For each language found, read 3-5 representative source files to identify repetitive boilerplate patterns. Look for:
+   - **Go**: error handling (` + "`if err != nil`" + `), test functions, struct builders, HTTP handlers
+   - **Python**: try/except blocks, FastAPI/Flask endpoint scaffolding, test functions, dataclass boilerplate
+   - **TypeScript/JavaScript**: try/catch, React component scaffolding, test cases (Jest/Vitest), API handler patterns
+   - **Rust**: match/Result error handling, test modules, impl blocks, trait implementations
+
+4. **Build snippet definitions**: Create snippets for the top 3-5 most repetitive patterns found. Each snippet must have:
+   - ` + "`name`" + `: short, memorable (e.g., "errw", "test", "handler", "component")
+   - ` + "`params`" + `: the parts that vary between uses
+   - ` + "`template`" + `: Go text/template string with ` + "`{{.paramName}}`" + ` placeholders
+   - ` + "`lang`" + `: file extension filter (e.g., "go", "py", "ts")
+
+   Available context variables (resolved automatically from enclosing function):
+   - ` + "`{{.ReturnZeros}}`" + ` — correct zero values for the function's return types (Go)
+   - ` + "`{{.FuncName}}`" + ` — enclosing function name (all languages)
+   - ` + "`{{.ReturnType}}`" + ` — return type annotation (Python, TS, Rust)
+   - ` + "`{{.result}}`" + ` — default variable name for results (defaults to "result")
+
+5. **Write config**: Create or update ` + "`.claudio/settings.json`" + ` with the snippets config:
+` + "   ```json" + `
+   {
+     "snippets": {
+       "enabled": true,
+       "snippets": [
+         {
+           "name": "errw",
+           "params": ["call", "msg"],
+           "lang": "go",
+           "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}"
+         }
+       ]
+     }
+   }
+` + "   ```" + `
+
+   If the file already exists with other settings, merge the ` + "`snippets`" + ` key — do NOT overwrite other config.
+
+6. **Show the user** what was configured: list each snippet with its name, what it does, and a usage example.
+
+## Rules
+- Only create snippets for patterns that appear at least 3 times in the codebase
+- Keep snippet names short (max 10 chars) — the AI will type these frequently
+- Template must be valid Go text/template syntax
+- Do NOT create snippets for unique business logic — only for mechanical, repetitive patterns
+- Prefer fewer high-impact snippets over many marginal ones
+- If the project already has snippets configured, suggest additions rather than replacing existing ones`
 
 var refactorSkillContent = `You are being asked to refactor code.
 

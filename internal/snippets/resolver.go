@@ -94,6 +94,34 @@ func resolveGoContext(content string, offset int, ctx map[string]string) {
 	}
 }
 
+// knownSelectorZeros maps commonly-used qualified types to their zero values.
+// This handles cases where a SelectorExpr is not a struct (interfaces, type aliases).
+var knownSelectorZeros = map[string]string{
+	// Interfaces
+	"context.Context":    "nil",
+	"io.Reader":          "nil",
+	"io.Writer":          "nil",
+	"io.ReadCloser":      "nil",
+	"io.WriteCloser":     "nil",
+	"io.ReadWriter":      "nil",
+	"io.ReadWriteCloser": "nil",
+	"io.Closer":          "nil",
+	"net.Conn":           "nil",
+	"net.Listener":       "nil",
+	"http.Handler":       "nil",
+	"http.ResponseWriter": "nil",
+	"fmt.Stringer":       "nil",
+	"error":              "nil",
+	"sort.Interface":     "nil",
+	"sql.Result":         "nil",
+	// Numeric type aliases
+	"time.Duration":    "0",
+	"time.Time":        "time.Time{}",
+	"sync.Mutex":       "sync.Mutex{}",
+	"sync.WaitGroup":   "sync.WaitGroup{}",
+	"sync.Once":        "sync.Once{}",
+}
+
 // goZeroValue returns the Go zero value for an AST type expression.
 func goZeroValue(expr ast.Expr, src string) string {
 	switch t := expr.(type) {
@@ -112,9 +140,13 @@ func goZeroValue(expr ast.Expr, src string) string {
 	case *ast.FuncType:
 		return "nil"
 	case *ast.SelectorExpr:
-		// e.g., time.Duration → 0, context.Context → nil (interface)
-		// For most selector exprs we can't know — default to zero struct
 		typeName := exprToString(t, src)
+		if zero, ok := knownSelectorZeros[typeName]; ok {
+			return zero
+		}
+		// Without cross-package type resolution, we can't distinguish structs
+		// from interfaces. Default to pkg.Type{} which is correct for structs.
+		// Pointer types (*pkg.Type) are handled by StarExpr above as nil.
 		return typeName + "{}"
 	case *ast.Ellipsis:
 		return "nil" // variadic (shouldn't appear in return types but just in case)
