@@ -45,7 +45,7 @@ func TestRegistry(t *testing.T) {
 		}
 	}
 
-	// Test deferred definitions
+	// Test deferred definitions — undiscovered deferred tools must be absent entirely
 	deferredDefs := r.APIDefinitionsWithDeferral(nil)
 	var deferredParsed []tools.APIToolDef
 	if err := json.Unmarshal(deferredDefs, &deferredParsed); err != nil {
@@ -63,39 +63,35 @@ func TestRegistry(t *testing.T) {
 	}
 	for _, def := range deferredParsed {
 		if deferredNames[def.Name] {
-			if !def.DeferLoading {
-				t.Errorf("tool %q should have defer_loading=true", def.Name)
-			}
-			if def.Description != "" {
-				t.Errorf("deferred tool %q should have empty description, got %q", def.Name, def.Description)
-			}
-			if string(def.InputSchema) != `{"type":"object"}` {
-				t.Errorf("deferred tool %q should have minimal input_schema", def.Name)
-			}
-		} else {
-			if def.DeferLoading {
-				t.Errorf("tool %q should not have defer_loading=true", def.Name)
-			}
-			if def.Description == "" {
-				t.Errorf("non-deferred tool %q should have a description", def.Name)
-			}
+			t.Errorf("undiscovered deferred tool %q should be absent from the tools array", def.Name)
+		}
+		if def.Description == "" {
+			t.Errorf("tool %q present in array must have a description", def.Name)
 		}
 	}
 
-	// Test that discovered tools get full schemas
+	// Test that discovered tools appear with full schemas
 	discovered := map[string]bool{"WebSearch": true, "TaskCreate": true}
 	partialDefs := r.APIDefinitionsWithDeferral(discovered)
 	var partialParsed []tools.APIToolDef
 	json.Unmarshal(partialDefs, &partialParsed)
+	partialByName := map[string]tools.APIToolDef{}
 	for _, def := range partialParsed {
-		if def.Name == "WebSearch" || def.Name == "TaskCreate" {
-			if def.DeferLoading {
-				t.Errorf("discovered tool %q should not have defer_loading=true", def.Name)
-			}
-			if def.Description == "" {
-				t.Errorf("discovered tool %q should have a description", def.Name)
-			}
+		partialByName[def.Name] = def
+	}
+	for _, name := range []string{"WebSearch", "TaskCreate"} {
+		def, ok := partialByName[name]
+		if !ok {
+			t.Errorf("discovered tool %q should be present in the tools array", name)
+			continue
 		}
+		if def.Description == "" {
+			t.Errorf("discovered tool %q should have a description", name)
+		}
+	}
+	// Undiscovered deferred tools should still be absent
+	if _, ok := partialByName["WebFetch"]; ok {
+		t.Errorf("undiscovered tool WebFetch should still be absent when only WebSearch/TaskCreate are discovered")
 	}
 
 	// Verify deferred definitions are significantly smaller than full

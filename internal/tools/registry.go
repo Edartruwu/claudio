@@ -75,12 +75,10 @@ func (r *Registry) APIDefinitionsWithDeferral(discoveredTools map[string]bool) j
 		}
 
 		if shouldDefer {
-			defs = append(defs, APIToolDef{
-				Name:         name,
-				Description:  "",
-				InputSchema:  json.RawMessage(`{"type":"object"}`),
-				DeferLoading: true,
-			})
+			// Completely omit undiscovered deferred tools from the tools array.
+			// Their names are already listed in the system reminder so the model
+			// knows they exist and can call ToolSearch to load them on demand.
+			continue
 		} else {
 			defs = append(defs, APIToolDef{
 				Name:        name,

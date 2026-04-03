@@ -114,16 +114,28 @@ type Model struct {
 	planFilePath        string // path of the current plan file (set by EnterPlanMode)
 	planApprovalCursor  int    // selected option in the plan approval dialog (0-3)
 	planApprovalFeedback string // typed feedback when option 3 is selected
+
+	askUserDialog *askUserDialogState // active AskUser question dialog (nil = not showing)
+}
+
+// askUserDialogState holds the state for an interactive AskUser question dialog.
+type askUserDialogState struct {
+	questions  []tools.AskQuestion
+	qIdx       int               // current question index
+	optCursor  int               // cursor within current question's options
+	answers    map[string]string // question label → selected answer
+	responseCh chan<- tools.AskUserResponse
 }
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
 type tuiEvent struct {
-	typ     string
-	text    string
-	toolUse tools.ToolUse
-	result  *tools.Result
-	usage   api.Usage
-	err     error
+	typ        string
+	text       string
+	toolUse    tools.ToolUse
+	result     *tools.Result
+	usage      api.Usage
+	err        error
+	askUserReq tools.AskUserRequest // for "askuser_request" events
 }
 
 // Tea messages
@@ -739,6 +751,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handlePlanApprovalKey(msg)
 		}
 
+		// AskUser question dialog
+		if m.focus == FocusAskUser {
+			return m.handleAskUserKey(msg)
+		}
+
 		// Command palette intercepts keys when active
 		if m.focus == FocusPrompt && !m.streaming && m.palette.IsActive() {
 			if cmd, consumed := m.palette.Update(msg); consumed {
@@ -1093,6 +1110,23 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	} else {
 		m.engine = query.NewEngine(m.apiClient, m.registry, handler)
 	}
+
+	// Wire AskUser tool channels so questions are shown interactively.
+	if t, err := m.registry.Get("AskUser"); err == nil {
+		if aut, ok := t.(*tools.AskUserTool); ok {
+			reqCh := make(chan tools.AskUserRequest, 1)
+			respCh := make(chan tools.AskUserResponse, 1)
+			aut.RequestCh = reqCh
+			aut.ResponseCh = respCh
+			// Forward requests to the TUI event loop.
+			eventCh := m.eventCh
+			go func() {
+				for req := range reqCh {
+					eventCh <- tuiEvent{typ: "askuser_request", askUserReq: req}
+				}
+			}()
+		}
+	}
 	if m.systemPrompt != "" {
 		m.engine.SetSystem(m.systemPrompt)
 	}
@@ -1154,6 +1188,26 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		m.permission = permissions.New(event.toolUse)
 		m.permission.SetWidth(m.width)
 		m.focus = FocusPermission
+		m.refreshViewport()
+		return m, m.waitForEvent()
+
+	case "askuser_request":
+		m.finalizeStreamingMessage()
+		// Get response channel from the registered AskUserTool.
+		var respCh chan tools.AskUserResponse
+		if t, err := m.registry.Get("AskUser"); err == nil {
+			if aut, ok := t.(*tools.AskUserTool); ok {
+				respCh = aut.ResponseCh
+			}
+		}
+		m.askUserDialog = &askUserDialogState{
+			questions:  event.askUserReq.Questions,
+			qIdx:       0,
+			optCursor:  0,
+			answers:    make(map[string]string),
+			responseCh: respCh,
+		}
+		m.focus = FocusAskUser
 		m.refreshViewport()
 		return m, m.waitForEvent()
 
@@ -1472,6 +1526,54 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleAskUserKey handles key events in the AskUser question dialog.
+func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	d := m.askUserDialog
+	if d == nil {
+		return m, nil
+	}
+	q := d.questions[d.qIdx]
+
+	switch msg.String() {
+	case "j", "down":
+		if d.optCursor < len(q.Options)-1 {
+			d.optCursor++
+		}
+	case "k", "up":
+		if d.optCursor > 0 {
+			d.optCursor--
+		}
+	case "enter", " ":
+		// Record the selected option for the current question.
+		d.answers[q.Label] = q.Options[d.optCursor]
+		if d.qIdx < len(d.questions)-1 {
+			// Move to next question.
+			d.qIdx++
+			d.optCursor = 0
+		} else {
+			// All questions answered — send response and clear dialog.
+			if d.responseCh != nil {
+				d.responseCh <- tools.AskUserResponse{Answers: d.answers}
+			}
+			m.askUserDialog = nil
+			m.focus = FocusPrompt
+			m.refreshViewport()
+			return m, m.waitForEvent()
+		}
+	case "esc":
+		// Cancel: send empty response.
+		if d.responseCh != nil {
+			d.responseCh <- tools.AskUserResponse{Answers: make(map[string]string)}
+		}
+		m.askUserDialog = nil
+		m.focus = FocusPrompt
+		m.refreshViewport()
+		return m, m.waitForEvent()
+	}
+	m.refreshViewport()
+	return m, nil
+}
+
 // handlePlanApprovalKey handles key events in the plan approval dialog shown after ExitPlanMode.
 func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	const numOptions = 3
@@ -1562,6 +1664,70 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // renderPlanApprovalDialog renders the plan approval overlay shown after ExitPlanMode.
+// renderAskUserDialog renders the interactive AskUser question dialog overlay.
+func (m Model) renderAskUserDialog(width int) string {
+	d := m.askUserDialog
+	if d == nil {
+		return ""
+	}
+	q := d.questions[d.qIdx]
+
+	boxW := width - 8
+	if boxW > 72 {
+		boxW = 72
+	}
+	if boxW < 30 {
+		boxW = 30
+	}
+
+	titleStyle := lipgloss.NewStyle().Foreground(styles.Aqua).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+	selectedStyle := lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
+	progressStyle := lipgloss.NewStyle().Foreground(styles.Muted)
+
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("? Question"))
+	progress := fmt.Sprintf(" (%d/%d)", d.qIdx+1, len(d.questions))
+	b.WriteString(progressStyle.Render(progress))
+	b.WriteString("\n\n")
+	b.WriteString(labelStyle.Render(q.Label))
+	b.WriteString("\n")
+	if q.Description != "" {
+		b.WriteString(dimStyle.Render(q.Description))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	for i, opt := range q.Options {
+		if i == d.optCursor {
+			b.WriteString(selectedStyle.Render("▸ " + opt))
+		} else {
+			b.WriteString(dimStyle.Render("  " + opt))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	hint := "j/k navigate · enter select"
+	if d.qIdx < len(d.questions)-1 {
+		hint += " · esc cancel"
+	} else {
+		hint += " (submit) · esc cancel"
+	}
+	b.WriteString(styles.PanelHint.Render(hint))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.Aqua).
+		Padding(1, 2).
+		Width(boxW).
+		Render(b.String())
+
+	return lipgloss.NewStyle().
+		Width(width).
+		Align(lipgloss.Center).
+		Render(box)
+}
+
 func (m Model) renderPlanApprovalDialog(width int) string {
 	boxWidth := width - 4
 	if boxWidth < 40 {
@@ -1708,16 +1874,29 @@ func extractDomainPattern(rawURL string) string {
 }
 
 // persistPermissionRule saves a permission rule to the project config (or global).
+// It deduplicates: if an identical rule already exists, it is not added again.
 func (m *Model) persistPermissionRule(rule config.PermissionRule) {
 	if m.appCtx == nil || m.appCtx.Config == nil {
 		return
 	}
 
-	// Add to live config
-	m.appCtx.Config.PermissionRules = append(m.appCtx.Config.PermissionRules, rule)
+	// Helper: check if rule already exists in a slice.
+	hasDuplicate := func(rules []config.PermissionRule) bool {
+		for _, r := range rules {
+			if r.Tool == rule.Tool && r.Pattern == rule.Pattern && r.Behavior == rule.Behavior {
+				return true
+			}
+		}
+		return false
+	}
 
-	// Also add to engine config so it takes effect immediately
-	if m.engineConfig != nil {
+	// Add to live config (skip if already present).
+	if !hasDuplicate(m.appCtx.Config.PermissionRules) {
+		m.appCtx.Config.PermissionRules = append(m.appCtx.Config.PermissionRules, rule)
+	}
+
+	// Also add to engine config so it takes effect immediately.
+	if m.engineConfig != nil && !hasDuplicate(m.engineConfig.PermissionRules) {
 		m.engineConfig.PermissionRules = append(m.engineConfig.PermissionRules, rule)
 	}
 
@@ -1731,19 +1910,20 @@ func (m *Model) persistPermissionRule(rule config.PermissionRule) {
 		savePath = projectSettings // prefer project if .claudio/ exists
 	}
 
-	// Load existing, append rule, save back
+	// Load existing, append rule (if not duplicate), save back.
 	data, _ := os.ReadFile(savePath)
 	var existing map[string]json.RawMessage
 	if json.Unmarshal(data, &existing) != nil {
 		existing = make(map[string]json.RawMessage)
 	}
 
-	// Parse existing rules
 	var rules []config.PermissionRule
 	if raw, ok := existing["permissionRules"]; ok {
 		json.Unmarshal(raw, &rules)
 	}
-	rules = append(rules, rule)
+	if !hasDuplicate(rules) {
+		rules = append(rules, rule)
+	}
 	rulesJSON, _ := json.Marshal(rules)
 	existing["permissionRules"] = rulesJSON
 
@@ -2784,6 +2964,10 @@ func (m Model) View() string {
 		overlay := m.renderPlanApprovalDialog(mw)
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
+	if m.focus == FocusAskUser && m.askUserDialog != nil {
+		overlay := m.renderAskUserDialog(mw)
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+	}
 	if m.modelSelector.IsActive() {
 		overlay := m.modelSelector.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
@@ -3083,6 +3267,9 @@ func (m Model) statusHint() string {
 	}
 	if m.focus == FocusPermission {
 		return "y allow · n deny"
+	}
+	if m.focus == FocusAskUser {
+		return "j/k navigate · enter select · esc cancel"
 	}
 	if m.focus == FocusPanel {
 		return "j/k navigate · enter select · esc close"
