@@ -138,6 +138,56 @@ func (c *Client) GetEffortLevel() string {
 	return c.effortLevel
 }
 
+// RenewTransport replaces the HTTP client's transport with a fresh one that
+// has no stale keep-alive connections. Call this after an ECONNRESET error.
+func (c *Client) RenewTransport() {
+	c.httpClient = &http.Client{}
+}
+
+// IsTransientError reports whether the error is safe to retry: network-level
+// connection errors (ECONNRESET, EPIPE) or HTTP-level transient failures
+// (429 rate-limit, 529 overloaded, 5xx server errors).
+func IsTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// Network-level: stale keep-alive socket reset by server
+	if strings.Contains(msg, "connection reset by peer") ||
+		strings.Contains(msg, "ECONNRESET") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "EPIPE") ||
+		strings.Contains(msg, "EOF") {
+		return true
+	}
+	// HTTP-level: extract status from "API error (HTTP NNN): ..."
+	if strings.Contains(msg, "API error (HTTP 429)") ||
+		strings.Contains(msg, "API error (HTTP 529)") ||
+		strings.Contains(msg, "overloaded_error") {
+		return true
+	}
+	// 5xx server errors
+	for _, code := range []string{"500", "502", "503", "504", "520", "524"} {
+		if strings.Contains(msg, "API error (HTTP "+code+")") {
+			return true
+		}
+	}
+	return false
+}
+
+// IsConnectionResetError reports whether the error is specifically a TCP
+// connection reset (ECONNRESET/EPIPE), indicating a stale keep-alive socket.
+func IsConnectionResetError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "connection reset by peer") ||
+		strings.Contains(msg, "ECONNRESET") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "EPIPE")
+}
+
 // SetEffortLevel sets the reasoning effort level. Use "" for default (high).
 func (c *Client) SetEffortLevel(level string) {
 	c.effortLevel = level

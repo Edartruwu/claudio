@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -414,10 +416,64 @@ type streamedResponse struct {
 	Usage      api.Usage
 }
 
+const (
+	maxStreamRetries  = 5
+	baseRetryDelayMs  = 500
+	maxRetryDelayMs   = 32_000
+)
+
+// retryDelay returns the backoff duration for a given attempt (1-based).
+// Matches claude-code: base * 2^(attempt-1) + 25% jitter, capped at maxRetryDelayMs.
+func retryDelay(attempt int) time.Duration {
+	base := float64(baseRetryDelayMs) * math.Pow(2, float64(attempt-1))
+	if base > maxRetryDelayMs {
+		base = maxRetryDelayMs
+	}
+	jitter := rand.Float64() * 0.25 * base
+	return time.Duration(base+jitter) * time.Millisecond
+}
+
 func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (*streamedResponse, error) {
+	var lastErr error
+	for attempt := 1; attempt <= maxStreamRetries+1; attempt++ {
+		resp, forwarded, err := e.streamOnce(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+		// Only retry transient errors, and only when no content was forwarded
+		// to the handler yet. Retrying after partial output would duplicate
+		// text already shown in the TUI.
+		if forwarded || !api.IsTransientError(err) || ctx.Err() != nil {
+			return resp, err
+		}
+		if attempt > maxStreamRetries {
+			return resp, err
+		}
+		// On TCP connection reset, renew the transport to discard stale sockets.
+		if api.IsConnectionResetError(err) {
+			e.client.RenewTransport()
+		}
+		lastErr = err
+		delay := retryDelay(attempt)
+		e.handler.OnTextDelta(fmt.Sprintf("\n[Connection error, retrying in %s (attempt %d/%d)...]\n",
+			delay.Round(time.Millisecond), attempt, maxStreamRetries))
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		_ = lastErr
+	}
+	return nil, lastErr
+}
+
+// streamOnce performs a single streaming attempt. Returns (response, anyForwarded, error).
+// anyForwarded is true if any text or tool-use events were sent to the handler.
+func (e *Engine) streamOnce(ctx context.Context, req *api.MessagesRequest) (*streamedResponse, bool, error) {
 	eventCh, errCh := e.client.StreamMessages(ctx, req)
 
 	response := &streamedResponse{}
+	var forwarded bool // true once OnTextDelta or OnToolUseStart has been called
 
 	// Track current content block being built
 	var currentBlocks []api.ContentBlock
@@ -427,7 +483,7 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 		select {
 		case event, ok := <-eventCh:
 			if !ok {
-				return response, nil
+				return response, forwarded, nil
 			}
 
 			switch event.Type {
@@ -459,6 +515,7 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 						ID:   block.ID,
 						Name: block.Name,
 					}
+					forwarded = true
 					e.handler.OnToolUseStart(tu)
 				}
 				currentBlocks[currentBlockIdx] = block
@@ -478,6 +535,7 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 
 				switch delta.Type {
 				case "text_delta":
+					forwarded = true
 					e.handler.OnTextDelta(delta.Text)
 					if currentBlockIdx >= 0 && currentBlockIdx < len(currentBlocks) {
 						currentBlocks[currentBlockIdx].Text += delta.Text
@@ -542,7 +600,7 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 
 			case "message_stop":
 				response.Content = currentBlocks
-				return response, nil
+				return response, forwarded, nil
 			}
 
 		case err, ok := <-errCh:
@@ -552,11 +610,11 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 			// Return whatever partial content arrived before the error so the
 			// engine can save it to history. The caller checks err != nil.
 			response.Content = currentBlocks
-			return response, err
+			return response, forwarded, err
 
 		case <-ctx.Done():
 			// User cancelled — don't save partial content, just stop cleanly.
-			return nil, ctx.Err()
+			return nil, forwarded, ctx.Err()
 		}
 	}
 }
