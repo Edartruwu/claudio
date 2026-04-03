@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -150,7 +151,11 @@ func (db *DB) migrate() error {
 			continue // already applied
 		}
 		if _, err := db.conn.Exec(m); err != nil {
-			return fmt.Errorf("migration error: %w\nSQL: %s", err, m)
+			// Treat idempotent failures as success so a partially-applied
+			// schema (e.g. from a previous crash) doesn't block startup.
+			if !isAlreadyExistsErr(err) {
+				return fmt.Errorf("migration error: %w\nSQL: %s", err, m)
+			}
 		}
 		if _, err := db.conn.Exec(`INSERT INTO schema_version (version) VALUES (?)`, i+1); err != nil {
 			return fmt.Errorf("migration error updating version: %w", err)
@@ -158,6 +163,19 @@ func (db *DB) migrate() error {
 	}
 
 	return nil
+}
+
+// isAlreadyExistsErr returns true for SQLite errors that mean the object
+// being created already exists — duplicate column, table already exists, etc.
+// These are safe to ignore during migrations because the desired state is
+// already present.
+func isAlreadyExistsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate column name") ||
+		strings.Contains(msg, "already exists")
 }
 
 // detectExistingSchemaVersion inspects the live schema to determine how far
