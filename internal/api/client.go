@@ -76,6 +76,16 @@ func WithPromptCaching(enabled bool) ClientOption {
 	return func(c *Client) { c.promptCaching = enabled }
 }
 
+// NewClientFromExisting creates a shallow copy of an existing client with a different model.
+// All other settings (auth, base URL, thinking mode, etc.) are inherited from the parent.
+func NewClientFromExisting(parent *Client, model string) *Client {
+	copy := *parent
+	copy.model = model
+	// Sub-agents don't need extended thinking — use disabled for speed.
+	copy.thinkingMode = "disabled"
+	return &copy
+}
+
 // GetModel returns the current default model.
 func (c *Client) GetModel() string {
 	return c.model

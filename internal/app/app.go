@@ -337,6 +337,21 @@ func runSubAgent(ctx context.Context, apiClient *api.Client, parentRegistry *too
 	return runSubAgentWithMemory(ctx, apiClient, parentRegistry, system, prompt, "")
 }
 
+// resolveModelAlias converts short aliases ("haiku", "sonnet", "opus") to full model IDs.
+// Returns the input unchanged if it's already a full ID or empty.
+func resolveModelAlias(alias string) string {
+	switch alias {
+	case "haiku":
+		return "claude-haiku-4-5-20251001"
+	case "sonnet":
+		return "claude-sonnet-4-6"
+	case "opus":
+		return "claude-opus-4-6"
+	default:
+		return alias
+	}
+}
+
 // runSubAgentWithMemory is like runSubAgent but also injects agent-scoped memories into the system prompt.
 func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string) (string, error) {
 	// Clone the registry so sub-agent has its own copy
@@ -344,6 +359,14 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 
 	// Remove the Agent tool from sub-agents to prevent infinite recursion
 	subRegistry.Remove("Agent")
+
+	// Apply model override from context (set by AgentTool from agentDef.Model or caller's model param).
+	if modelOverride := tools.SubAgentModelFromContext(ctx); modelOverride != "" {
+		resolved := resolveModelAlias(modelOverride)
+		if resolved != apiClient.GetModel() {
+			apiClient = api.NewClientFromExisting(apiClient, resolved)
+		}
+	}
 
 	// Inject agent-scoped memories if available
 	if memoryDir != "" {

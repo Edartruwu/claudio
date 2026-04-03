@@ -62,6 +62,19 @@ func MaxTurnsFromContext(ctx context.Context) int {
 	return 0
 }
 
+type ctxKeySubAgentModel struct{}
+
+// WithSubAgentModel stores a model alias/ID override in context for sub-agent engines.
+func WithSubAgentModel(ctx context.Context, model string) context.Context {
+	return context.WithValue(ctx, ctxKeySubAgentModel{}, model)
+}
+
+// SubAgentModelFromContext retrieves the model override from context ("" if not set).
+func SubAgentModelFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeySubAgentModel{}).(string)
+	return v
+}
+
 // AgentTool spawns sub-agents for complex, multi-step tasks.
 type AgentTool struct {
 	// ParentRegistry is set by the registry after construction.
@@ -166,6 +179,15 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 	}
 	if maxTurns > 0 {
 		ctx = WithMaxTurns(ctx, maxTurns)
+	}
+
+	// Inject model override: caller-specified takes priority, then agent type default.
+	modelOverride := in.Model
+	if modelOverride == "" {
+		modelOverride = agentDef.Model
+	}
+	if modelOverride != "" {
+		ctx = WithSubAgentModel(ctx, modelOverride)
 	}
 
 	// Background execution via task runtime
