@@ -79,6 +79,19 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		in.Offset = 1
 	}
 
+	// Reject files larger than 256 KB before reading — forces the model to
+	// use Grep/Glob to find the relevant section instead of reading everything.
+	const maxFileBytes = 256 * 1024
+	if info, err := os.Stat(in.FilePath); err == nil && info.Size() > maxFileBytes {
+		return &Result{
+			Content: fmt.Sprintf(
+				"File too large to read in full (%d KB). Use Grep to search for specific content, or read a targeted range with offset and limit parameters.",
+				info.Size()/1024,
+			),
+			IsError: true,
+		}, nil
+	}
+
 	// Check cache before hitting disk. On a hit, return a stub instead of
 	// the full content — the model already has the content from the earlier
 	// Read result in this conversation and can refer back to it.
@@ -113,7 +126,12 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 			continue
 		}
 		if linesRead >= in.Limit {
-			output.WriteString(fmt.Sprintf("\n... (truncated at %d lines, use offset to read more)", in.Limit))
+			// Return an error instead of silent truncation so the model knows
+			// it only got a partial view and must use offset/limit to read more.
+			output.WriteString(fmt.Sprintf(
+				"\n[truncated at line %d — file has more content. Use offset=%d with limit to read the next section, or use Grep to search for specific content.]",
+				lineNum, lineNum+1,
+			))
 			break
 		}
 		fmt.Fprintf(&output, "%d\t%s\n", lineNum, scanner.Text())
