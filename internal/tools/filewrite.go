@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
@@ -26,8 +27,9 @@ func isPlanFilePath(path string) bool {
 
 // FileWriteTool creates or overwrites files.
 type FileWriteTool struct {
-	Security  SecurityChecker
-	ReadCache *readcache.Cache
+	Security      SecurityChecker
+	ReadCache     *readcache.Cache
+	SnippetConfig *snippets.Config
 }
 
 type fileWriteInput struct {
@@ -111,6 +113,11 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 	dir := filepath.Dir(in.FilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to create directories: %v", err), IsError: true}, nil
+	}
+
+	// Expand snippets before writing
+	if t.SnippetConfig != nil && t.SnippetConfig.Enabled {
+		in.Content = snippets.Expand(t.SnippetConfig, in.FilePath, in.Content)
 	}
 
 	if err := os.WriteFile(in.FilePath, []byte(in.Content), 0644); err != nil {

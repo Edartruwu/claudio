@@ -43,6 +43,7 @@
 - [Plugins](#plugins)
 - [Model Configuration](#model-configuration)
 - [Output Styles](#output-styles)
+- [Snippet Expansion (Experimental)](#snippet-expansion-experimental)
 - [Keybinding Customization](#keybinding-customization)
 - [Per-Turn Diff Tracking](#per-turn-diff-tracking)
 - [Headless / API Mode](#headless--api-mode)
@@ -564,6 +565,7 @@ Infrequently-used tools (web, LSP, notebooks, tasks, teams, etc.) are sent with 
 | Message merging | `internal/query/engine.go` | Reduces per-message overhead |
 | Output filtering | `internal/tools/outputfilter/` | 60-90% reduction on noisy command outputs |
 | Deferred tool schemas | `internal/tools/registry.go` | Saves full schema cost for unused tools |
+| Snippet expansion | `internal/snippets/` | Reduces AI output tokens for repetitive boilerplate |
 
 ---
 
@@ -1027,6 +1029,156 @@ Control response formatting with `/output-style` or the `outputStyle` setting:
 
 ---
 
+## Snippet Expansion (Experimental)
+
+> **Status: Experimental.** This feature is new and the snippet format may change in future releases.
+
+Snippet expansion lets the AI write shorthand like `~errw(db.Query(ctx, id), "fetch user")` instead of full boilerplate. A deterministic expander replaces the shorthand with the full code before writing to disk -- zero extra AI tokens spent on the expansion.
+
+The expander is **context-aware**: for Go files, it parses the enclosing function's return types using `go/ast` and fills in the correct zero values automatically. For Python, TypeScript, JavaScript, and Rust, it uses regex-based resolution.
+
+### Why
+
+Every time the AI writes `if err != nil { return ... }`, it spends ~40 tokens on mechanical boilerplate. With snippets, it writes `~errw(call, msg)` (~15 tokens) and the expander handles the rest. Across a session with dozens of error-handling sites, the savings compound.
+
+### Configuration
+
+Enable in `~/.claudio/settings.json` (global) or `.claudio/settings.json` (project):
+
+```json
+{
+  "snippets": {
+    "enabled": true,
+    "snippets": [
+      {
+        "name": "errw",
+        "params": ["call", "msg"],
+        "lang": "go",
+        "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}"
+      },
+      {
+        "name": "test",
+        "params": ["name"],
+        "lang": "go",
+        "template": "func Test{{.name}}(t *testing.T) {\n\tt.Run(\"{{.name}}\", func(t *testing.T) {\n\t\t// TODO\n\t})\n}"
+      }
+    ]
+  }
+}
+```
+
+### Snippet definition fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Snippet name (used as `~name(...)` in code) |
+| `params` | yes | List of parameter names the AI passes as arguments |
+| `template` | yes | Go `text/template` string with `{{.paramName}}` placeholders |
+| `lang` | no | File extension filter (`go`, `py`, `ts`, `rs`, etc.). Omit for all languages. |
+
+### Context variables
+
+These are resolved automatically from the surrounding code -- the AI does not fill them in:
+
+| Variable | Description | Languages |
+|----------|-------------|-----------|
+| `{{.ReturnZeros}}` | Comma-separated zero values for the enclosing function's return types (excluding the final `error`) | Go |
+| `{{.FuncName}}` | Name of the enclosing function | Go, Python, TS/JS, Rust |
+| `{{.ReturnType}}` | Return type annotation | Python, TS/JS, Rust |
+| `{{.result}}` | Default variable name for the result (`result` if not overridden) | All |
+
+### Example: Go error handling
+
+Given this function:
+
+```go
+func GetUser(id int) (*User, error) {
+    ~errw(db.QueryRow(ctx, "SELECT * FROM users WHERE id = ?", id), "query user")
+    return user, nil
+}
+```
+
+The expander detects the enclosing function returns `(*User, error)`, resolves `ReturnZeros` to `nil`, and produces:
+
+```go
+func GetUser(id int) (*User, error) {
+    result, err := db.QueryRow(ctx, "SELECT * FROM users WHERE id = ?", id)
+    if err != nil {
+        return nil, fmt.Errorf("query user: %w", err)
+    }
+    return user, nil
+}
+```
+
+If the function returned `(int, error)` instead, `ReturnZeros` would be `0`. For `(string, int, error)` it would be `"", 0`. The zero-value mapping is fully deterministic.
+
+### Example: test scaffolding
+
+```json
+{
+  "name": "test",
+  "params": ["name"],
+  "lang": "go",
+  "template": "func Test{{.name}}(t *testing.T) {\n\tt.Run(\"{{.name}}\", func(t *testing.T) {\n\t\t// TODO\n\t})\n}"
+}
+```
+
+AI writes `~test(GetUser)`, expander produces:
+
+```go
+func TestGetUser(t *testing.T) {
+    t.Run("GetUser", func(t *testing.T) {
+        // TODO
+    })
+}
+```
+
+### Example: cross-language snippets
+
+Snippets without a `lang` field expand in any file. Language-tagged snippets only expand in matching files:
+
+```json
+{
+  "snippets": {
+    "enabled": true,
+    "snippets": [
+      {
+        "name": "endpoint",
+        "params": ["method", "path", "name"],
+        "lang": "py",
+        "template": "@router.{{.method}}(\"{{.path}}\")\nasync def {{.name}}(request: Request):\n    pass"
+      },
+      {
+        "name": "component",
+        "params": ["name"],
+        "lang": "tsx",
+        "template": "interface {{.name}}Props {}\n\nexport function {{.name}}({}: {{.name}}Props) {\n  return <div />;\n}"
+      }
+    ]
+  }
+}
+```
+
+### Global vs. project config
+
+| Scope | File | Behavior |
+|-------|------|----------|
+| Global | `~/.claudio/settings.json` | Base snippets available in all projects |
+| Project | `.claudio/settings.json` | Can override `enabled` flag and add project-specific snippets |
+
+Project config extends global: if global defines `errw` and project defines `handler`, both are available. If the project sets `"enabled": false`, all snippets are disabled for that project regardless of global setting.
+
+### How it works internally
+
+1. When snippets are enabled, their documentation is injected into the system prompt (once, at session start -- prompt cache friendly)
+2. The AI writes `~name(args)` in code passed to the Write or Edit tool
+3. Before content hits disk, the expander finds `~name(...)` patterns, parses arguments (respecting nested parens and string literals), resolves context variables from the file, and executes the template
+4. The expanded code is what actually gets written
+
+Unknown snippet names pass through unchanged. If the template fails, an error comment is inserted instead. The AI can always fall back to writing full code.
+
+---
+
 ## Keybinding Customization
 
 Create `~/.claudio/keybindings.json` to override default shortcuts:
@@ -1130,6 +1282,7 @@ Built with:
 | `internal/models` | Model capabilities cache |
 | `internal/keybindings` | Customizable keyboard shortcuts |
 | `internal/plugins` | Plugin discovery and execution |
+| `internal/snippets` | Context-aware snippet expansion for Write/Edit tools |
 
 ---
 

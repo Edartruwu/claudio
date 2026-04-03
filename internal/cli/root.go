@@ -20,6 +20,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/rules"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
+	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/tui"
@@ -267,6 +268,11 @@ func buildFullSystemPrompt() string {
 	scratchpadDir := filepath.Join(os.TempDir(), fmt.Sprintf("claudio-%d", os.Getpid()))
 	if scratchpadSection := prompts.ScratchpadSection(scratchpadDir); scratchpadSection != "" {
 		sections = append(sections, scratchpadSection)
+	}
+
+	// 7. Snippet documentation
+	if snippetSection := snippets.ForSystemPrompt(appInstance.Config.Snippets); snippetSection != "" {
+		sections = append(sections, snippetSection)
 	}
 
 	// Combine all additional context

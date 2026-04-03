@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
@@ -163,6 +164,23 @@ func (r *Registry) Clone() *Registry {
 	}
 
 	return clone
+}
+
+// SetSnippetConfig configures snippet expansion on the Write and Edit tools.
+func (r *Registry) SetSnippetConfig(cfg *snippets.Config) {
+	if cfg == nil {
+		return
+	}
+	if t, err := r.Get("Write"); err == nil {
+		if ft, ok := t.(*FileWriteTool); ok {
+			ft.SnippetConfig = cfg
+		}
+	}
+	if t, err := r.Get("Edit"); err == nil {
+		if ft, ok := t.(*FileEditTool); ok {
+			ft.SnippetConfig = cfg
+		}
+	}
 }
 
 // Names returns the names of all registered tools.

@@ -8,11 +8,13 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/snippets"
 )
 
 // FileEditTool performs exact string replacement in files.
 type FileEditTool struct {
-	Security SecurityChecker
+	Security      SecurityChecker
+	SnippetConfig *snippets.Config
 }
 
 type fileEditInput struct {
@@ -96,6 +98,11 @@ func (t *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	}
 
 	text := string(content)
+
+	// Expand snippets in new_string using full file context for resolution
+	if t.SnippetConfig != nil && t.SnippetConfig.Enabled {
+		in.NewString = snippets.ExpandWithContext(t.SnippetConfig, in.FilePath, in.NewString, text)
+	}
 
 	if !in.ReplaceAll {
 		// Check uniqueness

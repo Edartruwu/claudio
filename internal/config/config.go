@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/Abraxas-365/claudio/internal/snippets"
 )
 
 // Settings represents the merged configuration from all sources.
@@ -62,6 +64,9 @@ type Settings struct {
 
 	// Output filter (RTK-style token reduction for command output)
 	OutputFilter bool `json:"outputFilter,omitempty"`
+
+	// Snippet expansion (AI writes shorthand, expander fills boilerplate)
+	Snippets *snippets.Config `json:"snippets,omitempty"`
 }
 
 // ProviderConfig defines a non-default API provider.
@@ -310,6 +315,16 @@ func mergeFromFile(settings *Settings, path string) {
 	if json.Unmarshal(data, &raw) == nil {
 		if _, ok := raw["outputFilter"]; ok {
 			settings.OutputFilter = overlay.OutputFilter
+		}
+	}
+	if overlay.Snippets != nil {
+		if settings.Snippets == nil {
+			settings.Snippets = overlay.Snippets
+		} else {
+			// Project-level overrides the enabled flag
+			settings.Snippets.Enabled = overlay.Snippets.Enabled
+			// Project-level snippets extend global ones
+			settings.Snippets.Snippets = append(settings.Snippets.Snippets, overlay.Snippets.Snippets...)
 		}
 	}
 }

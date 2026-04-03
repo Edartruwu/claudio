@@ -166,6 +166,9 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		}
 	}
 
+	// Configure snippet expansion on Write/Edit tools
+	registry.SetSnippetConfig(settings.Snippets)
+
 	// Remove denied tools
 	for _, denied := range settings.DenyTools {
 		registry.Remove(denied)
