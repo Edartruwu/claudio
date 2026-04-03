@@ -411,17 +411,27 @@ func (c *Client) applyMessageCacheBreakpoints(req *MessagesRequest) {
 		return
 	}
 
-	// Cache tool definitions — mark the last tool with a breakpoint so the full
-	// tool schema is cached across turns.
+	// Cache tool definitions — mark the last non-deferred tool with a breakpoint.
+	// Deferred tools (defer_loading=true) cannot have cache_control set.
 	if len(req.Tools) > 0 {
-		var tools []json.RawMessage
-		if json.Unmarshal(req.Tools, &tools) == nil && len(tools) > 0 {
-			lastIdx := len(tools) - 1
-			var tool map[string]json.RawMessage
-			if json.Unmarshal(tools[lastIdx], &tool) == nil {
+		var toolDefs []json.RawMessage
+		if json.Unmarshal(req.Tools, &toolDefs) == nil {
+			for i := len(toolDefs) - 1; i >= 0; i-- {
+				var tool map[string]json.RawMessage
+				if json.Unmarshal(toolDefs[i], &tool) != nil {
+					continue
+				}
+				var deferred bool
+				if v, ok := tool["defer_loading"]; ok {
+					json.Unmarshal(v, &deferred)
+				}
+				if deferred {
+					continue
+				}
 				tool["cache_control"], _ = json.Marshal(CacheControlBlock{Type: "ephemeral"})
-				tools[lastIdx], _ = json.Marshal(tool)
-				req.Tools, _ = json.Marshal(tools)
+				toolDefs[i], _ = json.Marshal(tool)
+				req.Tools, _ = json.Marshal(toolDefs)
+				break
 			}
 		}
 	}
