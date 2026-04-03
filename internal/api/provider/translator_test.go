@@ -862,6 +862,93 @@ func TestTranslateStreamChunk_NewToolCallWithArgs(t *testing.T) {
 	}
 }
 
+// TestTranslateStreamChunk_DuplicateToolCallStart verifies that when a provider
+// (e.g. Qwen) re-sends the tool call ID and name in subsequent chunks, we do NOT
+// emit a second content_block_start — only an input_json_delta for the new args.
+func TestTranslateStreamChunk_DuplicateToolCallStart(t *testing.T) {
+	state := newStreamState()
+
+	// First chunk: new tool call with ID, name, and partial args
+	chunk1 := openAIStreamChunk{
+		Choices: []openAIChoice{
+			{
+				Delta: openAIDelta{
+					ToolCalls: []openAIToolCall{
+						{
+							ID:    "call_dup",
+							Type:  "function",
+							Index: 0,
+							Function: openAIFunctionCall{
+								Name:      "Write",
+								Arguments: `{"file_path":`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	events1 := translateStreamChunk(chunk1, state)
+
+	startCount := 0
+	for _, e := range events1 {
+		if e.Type == "content_block_start" {
+			startCount++
+		}
+	}
+	if startCount != 1 {
+		t.Fatalf("first chunk: expected 1 content_block_start, got %d", startCount)
+	}
+
+	// Second chunk: Qwen re-sends ID and name along with more args
+	chunk2 := openAIStreamChunk{
+		Choices: []openAIChoice{
+			{
+				Delta: openAIDelta{
+					ToolCalls: []openAIToolCall{
+						{
+							ID:    "call_dup",
+							Type:  "function",
+							Index: 0,
+							Function: openAIFunctionCall{
+								Name:      "Write",
+								Arguments: `"/tmp/test.txt"`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	events2 := translateStreamChunk(chunk2, state)
+
+	for _, e := range events2 {
+		if e.Type == "content_block_start" {
+			t.Error("second chunk emitted a duplicate content_block_start — tool call will be duplicated")
+		}
+	}
+
+	// Should still get the args as a delta
+	foundDelta := false
+	for _, e := range events2 {
+		if e.Type == "content_block_delta" {
+			var delta map[string]string
+			if err := json.Unmarshal(e.Delta, &delta); err != nil {
+				t.Fatalf("unmarshal delta: %v", err)
+			}
+			if delta["type"] == "input_json_delta" {
+				foundDelta = true
+				if delta["partial_json"] != `"/tmp/test.txt"` {
+					t.Errorf("partial_json = %q, want %q", delta["partial_json"], `"/tmp/test.txt"`)
+				}
+			}
+		}
+	}
+	if !foundDelta {
+		t.Error("second chunk did not emit input_json_delta for the arguments")
+	}
+}
+
 func TestTranslateStreamChunk_ToolCallArgsDelta(t *testing.T) {
 	state := newStreamState()
 

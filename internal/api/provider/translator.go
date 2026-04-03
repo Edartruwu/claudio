@@ -360,8 +360,11 @@ func translateStreamChunk(chunk openAIStreamChunk, state *streamState) []api.Str
 			fnName := tc.Function.Name
 			fnArgs := tc.Function.Arguments
 
-			// New tool call (has ID and name)
-			if tcID != "" && fnName != "" {
+			// New tool call (has ID and name, and we haven't seen this index before).
+			// Some providers (e.g. Qwen) re-send ID and name in every chunk,
+			// so we must check state.toolCalls to avoid emitting duplicates.
+			_, alreadySeen := state.toolCalls[tc.Index]
+			if tcID != "" && fnName != "" && !alreadySeen {
 				// Close previous text block if open
 				if state.textStarted {
 					events = append(events, api.StreamEvent{
