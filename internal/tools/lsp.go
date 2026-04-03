@@ -161,7 +161,12 @@ func runGopls(ctx context.Context, args ...string) (string, error) {
 		}
 		return "", fmt.Errorf("%v: %s", err, stderr.String())
 	}
-	return stdout.String(), nil
+	out := stdout.String()
+	const maxLSPBytes = 20_000
+	if len(out) > maxLSPBytes {
+		out = out[:maxLSPBytes] + fmt.Sprintf("\n[LSP output truncated at %d bytes]", maxLSPBytes)
+	}
+	return out, nil
 }
 
 func grepDefinition(ctx context.Context, in lspInput) (*Result, error) {

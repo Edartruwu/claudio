@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
 // FileWriteTool creates or overwrites files.
 type FileWriteTool struct {
-	Security SecurityChecker
+	Security  SecurityChecker
+	ReadCache *readcache.Cache
 }
 
 type fileWriteInput struct {
@@ -61,6 +63,28 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 	if t.Security != nil {
 		if err := t.Security.CheckPath(in.FilePath); err != nil {
 			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}, nil
+		}
+	}
+
+	// Staleness check: if the file exists and was previously read, verify it hasn't
+	// changed on disk since the last Read. Guards against clobbering external edits.
+	if info, err := os.Stat(in.FilePath); err == nil {
+		// File exists — check if we have a cache entry with a matching mtime.
+		if t.ReadCache != nil {
+			key := readcache.Key{FilePath: in.FilePath, Offset: 1, Limit: 2000}
+			if _, ok := t.ReadCache.Get(key); !ok {
+				// Cache miss: either never read, or mtime changed since the read.
+				// Only block if the file actually exists and might have unseen content.
+				_ = info // used for the stat above
+				return &Result{
+					Content: fmt.Sprintf(
+						"File %s exists but has not been read in this session (or has changed since last read). "+
+							"Use the Read tool first to review the current contents before overwriting.",
+						in.FilePath,
+					),
+					IsError: true,
+				}, nil
+			}
 		}
 	}
 

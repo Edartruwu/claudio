@@ -94,7 +94,7 @@ func (t *TaskOutputTool) Execute(ctx context.Context, input json.RawMessage) (*R
 
 	// Read output
 	if state.OutputFile != "" {
-		content, _, err := tasks.ReadDelta(state.OutputFile, 0, 160*1024) // 160KB max
+		content, _, err := tasks.ReadDelta(state.OutputFile, 0, 32*1024) // 32KB max
 		if err == nil && content != "" {
 			result = content
 		}

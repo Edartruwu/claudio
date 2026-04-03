@@ -152,7 +152,7 @@ func DefaultRegistry() *Registry {
 	// Core file & shell tools (always loaded — never deferred)
 	r.Register(&BashTool{})
 	r.Register(&FileReadTool{ReadCache: rc})
-	r.Register(&FileWriteTool{})
+	r.Register(&FileWriteTool{ReadCache: rc})
 	r.Register(&FileEditTool{})
 	r.Register(&GlobTool{})
 	r.Register(&GrepTool{})

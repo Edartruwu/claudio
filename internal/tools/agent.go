@@ -130,12 +130,20 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Agent error: %v", err), IsError: true}, nil
 		}
+		const maxAgentBytes = 50_000
+		if len(result) > maxAgentBytes {
+			result = result[:maxAgentBytes] + fmt.Sprintf("\n[Agent output truncated at %d bytes]", maxAgentBytes)
+		}
 		return &Result{Content: result}, nil
 	}
 	if t.RunAgent != nil {
 		result, err := t.RunAgent(ctx, agentDef.SystemPrompt, in.Prompt)
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Agent error: %v", err), IsError: true}, nil
+		}
+		const maxAgentBytes = 50_000
+		if len(result) > maxAgentBytes {
+			result = result[:maxAgentBytes] + fmt.Sprintf("\n[Agent output truncated at %d bytes]", maxAgentBytes)
 		}
 		return &Result{Content: result}, nil
 	}

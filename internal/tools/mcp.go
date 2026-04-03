@@ -278,5 +278,9 @@ func (t *MCPProxyTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("MCP tool error: %v", err), IsError: true}, nil
 	}
+	const maxMCPBytes = 20_000
+	if len(output) > maxMCPBytes {
+		output = output[:maxMCPBytes] + fmt.Sprintf("\n[MCP output truncated at %d bytes]", maxMCPBytes)
+	}
 	return &Result{Content: output}, nil
 }
