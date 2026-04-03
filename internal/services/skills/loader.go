@@ -586,13 +586,14 @@ Snippet expansion lets the AI write shorthand like ` + "`~errw(db.Query(ctx, id)
 
 2. **Read existing config**: Check if ` + "`.claudio/settings.json`" + ` exists. If it does, read it — we'll merge snippets into the existing config.
 
-3. **Analyze common patterns**: For each language found, read 3-5 representative source files to identify repetitive boilerplate patterns. Look for:
-   - **Go**: error handling (` + "`if err != nil`" + `), test functions, struct builders, HTTP handlers
-   - **Python**: try/except blocks, FastAPI/Flask endpoint scaffolding, test functions, dataclass boilerplate
-   - **TypeScript/JavaScript**: try/catch, React component scaffolding, test cases (Jest/Vitest), API handler patterns
-   - **Rust**: match/Result error handling, test modules, impl blocks, trait implementations
+3. **Analyze common patterns**: For each language found, read 3-5 representative source files to identify repetitive boilerplate patterns. Pay special attention to:
+   - **Error handling libraries**: Look for custom error packages (e.g., errx, pkg/errors, eris). Check for error registries, error types, and wrapping patterns. The snippets should match the project's actual error conventions, NOT default to fmt.Errorf.
+   - **Go**: if err != nil patterns, error wrapping style (fmt.Errorf, errx.Wrap, errors.Wrap, custom), test functions, HTTP handlers, struct builders
+   - **Python**: try/except blocks, FastAPI/Flask endpoints, test functions, dataclass/Pydantic models
+   - **TypeScript/JavaScript**: try/catch, React components, test cases (Jest/Vitest), API handlers
+   - **Rust**: Result/match error handling, anyhow/thiserror patterns, test modules, impl blocks
 
-4. **Build snippet definitions**: Create snippets for the top 3-5 most repetitive patterns found. Each snippet must have:
+4. **Build snippet definitions**: Create snippets for the top 5-8 most repetitive patterns found. Each snippet must have:
    - ` + "`name`" + `: short, memorable (e.g., "errw", "test", "handler", "component")
    - ` + "`params`" + `: the parts that vary between uses
    - ` + "`template`" + `: Go text/template string with ` + "`{{.paramName}}`" + ` placeholders
@@ -604,22 +605,163 @@ Snippet expansion lets the AI write shorthand like ` + "`~errw(db.Query(ctx, id)
    - ` + "`{{.ReturnType}}`" + ` — return type annotation (Python, TS, Rust)
    - ` + "`{{.result}}`" + ` — default variable name for results (defaults to "result")
 
-5. **Write config**: Create or update ` + "`.claudio/settings.json`" + ` with the snippets config:
-` + "   ```json" + `
-   {
-     "snippets": {
-       "enabled": true,
-       "snippets": [
-         {
-           "name": "errw",
-           "params": ["call", "msg"],
-           "lang": "go",
-           "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}"
-         }
-       ]
-     }
-   }
-` + "   ```" + `
+## Reference: snippet examples by language
+
+### Go — standard error handling
+` + "```json" + `
+{"name": "errw", "params": ["call", "msg"], "lang": "go",
+ "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}"}
+` + "```" + `
+Usage: ` + "`~errw(db.QueryRow(ctx, id), \"fetch user\")`" + `
+
+### Go — custom error library (errx-style with types and registries)
+If the project uses a custom error package with typed errors and registries, generate these variants instead of the standard fmt.Errorf snippet:
+` + "```json" + `
+{"name": "errw", "params": ["call", "msg"], "lang": "go",
+ "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, errx.Wrap(err, \"{{.msg}}\", errx.TypeInternal)\n}"}
+` + "```" + `
+Usage: ` + "`~errw(s.repo.GetByID(ctx, id), \"fetch entity\")`" + ` — wraps with internal type (most common)
+
+` + "```json" + `
+{"name": "errwt", "params": ["call", "msg", "type"], "lang": "go",
+ "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, errx.Wrap(err, \"{{.msg}}\", errx.Type{{.type}})\n}"}
+` + "```" + `
+Usage: ` + "`~errwt(s.repo.FindByID(ctx, id), \"find tenant\", NotFound)`" + ` — wraps with explicit type
+
+` + "```json" + `
+{"name": "errn", "params": ["call"], "lang": "go",
+ "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, err\n}"}
+` + "```" + `
+Usage: ` + "`~errn(s.repo.Update(ctx, entity))`" + ` — propagates error as-is
+
+` + "```json" + `
+{"name": "errd", "params": ["errfn"], "lang": "go",
+ "template": "return {{.ReturnZeros}}, {{.errfn}}"}
+` + "```" + `
+Usage: ` + "`~errd(ErrJobNotFound())`" + ` — returns a domain error from a registry
+
+` + "```json" + `
+{"name": "errdc", "params": ["code", "cause"], "lang": "go",
+ "template": "return {{.ReturnZeros}}, ErrRegistry.NewWithCause({{.code}}, {{.cause}})"}
+` + "```" + `
+Usage: ` + "`~errdc(CodeJobNotFound, err)`" + ` — registry error with underlying cause
+
+` + "```json" + `
+{"name": "errdd", "params": ["errfn", "key", "val"], "lang": "go",
+ "template": "return {{.ReturnZeros}}, {{.errfn}}.WithDetail(\"{{.key}}\", {{.val}})"}
+` + "```" + `
+Usage: ` + "`~errdd(ErrNotFound(), \"job_id\", jobID)`" + ` — domain error with detail metadata
+
+### Go — test scaffolding
+` + "```json" + `
+{"name": "test", "params": ["name"], "lang": "go",
+ "template": "func Test{{.name}}(t *testing.T) {\n\tt.Run(\"{{.name}}\", func(t *testing.T) {\n\t\t// TODO\n\t})\n}"}
+` + "```" + `
+Usage: ` + "`~test(CreateUser)`" + `
+
+### Go — HTTP handler (Fiber/Chi/stdlib)
+` + "```json" + `
+{"name": "handler", "params": ["name", "method"], "lang": "go",
+ "template": "func (h *Handlers) {{.name}}(c *fiber.Ctx) error {\n\tctx := c.Context()\n\t// TODO\n\treturn c.JSON(fiber.Map{\"ok\": true})\n}"}
+` + "```" + `
+Usage: ` + "`~handler(CreateJob, POST)`" + `
+
+### Python — try/except
+` + "```json" + `
+{"name": "tryw", "params": ["call", "msg"], "lang": "py",
+ "template": "try:\n    result = {{.call}}\nexcept Exception as e:\n    raise RuntimeError(\"{{.msg}}\") from e"}
+` + "```" + `
+Usage: ` + "`~tryw(db.fetch_user(user_id), \"fetch user failed\")`" + `
+
+### Python — FastAPI endpoint
+` + "```json" + `
+{"name": "endpoint", "params": ["method", "path", "name"], "lang": "py",
+ "template": "@router.{{.method}}(\"{{.path}}\")\nasync def {{.name}}(request: Request):\n    pass"}
+` + "```" + `
+Usage: ` + "`~endpoint(post, /api/users, create_user)`" + `
+
+### Python — pytest
+` + "```json" + `
+{"name": "test", "params": ["name"], "lang": "py",
+ "template": "def test_{{.name}}():\n    # Arrange\n\n    # Act\n\n    # Assert\n    assert True"}
+` + "```" + `
+Usage: ` + "`~test(create_user_validates_email)`" + `
+
+### Python — Pydantic model
+` + "```json" + `
+{"name": "model", "params": ["name"], "lang": "py",
+ "template": "class {{.name}}(BaseModel):\n    class Config:\n        from_attributes = True"}
+` + "```" + `
+Usage: ` + "`~model(UserResponse)`" + `
+
+### TypeScript — try/catch
+` + "```json" + `
+{"name": "tryw", "params": ["call", "msg"], "lang": "ts",
+ "template": "try {\n  const result = {{.call}};\n} catch (error) {\n  throw new Error(\"{{.msg}}\", { cause: error });\n}"}
+` + "```" + `
+Usage: ` + "`~tryw(await fetchUser(id), \"failed to fetch user\")`" + `
+
+### TypeScript — React component
+` + "```json" + `
+{"name": "component", "params": ["name"], "lang": "tsx",
+ "template": "interface {{.name}}Props {}\n\nexport function {{.name}}({}: {{.name}}Props) {\n  return <div />;\n}"}
+` + "```" + `
+Usage: ` + "`~component(UserProfile)`" + `
+
+### TypeScript — API handler
+` + "```json" + `
+{"name": "api", "params": ["name"], "lang": "ts",
+ "template": "export async function {{.name}}(req: Request): Promise<Response> {\n  try {\n    // TODO\n    return Response.json({ ok: true });\n  } catch (error) {\n    return Response.json({ error: \"Internal error\" }, { status: 500 });\n  }\n}"}
+` + "```" + `
+Usage: ` + "`~api(createUser)`" + `
+
+### TypeScript — Jest/Vitest test
+` + "```json" + `
+{"name": "test", "params": ["desc"], "lang": "ts",
+ "template": "describe(\"{{.desc}}\", () => {\n  it(\"should work\", () => {\n    // Arrange\n\n    // Act\n\n    // Assert\n    expect(true).toBe(true);\n  });\n});"}
+` + "```" + `
+Usage: ` + "`~test(UserService)`" + `
+
+### Rust — error propagation with context (anyhow)
+` + "```json" + `
+{"name": "errw", "params": ["call", "msg"], "lang": "rs",
+ "template": "let {{.result}} = {{.call}}.map_err(|e| anyhow::anyhow!(\"{{.msg}}: {}\", e))?;"}
+` + "```" + `
+Usage: ` + "`~errw(db.get_user(id).await, \"fetch user\")`" + `
+
+### Rust — custom error variant (thiserror)
+` + "```json" + `
+{"name": "errd", "params": ["variant", "msg"], "lang": "rs",
+ "template": "return Err(Error::{{.variant}}(\"{{.msg}}\".into()));"}
+` + "```" + `
+Usage: ` + "`~errd(NotFound, \"user not found\")`" + `
+
+### Rust — test function
+` + "```json" + `
+{"name": "test", "params": ["name"], "lang": "rs",
+ "template": "#[test]\nfn test_{{.name}}() {\n    // Arrange\n\n    // Act\n\n    // Assert\n}"}
+` + "```" + `
+Usage: ` + "`~test(create_user)`" + `
+
+### Rust — async test (tokio)
+` + "```json" + `
+{"name": "atest", "params": ["name"], "lang": "rs",
+ "template": "#[tokio::test]\nasync fn test_{{.name}}() {\n    // Arrange\n\n    // Act\n\n    // Assert\n}"}
+` + "```" + `
+Usage: ` + "`~atest(fetch_user)`" + `
+
+### Rust — impl block
+` + "```json" + `
+{"name": "impl", "params": ["type"], "lang": "rs",
+ "template": "impl {{.type}} {\n    pub fn new() -> Self {\n        Self {}\n    }\n}"}
+` + "```" + `
+Usage: ` + "`~impl(UserService)`" + `
+
+5. **Write config**: Create or update ` + "`.claudio/settings.json`" + ` with the snippets config. Use the examples above as reference but ADAPT them to match the project's actual patterns:
+   - If the project uses errx (or any custom error lib), use errx-style snippets, NOT fmt.Errorf
+   - If the project uses Fiber, use Fiber handler templates; if Chi, use Chi patterns
+   - If the project uses anyhow, use anyhow snippets; if thiserror, use thiserror patterns
+   - Match the project's actual coding style (tab vs space, brace placement, etc.)
 
    If the file already exists with other settings, merge the ` + "`snippets`" + ` key — do NOT overwrite other config.
 
@@ -631,7 +773,9 @@ Snippet expansion lets the AI write shorthand like ` + "`~errw(db.Query(ctx, id)
 - Template must be valid Go text/template syntax
 - Do NOT create snippets for unique business logic — only for mechanical, repetitive patterns
 - Prefer fewer high-impact snippets over many marginal ones
-- If the project already has snippets configured, suggest additions rather than replacing existing ones`
+- If the project already has snippets configured, suggest additions rather than replacing existing ones
+- ALWAYS match the project's error handling conventions — inspect imports and error patterns before choosing templates
+- The errx-style examples above show how to handle projects with error registries and typed errors — look for patterns like ErrRegistry, ErrorCode, errx.Wrap, errx.New, WithDetail`
 
 var refactorSkillContent = `You are being asked to refactor code.
 

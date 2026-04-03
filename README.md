@@ -1055,12 +1055,6 @@ Enable in `~/.claudio/settings.json` (global) or `.claudio/settings.json` (proje
         "params": ["call", "msg"],
         "lang": "go",
         "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}"
-      },
-      {
-        "name": "test",
-        "params": ["name"],
-        "lang": "go",
-        "template": "func Test{{.name}}(t *testing.T) {\n\tt.Run(\"{{.name}}\", func(t *testing.T) {\n\t\t// TODO\n\t})\n}"
       }
     ]
   }
@@ -1087,32 +1081,128 @@ These are resolved automatically from the surrounding code -- the AI does not fi
 | `{{.ReturnType}}` | Return type annotation | Python, TS/JS, Rust |
 | `{{.result}}` | Default variable name for the result (`result` if not overridden) | All |
 
-### Example: Go error handling
+---
 
-Given this function:
+### Go examples
 
-```go
-func GetUser(id int) (*User, error) {
-    ~errw(db.QueryRow(ctx, "SELECT * FROM users WHERE id = ?", id), "query user")
-    return user, nil
+#### Standard error wrapping
+
+```json
+{
+  "name": "errw",
+  "params": ["call", "msg"],
+  "lang": "go",
+  "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}"
 }
 ```
 
-The expander detects the enclosing function returns `(*User, error)`, resolves `ReturnZeros` to `nil`, and produces:
+`~errw(db.QueryRow(ctx, id), "query user")` inside `func GetUser(id int) (*User, error)` expands to:
 
 ```go
-func GetUser(id int) (*User, error) {
-    result, err := db.QueryRow(ctx, "SELECT * FROM users WHERE id = ?", id)
-    if err != nil {
-        return nil, fmt.Errorf("query user: %w", err)
-    }
-    return user, nil
+result, err := db.QueryRow(ctx, id)
+if err != nil {
+    return nil, fmt.Errorf("query user: %w", err)
 }
 ```
 
-If the function returned `(int, error)` instead, `ReturnZeros` would be `0`. For `(string, int, error)` it would be `"", 0`. The zero-value mapping is fully deterministic.
+`ReturnZeros` is resolved from the enclosing function: `nil` for pointers/interfaces/slices/maps, `0` for numeric types, `""` for strings. For `(string, int, error)` it produces `"", 0`.
 
-### Example: test scaffolding
+#### Custom error libraries (errx, pkg/errors, etc.)
+
+Templates are just strings -- they can produce any valid code. Projects with custom error types like `errx` can define snippets that match their conventions:
+
+```json
+{
+  "snippets": {
+    "enabled": true,
+    "snippets": [
+      {
+        "name": "errw",
+        "params": ["call", "msg"],
+        "lang": "go",
+        "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, errx.Wrap(err, \"{{.msg}}\", errx.TypeInternal)\n}"
+      },
+      {
+        "name": "errwt",
+        "params": ["call", "msg", "type"],
+        "lang": "go",
+        "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, errx.Wrap(err, \"{{.msg}}\", errx.Type{{.type}})\n}"
+      },
+      {
+        "name": "errn",
+        "params": ["call"],
+        "lang": "go",
+        "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, err\n}"
+      },
+      {
+        "name": "errd",
+        "params": ["errfn"],
+        "lang": "go",
+        "template": "return {{.ReturnZeros}}, {{.errfn}}"
+      },
+      {
+        "name": "errdc",
+        "params": ["code", "cause"],
+        "lang": "go",
+        "template": "return {{.ReturnZeros}}, ErrRegistry.NewWithCause({{.code}}, {{.cause}})"
+      },
+      {
+        "name": "errdd",
+        "params": ["errfn", "key", "val"],
+        "lang": "go",
+        "template": "return {{.ReturnZeros}}, {{.errfn}}.WithDetail(\"{{.key}}\", {{.val}})"
+      }
+    ]
+  }
+}
+```
+
+Usage in a DDD service:
+
+```go
+func (s *ApplicationService) WithdrawApplication(
+    ctx context.Context,
+    applicationID kernel.ApplicationID,
+    candidateID kernel.CandidateID,
+) error {
+    // Wrap with internal type (most common)
+    ~errw(s.appRepo.GetByID(ctx, applicationID), "fetch application")
+
+    // Wrap with explicit type
+    ~errwt(s.tenantRepo.FindByID(ctx, req.TenantID), "find tenant", NotFound)
+
+    // Propagate error as-is
+    ~errn(s.appRepo.Update(ctx, app))
+
+    // Return a domain error from a registry
+    ~errd(ErrApplicationNotFound())
+
+    // Registry error with underlying cause
+    ~errdc(CodeApplicationNotFound, err)
+
+    // Domain error with detail metadata
+    ~errdd(ErrUnauthorizedAccess(), "candidate_id", candidateID)
+}
+```
+
+`~errwt(s.tenantRepo.FindByID(ctx, req.TenantID), "find tenant", NotFound)` expands to:
+
+```go
+result, err := s.tenantRepo.FindByID(ctx, req.TenantID)
+if err != nil {
+    return errx.Wrap(err, "find tenant", errx.TypeNotFound)
+}
+```
+
+`~errd(ErrApplicationNotFound())` expands to:
+
+```go
+return application.ErrApplicationNotFound()
+```
+
+The `errdc` and `errdd` snippets work the same way -- the arguments are passed through literally, so they work with any registry or error constructor across your modules.
+
+#### Test scaffolding
 
 ```json
 {
@@ -1123,7 +1213,7 @@ If the function returned `(int, error)` instead, `ReturnZeros` would be `0`. For
 }
 ```
 
-AI writes `~test(GetUser)`, expander produces:
+`~test(GetUser)` expands to:
 
 ```go
 func TestGetUser(t *testing.T) {
@@ -1133,7 +1223,240 @@ func TestGetUser(t *testing.T) {
 }
 ```
 
-### Example: cross-language snippets
+#### HTTP handler (Fiber / Chi / stdlib)
+
+```json
+{
+  "name": "handler",
+  "params": ["name", "method"],
+  "lang": "go",
+  "template": "func (h *Handlers) {{.name}}(c *fiber.Ctx) error {\n\tctx := c.Context()\n\t// TODO\n\treturn c.JSON(fiber.Map{\"ok\": true})\n}"
+}
+```
+
+`~handler(CreateJob, POST)` expands to:
+
+```go
+func (h *Handlers) CreateJob(c *fiber.Ctx) error {
+    ctx := c.Context()
+    // TODO
+    return c.JSON(fiber.Map{"ok": true})
+}
+```
+
+---
+
+### Python examples
+
+#### Try/except with logging
+
+```json
+{
+  "name": "tryw",
+  "params": ["call", "msg"],
+  "lang": "py",
+  "template": "try:\n    result = {{.call}}\nexcept Exception as e:\n    raise RuntimeError(\"{{.msg}}\") from e"
+}
+```
+
+`~tryw(db.fetch_user(user_id), "fetch user failed")` expands to:
+
+```python
+try:
+    result = db.fetch_user(user_id)
+except Exception as e:
+    raise RuntimeError("fetch user failed") from e
+```
+
+#### FastAPI endpoint
+
+```json
+{
+  "name": "endpoint",
+  "params": ["method", "path", "name"],
+  "lang": "py",
+  "template": "@router.{{.method}}(\"{{.path}}\")\nasync def {{.name}}(request: Request):\n    pass"
+}
+```
+
+`~endpoint(post, /api/users, create_user)` expands to:
+
+```python
+@router.post("/api/users")
+async def create_user(request: Request):
+    pass
+```
+
+#### Pytest function
+
+```json
+{
+  "name": "test",
+  "params": ["name"],
+  "lang": "py",
+  "template": "def test_{{.name}}():\n    # Arrange\n\n    # Act\n\n    # Assert\n    assert True"
+}
+```
+
+`~test(create_user_validates_email)` expands to:
+
+```python
+def test_create_user_validates_email():
+    # Arrange
+
+    # Act
+
+    # Assert
+    assert True
+```
+
+#### Pydantic model
+
+```json
+{
+  "name": "model",
+  "params": ["name"],
+  "lang": "py",
+  "template": "class {{.name}}(BaseModel):\n    class Config:\n        from_attributes = True"
+}
+```
+
+---
+
+### TypeScript / JavaScript examples
+
+#### Try/catch with typed error
+
+```json
+{
+  "name": "tryw",
+  "params": ["call", "msg"],
+  "lang": "ts",
+  "template": "try {\n  const result = {{.call}};\n} catch (error) {\n  throw new Error(\"{{.msg}}\", { cause: error });\n}"
+}
+```
+
+`~tryw(await fetchUser(id), "failed to fetch user")` expands to:
+
+```typescript
+try {
+  const result = await fetchUser(id);
+} catch (error) {
+  throw new Error("failed to fetch user", { cause: error });
+}
+```
+
+#### React component
+
+```json
+{
+  "name": "component",
+  "params": ["name"],
+  "lang": "tsx",
+  "template": "interface {{.name}}Props {}\n\nexport function {{.name}}({}: {{.name}}Props) {\n  return <div />;\n}"
+}
+```
+
+`~component(UserProfile)` expands to:
+
+```tsx
+interface UserProfileProps {}
+
+export function UserProfile({}: UserProfileProps) {
+  return <div />;
+}
+```
+
+#### Express / Next.js API handler
+
+```json
+{
+  "name": "api",
+  "params": ["name"],
+  "lang": "ts",
+  "template": "export async function {{.name}}(req: Request): Promise<Response> {\n  try {\n    // TODO\n    return Response.json({ ok: true });\n  } catch (error) {\n    return Response.json({ error: \"Internal error\" }, { status: 500 });\n  }\n}"
+}
+```
+
+#### Jest / Vitest test
+
+```json
+{
+  "name": "test",
+  "params": ["desc"],
+  "lang": "ts",
+  "template": "describe(\"{{.desc}}\", () => {\n  it(\"should work\", () => {\n    // Arrange\n\n    // Act\n\n    // Assert\n    expect(true).toBe(true);\n  });\n});"
+}
+```
+
+---
+
+### Rust examples
+
+#### Result error propagation with context
+
+```json
+{
+  "name": "errw",
+  "params": ["call", "msg"],
+  "lang": "rs",
+  "template": "let {{.result}} = {{.call}}.map_err(|e| anyhow::anyhow!(\"{{.msg}}: {}\", e))?;"
+}
+```
+
+`~errw(db.get_user(id).await, "fetch user")` expands to:
+
+```rust
+let result = db.get_user(id).await.map_err(|e| anyhow::anyhow!("fetch user: {}", e))?;
+```
+
+#### thiserror custom error variant
+
+```json
+{
+  "name": "errd",
+  "params": ["variant", "msg"],
+  "lang": "rs",
+  "template": "return Err(Error::{{.variant}}(\"{{.msg}}\".into()));"
+}
+```
+
+#### Test function
+
+```json
+{
+  "name": "test",
+  "params": ["name"],
+  "lang": "rs",
+  "template": "#[test]\nfn test_{{.name}}() {\n    // Arrange\n\n    // Act\n\n    // Assert\n}"
+}
+```
+
+#### Async test (tokio)
+
+```json
+{
+  "name": "atest",
+  "params": ["name"],
+  "lang": "rs",
+  "template": "#[tokio::test]\nasync fn test_{{.name}}() {\n    // Arrange\n\n    // Act\n\n    // Assert\n}"
+}
+```
+
+#### Impl block
+
+```json
+{
+  "name": "impl",
+  "params": ["type"],
+  "lang": "rs",
+  "template": "impl {{.type}} {\n    pub fn new() -> Self {\n        Self {}\n    }\n}"
+}
+```
+
+---
+
+### Cross-language snippets
 
 Snippets without a `lang` field expand in any file. Language-tagged snippets only expand in matching files:
 
@@ -1143,16 +1466,21 @@ Snippets without a `lang` field expand in any file. Language-tagged snippets onl
     "enabled": true,
     "snippets": [
       {
-        "name": "endpoint",
-        "params": ["method", "path", "name"],
-        "lang": "py",
-        "template": "@router.{{.method}}(\"{{.path}}\")\nasync def {{.name}}(request: Request):\n    pass"
+        "name": "todo",
+        "params": ["msg"],
+        "template": "// TODO: {{.msg}}"
       },
       {
-        "name": "component",
-        "params": ["name"],
-        "lang": "tsx",
-        "template": "interface {{.name}}Props {}\n\nexport function {{.name}}({}: {{.name}}Props) {\n  return <div />;\n}"
+        "name": "errw",
+        "params": ["call", "msg"],
+        "lang": "go",
+        "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, errx.Wrap(err, \"{{.msg}}\", errx.TypeInternal)\n}"
+      },
+      {
+        "name": "tryw",
+        "params": ["call", "msg"],
+        "lang": "py",
+        "template": "try:\n    result = {{.call}}\nexcept Exception as e:\n    raise RuntimeError(\"{{.msg}}\") from e"
       }
     ]
   }
