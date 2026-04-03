@@ -151,6 +151,21 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 
 	content := output.String()
 
+	// Reject output that would exceed ~25k tokens (estimated at 4 chars/token).
+	// An error is better than silent truncation: the model knows it needs to
+	// use offset/limit or Grep to find the specific section it cares about.
+	const maxOutputTokens = 25_000
+	const charsPerToken = 4
+	if len(content) > maxOutputTokens*charsPerToken {
+		return &Result{
+			Content: fmt.Sprintf(
+				"File section too large (%d KB, ~%d tokens). Use offset and limit to read a specific range, or use Grep to search for the content you need.",
+				len(content)/1024, len(content)/charsPerToken,
+			),
+			IsError: true,
+		}, nil
+	}
+
 	// Store in cache for deduplication
 	if t.ReadCache != nil {
 		if info, err := os.Stat(in.FilePath); err == nil {
