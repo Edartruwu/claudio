@@ -436,30 +436,44 @@ func (c *Client) applyMessageCacheBreakpoints(req *MessagesRequest) {
 		}
 	}
 
-	// Cache messages — mark the second-to-last message's last content block.
-	// The last message is the current user turn (in-flight), so we skip it.
+	// Cache messages — the Anthropic API allows up to 4 cache_control breakpoints
+	// total (system + tools already use 2). We use the remaining 2 slots on the
+	// message history:
+	//   • For short histories (< 10 msgs): mark only the second-to-last message.
+	//   • For long histories (≥ 10 msgs): mark a midpoint AND the second-to-last,
+	//     so the stable early history is cached independently from the recent tail.
+	// The last message is always the current in-flight user turn — never marked.
 	if len(req.Messages) < 2 {
 		return
 	}
 
-	targetIdx := len(req.Messages) - 2
-	msg := req.Messages[targetIdx]
-
-	var blocks []json.RawMessage
-	if json.Unmarshal(msg.Content, &blocks) != nil || len(blocks) == 0 {
-		return
+	markLastBlock := func(idx int) {
+		msg := req.Messages[idx]
+		var blocks []json.RawMessage
+		if json.Unmarshal(msg.Content, &blocks) != nil || len(blocks) == 0 {
+			return
+		}
+		lastBlockIdx := len(blocks) - 1
+		var block map[string]json.RawMessage
+		if json.Unmarshal(blocks[lastBlockIdx], &block) != nil {
+			return
+		}
+		block["cache_control"], _ = json.Marshal(CacheControlBlock{Type: "ephemeral"})
+		blocks[lastBlockIdx], _ = json.Marshal(block)
+		newContent, _ := json.Marshal(blocks)
+		req.Messages[idx] = Message{Role: msg.Role, Content: newContent}
 	}
 
-	lastBlockIdx := len(blocks) - 1
-	var block map[string]json.RawMessage
-	if json.Unmarshal(blocks[lastBlockIdx], &block) != nil {
-		return
+	// For long histories place an extra breakpoint at roughly the 1/3 mark so
+	// the bulk of the stable history gets its own cache slot.
+	if len(req.Messages) >= 10 {
+		midIdx := len(req.Messages) / 3
+		if midIdx > 0 {
+			markLastBlock(midIdx)
+		}
 	}
-	block["cache_control"], _ = json.Marshal(CacheControlBlock{Type: "ephemeral"})
-	blocks[lastBlockIdx], _ = json.Marshal(block)
-	newContent, _ := json.Marshal(blocks)
 
-	req.Messages[targetIdx] = Message{Role: msg.Role, Content: newContent}
+	markLastBlock(len(req.Messages) - 2)
 }
 
 // applyAttribution injects the x-anthropic-billing-header into the system prompt

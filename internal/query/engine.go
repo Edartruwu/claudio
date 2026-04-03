@@ -83,8 +83,9 @@ type Engine struct {
 	permissionMode    string
 	permissionRules   []config.PermissionRule
 	costConfirmThresh float64
-	discoveredTools   map[string]bool // tools discovered via ToolSearch
-	onTurnEnd         func(messages []api.Message) // called when a turn ends (end_turn stop reason)
+	discoveredTools        map[string]bool // tools discovered via ToolSearch
+	frozenDeferredReminder string          // deferred-tools system-reminder, frozen on first build
+	onTurnEnd              func(messages []api.Message) // called when a turn ends (end_turn stop reason)
 
 	// user context injection (CLAUDE.md as first user message)
 	userContextMsg      string
@@ -795,30 +796,27 @@ func (e *Engine) fireHook(ctx context.Context, event hooks.Event, toolName, tool
 // buildSystemWithDeferredTools returns the system prompt with a list of deferred
 // tool names appended (and optionally the git status context), so the model knows
 // they exist and can fetch them via ToolSearch.
+//
+// The deferred-tools section is computed once and then frozen for the lifetime of
+// the session. Rebuilding it every turn (e.g. removing tools as they get discovered)
+// changes the system prompt bytes on each turn, which busts the Anthropic prompt
+// cache and wastes tokens on every subsequent request.
 func (e *Engine) buildSystemWithDeferredTools() string {
 	base := e.system
 	if e.systemContext != "" {
 		base = base + "\n\n" + e.systemContext
 	}
 
-	deferred := e.registry.DeferredToolNames()
-	if len(deferred) == 0 {
-		return base
-	}
-
-	// Only list tools that haven't been discovered yet
-	var pending []string
-	for _, name := range deferred {
-		if !e.discoveredTools[name] {
-			pending = append(pending, name)
+	// Build the frozen reminder exactly once.
+	if e.frozenDeferredReminder == "" {
+		deferred := e.registry.DeferredToolNames()
+		if len(deferred) > 0 {
+			e.frozenDeferredReminder = "\n\n<system-reminder>\nThe following deferred tools are available via ToolSearch:\n" +
+				strings.Join(deferred, "\n") + "\n</system-reminder>"
 		}
 	}
-	if len(pending) == 0 {
-		return base
-	}
 
-	return base + "\n\n<system-reminder>\nThe following deferred tools are available via ToolSearch:\n" +
-		strings.Join(pending, "\n") + "\n</system-reminder>"
+	return base + e.frozenDeferredReminder
 }
 
 // trackDiscoveredTools parses a ToolSearch input to mark which tools were requested,

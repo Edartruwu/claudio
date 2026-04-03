@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+// webSearchMonthYear is computed once at startup so the WebSearch tool
+// description stays stable for the entire session. Rebuilding it every
+// request embeds a fresh time.Now() value which creates a cache miss
+// whenever the month rolls over mid-session.
+var webSearchMonthYear = time.Now().Format("January 2006")
+
 // BashDescription returns the description for the Bash tool.
 func BashDescription() string {
 	return `Executes a given bash command and returns its output.
@@ -233,7 +239,6 @@ Terse command-style prompts produce shallow, generic work.
 
 // WebSearchDescription returns the description for the WebSearch tool.
 func WebSearchDescription() string {
-	currentMonthYear := time.Now().Format("January 2006")
 	return fmt.Sprintf(`- Allows Claudio to search the web and use the results to inform responses
 - Provides up-to-date information for current events and recent data
 - Returns search result information formatted as search result blocks, including links as markdown hyperlinks
@@ -257,7 +262,7 @@ Usage notes:
 
 IMPORTANT - Use the correct year in search queries:
   - The current month is %s. You MUST use this year when searching for recent information, documentation, or current events.
-  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year`, currentMonthYear)
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year`, webSearchMonthYear)
 }
 
 // WebFetchDescription returns the description for the WebFetch tool.
