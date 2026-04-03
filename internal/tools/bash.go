@@ -73,6 +73,18 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		return &Result{Content: "No command provided", IsError: true}, nil
 	}
 
+	// Detect cat/head/tail used as file readers — redirect to Read tool.
+	// cat bypasses the Read tool's dedup cache and size limits, causing the
+	// same file content to be re-sent to the model on every invocation.
+	if isCatFileCommand(in.Command) {
+		return &Result{
+			Content: "Use the Read tool instead of cat/head/tail to read files. " +
+				"The Read tool caches results so unchanged files don't consume extra tokens, " +
+				"and enforces size limits. Call Read with the file path directly.",
+			IsError: true,
+		}, nil
+	}
+
 	// Safety checks — use injected security if available, fallback to built-in
 	if t.Security != nil {
 		if err := t.Security.CheckCommand(in.Command); err != nil {
@@ -145,13 +157,37 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		result = "(no output)"
 	}
 
-	// Truncate very large outputs
-	const maxOutput = 100000
+	// Truncate large outputs — matches Claude Code's 30KB Bash cap.
+	// Explicit message so the model knows it got a partial view and can
+	// switch to the Read/Grep tools which have deduplication and proper limits.
+	const maxOutput = 30_000
 	if len(result) > maxOutput {
-		result = result[:maxOutput] + "\n... (output truncated)"
+		result = result[:maxOutput] + fmt.Sprintf(
+			"\n\n[Bash output truncated at %d chars. If you were reading a file with cat, use the Read tool instead — it has caching and proper size limits. If searching, use Grep instead of grep/awk.]",
+			maxOutput,
+		)
 	}
 
 	return &Result{Content: result}, nil
+}
+
+// isCatFileCommand returns true when the command is essentially just reading
+// a file with cat/head/tail — something the Read tool handles better.
+// It intentionally avoids blocking cat in pipelines (e.g. cat file | grep X)
+// since those have legitimate uses.
+func isCatFileCommand(command string) bool {
+	cmd := strings.TrimSpace(command)
+	// Simple "cat file" or "cat -n file" with no pipes/redirects
+	if strings.Contains(cmd, "|") || strings.Contains(cmd, ">") || strings.Contains(cmd, ";") || strings.Contains(cmd, "&&") {
+		return false
+	}
+	prefixes := []string{"cat ", "cat -n ", "head ", "head -n ", "tail ", "tail -n "}
+	for _, p := range prefixes {
+		if strings.HasPrefix(cmd, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func checkCommandSafety(command string) error {
