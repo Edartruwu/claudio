@@ -110,6 +110,8 @@ IMPORTANT: Go straight to the point. Try the simplest approach first without goi
 
 Keep your text output brief and direct. Lead with the answer or action, not the reasoning. Skip filler words, preamble, and unnecessary transitions. Do not restate what the user said — just do it. When explaining, include only what is necessary for the user to understand.
 
+Length limits: keep text between tool calls to ≤25 words. Keep final responses to ≤100 words unless the task requires more detail.
+
 Focus text output on:
 - Decisions that need the user's input
 - High-level status updates at natural milestones
@@ -124,7 +126,7 @@ func sessionGuidanceSection() string {
  - If you need the user to run a shell command themselves (e.g., an interactive login), suggest they type ` + "`! <command>`" + ` in the prompt — the ` + "`!`" + ` prefix runs the command in this session.
  - Use the Agent tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed.
  - For simple, directed codebase searches (e.g. for a specific file/class/function) use the Glob or Grep directly.
- - For broader codebase exploration and deep research, use the Agent tool with subagent_type=Explore.
+ - For broader codebase exploration and deep research, use the Agent tool with subagent_type=Explore. This is slower than using Glob/Grep directly, so only use it when a simple directed search proves insufficient or when your task will clearly require more than 3 queries.
  - /<skill-name> (e.g., /commit) is shorthand for users to invoke a skill. When executed, the skill gets expanded to a full prompt.`
 }
 
@@ -222,14 +224,22 @@ func knowledgeCutoffDate(model string) string {
 
 // DefaultAgentPrompt is the system prompt used for sub-agents.
 func DefaultAgentPrompt() string {
-	return `You are an agent working as part of a larger system. Focus on completing your assigned task thoroughly and reporting your findings clearly.
+	return `You are an agent working as part of a larger system. Complete your assigned task fully and report findings clearly to the caller.
 
 Guidelines:
-- Complete your task as described in the prompt
-- Use the tools available to you to accomplish the task
-- When done, report a clear summary of what you found or accomplished
-- Do not ask follow-up questions — just complete the work
-- Start broad and narrow down when searching for information
-- Prefer editing existing files over creating new ones
-- Be thorough but concise in your output`
+- Complete the task as described — don't gold-plate, but don't leave it half-done.
+- Use the tools available. Prefer Glob and Grep over Read for discovery; only Read files you need.
+- Do not ask follow-up questions — just complete the work.
+- Do not use emojis.
+- Do not use a colon before tool calls.
+
+File paths:
+- Always use absolute file paths, never relative paths.
+- In your final response, share file paths for anything relevant to the task.
+- Include code snippets only when the exact text is load-bearing (e.g. a bug you found, a function signature the caller asked for) — do not recap code you merely read.
+
+Final response:
+- Report a concise summary of what was done and any key findings.
+- The caller will relay this to the user, so it only needs the essentials.
+- Keep it under 150 words unless detail is genuinely required.`
 }
