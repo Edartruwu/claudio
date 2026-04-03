@@ -411,13 +411,31 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 // subAgentForwarder captures text output from a sub-agent engine and forwards
 // tool events to the parent TUI for real-time display. It also persists
 // messages to a sub-session in the DB for crash recovery (mirrors claude-code).
+//
+// Persistence ordering matches reconstructEngineMessages expectations:
+//   assistant text row → tool_use rows → tool_result rows
+//
+// All data for a turn is buffered in memory and flushed atomically at
+// OnTurnComplete, so only complete turns land in the DB (same as claude-code).
 type subAgentForwarder struct {
-	text        strings.Builder
-	desc        string
-	observer    tools.SubAgentObserver // may be nil
-	db          *storage.DB            // nil = no persistence
-	sessionID   string
-	pendingText strings.Builder // buffers assistant text until turn complete
+	text      strings.Builder
+	desc      string
+	observer  tools.SubAgentObserver // may be nil
+	db        *storage.DB            // nil = no persistence
+	sessionID string
+
+	// per-turn buffers — flushed atomically at OnTurnComplete
+	pendingText  strings.Builder
+	pendingTools []subAgentToolCall
+}
+
+// subAgentToolCall buffers one tool use + its result for deferred DB write.
+type subAgentToolCall struct {
+	id     string
+	name   string
+	input  string // JSON-encoded input
+	result string // tool result content (empty until OnToolUseEnd fires)
+	done   bool   // true once OnToolUseEnd has fired
 }
 
 func (f *subAgentForwarder) OnTextDelta(text string) {
@@ -435,7 +453,14 @@ func (f *subAgentForwarder) OnToolUseStart(tu tools.ToolUse) {
 	}
 	if f.db != nil && f.sessionID != "" {
 		inputJSON, _ := json.Marshal(tu.Input)
-		_ = f.db.AddMessage(f.sessionID, "assistant", string(inputJSON), "tool_use", tu.ID, tu.Name)
+		if !json.Valid(inputJSON) {
+			inputJSON = []byte("{}")
+		}
+		f.pendingTools = append(f.pendingTools, subAgentToolCall{
+			id:    tu.ID,
+			name:  tu.Name,
+			input: string(inputJSON),
+		})
 	}
 }
 
@@ -444,17 +469,54 @@ func (f *subAgentForwarder) OnToolUseEnd(tu tools.ToolUse, result *tools.Result)
 		f.observer.OnSubAgentToolEnd(f.desc, tu, result)
 	}
 	if f.db != nil && f.sessionID != "" && result != nil {
-		_ = f.db.AddMessage(f.sessionID, "user", result.Content, "tool_result", tu.ID, tu.Name)
+		for i := range f.pendingTools {
+			if f.pendingTools[i].id == tu.ID {
+				f.pendingTools[i].result = result.Content
+				f.pendingTools[i].done = true
+				break
+			}
+		}
 	}
 }
 
+// OnTurnComplete flushes the buffered turn to the DB in the order that
+// reconstructEngineMessages expects:
+//  1. assistant text (type=text)
+//  2. tool_use rows  (type=tool_use, role=assistant)
+//  3. tool_result rows (type=tool_result, role=user)
+//
+// Only completed tool pairs are written; orphaned tool_uses (no result received
+// before this call) are dropped — matching claude-code's filterUnresolvedToolUses.
 func (f *subAgentForwarder) OnTurnComplete(usage api.Usage) {
-	if f.db != nil && f.sessionID != "" {
-		if txt := f.pendingText.String(); txt != "" {
-			_ = f.db.AddMessage(f.sessionID, "assistant", txt, "text", "", "")
-			f.pendingText.Reset()
+	if f.db == nil || f.sessionID == "" {
+		return
+	}
+
+	// 1. Assistant text
+	if txt := f.pendingText.String(); txt != "" {
+		_ = f.db.AddMessage(f.sessionID, "assistant", txt, "text", "", "")
+		f.pendingText.Reset()
+	}
+
+	// Filter to only completed pairs (drop orphaned tool_uses)
+	var completed []subAgentToolCall
+	for _, tc := range f.pendingTools {
+		if tc.done {
+			completed = append(completed, tc)
 		}
 	}
+
+	// 2. tool_use rows (all before any tool_result)
+	for _, tc := range completed {
+		_ = f.db.AddMessage(f.sessionID, "assistant", tc.input, "tool_use", tc.id, tc.name)
+	}
+
+	// 3. tool_result rows
+	for _, tc := range completed {
+		_ = f.db.AddMessage(f.sessionID, "user", tc.result, "tool_result", tc.id, tc.name)
+	}
+
+	f.pendingTools = nil
 }
 
 func (f *subAgentForwarder) OnToolApprovalNeeded(tu tools.ToolUse) bool             { return true }
