@@ -351,7 +351,6 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.SetWindowTitle("Claudio"),
 		tea.EnableBracketedPaste,
-		m.spinner.Tick(),
 		m.waitForEvent(),
 	)
 }
@@ -1062,10 +1061,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updatePaletteState()
 	}
 
-	// Update spinner
-	var spinCmd tea.Cmd
-	m.spinner, spinCmd = m.spinner.Update(msg)
-	cmds = append(cmds, spinCmd)
+	// Update spinner only while streaming to avoid idle CPU usage (10 FPS tick)
+	if m.streaming {
+		var spinCmd tea.Cmd
+		m.spinner, spinCmd = m.spinner.Update(msg)
+		cmds = append(cmds, spinCmd)
+	}
 
 	return m, tea.Batch(cmds...)
 }
