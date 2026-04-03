@@ -9,13 +9,15 @@ import (
 
 // Session represents a conversation session.
 type Session struct {
-	ID         string
-	Title      string
-	ProjectDir string
-	Model      string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Summary    string
+	ID              string
+	Title           string
+	ProjectDir      string
+	Model           string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	Summary         string
+	ParentSessionID string // non-empty for sub-agent sessions
+	AgentType       string // e.g. "general-purpose", "Explore"
 }
 
 // MessageRecord represents a persisted message.
@@ -50,6 +52,52 @@ func (db *DB) CreateSession(projectDir, model string) (*Session, error) {
 	return s, nil
 }
 
+// CreateSubSession creates a session linked to a parent session (for sub-agents).
+func (db *DB) CreateSubSession(parentID, agentType, projectDir, model string) (*Session, error) {
+	s := &Session{
+		ID:              uuid.New().String(),
+		Title:           "[sub-agent] " + agentType,
+		ProjectDir:      projectDir,
+		Model:           model,
+		ParentSessionID: parentID,
+		AgentType:       agentType,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	_, err := db.conn.Exec(
+		`INSERT INTO sessions (id, title, project_dir, model, parent_session_id, agent_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Title, s.ProjectDir, s.Model, s.ParentSessionID, s.AgentType, s.CreatedAt, s.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// GetSubSessions returns all sub-agent sessions for a given parent session ID.
+func (db *DB) GetSubSessions(parentID string) ([]Session, error) {
+	rows, err := db.conn.Query(
+		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type
+		 FROM sessions WHERE parent_session_id = ? ORDER BY created_at ASC`,
+		parentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		var s Session
+		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
 // UpdateSessionTitle updates the title of a session.
 func (db *DB) UpdateSessionTitle(id, title string) error {
 	_, err := db.conn.Exec(
@@ -72,20 +120,20 @@ func (db *DB) UpdateSessionSummary(id, summary string) error {
 func (db *DB) GetSession(id string) (*Session, error) {
 	s := &Session{}
 	err := db.conn.QueryRow(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary FROM sessions WHERE id = ?`,
+		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type FROM sessions WHERE id = ?`,
 		id,
-	).Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary)
+	).Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return s, err
 }
 
-// ListSessions returns recent sessions, newest first.
+// ListSessions returns recent top-level sessions (no sub-agent sessions), newest first.
 func (db *DB) ListSessions(limit int) ([]Session, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary
-		 FROM sessions ORDER BY updated_at DESC LIMIT ?`,
+		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type
+		 FROM sessions WHERE parent_session_id = '' ORDER BY updated_at DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
@@ -96,7 +144,7 @@ func (db *DB) ListSessions(limit int) ([]Session, error) {
 	var sessions []Session
 	for rows.Next() {
 		var s Session
-		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary); err != nil {
+		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, s)
@@ -114,13 +162,13 @@ func (db *DB) DeleteSession(id string) error {
 	return err
 }
 
-// SearchSessions returns sessions matching the query string (fuzzy on title and project_dir).
+// SearchSessions returns top-level sessions matching the query string (fuzzy on title and project_dir).
 func (db *DB) SearchSessions(query string, limit int) ([]Session, error) {
 	pattern := "%" + query + "%"
 	rows, err := db.conn.Query(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary
+		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type
 		 FROM sessions
-		 WHERE title LIKE ? OR project_dir LIKE ?
+		 WHERE parent_session_id = '' AND (title LIKE ? OR project_dir LIKE ?)
 		 ORDER BY updated_at DESC LIMIT ?`,
 		pattern, pattern, limit,
 	)
@@ -132,7 +180,7 @@ func (db *DB) SearchSessions(query string, limit int) ([]Session, error) {
 	var sessions []Session
 	for rows.Next() {
 		var s Session
-		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary); err != nil {
+		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, s)

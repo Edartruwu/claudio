@@ -470,6 +470,7 @@ func runInteractive() error {
 		tui.WithAppContext(appCtx),
 		tui.WithUserContext(prompts.FormatUserContextMessage(buildUserContext(), "")),
 		tui.WithSystemContext(buildSystemContext()),
+		tui.WithDB(appInstance.DB),
 	)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 

@@ -10,8 +10,42 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tasks"
 )
+
+// SubAgentDBContext carries DB access for sub-agent session persistence.
+type SubAgentDBContext struct {
+	DB       *storage.DB
+	ParentID string
+	Model    string
+}
+
+type ctxKeySubAgentDB struct{}
+
+// WithSubAgentDB stores DB context for sub-agent persistence.
+func WithSubAgentDB(ctx context.Context, db *storage.DB, parentID, model string) context.Context {
+	return context.WithValue(ctx, ctxKeySubAgentDB{}, &SubAgentDBContext{DB: db, ParentID: parentID, Model: model})
+}
+
+// SubAgentDBFromContext retrieves the DB context (nil if not set).
+func SubAgentDBFromContext(ctx context.Context) *SubAgentDBContext {
+	v, _ := ctx.Value(ctxKeySubAgentDB{}).(*SubAgentDBContext)
+	return v
+}
+
+type ctxKeyAgentType struct{}
+
+// WithAgentType stores the agent type in context so the sub-agent runner can label its sub-session.
+func WithAgentType(ctx context.Context, agentType string) context.Context {
+	return context.WithValue(ctx, ctxKeyAgentType{}, agentType)
+}
+
+// AgentTypeFromContext retrieves the agent type (empty string if not set).
+func AgentTypeFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyAgentType{}).(string)
+	return v
+}
 
 type ctxKeyMaxTurns struct{}
 
@@ -121,6 +155,9 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		agentType = "general-purpose"
 	}
 	agentDef := agents.GetAgent(agentType)
+
+	// Inject agent type into context for sub-session labeling.
+	ctx = WithAgentType(ctx, agentDef.Type)
 
 	// Inject maxTurns into context: caller-specified takes priority, then agent type default.
 	maxTurns := in.MaxTurns

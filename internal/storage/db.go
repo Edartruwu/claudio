@@ -82,6 +82,11 @@ func (db *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)`,
 
+		// Sub-agent persistence: link sub-sessions to parent sessions
+		`ALTER TABLE sessions ADD COLUMN parent_session_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN agent_type TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)`,
+
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id TEXT DEFAULT '',

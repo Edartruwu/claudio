@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -361,8 +362,31 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		desc = desc[:50]
 	}
 
+	// Create a sub-session in the DB for real-time persistence (mirrors claude-code's subagents/ files)
+	var subSessionID string
+	var subDB *storage.DB
+	if dbCtx := tools.SubAgentDBFromContext(ctx); dbCtx != nil && dbCtx.DB != nil {
+		subDB = dbCtx.DB
+		cwd, _ := os.Getwd()
+		// Extract agent type from context (best-effort; falls back to "agent")
+		agentType := tools.AgentTypeFromContext(ctx)
+		if agentType == "" {
+			agentType = "agent"
+		}
+		if subSess, err := subDB.CreateSubSession(dbCtx.ParentID, agentType, cwd, dbCtx.Model); err == nil {
+			subSessionID = subSess.ID
+			// Persist the initial user prompt
+			_ = subDB.AddMessage(subSessionID, "user", prompt, "text", "", "")
+		}
+	}
+
 	// Create a forwarder that captures text AND forwards tool events to parent
-	forwarder := &subAgentForwarder{desc: desc, observer: observer}
+	forwarder := &subAgentForwarder{
+		desc:      desc,
+		observer:  observer,
+		db:        subDB,
+		sessionID: subSessionID,
+	}
 	engine := query.NewEngine(apiClient, subRegistry, forwarder)
 	engine.SetSystem(system)
 	if maxTurns := tools.MaxTurnsFromContext(ctx); maxTurns > 0 {
@@ -385,26 +409,54 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 }
 
 // subAgentForwarder captures text output from a sub-agent engine and forwards
-// tool events to the parent TUI for real-time display.
+// tool events to the parent TUI for real-time display. It also persists
+// messages to a sub-session in the DB for crash recovery (mirrors claude-code).
 type subAgentForwarder struct {
-	text     strings.Builder
-	desc     string
-	observer tools.SubAgentObserver // may be nil
+	text        strings.Builder
+	desc        string
+	observer    tools.SubAgentObserver // may be nil
+	db          *storage.DB            // nil = no persistence
+	sessionID   string
+	pendingText strings.Builder // buffers assistant text until turn complete
 }
 
-func (f *subAgentForwarder) OnTextDelta(text string)     { f.text.WriteString(text) }
+func (f *subAgentForwarder) OnTextDelta(text string) {
+	f.text.WriteString(text)
+	if f.db != nil && f.sessionID != "" {
+		f.pendingText.WriteString(text)
+	}
+}
+
 func (f *subAgentForwarder) OnThinkingDelta(text string) {}
+
 func (f *subAgentForwarder) OnToolUseStart(tu tools.ToolUse) {
 	if f.observer != nil {
 		f.observer.OnSubAgentToolStart(f.desc, tu)
 	}
+	if f.db != nil && f.sessionID != "" {
+		inputJSON, _ := json.Marshal(tu.Input)
+		_ = f.db.AddMessage(f.sessionID, "assistant", string(inputJSON), "tool_use", tu.ID, tu.Name)
+	}
 }
+
 func (f *subAgentForwarder) OnToolUseEnd(tu tools.ToolUse, result *tools.Result) {
 	if f.observer != nil {
 		f.observer.OnSubAgentToolEnd(f.desc, tu, result)
 	}
+	if f.db != nil && f.sessionID != "" && result != nil {
+		_ = f.db.AddMessage(f.sessionID, "user", result.Content, "tool_result", tu.ID, tu.Name)
+	}
 }
-func (f *subAgentForwarder) OnTurnComplete(usage api.Usage)                        {}
-func (f *subAgentForwarder) OnToolApprovalNeeded(tu tools.ToolUse) bool            { return true }
+
+func (f *subAgentForwarder) OnTurnComplete(usage api.Usage) {
+	if f.db != nil && f.sessionID != "" {
+		if txt := f.pendingText.String(); txt != "" {
+			_ = f.db.AddMessage(f.sessionID, "assistant", txt, "text", "", "")
+			f.pendingText.Reset()
+		}
+	}
+}
+
+func (f *subAgentForwarder) OnToolApprovalNeeded(tu tools.ToolUse) bool             { return true }
 func (f *subAgentForwarder) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true }
-func (f *subAgentForwarder) OnError(err error)                                     {}
+func (f *subAgentForwarder) OnError(err error)                                       {}

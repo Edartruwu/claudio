@@ -106,6 +106,7 @@ type Model struct {
 	systemContext  string // git status appended to system prompt
 	commands       *commands.Registry
 	session        *session.Session
+	db             *storage.DB // for sub-agent persistence
 	skills         *skills.Registry
 	engineConfig   *query.EngineConfig
 	planModeActive bool // true while the AI is in plan mode (EnterPlanMode called)
@@ -159,6 +160,11 @@ func WithUserContext(ctx string) ModelOption {
 // WithSystemContext sets the git status context appended to the system prompt.
 func WithSystemContext(ctx string) ModelOption {
 	return func(m *Model) { m.systemContext = ctx }
+}
+
+// WithDB sets the storage DB for sub-agent session persistence.
+func WithDB(db *storage.DB) ModelOption {
+	return func(m *Model) { m.db = db }
 }
 
 // New creates a new TUI model.
@@ -1097,6 +1103,11 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 
 	// Inject sub-agent observer so agent tool events flow to TUI in real time
 	ctx = tools.WithSubAgentObserver(ctx, &tuiSubAgentObserver{ch: m.eventCh})
+
+	// Inject DB + parent session ID for sub-agent persistence
+	if m.db != nil && m.session.Current() != nil {
+		ctx = tools.WithSubAgentDB(ctx, m.db, m.session.Current().ID, m.model)
+	}
 
 	// Build content blocks: images + file contents + user text
 	hasAttachments := len(imageBlocks) > 0 || len(fileAttachments) > 0
