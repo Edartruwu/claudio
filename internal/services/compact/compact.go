@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
 // Strategy defines when compaction should happen.
@@ -183,11 +184,48 @@ var readHeavyTools = map[string]bool{
 	"WebFetch": true, "WebSearch": true, "LSP": true, "ToolSearch": true,
 }
 
+// filePathForToolUseID scans messages for a tool_use block with the given ID and
+// returns its file_path input if the tool is "Read".
+func filePathForToolUseID(messages []api.Message, toolUseID string) string {
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		var blocks []json.RawMessage
+		if json.Unmarshal(m.Content, &blocks) != nil {
+			continue
+		}
+		for _, b := range blocks {
+			var tu struct {
+				Type  string          `json:"type"`
+				ID    string          `json:"id"`
+				Name  string          `json:"name"`
+				Input json.RawMessage `json:"input"`
+			}
+			if json.Unmarshal(b, &tu) != nil || tu.Type != "tool_use" || tu.ID != toolUseID {
+				continue
+			}
+			if tu.Name == "Read" {
+				var inp struct {
+					FilePath string `json:"file_path"`
+				}
+				if json.Unmarshal(tu.Input, &inp) == nil {
+					return inp.FilePath
+				}
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
 // MicroCompact proactively clears large read-heavy tool results from old messages
 // on every tool turn, without waiting for a token threshold.
 // It preserves the last keepLastResults tool results intact.
 // This runs continuously to keep the message history lean.
-func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int) []api.Message {
+// Pass rc to invalidate ReadCache entries for any Read results that get cleared,
+// so the model can re-read those files instead of receiving a stale stub.
+func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int, rc ...*readcache.Cache) []api.Message {
 	if len(messages) == 0 {
 		return messages
 	}
@@ -252,6 +290,14 @@ func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int)
 			}
 			if len(tr.Content) < minSizeBytes || tr.IsError {
 				continue
+			}
+			// Invalidate the ReadCache entry for this file so the model can
+			// re-read it fresh instead of receiving a stale "refer to earlier
+			// result" stub that points to content we just cleared.
+			if len(rc) > 0 && rc[0] != nil {
+				if fp := filePathForToolUseID(messages, tr.ToolUseID); fp != "" {
+					rc[0].Invalidate(fp)
+				}
 			}
 			tr.Content = fmt.Sprintf("[result cleared — %d bytes]", len(tr.Content))
 			blocks[j], _ = json.Marshal(tr)

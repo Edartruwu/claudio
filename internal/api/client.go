@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/auth"
@@ -36,6 +37,10 @@ type Client struct {
 
 	// Prompt caching: inject cache_control on the last system block.
 	promptCaching bool
+
+	// Multi-provider support
+	providers    map[string]Provider // name -> provider
+	modelRoutes  map[string]string   // glob pattern -> provider name
 }
 
 // NewClient creates a new API client.
@@ -76,6 +81,35 @@ func WithPromptCaching(enabled bool) ClientOption {
 	return func(c *Client) { c.promptCaching = enabled }
 }
 
+// RegisterProvider adds a provider that can be used for model routing.
+func (c *Client) RegisterProvider(name string, p Provider) {
+	if c.providers == nil {
+		c.providers = make(map[string]Provider)
+	}
+	c.providers[name] = p
+}
+
+// AddModelRoute maps a glob pattern (e.g. "llama-*") to a provider name.
+func (c *Client) AddModelRoute(pattern, providerName string) {
+	if c.modelRoutes == nil {
+		c.modelRoutes = make(map[string]string)
+	}
+	c.modelRoutes[pattern] = providerName
+}
+
+// resolveProvider returns the provider for the given model, or nil to use the default Anthropic path.
+func (c *Client) resolveProvider(model string) Provider {
+	for pattern, provName := range c.modelRoutes {
+		matched, _ := filepath.Match(pattern, model)
+		if matched {
+			if p, ok := c.providers[provName]; ok {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
 // NewClientFromExisting creates a shallow copy of an existing client with a different model.
 // All other settings (auth, base URL, thinking mode, etc.) are inherited from the parent.
 func NewClientFromExisting(parent *Client, model string) *Client {
@@ -83,6 +117,9 @@ func NewClientFromExisting(parent *Client, model string) *Client {
 	copy.model = model
 	// Sub-agents don't need extended thinking — use disabled for speed.
 	copy.thinkingMode = "disabled"
+	// Inherit provider registry and routes
+	copy.providers = parent.providers
+	copy.modelRoutes = parent.modelRoutes
 	return &copy
 }
 
@@ -338,6 +375,12 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 		req.MaxTokens = 8192
 	}
 
+	// Route to external provider if a match exists
+	if p := c.resolveProvider(req.Model); p != nil {
+		req.Stream = true
+		return p.StreamMessages(ctx, c.httpClient, req)
+	}
+
 	req.Stream = true
 	c.applyThinking(req)
 	c.applyEffort(req)
@@ -418,13 +461,20 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 
 // SendMessage sends a non-streaming messages request.
 func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*MessageResp, error) {
-	req.Stream = false
 	if req.Model == "" {
 		req.Model = c.model
 	}
 	if req.MaxTokens == 0 {
 		req.MaxTokens = 8192
 	}
+
+	// Route to external provider if a match exists
+	if p := c.resolveProvider(req.Model); p != nil {
+		req.Stream = false
+		return p.SendMessage(ctx, c.httpClient, req)
+	}
+
+	req.Stream = false
 	c.applyThinking(req)
 	c.applyEffort(req)
 	c.applyAttribution(req)

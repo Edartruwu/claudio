@@ -22,7 +22,7 @@ An open-source AI coding assistant for the terminal, built in Go. Claudio brings
 ## Requirements
 
 - **Go 1.26+** (for building from source)
-- **Anthropic API key** or OAuth login
+- **Anthropic API key** or OAuth login (additional providers like Groq, OpenAI, Ollama also supported)
 - **Git** (for project root detection, worktrees)
 - **OS:** macOS, Linux (Windows: experimental)
 
@@ -804,6 +804,63 @@ Plugins receive env vars: `CLAUDIO_SESSION_ID`, `CLAUDIO_MODEL`, `CLAUDIO_CWD`. 
 ---
 
 ## Model Configuration
+
+### Multi-Provider Support
+
+Claudio supports routing models to different API providers (Groq, OpenAI, Ollama, Together, vLLM, or any OpenAI-compatible endpoint) alongside the default Anthropic backend.
+
+Configure providers and routing rules in your settings (`~/.claudio/settings.json` or `.claudio/settings.json`):
+
+```json
+{
+  "providers": {
+    "groq": {
+      "apiBase": "https://api.groq.com/openai/v1",
+      "apiKey": "$GROQ_API_KEY",
+      "type": "openai"
+    },
+    "openai": {
+      "apiBase": "https://api.openai.com/v1",
+      "apiKey": "$OPENAI_API_KEY",
+      "type": "openai"
+    },
+    "ollama": {
+      "apiBase": "http://localhost:11434/v1",
+      "type": "openai"
+    }
+  },
+  "modelRouting": {
+    "llama-*": "groq",
+    "mixtral-*": "groq",
+    "gemma*": "groq",
+    "gpt-*": "openai",
+    "o1*": "openai",
+    "qwen*": "ollama"
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `providers.<name>.apiBase` | Base URL for the provider's API |
+| `providers.<name>.apiKey` | API key (plain string or `$ENV_VAR` to read from environment) |
+| `providers.<name>.type` | `"openai"` for OpenAI-compatible APIs, `"anthropic"` for Anthropic-compatible |
+| `modelRouting.<pattern>` | Glob pattern mapping model names to a provider name |
+
+Models that don't match any routing pattern use the default Anthropic backend. To use a routed model, set it with `--model` or in `settings.json`:
+
+```bash
+# Use Groq's Llama model
+claudio --model llama-3.3-70b-versatile
+
+# Use OpenAI
+claudio --model gpt-4o
+
+# Use local Ollama
+claudio --model qwen2.5-coder
+```
+
+Thinking, effort, and prompt caching features are Anthropic-only and are automatically skipped for non-Anthropic providers.
 
 ### Extended Thinking
 

@@ -113,6 +113,16 @@ func (r *Registry) ToolSearchHints() map[string]string {
 	return hints
 }
 
+// ReadCache returns the shared ReadCache used by the FileReadTool, or nil if not present.
+func (r *Registry) ReadCache() *readcache.Cache {
+	if t, ok := r.tools["Read"]; ok {
+		if ft, ok := t.(*FileReadTool); ok {
+			return ft.ReadCache
+		}
+	}
+	return nil
+}
+
 // Remove removes a tool from the registry by name.
 func (r *Registry) Remove(name string) {
 	delete(r.tools, name)

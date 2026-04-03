@@ -188,19 +188,16 @@ func ScratchpadSection(scratchpadDir string) string {
 	}
 	return fmt.Sprintf(`# Scratchpad Directory
 
-IMPORTANT: Always use this scratchpad directory for temporary files instead of `+"`/tmp`"+` or other system temp directories:
+Always use this scratchpad directory for temporary files instead of `+"`/tmp`"+` or other system temp directories:
 `+"`%s`"+`
 
-Use this directory for ALL temporary file needs:
-- Storing intermediate results or data during multi-step tasks
+Use this directory for:
 - Writing temporary scripts or configuration files
 - Saving outputs that don't belong in the user's project
 - Creating working files during analysis or processing
 - Any file that would otherwise go to `+"`/tmp`"+`
 
-Only use `+"`/tmp`"+` if the user explicitly requests it.
-
-The scratchpad directory is session-specific, isolated from the user's project, and can be used freely without permission prompts.`, scratchpadDir)
+IMPORTANT: Do NOT copy source files from the project into this directory just to read them. Use the Read tool directly on the original source file paths — it works on any file without restriction. Copying files before reading them wastes context by creating duplicate entries in the conversation history.`, scratchpadDir)
 }
 
 func isGitRepo(dir string) bool {

@@ -282,7 +282,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		}
 
 		// Stream response
-		response, err := e.streamResponse(ctx, req)
+		response, forwarded, err := e.streamResponse(ctx, req)
 		if err != nil {
 			// Save whatever partial content arrived before the error so the
 			// model has it in history on the next attempt (e.g. after a timeout).
@@ -293,10 +293,13 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			return err
 		}
 
-		// If we hit the output token limit, retry once with escalated max_tokens
-		if response.StopReason == "max_tokens" && req.MaxTokens == defaultMaxTokens {
+		// If we hit the output token limit, retry once with escalated max_tokens —
+		// but only when no content has been forwarded to the handler yet. Retrying
+		// after partial streaming would re-stream the same text/tool events and
+		// cause split or duplicated messages in the TUI.
+		if response.StopReason == "max_tokens" && req.MaxTokens == defaultMaxTokens && !forwarded {
 			req.MaxTokens = escalatedMaxTokens
-			response, err = e.streamResponse(ctx, req)
+			response, _, err = e.streamResponse(ctx, req)
 			if err != nil {
 				if response != nil && len(response.Content) > 0 {
 					e.saveAssistantMessage(response.Content)
@@ -409,7 +412,9 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 
 		// Microcompact: proactively clear large old tool results on every tool turn.
 		// Keeps the last 6 results intact, clears anything larger than 2KB beyond that.
-		e.messages = compact.MicroCompact(e.messages, 6, 2048)
+		// Pass the ReadCache so cleared Read results have their cache entries invalidated —
+		// otherwise the model gets a stale stub pointing to content that no longer exists.
+		e.messages = compact.MicroCompact(e.messages, 6, 2048, e.registry.ReadCache())
 	}
 }
 
@@ -438,21 +443,28 @@ func retryDelay(attempt int) time.Duration {
 	return time.Duration(base+jitter) * time.Millisecond
 }
 
-func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (*streamedResponse, error) {
+// streamResponse performs a streaming request with transient-error retries.
+// It also returns whether any content was forwarded to the handler, so the
+// caller can decide whether a follow-up escalated-tokens retry is safe.
+func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (*streamedResponse, bool, error) {
 	var lastErr error
+	var anyForwarded bool
 	for attempt := 1; attempt <= maxStreamRetries+1; attempt++ {
 		resp, forwarded, err := e.streamOnce(ctx, req)
+		if forwarded {
+			anyForwarded = true
+		}
 		if err == nil {
-			return resp, nil
+			return resp, anyForwarded, nil
 		}
 		// Only retry transient errors, and only when no content was forwarded
 		// to the handler yet. Retrying after partial output would duplicate
 		// text already shown in the TUI.
 		if forwarded || !api.IsTransientError(err) || ctx.Err() != nil {
-			return resp, err
+			return resp, anyForwarded, err
 		}
 		if attempt > maxStreamRetries {
-			return resp, err
+			return resp, anyForwarded, err
 		}
 		// On TCP connection reset, renew the transport to discard stale sockets.
 		if api.IsConnectionResetError(err) {
@@ -465,11 +477,11 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, anyForwarded, ctx.Err()
 		}
 		_ = lastErr
 	}
-	return nil, lastErr
+	return nil, anyForwarded, lastErr
 }
 
 // streamOnce performs a single streaming attempt. Returns (response, anyForwarded, error).

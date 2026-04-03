@@ -53,8 +53,19 @@ type Settings struct {
 	APIBaseURL string `json:"apiBaseUrl,omitempty"`
 	ProxyURL   string `json:"proxyUrl,omitempty"`
 
+	// Multi-provider configuration
+	Providers    map[string]ProviderConfig `json:"providers,omitempty"`
+	ModelRouting map[string]string         `json:"modelRouting,omitempty"` // glob pattern -> provider name
+
 	// Token budget
 	MaxBudget float64 `json:"maxBudget,omitempty"`
+}
+
+// ProviderConfig defines a non-default API provider.
+type ProviderConfig struct {
+	APIBase string `json:"apiBase"`           // Base URL (e.g. "https://api.groq.com/openai/v1")
+	APIKey  string `json:"apiKey,omitempty"`   // API key or "$ENV_VAR" reference
+	Type    string `json:"type"`              // "openai" or "anthropic"
 }
 
 // PermissionRule defines a content-pattern permission for a specific tool.
@@ -273,6 +284,22 @@ func mergeFromFile(settings *Settings, path string) {
 	}
 	if len(overlay.DenyTools) > 0 {
 		settings.DenyTools = append(settings.DenyTools, overlay.DenyTools...)
+	}
+	if len(overlay.Providers) > 0 {
+		if settings.Providers == nil {
+			settings.Providers = make(map[string]ProviderConfig)
+		}
+		for k, v := range overlay.Providers {
+			settings.Providers[k] = v
+		}
+	}
+	if len(overlay.ModelRouting) > 0 {
+		if settings.ModelRouting == nil {
+			settings.ModelRouting = make(map[string]string)
+		}
+		for k, v := range overlay.ModelRouting {
+			settings.ModelRouting[k] = v
+		}
 	}
 }
 

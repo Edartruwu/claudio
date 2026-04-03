@@ -141,11 +141,26 @@ func (c *Cache) findBestMatch(model string) *ModelCapability {
 // DefaultCapabilities returns hardcoded defaults for known models.
 func DefaultCapabilities() []ModelCapability {
 	return []ModelCapability{
+		// Anthropic
 		{ID: "claude-opus-4-6", MaxInputTokens: 200_000, MaxOutputTokens: 32_000, SupportsThinking: true, SupportsEffort: true},
 		{ID: "claude-opus-4-5", MaxInputTokens: 200_000, MaxOutputTokens: 32_000, SupportsThinking: true, SupportsEffort: true},
 		{ID: "claude-sonnet-4-6", MaxInputTokens: 200_000, MaxOutputTokens: 16_000, SupportsThinking: true, SupportsEffort: true},
 		{ID: "claude-sonnet-4-5", MaxInputTokens: 200_000, MaxOutputTokens: 16_000, SupportsThinking: true, SupportsEffort: true},
 		{ID: "claude-haiku-4-5", MaxInputTokens: 200_000, MaxOutputTokens: 8_192, SupportsThinking: false, SupportsEffort: false},
+		// Groq (Llama)
+		{ID: "llama-3.3-70b-versatile", MaxInputTokens: 128_000, MaxOutputTokens: 32_768, SupportsThinking: false, SupportsEffort: false},
+		{ID: "llama-3.1-8b-instant", MaxInputTokens: 128_000, MaxOutputTokens: 8_192, SupportsThinking: false, SupportsEffort: false},
+		{ID: "llama-3.2-90b-vision-preview", MaxInputTokens: 128_000, MaxOutputTokens: 8_192, SupportsThinking: false, SupportsEffort: false},
+		// Groq (Mixtral)
+		{ID: "mixtral-8x7b-32768", MaxInputTokens: 32_768, MaxOutputTokens: 32_768, SupportsThinking: false, SupportsEffort: false},
+		// Groq (Gemma)
+		{ID: "gemma2-9b-it", MaxInputTokens: 8_192, MaxOutputTokens: 8_192, SupportsThinking: false, SupportsEffort: false},
+		// OpenAI
+		{ID: "gpt-4o", MaxInputTokens: 128_000, MaxOutputTokens: 16_384, SupportsThinking: false, SupportsEffort: false},
+		{ID: "gpt-4o-mini", MaxInputTokens: 128_000, MaxOutputTokens: 16_384, SupportsThinking: false, SupportsEffort: false},
+		{ID: "gpt-4-turbo", MaxInputTokens: 128_000, MaxOutputTokens: 4_096, SupportsThinking: false, SupportsEffort: false},
+		{ID: "o1", MaxInputTokens: 200_000, MaxOutputTokens: 100_000, SupportsThinking: false, SupportsEffort: false},
+		{ID: "o1-mini", MaxInputTokens: 128_000, MaxOutputTokens: 65_536, SupportsThinking: false, SupportsEffort: false},
 	}
 }
 

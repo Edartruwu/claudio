@@ -10,6 +10,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/api/provider"
 	"github.com/Abraxas-365/claudio/internal/auth"
 	authstorage "github.com/Abraxas-365/claudio/internal/auth/storage"
 	"github.com/Abraxas-365/claudio/internal/bus"
@@ -95,6 +96,28 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	}
 
 	apiClient := api.NewClient(resolver, apiOpts...)
+
+	// Register multi-provider routes
+	for name, pc := range settings.Providers {
+		apiKey := pc.APIKey
+		if strings.HasPrefix(apiKey, "$") {
+			apiKey = os.Getenv(apiKey[1:])
+		}
+		var p api.Provider
+		switch pc.Type {
+		case "openai":
+			p = provider.NewOpenAI(name, pc.APIBase, apiKey)
+		case "anthropic":
+			p = provider.NewAnthropic(pc.APIBase, apiKey)
+		default:
+			// Default to openai-compatible
+			p = provider.NewOpenAI(name, pc.APIBase, apiKey)
+		}
+		apiClient.RegisterProvider(name, p)
+	}
+	for pattern, provName := range settings.ModelRouting {
+		apiClient.AddModelRoute(pattern, provName)
+	}
 
 	// Apply thinking and effort settings from config
 	if settings.ThinkingMode != "" {

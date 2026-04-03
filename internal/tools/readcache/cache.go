@@ -60,6 +60,24 @@ func (c *Cache) Get(key Key) (string, bool) {
 	return e.content, true
 }
 
+// Invalidate removes all cached entries for the given file path (all offset/limit variants).
+func (c *Cache) Invalidate(filePath string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key := range c.entries {
+		if key.FilePath == filePath {
+			delete(c.entries, key)
+		}
+	}
+	newOrder := c.order[:0]
+	for _, k := range c.order {
+		if k.FilePath != filePath {
+			newOrder = append(newOrder, k)
+		}
+	}
+	c.order = newOrder
+}
+
 // Put stores a read result. fileModAt should come from os.Stat on the file.
 func (c *Cache) Put(key Key, content string, fileModAt time.Time) {
 	c.mu.Lock()
