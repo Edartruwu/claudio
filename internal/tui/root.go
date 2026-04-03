@@ -799,6 +799,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prompt.Reset()
 		return m.handleCommand(msg.Name, "")
 
+	case commandpalette.CompleteMsg:
+		// Tab: insert command into prompt so user can continue typing args
+		m.palette.Deactivate()
+		m.prompt.SetValue("/" + msg.Name + " ")
+		return m, nil
+
 	case filepicker.BrowseDirMsg:
 		// User selected a directory: update prompt to browse into it
 		val := m.prompt.Value()
@@ -902,6 +908,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case panelsessions.DeleteSessionMsg:
 		m.closePanel()
+		return m, nil
+
+	case panelconfig.InsertCommandMsg:
+		m.closePanel()
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		m.prompt.SetValue(msg.Command + " ")
 		return m, nil
 
 	case panelconfig.ConfigChangedMsg:
@@ -1202,16 +1215,20 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 		ctx = tools.WithSubAgentDB(ctx, m.db, m.session.Current().ID, m.model)
 	}
 
+	// Strip [Image #N: ...] references from text sent to the API — images
+	// are already included as base64 content blocks.
+	apiText := prompt.StripImageRefs(cleanedText)
+
 	// Build content blocks: images + file contents + user text
 	hasAttachments := len(imageBlocks) > 0 || len(fileAttachments) > 0
 
 	go func() {
 		var err error
 		if hasAttachments {
-			blocks := BuildContentBlocks(cleanedText, fileAttachments, imageBlocks)
+			blocks := BuildContentBlocks(apiText, fileAttachments, imageBlocks)
 			err = m.engine.RunWithBlocks(ctx, blocks)
 		} else {
-			err = m.engine.Run(ctx, cleanedText)
+			err = m.engine.Run(ctx, apiText)
 		}
 		m.eventCh <- tuiEvent{typ: "done", err: err}
 	}()
@@ -3401,7 +3418,10 @@ func (m Model) statusHint() string {
 	if m.focus == FocusModelSelector {
 		return "\u2191\u2193 select · enter confirm · esc cancel"
 	}
-	if m.palette.IsActive() || m.filePicker.IsActive() {
+	if m.palette.IsActive() {
+		return "\u2191\u2193 navigate · tab complete · enter select · esc close"
+	}
+	if m.filePicker.IsActive() {
 		return "\u2191\u2193 navigate · enter select · esc close"
 	}
 	if m.streaming {

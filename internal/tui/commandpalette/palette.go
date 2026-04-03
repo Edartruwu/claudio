@@ -16,8 +16,13 @@ type Item struct {
 	Description string
 }
 
-// SelectMsg is sent when the user selects a command.
+// SelectMsg is sent when the user selects a command (enter).
 type SelectMsg struct {
+	Name string
+}
+
+// CompleteMsg is sent when the user tab-completes a command into the prompt.
+type CompleteMsg struct {
 	Name string
 }
 
@@ -88,7 +93,15 @@ func (m *Model) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case "tab", "enter":
+	case "tab":
+		if len(m.filtered) > 0 && m.selected < len(m.filtered) {
+			return func() tea.Msg {
+				return CompleteMsg{Name: m.filtered[m.selected].Name}
+			}, true
+		}
+		return nil, true
+
+	case "enter":
 		if len(m.filtered) > 0 && m.selected < len(m.filtered) {
 			return func() tea.Msg {
 				return SelectMsg{Name: m.filtered[m.selected].Name}

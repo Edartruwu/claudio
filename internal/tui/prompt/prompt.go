@@ -59,6 +59,12 @@ const (
 )
 
 var pasteRefRe = regexp.MustCompile(`\[Pasted text #(\d+)(?: \+\d+ lines)?\]`)
+var imageRefRe = regexp.MustCompile(`\[Image #\d+: [^\]]+\]`)
+
+// StripImageRefs removes [Image #N: filename] references from text.
+func StripImageRefs(s string) string {
+	return strings.TrimSpace(imageRefRe.ReplaceAllString(s, ""))
+}
 
 // New creates a new prompt input model.
 func New() Model {

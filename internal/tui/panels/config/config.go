@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,6 +23,12 @@ import (
 type ConfigChangedMsg struct {
 	Key   string // setting key that changed
 	Value string // new value
+}
+
+// InsertCommandMsg is sent when the user selects a model shortcut in the panel.
+// The root model should insert the command into the prompt text box.
+type InsertCommandMsg struct {
+	Command string // e.g. "/sonnet"
 }
 
 // Scope identifies where a setting lives.
@@ -170,14 +177,25 @@ func (p *Panel) buildEntries() {
 			Key: "providers", Value: fmt.Sprintf("%d configured", len(m.Providers)),
 			RuleIndex: -1,
 		})
-		for name, pc := range m.Providers {
+		providerNames := make([]string, 0, len(m.Providers))
+		for name := range m.Providers {
+			providerNames = append(providerNames, name)
+		}
+		sort.Strings(providerNames)
+		for _, name := range providerNames {
+			pc := m.Providers[name]
 			p.entries = append(p.entries, configEntry{
 				Key: "  " + name, Value: fmt.Sprintf("%s (%s)", pc.APIBase, pc.Type),
 				Source: p.source("providers"), RuleIndex: -1,
 			})
-			for shortcut, modelID := range pc.Models {
+			shortcuts := make([]string, 0, len(pc.Models))
+			for shortcut := range pc.Models {
+				shortcuts = append(shortcuts, shortcut)
+			}
+			sort.Strings(shortcuts)
+			for _, shortcut := range shortcuts {
 				p.entries = append(p.entries, configEntry{
-					Key: "    /" + shortcut, Value: modelID,
+					Key: "    /" + shortcut, Value: pc.Models[shortcut],
 					Source: p.source("providers"), RuleIndex: -1,
 				})
 			}
@@ -241,8 +259,15 @@ func (p *Panel) source(key string) Scope {
 			return ScopeProject
 		}
 	case "outputFilter":
-		if p.project.OutputFilter {
-			return ScopeProject
+		if p.projectPath != "" {
+			if data, err := os.ReadFile(p.projectPath); err == nil {
+				var raw map[string]json.RawMessage
+				if json.Unmarshal(data, &raw) == nil {
+					if _, ok := raw["outputFilter"]; ok {
+						return ScopeProject
+					}
+				}
+			}
 		}
 	case "outputStyle":
 		if p.project.OutputStyle != "" {
@@ -302,12 +327,23 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 	case "enter", " ":
-		if p.cursor < len(p.entries) && p.entries[p.cursor].Editable {
-			key, val := p.toggleEntry(p.cursor)
-			p.buildEntries()
-			return func() tea.Msg {
-				return ConfigChangedMsg{Key: key, Value: val}
-			}, true
+		if p.cursor < len(p.entries) {
+			e := p.entries[p.cursor]
+			// Model shortcut entries: insert command into prompt
+			if strings.HasPrefix(e.Key, "    /") {
+				cmd := strings.TrimSpace(e.Key)
+				p.active = false
+				return func() tea.Msg {
+					return InsertCommandMsg{Command: cmd}
+				}, true
+			}
+			if e.Editable {
+				key, val := p.toggleEntry(p.cursor)
+				p.buildEntries()
+				return func() tea.Msg {
+					return ConfigChangedMsg{Key: key, Value: val}
+				}, true
+			}
 		}
 		return nil, true
 	}
@@ -316,7 +352,8 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 func (p *Panel) toggleEntry(idx int) (string, string) {
 	e := p.entries[idx]
-	target := p.targetSettings()
+	p.ensureProjectConfig()
+	target := p.project
 	var newVal string
 
 	switch e.Key {
@@ -365,26 +402,59 @@ func (p *Panel) toggleEntry(idx int) (string, string) {
 		newVal = target.OutputStyle
 	}
 
-	p.saveTarget()
+	p.saveProjectSetting(e.Key, newVal)
 	p.reloadMerged()
 	return e.Key, newVal
 }
 
-// targetSettings returns the settings object for the current edit scope.
-func (p *Panel) targetSettings() *config.Settings {
-	if p.editScope == ScopeProject && p.project != nil {
-		return p.project
+// ensureProjectConfig creates .claudio/ and initializes the project config
+// if they don't exist yet, so that toggles always write to local config.
+func (p *Panel) ensureProjectConfig() {
+	if p.hasProject && p.project != nil {
+		return
 	}
-	return p.global
+	cwd, _ := os.Getwd()
+	projectRoot := config.FindGitRoot(cwd)
+	claudioDir := filepath.Join(projectRoot, ".claudio")
+	os.MkdirAll(claudioDir, 0755)
+	p.projectPath = filepath.Join(claudioDir, "settings.json")
+	p.project = &config.Settings{}
+	p.hasProject = true
+	p.editScope = ScopeProject
 }
 
-// saveTarget writes the current edit scope's settings to disk.
-func (p *Panel) saveTarget() {
-	if p.editScope == ScopeProject && p.projectPath != "" {
-		saveSettingsFile(p.project, p.projectPath)
-	} else {
-		saveSettingsFile(p.global, p.globalPath)
+// saveProjectSetting writes a single key to the project config file using
+// raw JSON merge, which correctly handles bool false values (omitempty).
+func (p *Panel) saveProjectSetting(key, value string) {
+	dir := filepath.Dir(p.projectPath)
+	os.MkdirAll(dir, 0755)
+
+	var existing map[string]json.RawMessage
+	if data, err := os.ReadFile(p.projectPath); err == nil {
+		json.Unmarshal(data, &existing)
 	}
+	if existing == nil {
+		existing = make(map[string]json.RawMessage)
+	}
+
+	// Marshal the full project settings to pick up struct field values
+	data, _ := json.Marshal(p.project)
+	var fresh map[string]json.RawMessage
+	json.Unmarshal(data, &fresh)
+
+	// Write the changed key. For bool fields, omitempty drops "false" from
+	// the struct marshal, so we fall back to encoding the value directly.
+	if raw, ok := fresh[key]; ok {
+		existing[key] = raw
+	} else if value == "true" || value == "false" {
+		existing[key] = json.RawMessage(value)
+	} else {
+		valJSON, _ := json.Marshal(value)
+		existing[key] = valJSON
+	}
+
+	out, _ := json.MarshalIndent(existing, "", "  ")
+	os.WriteFile(p.projectPath, out, 0644)
 }
 
 // reloadMerged re-reads and merges configs after a change.
@@ -417,15 +487,8 @@ func (p *Panel) savePermissionRules() {
 	os.WriteFile(savePath, out, 0644)
 }
 
-func saveSettingsFile(s *config.Settings, path string) {
-	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0755)
-	data, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return
-	}
-	os.WriteFile(path, data, 0644)
-}
+
+
 
 func (p *Panel) View() string {
 	if !p.active {
