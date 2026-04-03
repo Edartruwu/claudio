@@ -1,6 +1,56 @@
 # Claudio
 
-An open-source AI coding assistant for the terminal, built in Go. Claudio brings multi-agent orchestration, persistent memory, team coordination, and a rich TUI to your development workflow.
+> **An open-source AI coding assistant for the terminal, built in Go.**
+> Multi-agent orchestration · persistent memory · team coordination · full vim mode · zero runtime dependencies.
+
+```
+  ██████╗██╗      █████╗ ██╗   ██╗██████╗ ██╗ ██████╗
+ ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██║██╔═══██╗
+ ██║     ██║     ███████║██║   ██║██║  ██║██║██║   ██║
+ ██║     ██║     ██╔══██║██║   ██║██║  ██║██║██║   ██║
+ ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝██║╚██████╔╝
+  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝ ╚═════╝
+```
+
+---
+
+## Table of Contents
+
+- [Why Claudio?](#why-claudio)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Project Setup](#project-setup)
+  - [claudio init](#claudio-init)
+  - [Configuration hierarchy](#configuration-hierarchy)
+  - [TUI config editor](#tui-config-editor)
+  - [Settings reference](#settings-reference)
+  - [CLAUDIO.md / CLAUDE.md](#claudemd--claudemd)
+  - [Permission Rules](#permission-rules)
+- [CLI Flags](#cli-flags)
+- [Interactive Commands](#interactive-commands)
+- [Keybindings](#keybindings)
+- [Context Management](#context-management)
+- [Token Efficiency](#token-efficiency)
+- [Memory System](#memory-system)
+- [Tools](#tools)
+- [Agents](#agents)
+- [Orchestrator & Multi-Agent Teams](#orchestrator--multi-agent-teams)
+- [Security](#security)
+- [Hooks](#hooks)
+- [Scheduled Tasks (Cron)](#scheduled-tasks-cron)
+- [Session Sharing](#session-sharing)
+- [Plugins](#plugins)
+- [Model Configuration](#model-configuration)
+- [Output Styles](#output-styles)
+- [Keybinding Customization](#keybinding-customization)
+- [Per-Turn Diff Tracking](#per-turn-diff-tracking)
+- [Headless / API Mode](#headless--api-mode)
+- [Filesystem Layout](#filesystem-layout)
+- [Architecture](#architecture)
+- [License](#license)
+
+---
 
 ## Why Claudio?
 
