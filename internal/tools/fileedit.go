@@ -81,6 +81,15 @@ func (t *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		return &Result{Content: "old_string and new_string are identical", IsError: true}, nil
 	}
 
+	// Reject very large files before reading into memory
+	const maxEditBytes = 1 * 1024 * 1024 // 1MB
+	if info, err := os.Stat(in.FilePath); err == nil && info.Size() > maxEditBytes {
+		return &Result{
+			Content: fmt.Sprintf("File too large to edit (%d KB). Use Bash with sed for targeted edits on large files.", info.Size()/1024),
+			IsError: true,
+		}, nil
+	}
+
 	content, err := os.ReadFile(in.FilePath)
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to read file: %v", err), IsError: true}, nil

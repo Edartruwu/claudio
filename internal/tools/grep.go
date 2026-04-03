@@ -114,7 +114,8 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 	}
 
 	// Build rg command
-	args := []string{"--no-heading", "--color=never"}
+	args := []string{"--no-heading", "--color=never", "--max-columns=500",
+		"--glob=!.git", "--glob=!.svn", "--glob=!.hg"}
 
 	// Output mode
 	mode := in.OutputMode
@@ -195,11 +196,20 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		}
 	}
 
-	// Truncate output
+	// Truncate by line count
 	lines := strings.Split(output, "\n")
 	if len(lines) > maxResults {
 		output = strings.Join(lines[:maxResults], "\n")
 		output += fmt.Sprintf("\n... (%d more results)", len(lines)-maxResults)
+	}
+
+	// Cap total output size — grep results can be very wide even with --max-columns
+	const maxOutputBytes = 20_000
+	if len(output) > maxOutputBytes {
+		output = output[:maxOutputBytes] + fmt.Sprintf(
+			"\n[Grep output truncated at %d bytes. Narrow your pattern or use head_limit to reduce results.]",
+			maxOutputBytes,
+		)
 	}
 
 	if output == "" {

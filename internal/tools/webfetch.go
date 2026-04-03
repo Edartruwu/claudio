@@ -59,6 +59,10 @@ func (t *WebFetchTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		return &Result{Content: "No URL provided", IsError: true}, nil
 	}
 
+	if len(in.URL) > 2000 {
+		return &Result{Content: "URL too long (max 2000 characters)", IsError: true}, nil
+	}
+
 	// Validate URL
 	if !strings.HasPrefix(in.URL, "http://") && !strings.HasPrefix(in.URL, "https://") {
 		in.URL = "https://" + in.URL
@@ -113,7 +117,7 @@ func fetchURL(ctx context.Context, url string) (string, error) {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024)) // 2MB limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
 	if err != nil {
 		return "", err
 	}

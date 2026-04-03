@@ -130,7 +130,7 @@ func (t *GlobTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		return &Result{Content: "No files matched the pattern"}, nil
 	}
 
-	const maxResults = 500
+	const maxResults = 100
 	var output strings.Builder
 	for i, m := range matches {
 		if i >= maxResults {

@@ -76,7 +76,63 @@ func (t *WebSearchTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 		return &Result{Content: "No results found"}, nil
 	}
 
+	// Filter by domain allow/block lists
+	if len(in.AllowedDomains) > 0 || len(in.BlockedDomains) > 0 {
+		results = filterResultsByDomain(results, in.AllowedDomains, in.BlockedDomains)
+	}
+
+	if results == "" {
+		return &Result{Content: "No results found matching domain filters"}, nil
+	}
+
 	return &Result{Content: results}, nil
+}
+
+func filterResultsByDomain(results string, allowed, blocked []string) string {
+	entries := strings.Split(results, "\n\n")
+	var filtered []string
+	for _, entry := range entries {
+		lines := strings.Split(entry, "\n")
+		// URL is on the second line (index 1) with leading spaces
+		var entryURL string
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+				entryURL = trimmed
+				break
+			}
+		}
+		if entryURL == "" {
+			filtered = append(filtered, entry)
+			continue
+		}
+		if len(blocked) > 0 {
+			blocked_ := false
+			for _, d := range blocked {
+				if strings.Contains(entryURL, d) {
+					blocked_ = true
+					break
+				}
+			}
+			if blocked_ {
+				continue
+			}
+		}
+		if len(allowed) > 0 {
+			allowed_ := false
+			for _, d := range allowed {
+				if strings.Contains(entryURL, d) {
+					allowed_ = true
+					break
+				}
+			}
+			if !allowed_ {
+				continue
+			}
+		}
+		filtered = append(filtered, entry)
+	}
+	return strings.Join(filtered, "\n\n")
 }
 
 func duckduckgoSearch(ctx context.Context, query string) (string, error) {
