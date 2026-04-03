@@ -6,10 +6,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
+
+// isPlanFilePath returns true if the path is inside the claudio plans directory.
+// Plan files are created and managed by claudio itself, so they should always
+// be writable without a permission prompt or staleness check.
+func isPlanFilePath(path string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	planDir := filepath.Join(home, ".claudio", "plans") + string(filepath.Separator)
+	return strings.HasPrefix(filepath.Clean(path)+string(filepath.Separator), planDir)
+}
 
 // FileWriteTool creates or overwrites files.
 type FileWriteTool struct {
@@ -47,7 +60,13 @@ func (t *FileWriteTool) InputSchema() json.RawMessage {
 
 func (t *FileWriteTool) IsReadOnly() bool { return false }
 
-func (t *FileWriteTool) RequiresApproval(_ json.RawMessage) bool { return true }
+func (t *FileWriteTool) RequiresApproval(input json.RawMessage) bool {
+	var in fileWriteInput
+	if json.Unmarshal(input, &in) == nil && isPlanFilePath(in.FilePath) {
+		return false // plan files are always auto-accepted
+	}
+	return true
+}
 
 func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in fileWriteInput
@@ -68,22 +87,22 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 
 	// Staleness check: if the file exists and was previously read, verify it hasn't
 	// changed on disk since the last Read. Guards against clobbering external edits.
-	if info, err := os.Stat(in.FilePath); err == nil {
-		// File exists — check if we have a cache entry with a matching mtime.
-		if t.ReadCache != nil {
-			key := readcache.Key{FilePath: in.FilePath, Offset: 1, Limit: 2000}
-			if _, ok := t.ReadCache.Get(key); !ok {
-				// Cache miss: either never read, or mtime changed since the read.
-				// Only block if the file actually exists and might have unseen content.
-				_ = info // used for the stat above
-				return &Result{
-					Content: fmt.Sprintf(
-						"File %s exists but has not been read in this session (or has changed since last read). "+
-							"Use the Read tool first to review the current contents before overwriting.",
-						in.FilePath,
-					),
-					IsError: true,
-				}, nil
+	// Plan files are exempt — they are created and owned by claudio itself.
+	if !isPlanFilePath(in.FilePath) {
+		if info, err := os.Stat(in.FilePath); err == nil {
+			if t.ReadCache != nil {
+				key := readcache.Key{FilePath: in.FilePath, Offset: 1, Limit: 2000}
+				if _, ok := t.ReadCache.Get(key); !ok {
+					_ = info
+					return &Result{
+						Content: fmt.Sprintf(
+							"File %s exists but has not been read in this session (or has changed since last read). "+
+								"Use the Read tool first to review the current contents before overwriting.",
+							in.FilePath,
+						),
+						IsError: true,
+					}, nil
+				}
 			}
 		}
 	}

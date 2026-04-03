@@ -9,6 +9,7 @@ const (
 	FocusPermission                  // tool approval dialog
 	FocusModelSelector               // model picker
 	FocusPanel                       // any side panel has focus
+	FocusPlanApproval                // plan approval dialog after ExitPlanMode
 )
 
 // PanelID identifies which panel is currently active.

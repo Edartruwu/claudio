@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -109,7 +110,10 @@ type Model struct {
 	db             *storage.DB // for sub-agent persistence
 	skills         *skills.Registry
 	engineConfig   *query.EngineConfig
-	planModeActive bool // true while the AI is in plan mode (EnterPlanMode called)
+	planModeActive      bool   // true while the AI is in plan mode (EnterPlanMode called)
+	planFilePath        string // path of the current plan file (set by EnterPlanMode)
+	planApprovalCursor  int    // selected option in the plan approval dialog (0-3)
+	planApprovalFeedback string // typed feedback when option 3 is selected
 }
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
@@ -730,6 +734,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+		// Plan approval dialog
+		if m.focus == FocusPlanApproval {
+			return m.handlePlanApprovalKey(msg)
+		}
+
 		// Command palette intercepts keys when active
 		if m.focus == FocusPrompt && !m.streaming && m.palette.IsActive() {
 			if cmd, consumed := m.palette.Update(msg); consumed {
@@ -1180,8 +1189,16 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		switch event.toolUse.Name {
 		case "EnterPlanMode":
 			m.planModeActive = true
+			// Extract the plan file path from the result content.
+			if event.result != nil {
+				if idx := strings.Index(event.result.Content, "Plan file: "); idx >= 0 {
+					m.planFilePath = strings.TrimSpace(event.result.Content[idx+len("Plan file: "):])
+				}
+			}
 		case "ExitPlanMode":
-			m.planModeActive = false
+			// Don't flip planModeActive yet — show approval dialog first.
+			m.planApprovalCursor = 0
+			m.planApprovalFeedback = ""
 		}
 
 		// Compute execution duration.
@@ -1224,11 +1241,21 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		m.streaming = false
 		m.spinText = ""
 		m.spinner.Stop()
-		m.focus = FocusPrompt
-		m.prompt.Focus()
 		if event.err != nil && event.err.Error() != "context canceled" {
 			m.addMessage(ChatMessage{Type: MsgError, Content: event.err.Error()})
 		}
+
+		// If plan mode just exited, show approval dialog instead of returning to prompt.
+		if m.planModeActive {
+			m.focus = FocusPlanApproval
+			m.planApprovalCursor = 0
+			m.planApprovalFeedback = ""
+			m.refreshViewport()
+			return m, m.waitForEvent()
+		}
+
+		m.focus = FocusPrompt
+		m.prompt.Focus()
 		m.refreshViewport()
 
 		// Process queued messages
@@ -1443,6 +1470,155 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// handlePlanApprovalKey handles key events in the plan approval dialog shown after ExitPlanMode.
+func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	const numOptions = 3
+
+	// If we're in feedback input mode (option 3 selected and confirmed once), collect text.
+	if m.planApprovalCursor == 3 && m.planApprovalFeedback != "" {
+		switch msg.Type {
+		case tea.KeyEnter:
+			// Send feedback to engine and exit plan mode.
+			feedback := m.planApprovalFeedback
+			m.planModeActive = false
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+			m.planApprovalFeedback = ""
+			m.refreshViewport()
+			return m.handleSubmit(feedback)
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.planApprovalFeedback) > 0 {
+				m.planApprovalFeedback = m.planApprovalFeedback[:len(m.planApprovalFeedback)-1]
+			}
+			return m, m.waitForEvent()
+		case tea.KeyEsc:
+			m.planApprovalFeedback = ""
+			m.planApprovalCursor = 0
+			return m, m.waitForEvent()
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.planApprovalFeedback += string(msg.Runes)
+			}
+			return m, m.waitForEvent()
+		}
+	}
+
+	switch msg.String() {
+	case "j", "down":
+		if m.planApprovalCursor < numOptions {
+			m.planApprovalCursor++
+		}
+	case "k", "up":
+		if m.planApprovalCursor > 0 {
+			m.planApprovalCursor--
+		}
+	case "ctrl+g":
+		// Open plan file in the default editor ($EDITOR or open).
+		if m.planFilePath != "" {
+			editor := os.Getenv("EDITOR")
+			if editor == "" {
+				editor = "open"
+			}
+			_ = exec.Command(editor, m.planFilePath).Start()
+		}
+		return m, m.waitForEvent()
+	case "enter":
+		switch m.planApprovalCursor {
+		case 0: // Yes, auto-accept edits
+			m.planModeActive = false
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+			m.refreshViewport()
+			return m.handleSubmit("Yes, proceed with implementation. Auto-accept all file edits.")
+		case 1: // Yes, manually approve edits
+			m.planModeActive = false
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+			m.refreshViewport()
+			return m.handleSubmit("Yes, proceed with implementation.")
+		case 2: // No, let me revise
+			m.planModeActive = false
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+			m.planApprovalFeedback = ""
+			m.refreshViewport()
+			return m, nil
+		case 3: // Type feedback
+			// Switch to feedback input mode — wait for more typing.
+			m.planApprovalFeedback = " " // sentinel so we enter feedback mode on next key
+		}
+	case "esc":
+		// Dismiss — return to prompt without sending anything.
+		m.planModeActive = false
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		m.refreshViewport()
+		return m, nil
+	}
+
+	return m, m.waitForEvent()
+}
+
+// renderPlanApprovalDialog renders the plan approval overlay shown after ExitPlanMode.
+func (m Model) renderPlanApprovalDialog(width int) string {
+	boxWidth := width - 4
+	if boxWidth < 40 {
+		boxWidth = 40
+	}
+	if boxWidth > 80 {
+		boxWidth = 80
+	}
+
+	border := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.Primary).
+		Padding(1, 2).
+		Width(boxWidth)
+
+	title := lipgloss.NewStyle().Bold(true).Foreground(styles.Primary).Render("Plan ready — how would you like to proceed?")
+
+	options := []string{
+		"Yes, auto-accept edits",
+		"Yes, manually approve edits",
+		"No, let me revise",
+		"Type feedback for Claude",
+	}
+
+	var rows []string
+	rows = append(rows, title, "")
+	for i, opt := range options {
+		cursor := "  "
+		style := lipgloss.NewStyle()
+		if i == m.planApprovalCursor {
+			cursor = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("› ")
+			style = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+		}
+		label := cursor + style.Render(opt)
+		if i == 3 && m.planApprovalCursor == 3 && len(m.planApprovalFeedback) > 1 {
+			// Show typed feedback inline
+			label += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render(m.planApprovalFeedback)
+		}
+		rows = append(rows, label)
+	}
+
+	rows = append(rows, "")
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render(
+		"j/k navigate · enter confirm · esc dismiss",
+	)
+	if m.planFilePath != "" {
+		planShort := m.planFilePath
+		if home, err := os.UserHomeDir(); err == nil {
+			planShort = strings.Replace(planShort, home, "~", 1)
+		}
+		hint += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render(
+			"ctrl+g edit in $EDITOR · "+planShort,
+		)
+	}
+	rows = append(rows, hint)
+
+	return border.Render(strings.Join(rows, "\n"))
 }
 
 func (m Model) handlePermissionResponse(resp permissions.ResponseMsg) (tea.Model, tea.Cmd) {
@@ -2589,6 +2765,10 @@ func (m Model) View() string {
 		overlay := m.permission.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
+	if m.focus == FocusPlanApproval {
+		overlay := m.renderPlanApprovalDialog(mw)
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+	}
 	if m.modelSelector.IsActive() {
 		overlay := m.modelSelector.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
@@ -2883,6 +3063,9 @@ func (m Model) panelName() string {
 }
 
 func (m Model) statusHint() string {
+	if m.focus == FocusPlanApproval {
+		return "j/k navigate · enter confirm · ctrl+g edit plan · esc dismiss"
+	}
 	if m.focus == FocusPermission {
 		return "y allow · n deny"
 	}
