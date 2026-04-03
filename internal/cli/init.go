@@ -199,8 +199,8 @@ Output valid JSON only. Available settings:
   "permissionMode": "default",
   "effortLevel": "medium",
   "outputStyle": "normal",
-  "autoMemoryExtract": true,
-  "memorySelection": "ai"
+  "autoMemoryExtract": false,
+  "memorySelection": "none"
 }`,
 			strings.Join(info.Languages, ", "),
 			info.BuildSystem,
@@ -224,8 +224,8 @@ Output valid JSON only. Available settings:
   "model": "claude-sonnet-4-6",
   "permissionMode": "default",
   "effortLevel": "medium",
-  "autoMemoryExtract": true,
-  "memorySelection": "ai"
+  "autoMemoryExtract": false,
+  "memorySelection": "none"
 }`
 		}
 
@@ -413,8 +413,8 @@ func runTemplateInit(projectDir, claudioDir string, info *ProjectInfo, reader *b
 		settings := map[string]interface{}{
 			"model":             model,
 			"permissionMode":    permMode,
-			"autoMemoryExtract": true,
-			"memorySelection":   "ai",
+			"autoMemoryExtract": false,
+			"memorySelection":   "none",
 		}
 		data, _ := json.MarshalIndent(settings, "", "  ")
 		os.WriteFile(settingsPath, data, 0644)

@@ -28,8 +28,8 @@ type Settings struct {
 	SessionPersist bool   `json:"sessionPersist,omitempty"`
 
 	// Memory settings
-	AutoMemoryExtract *bool  `json:"autoMemoryExtract,omitempty"` // auto-extract memories on turn end (default: true)
-	MemorySelection   string `json:"memorySelection,omitempty"`   // "ai" (Haiku), "keyword", "none" (default: "ai")
+	AutoMemoryExtract *bool  `json:"autoMemoryExtract,omitempty"` // auto-extract memories on turn end (default: false)
+	MemorySelection   string `json:"memorySelection,omitempty"`   // "ai" (Haiku), "keyword", "none" (default: "none")
 
 	// Security settings
 	DenyPaths  []string `json:"denyPaths,omitempty"`
@@ -361,7 +361,7 @@ func SanitizeProjectPath(path string) string {
 // IsAutoMemoryExtract returns whether automatic memory extraction is enabled.
 func (s *Settings) IsAutoMemoryExtract() bool {
 	if s.AutoMemoryExtract == nil {
-		return true // default: enabled
+		return false // default: disabled
 	}
 	return *s.AutoMemoryExtract
 }
@@ -369,7 +369,7 @@ func (s *Settings) IsAutoMemoryExtract() bool {
 // GetMemorySelection returns the memory selection strategy ("ai", "keyword", "none").
 func (s *Settings) GetMemorySelection() string {
 	if s.MemorySelection == "" {
-		return "ai" // default
+		return "none" // default
 	}
 	return s.MemorySelection
 }
