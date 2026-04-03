@@ -1496,6 +1496,8 @@ Snippets without a `lang` field expand in any file. Language-tagged snippets onl
 
 Project config extends global: if global defines `errw` and project defines `handler`, both are available. If the project sets `"enabled": false`, all snippets are disabled for that project regardless of global setting.
 
+> **Tip:** You can use the `/setup-snippets` skill to quickly set up snippets for your project. Just run it and Claudio will generate snippet definitions tailored to your codebase.
+
 ### How it works internally
 
 1. When snippets are enabled, their documentation is injected into the system prompt (once, at session start -- prompt cache friendly)
