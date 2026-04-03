@@ -671,6 +671,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				return m, nil
+			case "d":
+				// Delete the interaction at the cursor (user turn + all responses).
+				// This removes the messages from the API context to save tokens.
+				if !m.streaming && m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
+					msgIdx := m.vpSections[m.vpCursor].MsgIndex
+					if msgIdx >= 0 && msgIdx < len(m.messages) {
+						m.deleteInteraction(msgIdx)
+						// Adjust cursor
+						if len(m.vpSections) == 0 {
+							m.vpCursor = -1
+						} else {
+							m.refreshViewport()
+							if m.vpCursor >= len(m.vpSections) {
+								m.vpCursor = len(m.vpSections) - 1
+							}
+							if m.vpCursor >= 0 {
+								m.scrollToSection(m.vpCursor)
+							}
+						}
+					}
+				}
+				return m, nil
 			case "/":
 				// Enter search mode
 				m.vpSearchActive = true
@@ -2835,6 +2857,150 @@ func (m *Model) persistMessage(msg ChatMessage) {
 	}
 }
 
+// deleteInteraction removes the interaction (user turn + assistant/tool responses)
+// that contains the message at the given ChatMessage index.
+// It updates m.messages, the engine's message history, and the DB.
+func (m *Model) deleteInteraction(msgIdx int) {
+	if msgIdx < 0 || msgIdx >= len(m.messages) {
+		return
+	}
+
+	// Find the start of this interaction: walk backwards to find the user message.
+	start := msgIdx
+	for start > 0 && m.messages[start].Type != MsgUser {
+		start--
+	}
+	// If we didn't land on a user message (e.g., leading assistant messages), start from 0.
+	if m.messages[start].Type != MsgUser && start == 0 {
+		// Allow deleting orphan assistant responses at the beginning
+	}
+
+	// Find the end: walk forward until the next user message or end of list.
+	end := start + 1
+	for end < len(m.messages) && m.messages[end].Type != MsgUser {
+		end++
+	}
+
+	// Remove from chat messages.
+	m.messages = append(m.messages[:start], m.messages[end:]...)
+
+	// Rebuild engine messages from the remaining chat messages.
+	if m.engine != nil {
+		m.engine.SetMessages(engineMessagesFromChat(m.messages))
+	}
+
+	// Update pinned indices: shift down any pins above the deleted range.
+	if len(m.pinnedMsgIndices) > 0 {
+		newPinned := make(map[int]bool)
+		for idx, v := range m.pinnedMsgIndices {
+			if idx < start {
+				newPinned[idx] = v
+			} else if idx >= end {
+				newPinned[idx-(end-start)] = v
+			}
+		}
+		m.pinnedMsgIndices = newPinned
+	}
+
+	// Update expanded groups: shift down indices above deleted range, remove deleted.
+	if len(m.expandedGroups) > 0 {
+		newExpanded := make(map[int]bool)
+		for idx, v := range m.expandedGroups {
+			if idx < start {
+				newExpanded[idx] = v
+			} else if idx >= end {
+				newExpanded[idx-(end-start)] = v
+			}
+		}
+		m.expandedGroups = newExpanded
+	}
+
+	// Re-persist: delete all messages for the session and re-add the remaining ones.
+	if m.session != nil && m.session.Current() != nil {
+		_ = m.session.DeleteAllMessages()
+		for _, msg := range m.messages {
+			m.persistMessage(msg)
+		}
+	}
+}
+
+// engineMessagesFromChat rebuilds engine-compatible []api.Message from ChatMessage slice.
+// This mirrors the grouping logic of reconstructEngineMessages but works from in-memory
+// ChatMessages instead of DB records.
+func engineMessagesFromChat(msgs []ChatMessage) []api.Message {
+	var result []api.Message
+	tuCounter := 0
+
+	i := 0
+	for i < len(msgs) {
+		msg := msgs[i]
+		switch msg.Type {
+		case MsgUser:
+			content, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(msg.Content)})
+			result = append(result, api.Message{Role: "user", Content: content})
+			i++
+
+		case MsgAssistant:
+			var blocks []api.ContentBlock
+			if msg.Content != "" {
+				blocks = append(blocks, api.ContentBlock{Type: "text", Text: msg.Content})
+			}
+			i++
+			// Consume following tool_use messages into the same assistant message.
+			for i < len(msgs) && msgs[i].Type == MsgToolUse {
+				id := msgs[i].ToolUseID
+				if id == "" {
+					tuCounter++
+					id = fmt.Sprintf("toolu_%04d", tuCounter)
+				}
+				input := json.RawMessage(msgs[i].ToolInputRaw)
+				if len(input) == 0 || !json.Valid(input) {
+					input = json.RawMessage("{}")
+				}
+				blocks = append(blocks, api.ContentBlock{
+					Type:  "tool_use",
+					ID:    id,
+					Name:  msgs[i].ToolName,
+					Input: input,
+				})
+				i++
+			}
+			if len(blocks) > 0 {
+				content, _ := json.Marshal(blocks)
+				result = append(result, api.Message{Role: "assistant", Content: content})
+			}
+
+		case MsgToolResult:
+			// Collect consecutive tool_result messages into one user message.
+			var blocks []api.UserContentBlock
+			for i < len(msgs) && msgs[i].Type == MsgToolResult {
+				id := msgs[i].ToolUseID
+				if id == "" {
+					tuCounter++
+					id = fmt.Sprintf("toolu_%04d", tuCounter)
+				}
+				isErr := msgs[i].IsError
+				blocks = append(blocks, api.UserContentBlock{
+					Type:      "tool_result",
+					ToolUseID: id,
+					Content:   msgs[i].Content,
+					IsError:   &isErr,
+				})
+				i++
+			}
+			if len(blocks) > 0 {
+				content, _ := json.Marshal(blocks)
+				result = append(result, api.Message{Role: "user", Content: content})
+			}
+
+		default:
+			// Skip system/error/thinking messages — they don't map to engine messages.
+			i++
+		}
+	}
+	return result
+}
+
 func (m *Model) updateStreamingMessage() {
 	text := m.streamText.String()
 	if text == "" {
@@ -3411,9 +3577,9 @@ func (m Model) statusHint() string {
 			return "type to search · enter confirm · esc cancel"
 		}
 		if len(m.vpSearchMatches) > 0 {
-			return "j/k scroll · n/N next/prev match · / search · p pin · i/q back"
+			return "j/k scroll · n/N next/prev match · / search · p pin · d delete · i/q back"
 		}
-		return "j/k scroll · / search · p pin · ctrl+o expand · i/q back"
+		return "j/k scroll · / search · p pin · d delete · ctrl+o expand · i/q back"
 	}
 	if m.focus == FocusModelSelector {
 		return "\u2191\u2193 select · enter confirm · esc cancel"

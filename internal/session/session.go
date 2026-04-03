@@ -98,6 +98,14 @@ func (s *Session) RenameByID(id, title string) error {
 	return s.db.UpdateSessionTitle(id, title)
 }
 
+// DeleteAllMessages removes all messages from the current session.
+func (s *Session) DeleteAllMessages() error {
+	if s.current == nil {
+		return nil
+	}
+	return s.db.DeleteAllMessages(s.current.ID)
+}
+
 // Delete removes a session by ID.
 func (s *Session) Delete(id string) error {
 	return s.db.DeleteSession(id)

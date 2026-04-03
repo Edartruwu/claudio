@@ -215,6 +215,12 @@ func (db *DB) AddMessage(sessionID, role, content, msgType, toolUseID, toolName 
 	return tx.Commit()
 }
 
+// DeleteAllMessages removes all messages for a session (without deleting the session itself).
+func (db *DB) DeleteAllMessages(sessionID string) error {
+	_, err := db.conn.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID)
+	return err
+}
+
 // GetMessages retrieves all messages for a session.
 func (db *DB) GetMessages(sessionID string) ([]MessageRecord, error) {
 	rows, err := db.conn.Query(
