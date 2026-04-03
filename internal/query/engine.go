@@ -96,6 +96,9 @@ type Engine struct {
 	toolCache *toolcache.Store
 }
 
+// defaultContextWindow is the context window size for all current Claude models.
+const defaultContextWindow = 200_000
+
 // NewEngine creates a new query engine (basic constructor for backwards compatibility).
 func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandler) *Engine {
 	tc, _ := toolcache.New(os.TempDir()+"/claudio-tool-results", 0)
@@ -108,6 +111,7 @@ func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandle
 		cacheTracker:    &cachetracker.Tracker{},
 		cacheExpiry:     cachetracker.NewExpiryWatcher(5 * time.Minute),
 		toolCache:       tc,
+		compactState:    &compact.State{MaxTokens: defaultContextWindow},
 	}
 }
 
@@ -123,7 +127,9 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	e := NewEngine(client, registry, handler)
 	e.hooks = cfg.Hooks
 	e.analytics = cfg.Analytics
-	e.compactState = cfg.CompactState
+	if cfg.CompactState != nil {
+		e.compactState = cfg.CompactState
+	}
 	e.taskRuntime = cfg.TaskRuntime
 	e.sessionID = cfg.SessionID
 	e.model = cfg.Model
@@ -266,9 +272,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		if e.analytics != nil {
 			e.analytics.RecordUsage(response.Usage.InputTokens, response.Usage.OutputTokens)
 		}
-		// Track compact state
+		// Track compact state — use InputTokens directly as the current context size
+		// (not a running sum, which would trigger compaction prematurely).
 		if e.compactState != nil {
-			e.compactState.TotalTokens += response.Usage.InputTokens + response.Usage.OutputTokens
+			e.compactState.TotalTokens = response.Usage.InputTokens
 		}
 
 		// Check cost threshold

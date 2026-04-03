@@ -282,6 +282,7 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 	c.applyThinking(req)
 	c.applyEffort(req)
 	c.applyAttribution(req)
+	c.applyMessageCacheBreakpoints(req)
 
 	eventCh := make(chan StreamEvent, 64)
 	errCh := make(chan error, 1)
@@ -367,6 +368,7 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	c.applyThinking(req)
 	c.applyEffort(req)
 	c.applyAttribution(req)
+	c.applyMessageCacheBreakpoints(req)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -398,6 +400,56 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	}
 
 	return &msgResp, nil
+}
+
+// applyMessageCacheBreakpoints adds cache_control to the last content block of
+// the second-to-last message, creating a cache breakpoint that covers all stable
+// conversation history. This avoids re-paying for the full history on every turn.
+// It also marks the last tool definition with cache_control to cache the tool schema.
+func (c *Client) applyMessageCacheBreakpoints(req *MessagesRequest) {
+	if !c.promptCaching {
+		return
+	}
+
+	// Cache tool definitions — mark the last tool with a breakpoint so the full
+	// tool schema is cached across turns.
+	if len(req.Tools) > 0 {
+		var tools []json.RawMessage
+		if json.Unmarshal(req.Tools, &tools) == nil && len(tools) > 0 {
+			lastIdx := len(tools) - 1
+			var tool map[string]json.RawMessage
+			if json.Unmarshal(tools[lastIdx], &tool) == nil {
+				tool["cache_control"], _ = json.Marshal(CacheControlBlock{Type: "ephemeral"})
+				tools[lastIdx], _ = json.Marshal(tool)
+				req.Tools, _ = json.Marshal(tools)
+			}
+		}
+	}
+
+	// Cache messages — mark the second-to-last message's last content block.
+	// The last message is the current user turn (in-flight), so we skip it.
+	if len(req.Messages) < 2 {
+		return
+	}
+
+	targetIdx := len(req.Messages) - 2
+	msg := req.Messages[targetIdx]
+
+	var blocks []json.RawMessage
+	if json.Unmarshal(msg.Content, &blocks) != nil || len(blocks) == 0 {
+		return
+	}
+
+	lastBlockIdx := len(blocks) - 1
+	var block map[string]json.RawMessage
+	if json.Unmarshal(blocks[lastBlockIdx], &block) != nil {
+		return
+	}
+	block["cache_control"], _ = json.Marshal(CacheControlBlock{Type: "ephemeral"})
+	blocks[lastBlockIdx], _ = json.Marshal(block)
+	newContent, _ := json.Marshal(blocks)
+
+	req.Messages[targetIdx] = Message{Role: msg.Role, Content: newContent}
 }
 
 // applyAttribution injects the x-anthropic-billing-header into the system prompt

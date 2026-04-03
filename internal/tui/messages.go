@@ -203,41 +203,96 @@ func isToolGroupPinned(group []toolPair) bool {
 	return false
 }
 
+// collapseRunThreshold is the minimum consecutive same-tool count to collapse into one row.
+const collapseRunThreshold = 3
+
+// toolRun is a consecutive sequence of tool pairs with the same ToolName.
+type toolRun struct {
+	name  string
+	pairs []toolPair
+}
+
+// splitIntoRuns groups consecutive same-name pairs together.
+func splitIntoRuns(group []toolPair) []toolRun {
+	var runs []toolRun
+	i := 0
+	for i < len(group) {
+		name := group[i].use.ToolName
+		j := i
+		for j < len(group) && group[j].use.ToolName == name {
+			j++
+		}
+		runs = append(runs, toolRun{name: name, pairs: group[i:j]})
+		i = j
+	}
+	return runs
+}
+
 // renderToolGroup renders a compact block of tool calls with tree connectors.
+// Consecutive runs of the same tool (≥ collapseRunThreshold) are collapsed into
+// a single summary row unless the group is expanded.
 func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
-	nameW := 8 // fixed column for tool name
+	nameW := 8
 
 	var lines []string
 
-	// Pin indicator for the group
 	if isToolGroupPinned(group) {
 		lines = append(lines, styles.PinIcon.Render("📌 pinned"))
 	}
 
-	for gi, p := range group {
-		isLast := gi == len(group)-1
+	// Build visual items: collapsed runs or individual pairs.
+	type visualItem struct {
+		isRun bool
+		run   []toolPair // populated when isRun == true
+		pair  toolPair   // populated when isRun == false
+	}
+	var items []visualItem
+	for _, run := range splitIntoRuns(group) {
+		if !expanded && len(run.pairs) >= collapseRunThreshold {
+			items = append(items, visualItem{isRun: true, run: run.pairs})
+		} else {
+			for _, p := range run.pairs {
+				items = append(items, visualItem{pair: p})
+			}
+		}
+	}
 
-		// Tree connector prefix
+	for gi, item := range items {
+		isLast := gi == len(items)-1
+
 		var connector string
-		if len(group) > 1 {
-			if isLast {
-				connector = styles.ToolConnector.Render("└─ ")
-			} else if gi == 0 {
+		if len(items) > 1 {
+			switch {
+			case gi == 0:
 				connector = styles.ToolConnector.Render("┌─ ")
-			} else {
+			case isLast:
+				connector = styles.ToolConnector.Render("└─ ")
+			default:
 				connector = styles.ToolConnector.Render("├─ ")
 			}
 		}
 
-		// Left side: icon + name + summary
+		var detailPrefix string
+		if len(items) > 1 {
+			if isLast {
+				detailPrefix = "   "
+			} else {
+				detailPrefix = styles.ToolConnector.Render("│") + "  "
+			}
+		}
+
+		if item.isRun {
+			lines = append(lines, renderCollapsedRun(item.run, connector, maxW, nameW))
+			continue
+		}
+
+		p := item.pair
 		icon := styles.ToolIcon.Render("⚡ ")
 		name := styles.ToolName.Width(nameW).Render(p.use.ToolName)
 		summaryText := formatRichSummary(p.use)
 		summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-25))
-
 		left := connector + icon + name + summary
 
-		// Right side: status
 		var status string
 		if p.result == nil {
 			status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(" running")
@@ -255,22 +310,10 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 		}
 		lines = append(lines, left+strings.Repeat(" ", gap)+status)
 
-		// Render sub-agent tool calls nested under Agent tools
 		if len(p.use.SubagentTools) > 0 {
 			lines = append(lines, renderSubagentTools(p.use.SubagentTools, maxW, nameW)...)
 		}
 
-		// Tree continuation prefix for detail lines
-		var detailPrefix string
-		if len(group) > 1 {
-			if isLast {
-				detailPrefix = "   "
-			} else {
-				detailPrefix = styles.ToolConnector.Render("│") + "  "
-			}
-		}
-
-		// Error details (always shown)
 		if p.result != nil && p.result.IsError && p.result.Content != "" {
 			detail := expandedResult(p.result.Content, 5)
 			for _, dl := range detail {
@@ -278,19 +321,68 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 			}
 		}
 
-		// Expanded details
 		if expanded {
 			lines = append(lines, renderToolExpanded(p, detailPrefix, maxW)...)
 		}
 	}
 
-	// Expand hint for collapsed groups
 	if !expanded && len(group) > 0 && group[len(group)-1].result != nil {
 		hint := styles.ToolExpandHint.Render("    ctrl+o to expand")
 		lines = append(lines, hint)
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// renderCollapsedRun renders a single summary row for N consecutive same-tool calls.
+func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) string {
+	n := len(pairs)
+	running, errors := 0, 0
+	for _, p := range pairs {
+		if p.result == nil {
+			running++
+		} else if p.result.IsError {
+			errors++
+		}
+	}
+
+	icon := styles.ToolIcon.Render("⚡ ")
+	name := styles.ToolName.Width(nameW).Render(pairs[0].use.ToolName)
+	badge := styles.ToolBadge.Render(fmt.Sprintf("×%d", n))
+
+	// Collect unique short summaries (basename only to stay compact).
+	seen := map[string]bool{}
+	var summaries []string
+	for _, p := range pairs {
+		s := formatRichSummary(p.use)
+		if idx := strings.LastIndex(s, "/"); idx >= 0 {
+			s = s[idx+1:]
+		}
+		if !seen[s] {
+			seen[s] = true
+			summaries = append(summaries, s)
+		}
+	}
+	summaryText := strings.Join(summaries, ", ")
+	summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-35))
+
+	left := connector + icon + name + badge + "  " + summary
+
+	var status string
+	switch {
+	case running > 0:
+		status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(fmt.Sprintf(" %d/%d", n-running, n))
+	case errors > 0:
+		status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
+	default:
+		status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(fmt.Sprintf(" %d done", n))
+	}
+
+	gap := maxW - lipgloss.Width(left) - lipgloss.Width(status)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + status
 }
 
 // renderSubagentTools renders nested sub-agent tool calls under an Agent tool.

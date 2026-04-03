@@ -82,6 +82,10 @@ var (
 			Foreground(Subtle).
 			Italic(true)
 
+	ToolBadge = lipgloss.NewStyle().
+			Foreground(Orange).
+			Bold(true)
+
 	ToolResultPreview = lipgloss.NewStyle().
 			Foreground(Muted)
 

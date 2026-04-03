@@ -53,7 +53,12 @@ func (s *Store) MaybePersist(toolUseID, content string) string {
 	s.index[toolUseID] = path
 	s.mu.Unlock()
 
-	return fmt.Sprintf("[tool result on disk: %s, %d bytes]", toolUseID, len(content))
+	const previewSize = 2000
+	preview := content
+	if len(preview) > previewSize {
+		preview = preview[:previewSize]
+	}
+	return fmt.Sprintf("[tool result persisted to disk — %d bytes total]\nPreview (first %d bytes):\n%s", len(content), len(preview), preview)
 }
 
 // Get retrieves a previously persisted result. Returns ("", false) if not found.
