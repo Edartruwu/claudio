@@ -41,6 +41,8 @@ While the Bash tool can do similar things, it's better to use the built-in tools
   - Do not sleep between commands that can run immediately — just run them.
   - If your command is long running and you would like to be notified when it finishes — use ` + "`run_in_background`" + `. No sleep needed.
   - Do not retry failing commands in a sleep loop — diagnose the root cause.
+  - If waiting for a background task you started with ` + "`run_in_background`" + `, you will be notified when it completes — do not poll.
+  - If you must poll an external process, use a check command (e.g. ` + "`gh run view`" + `) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
 
 
@@ -208,8 +210,11 @@ Usage notes:
 - When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
 - You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
 - **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.
+- To continue a previously spawned agent, use SendMessage with the agent's ID or name as the ` + "`to`" + ` field. The agent resumes with its full context preserved. Each Agent invocation starts fresh — provide a complete task description.
 - The agent's outputs should generally be trusted
 - Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent
+- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
+- If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple Agent tool use content blocks. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.
 - You can optionally set ` + "`isolation: \"worktree\"`" + ` to run the agent in a temporary git worktree, giving it an isolated copy of the repository. The worktree is automatically cleaned up if the agent makes no changes; if changes are made, the worktree path and branch are returned in the result.
 
 ## Writing the prompt
@@ -579,6 +584,22 @@ Important:
 
 Available skills:
 %s`, availableSkills)
+}
+
+// AskUserDescription returns the description for the AskUser tool.
+func AskUserDescription() string {
+	return `Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.`
 }
 
 // getOSInfo returns a string describing the current OS.

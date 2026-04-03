@@ -172,6 +172,8 @@ func runSinglePrompt(prompt string) error {
 		OnTurnEnd:       appInstance.MemoryExtractor(),
 	})
 	engine.SetSystem(buildFullSystemPrompt())
+	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
+	engine.SetSystemContext(buildSystemContext())
 
 	err := engine.Run(ctx, prompt)
 
@@ -199,8 +201,9 @@ func loadContextProfile(name string) (string, error) {
 	return string(data), nil
 }
 
-// buildFullSystemPrompt gathers all context (rules, CLAUDE.md, context profiles)
-// and builds the complete system prompt.
+// buildFullSystemPrompt gathers all context (rules, context profiles, memory, output style)
+// and builds the complete system prompt. CLAUDE.md is NOT included here — it moves to
+// the user context message via buildUserContext() + engine.SetUserContext().
 func buildFullSystemPrompt() string {
 	paths := config.GetPaths()
 	cwd, _ := os.Getwd()
@@ -216,13 +219,7 @@ func buildFullSystemPrompt() string {
 		}
 	}
 
-	// 2. Load CLAUDE.md / CLAUDIO.md
-	claudeMD := loadCLAUDEMD(cwd, home)
-	if claudeMD != "" {
-		sections = append(sections, prompts.CLAUDEMDSection(claudeMD))
-	}
-
-	// 3. Load rules
+	// 2. Load rules
 	rulesReg := rules.LoadAll(
 		paths.Rules,
 		cwd+"/.claudio/rules",
@@ -232,7 +229,7 @@ func buildFullSystemPrompt() string {
 		sections = append(sections, rulesContent)
 	}
 
-	// 4. Session memory (selection strategy from config)
+	// 3. Session memory (selection strategy from config)
 	if appInstance.Memory != nil {
 		switch appInstance.Config.GetMemorySelection() {
 		case "ai":
@@ -252,24 +249,42 @@ func buildFullSystemPrompt() string {
 		}
 	}
 
-	// 5. Learned instincts
+	// 4. Learned instincts
 	if appInstance.Learning != nil {
 		if instinctContent := appInstance.Learning.ForSystemPrompt(cwd); instinctContent != "" {
 			sections = append(sections, instinctContent)
 		}
 	}
 
-	// 6. Output style
+	// 5. Output style
 	if appInstance.Config.OutputStyle != "" {
 		if styleContent := prompts.OutputStyleSection(prompts.OutputStyle(appInstance.Config.OutputStyle)); styleContent != "" {
 			sections = append(sections, styleContent)
 		}
 	}
 
+	// 6. Scratchpad directory
+	scratchpadDir := filepath.Join(os.TempDir(), fmt.Sprintf("claudio-%d", os.Getpid()))
+	if scratchpadSection := prompts.ScratchpadSection(scratchpadDir); scratchpadSection != "" {
+		sections = append(sections, scratchpadSection)
+	}
+
 	// Combine all additional context
 	additionalCtx := strings.Join(sections, "\n\n")
 
 	return prompts.BuildSystemPrompt(appInstance.Config.Model, additionalCtx)
+}
+
+// buildUserContext loads CLAUDE.md/CLAUDIO.md content (raw) for use in the user context message.
+func buildUserContext() string {
+	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+	return loadCLAUDEMD(cwd, home)
+}
+
+// buildSystemContext returns the formatted git status for appending to the system prompt.
+func buildSystemContext() string {
+	return prompts.FormatSystemContext(prompts.GetGitStatus())
 }
 
 // loadCLAUDEMD finds and loads CLAUDE.md or CLAUDIO.md from the project.
@@ -453,6 +468,8 @@ func runInteractive() error {
 		tui.WithSkills(appInstance.Skills),
 		tui.WithEngineConfig(engineCfg),
 		tui.WithAppContext(appCtx),
+		tui.WithUserContext(prompts.FormatUserContextMessage(buildUserContext(), "")),
+		tui.WithSystemContext(buildSystemContext()),
 	)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 

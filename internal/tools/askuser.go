@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // AskUserTool allows the AI to ask the user structured questions with options.
@@ -37,7 +39,7 @@ type AskQuestion struct {
 }
 
 func (t *AskUserTool) Name() string        { return "AskUser" }
-func (t *AskUserTool) Description() string  { return "Ask the user structured questions with predefined options" }
+func (t *AskUserTool) Description() string { return prompts.AskUserDescription() }
 func (t *AskUserTool) IsReadOnly() bool     { return true }
 func (t *AskUserTool) RequiresApproval(_ json.RawMessage) bool { return false }
 

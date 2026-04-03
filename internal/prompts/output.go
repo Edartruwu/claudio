@@ -16,6 +16,47 @@ const (
 	StyleMarkdown OutputStyle = "markdown"
 )
 
+// OutputStyleConfig holds configuration for an output style, including whether
+// to keep the default coding task instructions alongside the style prompt.
+type OutputStyleConfig struct {
+	Name                   string
+	Prompt                 string
+	KeepCodingInstructions bool
+}
+
+// GetOutputStyleConfig returns the full config for a style (name, prompt, keepCodingInstructions).
+// Returns nil for the default style (no changes needed).
+func GetOutputStyleConfig(style OutputStyle) *OutputStyleConfig {
+	switch style {
+	case StyleVerbose:
+		return &OutputStyleConfig{
+			Name:                   "Verbose",
+			Prompt:                 OutputStyleSection(StyleVerbose),
+			KeepCodingInstructions: true,
+		}
+	case StyleConcise:
+		return &OutputStyleConfig{
+			Name:                   "Concise",
+			Prompt:                 OutputStyleSection(StyleConcise),
+			KeepCodingInstructions: true,
+		}
+	case StyleBrief:
+		return &OutputStyleConfig{
+			Name:                   "Brief",
+			Prompt:                 OutputStyleSection(StyleBrief),
+			KeepCodingInstructions: true,
+		}
+	case StyleMarkdown:
+		return &OutputStyleConfig{
+			Name:                   "Markdown",
+			Prompt:                 OutputStyleSection(StyleMarkdown),
+			KeepCodingInstructions: true,
+		}
+	default:
+		return nil
+	}
+}
+
 // OutputStyleSection returns the system prompt section for the given output style.
 func OutputStyleSection(style OutputStyle) string {
 	switch style {

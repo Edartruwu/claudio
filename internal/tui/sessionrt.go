@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/query"
 )
@@ -34,6 +35,7 @@ type SessionRuntime struct {
 	LastToolGroup  int
 	SpinText       string
 	MessageQueue   []string
+	ToolStartTimes map[string]time.Time
 
 	// Background drain
 	draining   bool

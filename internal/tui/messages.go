@@ -507,14 +507,13 @@ func renderSubagentTools(subs []SubagentToolCall, agentDurationMs int64, maxW, n
 	return lines
 }
 
-// renderSubagentSummary produces the single collapsed line shown for sub-agent tools.
-// Format: "   └─ N tools: 3×Read · 2×Glob · 1×Bash     ✓ done"
+// renderSubagentSummary produces the single collapsed line for sub-agent tools.
+// Mirrors Claude Code: "└─ Done (28 tool uses · 1m 20s)  ✓"
+//                   or "└─ In progress… · 3/28 tool uses  ⠋"
 func renderSubagentSummary(subs []SubagentToolCall, agentDurationMs int64, ind string, maxW int) string {
 	total := len(subs)
 	running, errors := 0, 0
-	counts := map[string]int{}
 	for _, s := range subs {
-		counts[s.ToolName]++
 		if s.Result == nil {
 			running++
 		} else if s.IsError {
@@ -522,47 +521,29 @@ func renderSubagentSummary(subs []SubagentToolCall, agentDurationMs int64, ind s
 		}
 	}
 
-	// Build "3×Read · 2×Glob · 1×Bash" — fixed display order for stability.
-	toolOrder := []string{"Read", "Glob", "Grep", "Bash", "Write", "Edit", "Agent", "WebFetch", "WebSearch"}
-	var parts []string
-	seen := map[string]bool{}
-	for _, name := range toolOrder {
-		if c, ok := counts[name]; ok {
-			if c == 1 {
-				parts = append(parts, name)
-			} else {
-				parts = append(parts, fmt.Sprintf("%d×%s", c, name))
-			}
-			seen[name] = true
-		}
-	}
-	// Any tools not in the fixed order go at the end.
-	for name, c := range counts {
-		if !seen[name] {
-			if c == 1 {
-				parts = append(parts, name)
-			} else {
-				parts = append(parts, fmt.Sprintf("%d×%s", c, name))
-			}
-		}
+	toolWord := "tool uses"
+	if total == 1 {
+		toolWord = "tool use"
 	}
 
-	breakdown := strings.Join(parts, " · ")
-	left := ind + styles.ToolConnector.Render("└─ ") +
-		styles.ToolSummary.Render(fmt.Sprintf("%d tools: %s", total, breakdown))
+	connector := styles.ToolConnector.Render("└─ ")
 
-	var status string
+	var left, status string
 	switch {
 	case running > 0:
-		status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(fmt.Sprintf(" %d running", running))
+		done := total - running
+		left = ind + connector + styles.SpinnerText.Render(fmt.Sprintf("In progress… · %d/%d %s", done, total, toolWord))
+		status = styles.SpinnerStyle.Render("⠋")
 	case errors > 0:
+		left = ind + connector + styles.ToolSummary.Render(fmt.Sprintf("Done (%d %s)", total, toolWord))
 		status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
 	default:
-		doneText := "done"
+		parts := []string{fmt.Sprintf("%d %s", total, toolWord)}
 		if dur := formatDuration(agentDurationMs); dur != "" {
-			doneText = dur
+			parts = append(parts, dur)
 		}
-		status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+doneText)
+		left = ind + connector + styles.ToolSummary.Render("Done ("+strings.Join(parts, " · ")+")")
+		status = styles.ToolSuccess.Render("✓")
 	}
 
 	gap := maxW - lipgloss.Width(left) - lipgloss.Width(status)

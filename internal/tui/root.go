@@ -69,8 +69,9 @@ type Model struct {
 	totalCost      float64
 	turns          int
 	spinText       string // current spinner status text
-	expandedGroups  map[int]bool // tool group msg indices that are expanded
-	lastToolGroup   int          // msg index of the last tool group start (-1 = none)
+	expandedGroups  map[int]bool          // tool group msg indices that are expanded
+	lastToolGroup   int                   // msg index of the last tool group start (-1 = none)
+	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
 	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
 	prevSessionID   string       // for alternate session switching
 	vpCursor        int          // viewport section cursor (-1 = none)
@@ -100,7 +101,9 @@ type Model struct {
 	cancelFunc   context.CancelFunc
 	eventCh      chan tuiEvent
 	approvalCh   chan bool
-	systemPrompt string
+	systemPrompt   string
+	userContext    string // CLAUDE.md injected as first user message
+	systemContext  string // git status appended to system prompt
 	commands       *commands.Registry
 	session        *session.Session
 	skills         *skills.Registry
@@ -148,6 +151,16 @@ func WithEngineConfig(cfg *query.EngineConfig) ModelOption {
 	return func(m *Model) { m.engineConfig = cfg }
 }
 
+// WithUserContext sets the CLAUDE.md user context message to inject as the first user turn.
+func WithUserContext(ctx string) ModelOption {
+	return func(m *Model) { m.userContext = ctx }
+}
+
+// WithSystemContext sets the git status context appended to the system prompt.
+func WithSystemContext(ctx string) ModelOption {
+	return func(m *Model) { m.systemContext = ctx }
+}
+
 // New creates a new TUI model.
 func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, sess *session.Session, opts ...ModelOption) Model {
 	vp := viewport.New(80, 20)
@@ -167,6 +180,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		session:        sess,
 		expandedGroups:  make(map[int]bool),
 		lastToolGroup:   -1,
+		toolStartTimes:  make(map[string]time.Time),
 		vpCursor:        -1,
 		whichKey:        whichkey.New(),
 		sessionRuntimes: make(map[string]*SessionRuntime),
@@ -1067,6 +1081,12 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	if m.systemPrompt != "" {
 		m.engine.SetSystem(m.systemPrompt)
 	}
+	if m.userContext != "" {
+		m.engine.SetUserContext(m.userContext)
+	}
+	if m.systemContext != "" {
+		m.engine.SetSystemContext(m.systemContext)
+	}
 	if len(m.pendingEngineMessages) > 0 {
 		m.engine.SetMessages(m.pendingEngineMessages)
 		m.pendingEngineMessages = nil
@@ -1133,12 +1153,14 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			m.lastToolGroup = msgIdx
 		}
 
+		m.toolStartTimes[event.toolUse.ID] = time.Now()
 		m.addMessage(ChatMessage{
 			Type:         MsgToolUse,
 			ToolName:     event.toolUse.Name,
 			ToolInput:    formatToolSummary(event.toolUse),
 			ToolInputRaw: event.toolUse.Input,
 			ToolUseID:    event.toolUse.ID,
+			DurationMs:   -1,
 		})
 		m.refreshViewport()
 
@@ -1151,14 +1173,22 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			m.planModeActive = false
 		}
 
-		// Update the tool_use message with the full input (now that streaming is done)
-		if event.toolUse.Input != nil {
-			for i := len(m.messages) - 1; i >= 0; i-- {
-				if m.messages[i].Type == MsgToolUse && m.messages[i].ToolName == event.toolUse.Name && m.messages[i].ToolInputRaw == nil {
+		// Compute execution duration.
+		var durationMs int64 = -1
+		if start, ok := m.toolStartTimes[event.toolUse.ID]; ok {
+			durationMs = time.Since(start).Milliseconds()
+			delete(m.toolStartTimes, event.toolUse.ID)
+		}
+
+		// Update the tool_use message with the full input and duration.
+		for i := len(m.messages) - 1; i >= 0; i-- {
+			if m.messages[i].Type == MsgToolUse && m.messages[i].ToolUseID == event.toolUse.ID {
+				if event.toolUse.Input != nil && m.messages[i].ToolInputRaw == nil {
 					m.messages[i].ToolInputRaw = event.toolUse.Input
 					m.messages[i].ToolInput = formatToolSummary(event.toolUse)
-					break
 				}
+				m.messages[i].DurationMs = durationMs
+				break
 			}
 		}
 		if event.result != nil {
@@ -1205,12 +1235,16 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		m.spinText = label
 		m.spinner.SetText(label)
 
+		m.toolStartTimes[event.toolUse.ID] = time.Now()
+
 		// Append as a child of the most recent Agent MsgToolUse
 		for i := len(m.messages) - 1; i >= 0; i-- {
 			if m.messages[i].Type == MsgToolUse && m.messages[i].ToolName == "Agent" {
 				m.messages[i].SubagentTools = append(m.messages[i].SubagentTools, SubagentToolCall{
-					ToolName: event.toolUse.Name,
-					Summary:  summary,
+					ToolName:   event.toolUse.Name,
+					Summary:    summary,
+					ToolUseID:  event.toolUse.ID,
+					DurationMs: -1,
 				})
 				break
 			}
@@ -1218,17 +1252,30 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 
 	case "subagent_tool_end":
-		// Find the most recent Agent MsgToolUse and update the last matching sub-agent tool
+		// Find the most recent Agent MsgToolUse and update the matching sub-agent tool
 		if event.result != nil {
 			brief := resultBrief(event.result.Content)
 			summary := formatToolSummary(event.toolUse)
+
+			var durationMs int64 = -1
+			if start, ok := m.toolStartTimes[event.toolUse.ID]; ok {
+				durationMs = time.Since(start).Milliseconds()
+				delete(m.toolStartTimes, event.toolUse.ID)
+			}
+
 			for i := len(m.messages) - 1; i >= 0; i-- {
 				if m.messages[i].Type == MsgToolUse && m.messages[i].ToolName == "Agent" {
 					subs := m.messages[i].SubagentTools
 					for j := len(subs) - 1; j >= 0; j-- {
-						if subs[j].ToolName == event.toolUse.Name && subs[j].Result == nil {
+						// Match by ToolUseID first, fall back to name+pending
+						match := subs[j].ToolUseID == event.toolUse.ID
+						if !match {
+							match = subs[j].ToolName == event.toolUse.Name && subs[j].Result == nil
+						}
+						if match {
 							m.messages[i].SubagentTools[j].Result = &brief
 							m.messages[i].SubagentTools[j].IsError = event.result.IsError
+							m.messages[i].SubagentTools[j].DurationMs = durationMs
 							if summary != "" {
 								m.messages[i].SubagentTools[j].Summary = summary
 							}
@@ -2031,6 +2078,7 @@ func (m *Model) saveSessionRuntime(sessionID string) {
 	rt.LastToolGroup = m.lastToolGroup
 	rt.SpinText = m.spinText
 	rt.MessageQueue = m.messageQueue
+	rt.ToolStartTimes = m.toolStartTimes
 
 	m.sessionRuntimes[sessionID] = rt
 	rt.StartBackgroundDrain()
@@ -2048,6 +2096,7 @@ func (m *Model) saveSessionRuntime(sessionID string) {
 	m.turns = 0
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
+	m.toolStartTimes = make(map[string]time.Time)
 	m.spinText = ""
 	m.spinner.Stop()
 	m.messageQueue = nil
@@ -2075,6 +2124,11 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 	m.lastToolGroup = rt.LastToolGroup
 	m.spinText = rt.SpinText
 	m.messageQueue = rt.MessageQueue
+	if rt.ToolStartTimes != nil {
+		m.toolStartTimes = rt.ToolStartTimes
+	} else {
+		m.toolStartTimes = make(map[string]time.Time)
+	}
 
 	if m.streaming {
 		m.spinner.Start(m.spinText)

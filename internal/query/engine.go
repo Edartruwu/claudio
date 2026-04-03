@@ -13,6 +13,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/permissions"
+	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
 	"github.com/Abraxas-365/claudio/internal/services/cachetracker"
@@ -84,6 +85,11 @@ type Engine struct {
 	costConfirmThresh float64
 	discoveredTools   map[string]bool // tools discovered via ToolSearch
 	onTurnEnd         func(messages []api.Message) // called when a turn ends (end_turn stop reason)
+
+	// user context injection (CLAUDE.md as first user message)
+	userContextMsg      string
+	userContextInjected bool
+	systemContext       string // git status appended to system (dynamic)
 
 	// continuation tracking for diminishing returns detection
 	continuationCount int
@@ -165,6 +171,18 @@ func (e *Engine) SetOnTurnEnd(fn func(messages []api.Message)) {
 	e.onTurnEnd = fn
 }
 
+// SetUserContext sets the CLAUDE.md content to inject as the first user message.
+// It will be prepended automatically on the first call to RunWithBlocks.
+func (e *Engine) SetUserContext(msg string) {
+	e.userContextMsg = msg
+	e.userContextInjected = false
+}
+
+// SetSystemContext sets dynamic context (e.g. git status) to append to the system prompt.
+func (e *Engine) SetSystemContext(ctx string) {
+	e.systemContext = ctx
+}
+
 // Run executes a single user turn: sends the message, processes the AI response,
 // executes any tool calls, and loops until the AI produces a final response.
 func (e *Engine) Run(ctx context.Context, userMessage string) error {
@@ -182,6 +200,16 @@ func (e *Engine) RunWithImages(ctx context.Context, userMessage string, images [
 
 // RunWithBlocks executes a user turn with pre-built content blocks.
 func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBlock) error {
+	// Inject user context (CLAUDE.md) as the very first user message, once per session.
+	if !e.userContextInjected && e.userContextMsg != "" && len(e.messages) == 0 {
+		ctxContent, _ := json.Marshal(e.userContextMsg)
+		e.messages = append(e.messages, api.Message{
+			Role:    "user",
+			Content: ctxContent,
+		})
+		e.userContextInjected = true
+	}
+
 	content, _ := json.Marshal(blocks)
 	e.messages = append(e.messages, api.Message{
 		Role:    "user",
@@ -215,6 +243,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 					e.compactState.TotalTokens = 0
 					e.handler.OnTextDelta("\n[Auto-compacted conversation: " + summary[:min(len(summary), 100)] + "...]\n")
 					e.fireHook(ctx, hooks.PostCompact, "", "")
+					prompts.ClearAllSections()
 				}
 			} else if e.compactState.ShouldPartialCompact() {
 				// Partial: clear old tool results at 70%
@@ -277,6 +306,12 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		// (not a running sum, which would trigger compaction prematurely).
 		if e.compactState != nil {
 			e.compactState.TotalTokens = response.Usage.InputTokens
+		}
+
+		// Special handling: if input tokens exceed 200K, trigger immediate partial
+		// compaction to avoid prompt bloat on the next turn.
+		if response.Usage.InputTokens > 200_000 && e.compactState != nil {
+			e.messages = compact.ContentClearCompact(e.messages, 10, 2048)
 		}
 
 		// Check cost threshold
@@ -742,11 +777,17 @@ func (e *Engine) fireHook(ctx context.Context, event hooks.Event, toolName, tool
 }
 
 // buildSystemWithDeferredTools returns the system prompt with a list of deferred
-// tool names appended, so the model knows they exist and can fetch them via ToolSearch.
+// tool names appended (and optionally the git status context), so the model knows
+// they exist and can fetch them via ToolSearch.
 func (e *Engine) buildSystemWithDeferredTools() string {
+	base := e.system
+	if e.systemContext != "" {
+		base = base + "\n\n" + e.systemContext
+	}
+
 	deferred := e.registry.DeferredToolNames()
 	if len(deferred) == 0 {
-		return e.system
+		return base
 	}
 
 	// Only list tools that haven't been discovered yet
@@ -757,10 +798,10 @@ func (e *Engine) buildSystemWithDeferredTools() string {
 		}
 	}
 	if len(pending) == 0 {
-		return e.system
+		return base
 	}
 
-	return e.system + "\n\n<system-reminder>\nThe following deferred tools are available via ToolSearch:\n" +
+	return base + "\n\n<system-reminder>\nThe following deferred tools are available via ToolSearch:\n" +
 		strings.Join(pending, "\n") + "\n</system-reminder>"
 }
 
