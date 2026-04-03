@@ -808,6 +808,60 @@ func TestTranslateStreamChunk_NewToolCall(t *testing.T) {
 	}
 }
 
+// TestTranslateStreamChunk_NewToolCallWithArgs verifies that when a provider
+// (e.g. Qwen) sends the tool call ID, name, AND arguments in a single chunk,
+// the arguments are emitted as an input_json_delta event (not silently dropped).
+func TestTranslateStreamChunk_NewToolCallWithArgs(t *testing.T) {
+	state := newStreamState()
+	chunk := openAIStreamChunk{
+		Choices: []openAIChoice{
+			{
+				Delta: openAIDelta{
+					ToolCalls: []openAIToolCall{
+						{
+							ID:    "call_single",
+							Type:  "function",
+							Index: 0,
+							Function: openAIFunctionCall{
+								Name:      "Write",
+								Arguments: `{"file_path":"/tmp/test.txt","content":"hello"}`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	events := translateStreamChunk(chunk, state)
+
+	// Should have content_block_start AND an input_json_delta with the arguments
+	var foundStart, foundDelta bool
+	for _, e := range events {
+		if e.Type == "content_block_start" {
+			foundStart = true
+		}
+		if e.Type == "content_block_delta" {
+			var delta map[string]string
+			if err := json.Unmarshal(e.Delta, &delta); err != nil {
+				t.Fatalf("unmarshal delta: %v", err)
+			}
+			if delta["type"] == "input_json_delta" {
+				foundDelta = true
+				if delta["partial_json"] != `{"file_path":"/tmp/test.txt","content":"hello"}` {
+					t.Errorf("partial_json = %q, want full args JSON", delta["partial_json"])
+				}
+			}
+		}
+	}
+	if !foundStart {
+		t.Error("no content_block_start event found")
+	}
+	if !foundDelta {
+		t.Error("no input_json_delta event found — args sent with ID/name were silently dropped")
+	}
+}
+
 func TestTranslateStreamChunk_ToolCallArgsDelta(t *testing.T) {
 	state := newStreamState()
 

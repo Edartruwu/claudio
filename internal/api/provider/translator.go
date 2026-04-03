@@ -389,6 +389,22 @@ func translateStreamChunk(chunk openAIStreamChunk, state *streamState) []api.Str
 					Index:        state.blockIndex,
 					ContentBlock: blockJSON,
 				})
+
+				// Some providers (e.g. Qwen) send arguments in the same
+				// chunk as the tool call ID/name.  Emit them now so the
+				// engine can accumulate the input JSON.
+				if fnArgs != "" {
+					deltaJSON, _ := json.Marshal(map[string]string{
+						"type":         "input_json_delta",
+						"partial_json": fnArgs,
+					})
+					events = append(events, api.StreamEvent{
+						Type:  "content_block_delta",
+						Index: state.blockIndex,
+						Delta: deltaJSON,
+					})
+				}
+
 				state.currentBlockIndex = state.blockIndex
 				state.blockIndex++
 			} else if fnArgs != "" {
