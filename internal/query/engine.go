@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
@@ -508,128 +509,144 @@ func (e *Engine) streamResponse(ctx context.Context, req *api.MessagesRequest) (
 	}
 }
 
-func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []toolResultBlock {
-	var results []toolResultBlock
+// approvedTool holds a tool use that has passed all pre-flight checks.
+type approvedTool struct {
+	idx  int
+	tu   tools.ToolUse
+	tool tools.Tool
+}
 
-	for _, tu := range toolUses {
+// executeTools runs all tool calls, executing read-only tools concurrently and
+// mutating tools sequentially (waiting for any in-flight reads to finish first).
+// Order of results matches the order of toolUses.
+func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []toolResultBlock {
+	results := make([]toolResultBlock, len(toolUses))
+
+	// --- Pre-flight pass (always sequential: hooks + approval have UI side effects) ---
+	approved := make([]approvedTool, 0, len(toolUses))
+	for i, tu := range toolUses {
 		tool, err := e.registry.Get(tu.Name)
 		if err != nil {
-			result := &tools.Result{
-				Content: fmt.Sprintf("Unknown tool: %s", tu.Name),
-				IsError: true,
-			}
-			e.handler.OnToolUseEnd(tu, result)
-			results = append(results, toolResultBlock{
-				Type:      "tool_result",
-				ToolUseID: tu.ID,
-				Content:   result.Content,
-				IsError:   true,
-			})
+			res := &tools.Result{Content: fmt.Sprintf("Unknown tool: %s", tu.Name), IsError: true}
+			e.handler.OnToolUseEnd(tu, res)
+			results[i] = toolResultBlock{Type: "tool_result", ToolUseID: tu.ID, Content: res.Content, IsError: true}
 			continue
 		}
 
-		// 1. PreToolUse hook
 		if blocked := e.fireHook(ctx, hooks.PreToolUse, tu.Name, string(tu.Input)); blocked {
-			result := &tools.Result{
-				Content: fmt.Sprintf("Tool %s was blocked by a PreToolUse hook", tu.Name),
-				IsError: true,
-			}
-			e.handler.OnToolUseEnd(tu, result)
-			results = append(results, toolResultBlock{
-				Type:      "tool_result",
-				ToolUseID: tu.ID,
-				Content:   result.Content,
-				IsError:   true,
-			})
+			res := &tools.Result{Content: fmt.Sprintf("Tool %s was blocked by a PreToolUse hook", tu.Name), IsError: true}
+			e.handler.OnToolUseEnd(tu, res)
+			results[i] = toolResultBlock{Type: "tool_result", ToolUseID: tu.ID, Content: res.Content, IsError: true}
 			continue
 		}
 
-		// 2. Permission check (mode-aware)
-		// Check if a rule explicitly denies this tool call
 		if behavior, matched := permissions.Match(tu.Name, tu.Input, e.permissionRules); matched && behavior == "deny" {
-			result := &tools.Result{
-				Content: fmt.Sprintf("Tool %s was denied by permission rule", tu.Name),
-				IsError: true,
-			}
-			e.handler.OnToolUseEnd(tu, result)
-			results = append(results, toolResultBlock{
-				Type:      "tool_result",
-				ToolUseID: tu.ID,
-				Content:   result.Content,
-				IsError:   true,
-			})
+			res := &tools.Result{Content: fmt.Sprintf("Tool %s was denied by permission rule", tu.Name), IsError: true}
+			e.handler.OnToolUseEnd(tu, res)
+			results[i] = toolResultBlock{Type: "tool_result", ToolUseID: tu.ID, Content: res.Content, IsError: true}
 			continue
 		}
 
 		if e.shouldRequireApproval(tool, tu.Input) {
 			if !e.handler.OnToolApprovalNeeded(tu) {
-				result := &tools.Result{
-					Content: fmt.Sprintf("Tool %s was denied by user", tu.Name),
-					IsError: true,
-				}
-				e.handler.OnToolUseEnd(tu, result)
-				results = append(results, toolResultBlock{
-					Type:      "tool_result",
-					ToolUseID: tu.ID,
-					Content:   result.Content,
-					IsError:   true,
-				})
+				res := &tools.Result{Content: fmt.Sprintf("Tool %s was denied by user", tu.Name), IsError: true}
+				e.handler.OnToolUseEnd(tu, res)
+				results[i] = toolResultBlock{Type: "tool_result", ToolUseID: tu.ID, Content: res.Content, IsError: true}
 				continue
 			}
 		}
 
-		// 3. Execute
 		if e.analytics != nil {
 			e.analytics.RecordToolCall()
 		}
-
-		// Track tools discovered via ToolSearch
 		if tu.Name == "ToolSearch" {
 			e.trackDiscoveredTools(tu.Input)
 		}
 
-		result, err := tool.Execute(ctx, tu.Input)
-		if err != nil {
-			result = &tools.Result{
-				Content: fmt.Sprintf("Tool execution error: %v", err),
-				IsError: true,
-			}
-		}
-
-		// 4. PostToolUse hook
-		if result.IsError {
-			e.fireHook(ctx, hooks.PostToolUseFailure, tu.Name, result.Content)
-		} else {
-			e.fireHook(ctx, hooks.PostToolUse, tu.Name, result.Content)
-		}
-
-		// 5. Secret scanning on output
-		if secrets := security.ScanForSecrets(result.Content); len(secrets) > 0 {
-			result.Content = security.RedactSecrets(result.Content)
-			result.Content += "\n\n[WARNING: Potential secrets detected and redacted in output]"
-		}
-
-		e.handler.OnToolUseEnd(tu, result)
-
-		// Offload large results to disk; truncate anything still over 100KB
-		content := result.Content
-		if e.toolCache != nil {
-			content = e.toolCache.MaybePersist(tu.ID, content)
-		}
-		const maxContent = 100000
-		if len(content) > maxContent {
-			content = content[:maxContent] + "\n... (truncated)"
-		}
-
-		results = append(results, toolResultBlock{
-			Type:      "tool_result",
-			ToolUseID: tu.ID,
-			Content:   content,
-			IsError:   result.IsError,
-		})
+		approved = append(approved, approvedTool{idx: i, tu: tu, tool: tool})
 	}
 
+	// --- Execution pass: batch read-only tools concurrently, flush before mutating tools ---
+	type execResult struct {
+		idx int
+		blk toolResultBlock
+	}
+	var batch []approvedTool
+
+	flushBatch := func() {
+		if len(batch) == 0 {
+			return
+		}
+		if len(batch) == 1 {
+			at := batch[0]
+			results[at.idx] = e.runSingleTool(ctx, at.tu, at.tool)
+		} else {
+			ch := make(chan execResult, len(batch))
+			var wg sync.WaitGroup
+			for _, at := range batch {
+				wg.Add(1)
+				go func(at approvedTool) {
+					defer wg.Done()
+					ch <- execResult{idx: at.idx, blk: e.runSingleTool(ctx, at.tu, at.tool)}
+				}(at)
+			}
+			wg.Wait()
+			close(ch)
+			for er := range ch {
+				results[er.idx] = er.blk
+			}
+		}
+		batch = batch[:0]
+	}
+
+	for _, at := range approved {
+		if at.tool.IsReadOnly() {
+			batch = append(batch, at)
+		} else {
+			flushBatch() // drain concurrent reads before any mutating tool
+			results[at.idx] = e.runSingleTool(ctx, at.tu, at.tool)
+		}
+	}
+	flushBatch()
+
 	return results
+}
+
+// runSingleTool executes one tool and applies post-processing (hooks, secret scan, disk offload).
+func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools.Tool) toolResultBlock {
+	result, err := tool.Execute(ctx, tu.Input)
+	if err != nil {
+		result = &tools.Result{Content: fmt.Sprintf("Tool execution error: %v", err), IsError: true}
+	}
+
+	if result.IsError {
+		e.fireHook(ctx, hooks.PostToolUseFailure, tu.Name, result.Content)
+	} else {
+		e.fireHook(ctx, hooks.PostToolUse, tu.Name, result.Content)
+	}
+
+	if secrets := security.ScanForSecrets(result.Content); len(secrets) > 0 {
+		result.Content = security.RedactSecrets(result.Content)
+		result.Content += "\n\n[WARNING: Potential secrets detected and redacted in output]"
+	}
+
+	e.handler.OnToolUseEnd(tu, result)
+
+	content := result.Content
+	if e.toolCache != nil {
+		content = e.toolCache.MaybePersist(tu.ID, content)
+	}
+	const maxContent = 100_000
+	if len(content) > maxContent {
+		content = content[:maxContent] + "\n... (truncated)"
+	}
+
+	return toolResultBlock{
+		Type:      "tool_result",
+		ToolUseID: tu.ID,
+		Content:   content,
+		IsError:   result.IsError,
+	}
 }
 
 // pollBackgroundTasks checks for completed background tasks and injects their results
