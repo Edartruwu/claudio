@@ -269,9 +269,13 @@ func translateUserBlocks(blocks []api.ContentBlock) ([]openAIMessage, error) {
 			}
 			// tool_result -> tool message
 			content := extractToolResultContent(block)
+			toolID := block.ID
+			if toolID == "" {
+				toolID = block.ToolUseID
+			}
 			result = append(result, openAIMessage{
 				Role:       "tool",
-				ToolCallID: block.ID,
+				ToolCallID: toolID,
 				Content:    content,
 			})
 		case "image":
@@ -299,6 +303,9 @@ func translateUserBlocks(blocks []api.ContentBlock) ([]openAIMessage, error) {
 func extractToolResultContent(block api.ContentBlock) string {
 	if block.Text != "" {
 		return block.Text
+	}
+	if block.Content != "" {
+		return block.Content
 	}
 	// Some tool results store content in Input as an array of content blocks
 	if len(block.Input) > 0 {

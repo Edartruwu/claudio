@@ -85,9 +85,10 @@ func ExtractFileAttachments(text, cwd string) ([]FileAttachment, string) {
 
 		attachments = append([]FileAttachment{att}, attachments...) // prepend to maintain order
 
-		// Remove @mention from cleaned text — file contents are sent as
-		// separate content blocks so the reference is redundant.
-		cleaned = cleaned[:m[0]] + cleaned[m[1]:]
+		// Replace @mention with just the display path (strip @ prefix and quotes).
+		// File contents are sent as separate context blocks; the cleaned text keeps
+		// the filename so the user's intent is readable.
+		cleaned = cleaned[:m[0]] + att.DisplayPath + cleaned[m[1]:]
 	}
 
 	cleaned = strings.TrimSpace(cleaned)

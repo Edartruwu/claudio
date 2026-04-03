@@ -99,12 +99,26 @@ func (c *Client) AddModelRoute(pattern, providerName string) {
 }
 
 // resolveProvider returns the provider for the given model, or nil to use the default Anthropic path.
+// It checks routes against both the given model name and any shortcut alias that maps to it.
 func (c *Client) resolveProvider(model string) Provider {
 	for pattern, provName := range c.modelRoutes {
 		matched, _ := filepath.Match(pattern, model)
 		if matched {
 			if p, ok := c.providers[provName]; ok {
 				return p
+			}
+		}
+	}
+	// If no direct match, check if any shortcut alias that resolves to this model matches a route.
+	for alias, resolved := range c.modelShortcuts {
+		if resolved == model {
+			for pattern, provName := range c.modelRoutes {
+				matched, _ := filepath.Match(pattern, alias)
+				if matched {
+					if p, ok := c.providers[provName]; ok {
+						return p
+					}
+				}
 			}
 		}
 	}
@@ -360,11 +374,13 @@ type StreamEvent struct {
 
 // ContentBlock represents a content block in the response.
 type ContentBlock struct {
-	Type      string          `json:"type"` // "text", "tool_use", "thinking"
+	Type      string          `json:"type"` // "text", "tool_use", "tool_result", "thinking"
 	Text      string          `json:"text,omitempty"`
 	Thinking  string          `json:"thinking,omitempty"`
 	Signature string          `json:"signature,omitempty"` // Required when sending thinking blocks back
 	ID        string          `json:"id,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"` // Used in tool_result blocks
+	Content   string          `json:"content,omitempty"`     // Used in tool_result blocks
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 }

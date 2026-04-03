@@ -678,11 +678,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					msgIdx := m.vpSections[m.vpCursor].MsgIndex
 					if msgIdx >= 0 && msgIdx < len(m.messages) {
 						m.deleteInteraction(msgIdx)
-						// Adjust cursor
+						m.refreshViewport()
 						if len(m.vpSections) == 0 {
 							m.vpCursor = -1
 						} else {
-							m.refreshViewport()
 							if m.vpCursor >= len(m.vpSections) {
 								m.vpCursor = len(m.vpSections) - 1
 							}
@@ -2477,44 +2476,78 @@ func reconstructEngineMessages(storedMsgs []storage.MessageRecord) []api.Message
 }
 
 // sanitizeToolPairs removes unmatched tool_use/tool_result pairs from a
-// reconstructed message list. Two cases are handled:
-//
-//  1. An assistant message has tool_use blocks but the immediately following
-//     message is not a user message whose content contains only tool_results
-//     (orphaned tool_use — session ended before results were saved). The
-//     tool_use blocks are stripped; any text content is kept.
-//
-//  2. A user message contains only tool_result blocks but the previous
-//     message is not an assistant message with tool_use blocks (orphaned
-//     tool_result). The entire user message is dropped.
+// reconstructed message list using ID-level matching. The Anthropic API requires
+// that every tool_result in a user message has a matching tool_use (by ID) in
+// the immediately preceding assistant message, and vice-versa.
 func sanitizeToolPairs(msgs []api.Message) []api.Message {
-	type contentBlock struct {
+	type toolUseHeader struct {
 		Type string `json:"type"`
+		ID   string `json:"id"`
+	}
+	type toolResultHeader struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
 	}
 
-	hasType := func(content json.RawMessage, typ string) bool {
+	extractToolUseIDs := func(content json.RawMessage) map[string]bool {
 		var blocks []json.RawMessage
 		if json.Unmarshal(content, &blocks) != nil {
-			return false
+			return nil
 		}
+		ids := map[string]bool{}
 		for _, b := range blocks {
-			var block contentBlock
-			if json.Unmarshal(b, &block) == nil && block.Type == typ {
-				return true
+			var h toolUseHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_use" && h.ID != "" {
+				ids[h.ID] = true
 			}
 		}
-		return false
+		return ids
 	}
 
-	stripToolUse := func(content json.RawMessage) json.RawMessage {
+	extractToolResultIDs := func(content json.RawMessage) map[string]bool {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return nil
+		}
+		ids := map[string]bool{}
+		for _, b := range blocks {
+			var h toolResultHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_result" && h.ToolUseID != "" {
+				ids[h.ToolUseID] = true
+			}
+		}
+		return ids
+	}
+
+	stripToolUseByID := func(content json.RawMessage, removeIDs map[string]bool) json.RawMessage {
 		var blocks []json.RawMessage
 		if json.Unmarshal(content, &blocks) != nil {
 			return content
 		}
 		var kept []json.RawMessage
 		for _, b := range blocks {
-			var block contentBlock
-			if json.Unmarshal(b, &block) == nil && block.Type == "tool_use" {
+			var h toolUseHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_use" && removeIDs[h.ID] {
+				continue
+			}
+			kept = append(kept, b)
+		}
+		if len(kept) == 0 {
+			return nil
+		}
+		out, _ := json.Marshal(kept)
+		return out
+	}
+
+	stripToolResultByID := func(content json.RawMessage, removeIDs map[string]bool) json.RawMessage {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return content
+		}
+		var kept []json.RawMessage
+		for _, b := range blocks {
+			var h toolResultHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_result" && removeIDs[h.ToolUseID] {
 				continue
 			}
 			kept = append(kept, b)
@@ -2527,28 +2560,65 @@ func sanitizeToolPairs(msgs []api.Message) []api.Message {
 	}
 
 	result := make([]api.Message, 0, len(msgs))
-	for i, msg := range msgs {
-		if msg.Role == "assistant" && hasType(msg.Content, "tool_use") {
-			// Valid only if immediately followed by a user message with tool_results
-			if i+1 < len(msgs) && msgs[i+1].Role == "user" && hasType(msgs[i+1].Content, "tool_result") {
-				result = append(result, msg)
-			} else {
-				// Strip tool_use blocks; keep any text content
-				stripped := stripToolUse(msg.Content)
+	for i := 0; i < len(msgs); i++ {
+		msg := msgs[i]
+
+		useIDs := extractToolUseIDs(msg.Content)
+		if msg.Role == "assistant" && len(useIDs) > 0 {
+			var resultIDs map[string]bool
+			if i+1 < len(msgs) && msgs[i+1].Role == "user" {
+				resultIDs = extractToolResultIDs(msgs[i+1].Content)
+			}
+			orphaned := map[string]bool{}
+			for id := range useIDs {
+				if !resultIDs[id] {
+					orphaned[id] = true
+				}
+			}
+			if len(orphaned) == len(useIDs) {
+				stripped := stripToolUseByID(msg.Content, useIDs)
 				if stripped != nil {
 					result = append(result, api.Message{Role: "assistant", Content: stripped})
 				}
-			}
-			continue
-		}
-		if msg.Role == "user" && hasType(msg.Content, "tool_result") {
-			// Valid only if immediately preceded by an assistant message with tool_use
-			if len(result) > 0 && result[len(result)-1].Role == "assistant" && hasType(result[len(result)-1].Content, "tool_use") {
+			} else if len(orphaned) > 0 {
+				stripped := stripToolUseByID(msg.Content, orphaned)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "assistant", Content: stripped})
+				}
+			} else {
 				result = append(result, msg)
 			}
-			// Otherwise drop the orphaned tool_result message
 			continue
 		}
+
+		resultIDs := extractToolResultIDs(msg.Content)
+		if msg.Role == "user" && len(resultIDs) > 0 {
+			var prevUseIDs map[string]bool
+			if len(result) > 0 && result[len(result)-1].Role == "assistant" {
+				prevUseIDs = extractToolUseIDs(result[len(result)-1].Content)
+			}
+			orphaned := map[string]bool{}
+			for id := range resultIDs {
+				if !prevUseIDs[id] {
+					orphaned[id] = true
+				}
+			}
+			if len(orphaned) == len(resultIDs) {
+				stripped := stripToolResultByID(msg.Content, resultIDs)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "user", Content: stripped})
+				}
+			} else if len(orphaned) > 0 {
+				stripped := stripToolResultByID(msg.Content, orphaned)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "user", Content: stripped})
+				}
+			} else {
+				result = append(result, msg)
+			}
+			continue
+		}
+
 		result = append(result, msg)
 	}
 	return result
@@ -2915,6 +2985,13 @@ func (m *Model) deleteInteraction(msgIdx int) {
 		m.expandedGroups = newExpanded
 	}
 
+	// Fix lastToolGroup index.
+	if m.lastToolGroup >= start && m.lastToolGroup < end {
+		m.lastToolGroup = -1
+	} else if m.lastToolGroup >= end {
+		m.lastToolGroup -= end - start
+	}
+
 	// Re-persist: delete all messages for the session and re-add the remaining ones.
 	if m.session != nil && m.session.Current() != nil {
 		_ = m.session.DeleteAllMessages()
@@ -2928,7 +3005,14 @@ func (m *Model) deleteInteraction(msgIdx int) {
 // This mirrors the grouping logic of reconstructEngineMessages but works from in-memory
 // ChatMessages instead of DB records.
 func engineMessagesFromChat(msgs []ChatMessage) []api.Message {
+	type trBlock struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
+		Content   string `json:"content"`
+	}
+
 	var result []api.Message
+	var pendingIDs []string
 	tuCounter := 0
 
 	i := 0
@@ -2947,12 +3031,14 @@ func engineMessagesFromChat(msgs []ChatMessage) []api.Message {
 			}
 			i++
 			// Consume following tool_use messages into the same assistant message.
+			pendingIDs = nil
 			for i < len(msgs) && msgs[i].Type == MsgToolUse {
 				id := msgs[i].ToolUseID
 				if id == "" {
 					tuCounter++
 					id = fmt.Sprintf("toolu_%04d", tuCounter)
 				}
+				pendingIDs = append(pendingIDs, id)
 				input := json.RawMessage(msgs[i].ToolInputRaw)
 				if len(input) == 0 || !json.Valid(input) {
 					input = json.RawMessage("{}")
@@ -2971,34 +3057,45 @@ func engineMessagesFromChat(msgs []ChatMessage) []api.Message {
 			}
 
 		case MsgToolResult:
-			// Collect consecutive tool_result messages into one user message.
-			var blocks []api.UserContentBlock
+			// Skip orphaned tool_results with no preceding tool_use.
+			if len(pendingIDs) == 0 {
+				for i < len(msgs) && msgs[i].Type == MsgToolResult {
+					i++
+				}
+				continue
+			}
+			var trs []trBlock
+			j := 0
 			for i < len(msgs) && msgs[i].Type == MsgToolResult {
 				id := msgs[i].ToolUseID
 				if id == "" {
-					tuCounter++
-					id = fmt.Sprintf("toolu_%04d", tuCounter)
+					if j < len(pendingIDs) {
+						id = pendingIDs[j]
+					} else {
+						tuCounter++
+						id = fmt.Sprintf("toolu_%04d", tuCounter)
+					}
 				}
-				isErr := msgs[i].IsError
-				blocks = append(blocks, api.UserContentBlock{
+				trs = append(trs, trBlock{
 					Type:      "tool_result",
 					ToolUseID: id,
 					Content:   msgs[i].Content,
-					IsError:   &isErr,
 				})
 				i++
+				j++
 			}
-			if len(blocks) > 0 {
-				content, _ := json.Marshal(blocks)
+			if len(trs) > 0 {
+				content, _ := json.Marshal(trs)
 				result = append(result, api.Message{Role: "user", Content: content})
 			}
+			pendingIDs = nil
 
 		default:
 			// Skip system/error/thinking messages — they don't map to engine messages.
 			i++
 		}
 	}
-	return result
+	return sanitizeToolPairs(result)
 }
 
 func (m *Model) updateStreamingMessage() {

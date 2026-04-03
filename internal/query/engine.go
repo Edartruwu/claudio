@@ -397,13 +397,13 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			continue
 		}
 
-		// Poll background tasks and inject completed results
-		e.pollBackgroundTasks()
-
 		// Execute tools and build result message
 		toolResults := e.executeTools(ctx, response.ToolUses)
 
-		// Append tool results as a user message
+		// Append tool results as a user message — must be immediately after the
+		// assistant message so tool_result blocks have a matching tool_use in the
+		// preceding message. pollBackgroundTasks runs after so it never wedges
+		// between the assistant(tool_use) and user(tool_results) pair.
 		resultContent, _ := json.Marshal(toolResults)
 		e.messages = append(e.messages, api.Message{
 			Role:    "user",
@@ -415,6 +415,11 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		// Pass the ReadCache so cleared Read results have their cache entries invalidated —
 		// otherwise the model gets a stale stub pointing to content that no longer exists.
 		e.messages = compact.MicroCompact(e.messages, 6, 2048, e.registry.ReadCache())
+
+		// Poll background tasks and inject completed results. Runs after tool
+		// results are appended so completed-task notifications appear as a
+		// follow-up user message, not between the assistant and its tool results.
+		e.pollBackgroundTasks()
 	}
 }
 

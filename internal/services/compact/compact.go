@@ -95,8 +95,18 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 		pinned = pinnedIndices[0]
 	}
 
-	// Split into old (to summarize) and recent (to keep)
+	// Split into old (to summarize) and recent (to keep).
+	// Adjust cutoff so we never split a tool_use/tool_result pair —
+	// if the first "recent" message has tool_result blocks, pull the
+	// cutoff back to include the preceding assistant message (with the
+	// matching tool_use blocks).
 	cutoff := len(messages) - keepLast
+	for cutoff > 0 && messageHasToolResults(messages[cutoff]) {
+		cutoff--
+	}
+	if cutoff <= 0 {
+		return messages, "", nil
+	}
 	recentMessages := messages[cutoff:]
 
 	// Separate pinned messages from old messages
@@ -154,7 +164,7 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 	summaryContent, _ := json.Marshal(fmt.Sprintf("[Conversation Summary]\n%s", summary))
 	compacted := []api.Message{
 		{Role: "user", Content: summaryContent},
-		{Role: "assistant", Content: json.RawMessage(`"Understood. I have the context from the summary. Let's continue."`)},
+		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"Understood. I have the context from the summary. Let's continue."}]`)},
 	}
 
 	// Insert pinned messages (they need to maintain valid user/assistant alternation)
@@ -168,14 +178,203 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 		if len(pinnedMessages) > 0 && pinnedMessages[len(pinnedMessages)-1].Role == "user" {
 			compacted = append(compacted, api.Message{
 				Role:    "assistant",
-				Content: json.RawMessage(`"Noted the pinned context."`),
+				Content: json.RawMessage(`[{"type":"text","text":"Noted the pinned context."}]`),
 			})
 		}
 	}
 
 	compacted = append(compacted, recentMessages...)
 
+	// Sanitize: drop orphaned tool_result messages that no longer have a
+	// matching assistant tool_use after compaction reshuffled messages.
+	compacted = sanitizeToolPairs(compacted)
+
 	return compacted, summary, nil
+}
+
+// messageHasToolResults returns true if the message contains any tool_result content blocks.
+func messageHasToolResults(msg api.Message) bool {
+	var blocks []json.RawMessage
+	if json.Unmarshal(msg.Content, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		var block struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(b, &block) == nil && block.Type == "tool_result" {
+			return true
+		}
+	}
+	return false
+}
+
+// sanitizeToolPairs removes orphaned tool_use/tool_result blocks that lost
+// their counterpart during compaction. The Anthropic API requires that every
+// tool_result in a user message has a matching tool_use (by ID) in the
+// immediately preceding assistant message, and vice-versa. This function
+// enforces that constraint by ID-matching, not just by block type.
+func sanitizeToolPairs(msgs []api.Message) []api.Message {
+	type toolUseHeader struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+	}
+	type toolResultHeader struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
+	}
+
+	// Extract tool_use IDs from an assistant message's content blocks.
+	extractToolUseIDs := func(content json.RawMessage) map[string]bool {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return nil
+		}
+		ids := map[string]bool{}
+		for _, b := range blocks {
+			var h toolUseHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_use" && h.ID != "" {
+				ids[h.ID] = true
+			}
+		}
+		return ids
+	}
+
+	// Extract tool_result IDs from a user message's content blocks.
+	extractToolResultIDs := func(content json.RawMessage) map[string]bool {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return nil
+		}
+		ids := map[string]bool{}
+		for _, b := range blocks {
+			var h toolResultHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_result" && h.ToolUseID != "" {
+				ids[h.ToolUseID] = true
+			}
+		}
+		return ids
+	}
+
+	// Strip specific tool_use blocks by ID from content; returns nil if nothing remains.
+	stripToolUseByID := func(content json.RawMessage, removeIDs map[string]bool) json.RawMessage {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return content
+		}
+		var kept []json.RawMessage
+		for _, b := range blocks {
+			var h toolUseHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_use" && removeIDs[h.ID] {
+				continue
+			}
+			kept = append(kept, b)
+		}
+		if len(kept) == 0 {
+			return nil
+		}
+		out, _ := json.Marshal(kept)
+		return out
+	}
+
+	// Strip specific tool_result blocks by ID from content; returns nil if nothing remains.
+	stripToolResultByID := func(content json.RawMessage, removeIDs map[string]bool) json.RawMessage {
+		var blocks []json.RawMessage
+		if json.Unmarshal(content, &blocks) != nil {
+			return content
+		}
+		var kept []json.RawMessage
+		for _, b := range blocks {
+			var h toolResultHeader
+			if json.Unmarshal(b, &h) == nil && h.Type == "tool_result" && removeIDs[h.ToolUseID] {
+				continue
+			}
+			kept = append(kept, b)
+		}
+		if len(kept) == 0 {
+			return nil
+		}
+		out, _ := json.Marshal(kept)
+		return out
+	}
+
+	// First pass: pair adjacent assistant(tool_use) → user(tool_result) by ID.
+	// Build the result list, stripping unmatched IDs from both sides.
+	result := make([]api.Message, 0, len(msgs))
+	for i := 0; i < len(msgs); i++ {
+		msg := msgs[i]
+
+		useIDs := extractToolUseIDs(msg.Content)
+		if msg.Role == "assistant" && len(useIDs) > 0 {
+			// Look ahead: does the next message have matching tool_results?
+			var resultIDs map[string]bool
+			if i+1 < len(msgs) && msgs[i+1].Role == "user" {
+				resultIDs = extractToolResultIDs(msgs[i+1].Content)
+			}
+
+			// Find tool_use IDs that have no matching tool_result in the next message.
+			orphanedUseIDs := map[string]bool{}
+			for id := range useIDs {
+				if !resultIDs[id] {
+					orphanedUseIDs[id] = true
+				}
+			}
+
+			if len(orphanedUseIDs) == len(useIDs) {
+				// ALL tool_use blocks are orphaned — strip them all
+				stripped := stripToolUseByID(msg.Content, useIDs)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "assistant", Content: stripped})
+				}
+			} else if len(orphanedUseIDs) > 0 {
+				// Some are orphaned — strip only those
+				stripped := stripToolUseByID(msg.Content, orphanedUseIDs)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "assistant", Content: stripped})
+				}
+			} else {
+				result = append(result, msg)
+			}
+			continue
+		}
+
+		resultIDs := extractToolResultIDs(msg.Content)
+		if msg.Role == "user" && len(resultIDs) > 0 {
+			// Look back: does the previous result message have matching tool_uses?
+			var prevUseIDs map[string]bool
+			if len(result) > 0 && result[len(result)-1].Role == "assistant" {
+				prevUseIDs = extractToolUseIDs(result[len(result)-1].Content)
+			}
+
+			// Find tool_result IDs that have no matching tool_use in the previous message.
+			orphanedResultIDs := map[string]bool{}
+			for id := range resultIDs {
+				if !prevUseIDs[id] {
+					orphanedResultIDs[id] = true
+				}
+			}
+
+			if len(orphanedResultIDs) == len(resultIDs) {
+				// ALL tool_result blocks are orphaned — strip them, keep any text blocks
+				stripped := stripToolResultByID(msg.Content, resultIDs)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "user", Content: stripped})
+				}
+			} else if len(orphanedResultIDs) > 0 {
+				// Some are orphaned — strip only those
+				stripped := stripToolResultByID(msg.Content, orphanedResultIDs)
+				if stripped != nil {
+					result = append(result, api.Message{Role: "user", Content: stripped})
+				}
+			} else {
+				result = append(result, msg)
+			}
+			continue
+		}
+
+		result = append(result, msg)
+	}
+	return result
 }
 
 // readHeavyTools are tools whose output can be safely cleared (read-only, reproducible).
