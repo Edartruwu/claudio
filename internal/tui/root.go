@@ -966,6 +966,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case taskspanel.RefreshMsg:
+		if m.activePanel != nil {
+			if tp, ok := m.activePanel.(*taskspanel.Panel); ok {
+				cmd := tp.HandleRefresh()
+				m.refreshViewport()
+				return m, cmd
+			}
+		}
+		return m, nil
+
 	case engineEventMsg:
 		return m.handleEngineEvent(tuiEvent(msg))
 

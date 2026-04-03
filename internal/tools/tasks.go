@@ -34,6 +34,19 @@ var GlobalTaskStore = &TaskStore{
 	tasks: make(map[string]*Task),
 }
 
+// List returns all non-deleted tasks sorted by numeric ID.
+func (s *TaskStore) List() []*Task {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*Task
+	for _, t := range s.tasks {
+		if t.Status != "deleted" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // --- TaskCreateTool ---
 
 type TaskCreateTool struct {
