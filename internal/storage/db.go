@@ -57,6 +57,19 @@ func (db *DB) migrate() error {
 		return fmt.Errorf("migration error reading version: %w", err)
 	}
 
+	// First time running with the versioned system: the DB may already have
+	// columns from the old run-everything approach. Detect what's present and
+	// fast-forward the version so we don't re-run migrations that already
+	// succeeded.
+	if version == 0 {
+		version = db.detectExistingSchemaVersion()
+		if version > 0 {
+			if _, err := db.conn.Exec(`INSERT INTO schema_version (version) VALUES (?)`, version); err != nil {
+				return fmt.Errorf("migration error bootstrapping version: %w", err)
+			}
+		}
+	}
+
 	// Each entry is a migration applied exactly once, in order.
 	// Never edit existing entries — only append new ones.
 	migrations := []string{
@@ -145,4 +158,58 @@ func (db *DB) migrate() error {
 	}
 
 	return nil
+}
+
+// detectExistingSchemaVersion inspects the live schema to determine how far
+// the old (unversioned) migration runner had progressed. This is called exactly
+// once when the schema_version table is empty, letting us fast-forward past
+// migrations that already succeeded.
+func (db *DB) detectExistingSchemaVersion() int {
+	hasColumn := func(table, column string) bool {
+		rows, err := db.conn.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+		if err != nil {
+			return false
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var cid int
+			var name, typ string
+			var notNull, pk int
+			var dflt interface{}
+			if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+				continue
+			}
+			if name == column {
+				return true
+			}
+		}
+		return false
+	}
+	hasTable := func(table string) bool {
+		var n int
+		db.conn.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table,
+		).Scan(&n)
+		return n > 0
+	}
+
+	switch {
+	case hasTable("instincts"):
+		return 13
+	case hasTable("audit_log"):
+		// audit_log was added after the parent_session_id columns (migrations 10-12)
+		return 12
+	case hasColumn("sessions", "agent_type"):
+		return 9
+	case hasColumn("sessions", "parent_session_id"):
+		return 7
+	case hasTable("events"):
+		return 6
+	case hasTable("messages"):
+		return 3
+	case hasTable("sessions"):
+		return 1
+	default:
+		return 0
+	}
 }
