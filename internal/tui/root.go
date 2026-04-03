@@ -2017,13 +2017,28 @@ func (m *Model) doSwitchSession(id string) {
 			})
 		}
 
-		// Restore engine conversation history so the model has full context
+		// Restore engine conversation history so the model has full context.
+		// Create the engine eagerly here so slash commands like /compact work
+		// immediately after resume without needing to send a message first.
 		engineMsgs := reconstructEngineMessages(storedMsgs)
-		if m.engine != nil {
-			m.engine.SetMessages(engineMsgs)
-		} else {
-			m.pendingEngineMessages = engineMsgs
+		if m.engine == nil {
+			handler := &tuiEventHandler{ch: m.eventCh, approvalCh: m.approvalCh}
+			if m.engineConfig != nil {
+				m.engine = query.NewEngineWithConfig(m.apiClient, m.registry, handler, *m.engineConfig)
+			} else {
+				m.engine = query.NewEngine(m.apiClient, m.registry, handler)
+			}
+			if m.systemPrompt != "" {
+				m.engine.SetSystem(m.systemPrompt)
+			}
+			if m.userContext != "" {
+				m.engine.SetUserContext(m.userContext)
+			}
+			if m.systemContext != "" {
+				m.engine.SetSystemContext(m.systemContext)
+			}
 		}
+		m.engine.SetMessages(engineMsgs)
 
 		// Restore turn count and estimate tokens from stored content
 		for _, msg := range storedMsgs {
