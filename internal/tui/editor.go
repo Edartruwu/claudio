@@ -14,6 +14,11 @@ type editorFinishedMsg struct {
 	err     error
 }
 
+// planEditorFinishedMsg is sent when the plan file editor exits (from the plan approval dialog).
+type planEditorFinishedMsg struct {
+	err error
+}
+
 // getEditor returns the user's preferred editor from $VISUAL or $EDITOR,
 // falling back to "vi".
 func getEditor() string {
@@ -62,5 +67,20 @@ func openExternalEditor(content string) tea.Cmd {
 			return editorFinishedMsg{err: readErr}
 		}
 		return editorFinishedMsg{content: strings.TrimRight(string(data), "\n")}
+	})
+}
+
+// openPlanEditor opens the plan file directly in the user's editor.
+// When the editor exits, it sends planEditorFinishedMsg so the caller
+// can restore the plan approval dialog.
+func openPlanEditor(path string) tea.Cmd {
+	editor := getEditor()
+	parts := strings.Fields(editor)
+	name := parts[0]
+	args := append(parts[1:], path)
+
+	c := exec.Command(name, args...)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return planEditorFinishedMsg{err: err}
 	})
 }

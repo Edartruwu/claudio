@@ -247,8 +247,17 @@ func mergeFromFile(settings *Settings, path string) {
 			settings.MCPServers[k] = v
 		}
 	}
-	if len(overlay.PermissionRules) > 0 {
-		settings.PermissionRules = append(settings.PermissionRules, overlay.PermissionRules...)
+	for _, r := range overlay.PermissionRules {
+		dup := false
+		for _, existing := range settings.PermissionRules {
+			if existing.Tool == r.Tool && existing.Pattern == r.Pattern && existing.Behavior == r.Behavior {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			settings.PermissionRules = append(settings.PermissionRules, r)
+		}
 	}
 	if overlay.OutputStyle != "" {
 		settings.OutputStyle = overlay.OutputStyle

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -470,13 +469,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "esc":
-			// In Insert mode, Escape always goes to Normal (standard vim)
+			// In Insert mode, Escape always goes to Normal (standard vim).
+			// Don't let this fall through to the panel close handler.
 			if m.prompt.IsVimEnabled() && !m.prompt.IsVimNormal() {
-				break // fall through to prompt.Update below
+				break // fall through to prompt.Update below, not to panel handler
 			}
 			// In Normal mode during streaming: do nothing (use Ctrl+C to cancel)
-			// This allows navigating (Space+wk, etc.) without killing the stream
-			if m.streaming {
+			// This allows navigating (Space+wk, etc.) without killing the stream.
+			// Exception: allow esc to close an open side panel even while streaming.
+			if m.streaming && m.focus != FocusPanel {
 				return m, nil
 			}
 			if m.filePicker.IsActive() {
@@ -938,6 +939,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case planEditorFinishedMsg:
+		// Restore the plan approval dialog after the editor exits.
+		m.focus = FocusPlanApproval
+		if msg.err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Editor: " + msg.err.Error()})
+			m.refreshViewport()
+		}
+		return m, m.waitForEvent()
+
 	case timerTickMsg:
 		if m.streaming {
 			m.refreshViewport()
@@ -1115,6 +1125,12 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	m.streamText.Reset()
 	m.spinText = "Thinking..."
 	m.spinner.Start("Thinking...")
+
+	// Carry over conversation history from the previous engine if not already
+	// populated (e.g. by session resume or plan-mode approval).
+	if len(m.pendingEngineMessages) == 0 && m.engine != nil {
+		m.pendingEngineMessages = m.engine.Messages()
+	}
 
 	m.approvalCh = make(chan bool, 1)
 	handler := &tuiEventHandler{ch: m.eventCh, approvalCh: m.approvalCh}
@@ -1314,6 +1330,10 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 
 		// If plan mode just exited, show approval dialog instead of returning to prompt.
 		if m.planModeActive {
+			// Preserve conversation history so it's restored when the plan is approved.
+			if m.engine != nil {
+				m.pendingEngineMessages = m.engine.Messages()
+			}
 			m.focus = FocusPlanApproval
 			m.planApprovalCursor = 0
 			m.planApprovalFeedback = ""
@@ -1652,13 +1672,11 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.planApprovalCursor--
 		}
 	case "ctrl+g":
-		// Open plan file in the default editor ($EDITOR or open).
+		// Open the plan file in the user's editor. tea.ExecProcess suspends
+		// the TUI, hands the terminal to the editor, and resumes when done.
+		// planEditorFinishedMsg then restores the approval dialog.
 		if m.planFilePath != "" {
-			editor := os.Getenv("EDITOR")
-			if editor == "" {
-				editor = "open"
-			}
-			_ = exec.Command(editor, m.planFilePath).Start()
+			return m, openPlanEditor(m.planFilePath)
 		}
 		return m, m.waitForEvent()
 	case "enter":
@@ -1933,6 +1951,11 @@ func (m *Model) persistPermissionRule(rule config.PermissionRule) {
 	// Also add to engine config so it takes effect immediately.
 	if m.engineConfig != nil && !hasDuplicate(m.engineConfig.PermissionRules) {
 		m.engineConfig.PermissionRules = append(m.engineConfig.PermissionRules, rule)
+	}
+
+	// Propagate to the running engine so it applies without restart.
+	if m.engine != nil {
+		m.engine.SetPermissionRules(m.appCtx.Config.PermissionRules)
 	}
 
 	// Save to project config if available, else global

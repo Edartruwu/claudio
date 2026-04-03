@@ -196,6 +196,11 @@ func (e *Engine) SetMaxTurns(n int) {
 	e.maxTurns = n
 }
 
+// SetPermissionRules replaces the engine's permission rules at runtime.
+func (e *Engine) SetPermissionRules(rules []config.PermissionRule) {
+	e.permissionRules = rules
+}
+
 // Run executes a single user turn: sends the message, processes the AI response,
 // executes any tool calls, and loops until the AI produces a final response.
 func (e *Engine) Run(ctx context.Context, userMessage string) error {
