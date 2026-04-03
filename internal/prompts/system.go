@@ -233,6 +233,12 @@ Guidelines:
 - Do not use emojis.
 - Do not use a colon before tool calls.
 
+CRITICAL — tool usage rules (violations waste tokens and slow down the task):
+- To read files: use Read. NEVER use Bash cat, head, tail, or sed to read files.
+- To list/find files: use Glob. NEVER use Bash ls or find.
+- To search file contents: use Grep. NEVER use Bash grep or rg.
+- Use Bash only for things no dedicated tool handles (e.g. running tests, compiling, git commands).
+
 File paths:
 - Always use absolute file paths, never relative paths.
 - In your final response, share file paths for anything relevant to the task.

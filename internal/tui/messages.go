@@ -28,10 +28,12 @@ const (
 // ChatMessage represents a rendered message in the conversation.
 // SubagentToolCall represents a tool call made by a sub-agent.
 type SubagentToolCall struct {
-	ToolName string
-	Summary  string
-	Result   *string // nil if still running
-	IsError  bool
+	ToolName   string
+	Summary    string
+	Result     *string // nil if still running
+	IsError    bool
+	ToolUseID  string
+	DurationMs int64 // -1 = not tracked
 }
 
 type ChatMessage struct {
@@ -42,8 +44,9 @@ type ChatMessage struct {
 	ToolInputRaw json.RawMessage // full input JSON for expanded view
 	ToolUseID    string          // real tool_use_id from API (tool_use and tool_result messages)
 	IsError      bool
-	Pinned       bool // pinned messages survive compaction
-	IsSubagent   bool // true if this is a sub-agent tool call
+	Pinned       bool  // pinned messages survive compaction
+	IsSubagent   bool  // true if this is a sub-agent tool call
+	DurationMs   int64 // -1 = not tracked
 
 	// SubagentTools holds nested tool calls made by a sub-agent.
 	// Only populated on MsgToolUse messages where ToolName == "Agent".
@@ -301,6 +304,9 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 			status = styles.ToolError.Render("✗ " + truncate(brief, 30))
 		} else {
 			brief := resultBrief(p.result.Content)
+			if dur := formatDuration(p.use.DurationMs); dur != "" {
+				brief = dur + " · " + brief
+			}
 			status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+brief)
 		}
 
@@ -311,7 +317,7 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 		lines = append(lines, left+strings.Repeat(" ", gap)+status)
 
 		if len(p.use.SubagentTools) > 0 {
-			lines = append(lines, renderSubagentTools(p.use.SubagentTools, maxW, nameW)...)
+			lines = append(lines, renderSubagentTools(p.use.SubagentTools, p.use.DurationMs, maxW, nameW, expanded)...)
 		}
 
 		if p.result != nil && p.result.IsError && p.result.Content != "" {
@@ -366,6 +372,9 @@ func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) str
 		status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
 	default:
 		brief := resultBrief(last.result.Content)
+		if dur := formatDuration(last.use.DurationMs); dur != "" {
+			brief = dur + " · " + brief
+		}
 		status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+brief)
 	}
 
@@ -377,28 +386,104 @@ func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) str
 }
 
 // renderSubagentTools renders nested sub-agent tool calls under an Agent tool.
-func renderSubagentTools(subs []SubagentToolCall, maxW, nameW int) []string {
-	var lines []string
-	indent := "   " // 3-space indent for nesting
-	for si, sub := range subs {
-		isLast := si == len(subs)-1
+//
+// Collapsed (default): one summary line — "Done (28 tool uses · 1m 20s)".
+// Expanded (ctrl+o):   full list, consecutive same-tool runs ≥ collapseRunThreshold
+//                      are still collapsed into a single row with a +N badge.
+func renderSubagentTools(subs []SubagentToolCall, agentDurationMs int64, maxW, nameW int, expanded bool) []string {
+	if len(subs) == 0 {
+		return nil
+	}
+	ind := "   "
 
-		// Tree connector
+	if !expanded {
+		return []string{renderSubagentSummary(subs, agentDurationMs, ind, maxW)}
+	}
+
+	// ── Expanded view ──────────────────────────────────────────────────────
+	var lines []string
+
+	// Group consecutive same-name subs into runs, then collapse long ones.
+	type visualItem struct {
+		isRun bool
+		run   []SubagentToolCall
+		sub   SubagentToolCall
+	}
+	var items []visualItem
+	for i := 0; i < len(subs); {
+		name := subs[i].ToolName
+		j := i
+		for j < len(subs) && subs[j].ToolName == name {
+			j++
+		}
+		run := subs[i:j]
+		if len(run) >= collapseRunThreshold {
+			items = append(items, visualItem{isRun: true, run: run})
+		} else {
+			for _, s := range run {
+				items = append(items, visualItem{sub: s})
+			}
+		}
+		i = j
+	}
+
+	for gi, item := range items {
+		isLast := gi == len(items)-1
 		var connector string
-		if len(subs) > 1 {
-			if isLast {
-				connector = styles.ToolConnector.Render("└─ ")
-			} else if si == 0 {
+		if len(items) > 1 {
+			switch {
+			case gi == 0:
 				connector = styles.ToolConnector.Render("┌─ ")
-			} else {
+			case isLast:
+				connector = styles.ToolConnector.Render("└─ ")
+			default:
 				connector = styles.ToolConnector.Render("├─ ")
 			}
 		}
 
+		if item.isRun {
+			n := len(item.run)
+			last := item.run[n-1]
+			icon := styles.ToolIcon.Render("⚡ ")
+			name := styles.ToolName.Width(nameW).Render(last.ToolName)
+			more := styles.ToolBadge.Render(fmt.Sprintf("+%d", n-1))
+			summary := styles.ToolSummary.Render(truncate(last.Summary, maxW-nameW-30))
+			left := ind + connector + icon + name + more + "  " + summary
+
+			running, errors := 0, 0
+			for _, s := range item.run {
+				if s.Result == nil {
+					running++
+				} else if s.IsError {
+					errors++
+				}
+			}
+			var status string
+			switch {
+			case running > 0:
+				status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(fmt.Sprintf(" %d/%d", n-running, n))
+			case errors > 0:
+				status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
+			default:
+				brief := resultBrief(*last.Result)
+				if dur := formatDuration(last.DurationMs); dur != "" {
+					brief = dur + " · " + brief
+				}
+				status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+brief)
+			}
+			gap := maxW - lipgloss.Width(left) - lipgloss.Width(status)
+			if gap < 1 {
+				gap = 1
+			}
+			lines = append(lines, left+strings.Repeat(" ", gap)+status)
+			continue
+		}
+
+		sub := item.sub
 		icon := styles.ToolIcon.Render("⚡ ")
 		name := styles.ToolName.Width(nameW).Render(sub.ToolName)
 		summary := styles.ToolSummary.Render(truncate(sub.Summary, maxW-nameW-30))
-		left := indent + connector + icon + name + summary
+		left := ind + connector + icon + name + summary
 
 		var status string
 		if sub.Result == nil {
@@ -406,16 +491,85 @@ func renderSubagentTools(subs []SubagentToolCall, maxW, nameW int) []string {
 		} else if sub.IsError {
 			status = styles.ToolError.Render("✗ " + truncate(*sub.Result, 30))
 		} else {
-			status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+*sub.Result)
+			brief := *sub.Result
+			if dur := formatDuration(sub.DurationMs); dur != "" {
+				brief = dur + " · " + brief
+			}
+			status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+brief)
 		}
-
 		gap := maxW - lipgloss.Width(left) - lipgloss.Width(status)
 		if gap < 1 {
 			gap = 1
 		}
 		lines = append(lines, left+strings.Repeat(" ", gap)+status)
 	}
+
 	return lines
+}
+
+// renderSubagentSummary produces the single collapsed line shown for sub-agent tools.
+// Format: "   └─ N tools: 3×Read · 2×Glob · 1×Bash     ✓ done"
+func renderSubagentSummary(subs []SubagentToolCall, agentDurationMs int64, ind string, maxW int) string {
+	total := len(subs)
+	running, errors := 0, 0
+	counts := map[string]int{}
+	for _, s := range subs {
+		counts[s.ToolName]++
+		if s.Result == nil {
+			running++
+		} else if s.IsError {
+			errors++
+		}
+	}
+
+	// Build "3×Read · 2×Glob · 1×Bash" — fixed display order for stability.
+	toolOrder := []string{"Read", "Glob", "Grep", "Bash", "Write", "Edit", "Agent", "WebFetch", "WebSearch"}
+	var parts []string
+	seen := map[string]bool{}
+	for _, name := range toolOrder {
+		if c, ok := counts[name]; ok {
+			if c == 1 {
+				parts = append(parts, name)
+			} else {
+				parts = append(parts, fmt.Sprintf("%d×%s", c, name))
+			}
+			seen[name] = true
+		}
+	}
+	// Any tools not in the fixed order go at the end.
+	for name, c := range counts {
+		if !seen[name] {
+			if c == 1 {
+				parts = append(parts, name)
+			} else {
+				parts = append(parts, fmt.Sprintf("%d×%s", c, name))
+			}
+		}
+	}
+
+	breakdown := strings.Join(parts, " · ")
+	left := ind + styles.ToolConnector.Render("└─ ") +
+		styles.ToolSummary.Render(fmt.Sprintf("%d tools: %s", total, breakdown))
+
+	var status string
+	switch {
+	case running > 0:
+		status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(fmt.Sprintf(" %d running", running))
+	case errors > 0:
+		status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
+	default:
+		doneText := "done"
+		if dur := formatDuration(agentDurationMs); dur != "" {
+			doneText = dur
+		}
+		status = styles.ToolSuccess.Render("✓") + styles.ToolSummary.Render(" "+doneText)
+	}
+
+	gap := maxW - lipgloss.Width(left) - lipgloss.Width(status)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + status
 }
 
 // formatRichSummary produces a one-line summary with richer context per tool type.
@@ -881,6 +1035,27 @@ func firstLine(s string) string {
 		return s[:idx]
 	}
 	return s
+}
+
+// formatDuration converts milliseconds to a short human-readable string.
+// Returns "" when ms < 0 (not tracked). Format: "0.5s", "5s", "1m 23s".
+func formatDuration(ms int64) string {
+	if ms < 0 {
+		return ""
+	}
+	if ms < 1000 {
+		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	}
+	secs := ms / 1000
+	if secs < 60 {
+		return fmt.Sprintf("%ds", secs)
+	}
+	mins := secs / 60
+	rem := secs % 60
+	if rem == 0 {
+		return fmt.Sprintf("%dm", mins)
+	}
+	return fmt.Sprintf("%dm %ds", mins, rem)
 }
 
 // resultBrief produces a short summary of a tool result.

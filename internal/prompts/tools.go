@@ -131,7 +131,8 @@ Usage:
 - This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
 - This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
 - You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
-- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.`
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
+- If a file has not changed since your last Read this session, you will receive a stub instead of the full content. The content from the earlier Read result in this conversation is still current — refer to that instead of re-reading.`
 }
 
 // WriteDescription returns the description for the Write tool.
@@ -156,7 +157,8 @@ Usage:
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
 - The edit will FAIL if ` + "`old_string`" + ` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use ` + "`replace_all`" + ` to change every instance of ` + "`old_string`" + `.
-- Use ` + "`replace_all`" + ` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`
+- Use ` + "`replace_all`" + ` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.
+- Use the smallest old_string that is clearly unique in the file — usually 2-4 adjacent lines is sufficient. Avoid including 10+ lines of context when less would uniquely identify the target.`
 }
 
 // GlobDescription returns the description for the Glob tool.
