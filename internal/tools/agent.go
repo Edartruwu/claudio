@@ -13,6 +13,21 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tasks"
 )
 
+type ctxKeyMaxTurns struct{}
+
+// WithMaxTurns stores a maxTurns value in the context for sub-agent engines.
+func WithMaxTurns(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, ctxKeyMaxTurns{}, n)
+}
+
+// MaxTurnsFromContext retrieves the maxTurns value from context (0 if not set).
+func MaxTurnsFromContext(ctx context.Context) int {
+	if v, ok := ctx.Value(ctxKeyMaxTurns{}).(int); ok {
+		return v
+	}
+	return 0
+}
+
 // AgentTool spawns sub-agents for complex, multi-step tasks.
 type AgentTool struct {
 	// ParentRegistry is set by the registry after construction.
@@ -32,6 +47,7 @@ type agentInput struct {
 	Description     string `json:"description,omitempty"`
 	SubagentType    string `json:"subagent_type,omitempty"`
 	Model           string `json:"model,omitempty"`
+	MaxTurns        int    `json:"max_turns,omitempty"`
 	RunInBackground bool   `json:"run_in_background,omitempty"`
 	Isolation       string `json:"isolation,omitempty"` // "worktree"
 }
@@ -62,6 +78,10 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 				"type": "string",
 				"description": "Optional model override for this agent",
 				"enum": ["sonnet", "opus", "haiku"]
+			},
+			"max_turns": {
+				"type": "number",
+				"description": "Maximum number of agentic turns (API calls) before the agent stops. If omitted, uses the agent type's default limit."
 			},
 			"run_in_background": {
 				"type": "boolean",
@@ -101,6 +121,15 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		agentType = "general-purpose"
 	}
 	agentDef := agents.GetAgent(agentType)
+
+	// Inject maxTurns into context: caller-specified takes priority, then agent type default.
+	maxTurns := in.MaxTurns
+	if maxTurns <= 0 {
+		maxTurns = agentDef.MaxTurns
+	}
+	if maxTurns > 0 {
+		ctx = WithMaxTurns(ctx, maxTurns)
+	}
 
 	// Background execution via task runtime
 	if in.RunInBackground && t.TaskRuntime != nil {

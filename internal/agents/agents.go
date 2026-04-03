@@ -60,6 +60,10 @@ type AgentDefinition struct {
 
 	// SourceProject is the project directory this agent was originally created in.
 	SourceProject string
+
+	// MaxTurns limits the number of agentic turns (API calls) for this agent.
+	// 0 means unlimited. Prevents runaway agents from consuming excessive tokens.
+	MaxTurns int
 }
 
 // BuiltInAgents returns all built-in agent definitions.
@@ -114,7 +118,8 @@ func joinStrings(ss []string) string {
 // GeneralPurposeAgent returns the general-purpose agent definition.
 func GeneralPurposeAgent() AgentDefinition {
 	return AgentDefinition{
-		Type:      "general-purpose",
+		Type:     "general-purpose",
+		MaxTurns: 50,
 		WhenToUse: "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you.",
 		Tools:     []string{"*"},
 		SystemPrompt: `You are an agent working as part of a larger system. Your job is to complete the task described in your prompt.
@@ -135,7 +140,8 @@ Guidelines:
 // ExploreAgent returns the codebase exploration agent definition.
 func ExploreAgent() AgentDefinition {
 	return AgentDefinition{
-		Type:      "Explore",
+		Type:     "Explore",
+		MaxTurns: 25,
 		WhenToUse: "Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. \"src/components/**/*.tsx\"), search code for keywords (eg. \"API endpoints\"), or answer questions about the codebase (eg. \"how do API endpoints work?\"). When calling this agent, specify the desired thoroughness level: \"quick\" for basic searches, \"medium\" for moderate exploration, or \"very thorough\" for comprehensive analysis across multiple locations and naming conventions.",
 		Tools:     []string{"*"},
 		DisallowedTools: []string{"Agent", "ExitPlanMode", "Edit", "Write", "NotebookEdit"},
@@ -170,7 +176,8 @@ Report your findings clearly and concisely.`,
 // PlanAgent returns the planning agent definition.
 func PlanAgent() AgentDefinition {
 	return AgentDefinition{
-		Type:      "Plan",
+		Type:     "Plan",
+		MaxTurns: 30,
 		WhenToUse: "Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs.",
 		Tools:     []string{"*"},
 		DisallowedTools: []string{"Agent", "ExitPlanMode", "Edit", "Write", "NotebookEdit"},
@@ -200,7 +207,8 @@ Be thorough in your exploration. Read related files, understand the patterns, an
 // VerificationAgent returns the verification agent definition.
 func VerificationAgent() AgentDefinition {
 	return AgentDefinition{
-		Type:      "verification",
+		Type:     "verification",
+		MaxTurns: 20,
 		WhenToUse: "Verification agent for validating implementation work. Use after non-trivial implementation to verify correctness.",
 		Tools:     []string{"*"},
 		DisallowedTools: []string{"Edit", "Write", "NotebookEdit"},

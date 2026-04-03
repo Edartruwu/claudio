@@ -91,6 +91,10 @@ type Engine struct {
 	userContextInjected bool
 	systemContext       string // git status appended to system (dynamic)
 
+	// maxTurns limits the number of agentic API calls (0 = unlimited).
+	maxTurns  int
+	turnCount int
+
 	// continuation tracking for diminishing returns detection
 	continuationCount int
 	lastOutputTokens  int
@@ -181,6 +185,12 @@ func (e *Engine) SetUserContext(msg string) {
 // SetSystemContext sets dynamic context (e.g. git status) to append to the system prompt.
 func (e *Engine) SetSystemContext(ctx string) {
 	e.systemContext = ctx
+}
+
+// SetMaxTurns sets the maximum number of agentic turns (API calls) before the engine stops.
+// 0 means unlimited.
+func (e *Engine) SetMaxTurns(n int) {
+	e.maxTurns = n
 }
 
 // Run executes a single user turn: sends the message, processes the AI response,
@@ -291,6 +301,12 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		// Append assistant message — strip thinking blocks since they
 		// require a signature field when sent back and are ephemeral
 		e.saveAssistantMessage(response.Content)
+
+		e.turnCount++
+		if e.maxTurns > 0 && e.turnCount >= e.maxTurns {
+			e.handler.OnTextDelta(fmt.Sprintf("\n[Agent stopped: reached %d turn limit]\n", e.maxTurns))
+			return nil
+		}
 
 		e.handler.OnTurnComplete(response.Usage)
 

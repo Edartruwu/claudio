@@ -365,6 +365,9 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 	forwarder := &subAgentForwarder{desc: desc, observer: observer}
 	engine := query.NewEngine(apiClient, subRegistry, forwarder)
 	engine.SetSystem(system)
+	if maxTurns := tools.MaxTurnsFromContext(ctx); maxTurns > 0 {
+		engine.SetMaxTurns(maxTurns)
+	}
 
 	if err := engine.Run(ctx, prompt); err != nil {
 		if forwarder.text.Len() > 0 {
