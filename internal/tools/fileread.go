@@ -79,11 +79,18 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		in.Offset = 1
 	}
 
-	// Check cache before hitting disk
+	// Check cache before hitting disk. On a hit, return a stub instead of
+	// the full content — the model already has the content from the earlier
+	// Read result in this conversation and can refer back to it.
+	// This matches Claude Code's read deduplication behaviour and avoids
+	// re-spending tokens on unchanged files.
 	if t.ReadCache != nil {
 		key := readcache.Key{FilePath: in.FilePath, Offset: in.Offset, Limit: in.Limit}
-		if cached, ok := t.ReadCache.Get(key); ok {
-			return &Result{Content: cached}, nil
+		if _, ok := t.ReadCache.Get(key); ok {
+			return &Result{Content: fmt.Sprintf(
+				"File unchanged since last read (%s). The content from the earlier Read tool_result in this conversation is still current — refer to that instead of re-reading.",
+				in.FilePath,
+			)}, nil
 		}
 	}
 
