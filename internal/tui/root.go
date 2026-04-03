@@ -1348,7 +1348,9 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 			m.turns = 0
 			m.totalTokens = 0
 			m.totalCost = 0
-			m.engine.SetMessages(nil)
+			if m.engine != nil {
+				m.engine.SetMessages(nil)
+			}
 			m.refreshViewport()
 			return m, nil
 		}
