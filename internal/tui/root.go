@@ -116,6 +116,8 @@ type Model struct {
 	planApprovalFeedback string // typed feedback when option 3 is selected
 
 	askUserDialog *askUserDialogState // active AskUser question dialog (nil = not showing)
+
+	pendingModelRestore string // non-empty = restore this model after current interaction finishes
 }
 
 // askUserDialogState holds the state for an interactive AskUser question dialog.
@@ -422,6 +424,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.spinner.Stop()
 				m.prompt.Focus()
 				m.focus = FocusPrompt
+				if m.pendingModelRestore != "" {
+					m.model = m.pendingModelRestore
+					m.apiClient.SetModel(m.pendingModelRestore)
+					m.pendingModelRestore = ""
+				}
 				m.addMessage(ChatMessage{Type: MsgSystem, Content: "Cancelled — partial response preserved"})
 				m.refreshViewport()
 				return m, nil
@@ -950,6 +957,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.addMessage(ChatMessage{Type: MsgError, Content: msg.err.Error()})
 		}
+		// Restore model if this was a one-shot model override
+		if m.pendingModelRestore != "" {
+			m.model = m.pendingModelRestore
+			m.apiClient.SetModel(m.pendingModelRestore)
+			m.pendingModelRestore = ""
+		}
 		m.refreshViewport()
 		// Process queued messages
 		if len(m.messageQueue) > 0 {
@@ -1381,7 +1394,9 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		}
 
 	case "error":
-		m.addMessage(ChatMessage{Type: MsgError, Content: event.err.Error()})
+		// Finalize any in-progress streaming text so it isn't lost when
+		// the "done" event adds the error message after it.
+		m.finalizeStreamingMessage()
 		m.refreshViewport()
 	}
 
@@ -1389,6 +1404,26 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
+	// Model shortcut commands: /sonnet, /opus, /haiku with a prompt
+	// Temporarily switches the model for just this interaction
+	modelShortcuts := map[string]string{
+		"sonnet": "claude-sonnet-4-6",
+		"opus":   "claude-opus-4-6",
+		"haiku":  "claude-haiku-4-5-20251001",
+	}
+	if modelID, ok := modelShortcuts[name]; ok {
+		if args == "" {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Usage: /%s <your question>", name)})
+			m.refreshViewport()
+			return m, nil
+		}
+		m.pendingModelRestore = m.model
+		m.model = modelID
+		m.apiClient.SetModel(modelID)
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Using %s for this message", modelID)})
+		return m.handleSubmit(args)
+	}
+
 	// /model without args → interactive selector
 	if name == "model" && args == "" {
 		m.modelSelector = modelselector.New(m.apiClient.GetModel(), m.apiClient.GetThinkingMode(), m.apiClient.GetBudgetTokens(), m.apiClient.GetEffortLevel())
@@ -2697,7 +2732,12 @@ func (m *Model) persistMessage(msg ChatMessage) {
 		return // Don't persist system/error/thinking messages
 	}
 	if msg.ToolName != "" || msg.ToolUseID != "" {
-		m.session.AddToolMessage(role, msg.Content, msgType, msg.ToolUseID, msg.ToolName)
+		content := msg.Content
+		// tool_use messages store their input in ToolInputRaw, not Content.
+		if msg.Type == MsgToolUse && len(msg.ToolInputRaw) > 0 {
+			content = string(msg.ToolInputRaw)
+		}
+		m.session.AddToolMessage(role, content, msgType, msg.ToolUseID, msg.ToolName)
 	} else {
 		m.session.AddMessage(role, msg.Content, msgType)
 	}

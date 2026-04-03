@@ -188,13 +188,31 @@ func (db *DB) SearchSessions(query string, limit int) ([]Session, error) {
 	return sessions, rows.Err()
 }
 
-// AddMessage persists a message to a session.
+// AddMessage persists a message to a session and bumps the session's updated_at
+// so the session list stays sorted by most-recent activity.
 func (db *DB) AddMessage(sessionID, role, content, msgType, toolUseID, toolName string) error {
-	_, err := db.conn.Exec(
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
 		`INSERT INTO messages (session_id, role, content, type, tool_use_id, tool_name) VALUES (?, ?, ?, ?, ?, ?)`,
 		sessionID, role, content, msgType, toolUseID, toolName,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	// Only bump updated_at for user/assistant turns, not every tool call, to
+	// avoid excessive write amplification on long tool chains.
+	if msgType == "user" || msgType == "assistant" {
+		if _, err := tx.Exec(
+			`UPDATE sessions SET updated_at = ? WHERE id = ?`,
+			time.Now(), sessionID,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // GetMessages retrieves all messages for a session.
