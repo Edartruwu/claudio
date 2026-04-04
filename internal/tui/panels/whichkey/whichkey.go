@@ -29,6 +29,7 @@ func DefaultBindings() []Binding {
 		{Key: ";", Desc: "recent sessions"},
 		{Key: ",", Desc: "alternate session"},
 		{Key: "/", Desc: "search sessions"},
+		{Key: "a", Desc: "agents"},
 		{Key: "b", Desc: "buffer/session..."},
 		{Key: "i", Desc: "info panels..."},
 		{Key: "w", Desc: "window..."},

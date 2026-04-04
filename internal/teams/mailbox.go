@@ -148,6 +148,47 @@ func (mb *Mailbox) UnreadCount(agentName string) int {
 	return count
 }
 
+// TotalUnreadCount returns total unread messages across all inboxes.
+func (mb *Mailbox) TotalUnreadCount() int {
+	entries, err := os.ReadDir(mb.inboxDir)
+	if err != nil {
+		return 0
+	}
+	total := 0
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		name := entry.Name()[:len(entry.Name())-5]
+		total += mb.UnreadCount(name)
+	}
+	return total
+}
+
+// AllMessages returns all messages across all inboxes, sorted by time.
+func (mb *Mailbox) AllMessages() []Message {
+	entries, err := os.ReadDir(mb.inboxDir)
+	if err != nil {
+		return nil
+	}
+	var all []Message
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		name := entry.Name()[:len(entry.Name())-5]
+		msgs, _ := mb.ReadAll(name)
+		all = append(all, msgs...)
+	}
+	// Sort by timestamp
+	for i := 1; i < len(all); i++ {
+		for j := i; j > 0 && all[j].Timestamp.Before(all[j-1].Timestamp); j-- {
+			all[j], all[j-1] = all[j-1], all[j]
+		}
+	}
+	return all
+}
+
 // SendStructured sends a structured control message.
 func (mb *Mailbox) SendStructured(from, to string, structured StructuredMessage) error {
 	payload, err := json.Marshal(structured)

@@ -11,6 +11,7 @@ const (
 	FocusPanel                       // any side panel has focus
 	FocusPlanApproval                // plan approval dialog after ExitPlanMode
 	FocusAskUser                     // AskUser question dialog
+	FocusAgentDetail                 // full-screen agent conversation overlay
 )
 
 // PanelID identifies which panel is currently active.
@@ -24,4 +25,5 @@ const (
 	PanelMemory
 	PanelAnalytics
 	PanelTasks
+	PanelAgents
 )

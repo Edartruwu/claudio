@@ -871,6 +871,9 @@ type StatusBarState struct {
 	ContextMax  int // max context window size
 	// Background sessions
 	BackgroundSessions int // number of sessions running in background
+	// Team status
+	TeamSummary   string // e.g. "team:web-scraper 2/3 ◐"
+	UnreadMailbox int    // unread mailbox count
 }
 
 func renderStatusBar(width int, s StatusBarState) string {
@@ -931,6 +934,16 @@ func renderStatusBar(width int, s StatusBarState) string {
 	if s.BackgroundSessions > 0 {
 		bgStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
 		parts = append(parts, bgStyle.Render(fmt.Sprintf("⚡%d bg", s.BackgroundSessions)))
+	}
+
+	// Team status
+	if s.TeamSummary != "" {
+		teamStyle := lipgloss.NewStyle().Foreground(styles.Warning)
+		parts = append(parts, teamStyle.Render(s.TeamSummary))
+	}
+	if s.UnreadMailbox > 0 {
+		mailStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+		parts = append(parts, mailStyle.Render(fmt.Sprintf("✉ %d", s.UnreadMailbox)))
 	}
 
 	if s.Cost > 0 {

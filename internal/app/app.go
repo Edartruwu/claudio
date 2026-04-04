@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
@@ -228,6 +229,13 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Team runner (uses the same runSubAgent callback)
 	teamRunner := teams.NewTeammateRunner(teamMgr, func(ctx context.Context, system, prompt string) (string, error) {
 		return runSubAgent(ctx, apiClient, registry, system, prompt)
+	})
+
+	// Wire per-teammate context decorator: injects a SubAgentObserver that
+	// populates TeammateState.Conversation and Progress in real time.
+	teamRunner.SetContextDecorator(func(ctx context.Context, state *teams.TeammateState) context.Context {
+		obs := &teammateObserver{state: state, runner: teamRunner}
+		return tools.WithSubAgentObserver(ctx, obs)
 	})
 
 	// Inject task runtime into tools that support background execution
@@ -497,6 +505,9 @@ func (f *subAgentForwarder) OnTextDelta(text string) {
 	if f.db != nil && f.sessionID != "" {
 		f.pendingText.WriteString(text)
 	}
+	if f.observer != nil {
+		f.observer.OnSubAgentText(f.desc, text)
+	}
 }
 
 func (f *subAgentForwarder) OnThinkingDelta(text string) {}
@@ -576,3 +587,90 @@ func (f *subAgentForwarder) OnTurnComplete(usage api.Usage) {
 func (f *subAgentForwarder) OnToolApprovalNeeded(tu tools.ToolUse) bool             { return true }
 func (f *subAgentForwarder) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true }
 func (f *subAgentForwarder) OnError(err error)                                       {}
+
+// teammateObserver implements SubAgentObserver for a specific teammate,
+// updating its ConversationEntry list and Progress in real time.
+type teammateObserver struct {
+	state    *teams.TeammateState
+	runner   *teams.TeammateRunner
+	textBuf  strings.Builder
+}
+
+func (o *teammateObserver) OnSubAgentText(_ string, text string) {
+	o.textBuf.WriteString(text)
+}
+
+func (o *teammateObserver) OnSubAgentToolStart(_ string, tu tools.ToolUse) {
+	// Flush pending text
+	if o.textBuf.Len() > 0 {
+		o.state.AddConversation(teams.ConversationEntry{
+			Time:    time.Now(),
+			Type:    "text",
+			Content: o.textBuf.String(),
+		})
+		o.textBuf.Reset()
+	}
+
+	o.state.IncrToolCalls()
+	o.state.AddActivity(tu.Name)
+	o.state.AddConversation(teams.ConversationEntry{
+		Time:     time.Now(),
+		Type:     "tool_start",
+		Content:  truncateRawInput(tu.Input),
+		ToolName: tu.Name,
+	})
+
+	o.runner.EmitEvent(teams.TeammateEvent{
+		TeamName:  o.state.TeamName,
+		AgentID:   o.state.Identity.AgentID,
+		AgentName: o.state.Identity.AgentName,
+		Type:      "tool_start",
+		ToolName:  tu.Name,
+		Color:     o.state.Identity.Color,
+	})
+}
+
+func (o *teammateObserver) OnSubAgentToolEnd(_ string, tu tools.ToolUse, result *tools.Result) {
+	content := ""
+	if result != nil {
+		content = result.Content
+		if len(content) > 1000 {
+			content = content[:1000] + "..."
+		}
+	}
+	o.state.AddConversation(teams.ConversationEntry{
+		Time:     time.Now(),
+		Type:     "tool_end",
+		Content:  content,
+		ToolName: tu.Name,
+	})
+}
+
+func truncateRawInput(input json.RawMessage) string {
+	if len(input) == 0 {
+		return ""
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(input, &m); err != nil {
+		s := string(input)
+		if len(s) > 200 {
+			return s[:200] + "..."
+		}
+		return s
+	}
+	// For common tools, extract the most useful field
+	for _, key := range []string{"command", "file_path", "pattern", "query"} {
+		if v, ok := m[key]; ok {
+			s := fmt.Sprintf("%v", v)
+			if len(s) > 200 {
+				return s[:200] + "..."
+			}
+			return s
+		}
+	}
+	s := string(input)
+	if len(s) > 200 {
+		return s[:200] + "..."
+	}
+	return s
+}

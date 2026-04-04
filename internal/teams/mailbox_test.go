@@ -1,0 +1,219 @@
+package teams
+
+import (
+	"testing"
+	"time"
+)
+
+func setupMailbox(t *testing.T) *Mailbox {
+	t.Helper()
+	dir := t.TempDir()
+	return NewMailbox(dir, "test-team")
+}
+
+func TestMailbox_SendAndReadAll(t *testing.T) {
+	mb := setupMailbox(t)
+
+	err := mb.Send("alice", "bob", Message{Text: "hello bob"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	msgs, err := mb.ReadAll("bob")
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].From != "alice" || msgs[0].To != "bob" {
+		t.Errorf("unexpected from/to: %s/%s", msgs[0].From, msgs[0].To)
+	}
+	if msgs[0].Text != "hello bob" {
+		t.Errorf("unexpected text: %q", msgs[0].Text)
+	}
+	if msgs[0].Read {
+		t.Error("expected unread")
+	}
+}
+
+func TestMailbox_ReadUnread(t *testing.T) {
+	mb := setupMailbox(t)
+
+	mb.Send("alice", "bob", Message{Text: "msg1"})
+	mb.Send("alice", "bob", Message{Text: "msg2"})
+
+	// First read: both unread
+	unread, err := mb.ReadUnread("bob")
+	if err != nil {
+		t.Fatalf("ReadUnread: %v", err)
+	}
+	if len(unread) != 2 {
+		t.Fatalf("expected 2 unread, got %d", len(unread))
+	}
+
+	// Second read: none unread
+	unread, err = mb.ReadUnread("bob")
+	if err != nil {
+		t.Fatalf("ReadUnread: %v", err)
+	}
+	if len(unread) != 0 {
+		t.Fatalf("expected 0 unread, got %d", len(unread))
+	}
+
+	// New message
+	mb.Send("alice", "bob", Message{Text: "msg3"})
+	unread, err = mb.ReadUnread("bob")
+	if err != nil {
+		t.Fatalf("ReadUnread: %v", err)
+	}
+	if len(unread) != 1 {
+		t.Fatalf("expected 1 unread, got %d", len(unread))
+	}
+}
+
+func TestMailbox_UnreadCount(t *testing.T) {
+	mb := setupMailbox(t)
+
+	if mb.UnreadCount("bob") != 0 {
+		t.Error("expected 0 unread initially")
+	}
+
+	mb.Send("alice", "bob", Message{Text: "a"})
+	mb.Send("alice", "bob", Message{Text: "b"})
+
+	if mb.UnreadCount("bob") != 2 {
+		t.Errorf("expected 2 unread, got %d", mb.UnreadCount("bob"))
+	}
+
+	mb.ReadUnread("bob")
+	if mb.UnreadCount("bob") != 0 {
+		t.Errorf("expected 0 unread after read, got %d", mb.UnreadCount("bob"))
+	}
+}
+
+func TestMailbox_TotalUnreadCount(t *testing.T) {
+	mb := setupMailbox(t)
+
+	mb.Send("alice", "bob", Message{Text: "a"})
+	mb.Send("alice", "bob", Message{Text: "b"})
+	mb.Send("bob", "alice", Message{Text: "c"})
+
+	total := mb.TotalUnreadCount()
+	if total != 3 {
+		t.Errorf("expected 3 total unread, got %d", total)
+	}
+
+	mb.ReadUnread("bob")
+	total = mb.TotalUnreadCount()
+	if total != 1 {
+		t.Errorf("expected 1 total unread after reading bob, got %d", total)
+	}
+}
+
+func TestMailbox_AllMessages(t *testing.T) {
+	mb := setupMailbox(t)
+
+	// Send with distinct timestamps
+	mb.Send("alice", "bob", Message{Text: "first", Timestamp: time.Now().Add(-2 * time.Second)})
+	mb.Send("bob", "alice", Message{Text: "second", Timestamp: time.Now().Add(-1 * time.Second)})
+	mb.Send("alice", "bob", Message{Text: "third", Timestamp: time.Now()})
+
+	all := mb.AllMessages()
+	if len(all) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(all))
+	}
+
+	// Should be sorted by timestamp
+	if all[0].Text != "first" {
+		t.Errorf("expected first message 'first', got %q", all[0].Text)
+	}
+	if all[1].Text != "second" {
+		t.Errorf("expected second message 'second', got %q", all[1].Text)
+	}
+	if all[2].Text != "third" {
+		t.Errorf("expected third message 'third', got %q", all[2].Text)
+	}
+}
+
+func TestMailbox_AllMessages_Empty(t *testing.T) {
+	mb := setupMailbox(t)
+	all := mb.AllMessages()
+	if len(all) != 0 {
+		t.Errorf("expected 0 messages, got %d", len(all))
+	}
+}
+
+func TestMailbox_Broadcast(t *testing.T) {
+	mb := setupMailbox(t)
+
+	// Create inboxes by sending to them first
+	mb.Send("setup", "alice", Message{Text: "setup"})
+	mb.Send("setup", "bob", Message{Text: "setup"})
+	mb.Send("setup", "charlie", Message{Text: "setup"})
+
+	// Clear unreads
+	mb.ReadUnread("alice")
+	mb.ReadUnread("bob")
+	mb.ReadUnread("charlie")
+
+	// Broadcast from alice
+	err := mb.Broadcast("alice", Message{Text: "to everyone"})
+	if err != nil {
+		t.Fatalf("Broadcast: %v", err)
+	}
+
+	// Alice should NOT receive (sender excluded)
+	if mb.UnreadCount("alice") != 0 {
+		t.Errorf("alice should not receive broadcast, got %d unread", mb.UnreadCount("alice"))
+	}
+
+	// Bob and Charlie should receive
+	if mb.UnreadCount("bob") != 1 {
+		t.Errorf("bob should have 1 unread, got %d", mb.UnreadCount("bob"))
+	}
+	if mb.UnreadCount("charlie") != 1 {
+		t.Errorf("charlie should have 1 unread, got %d", mb.UnreadCount("charlie"))
+	}
+}
+
+func TestMailbox_ClearInbox(t *testing.T) {
+	mb := setupMailbox(t)
+
+	mb.Send("alice", "bob", Message{Text: "a"})
+	mb.Send("alice", "bob", Message{Text: "b"})
+
+	err := mb.ClearInbox("bob")
+	if err != nil {
+		t.Fatalf("ClearInbox: %v", err)
+	}
+
+	msgs, _ := mb.ReadAll("bob")
+	if len(msgs) != 0 {
+		t.Errorf("expected empty inbox after clear, got %d", len(msgs))
+	}
+}
+
+func TestMailbox_SummaryAutoGenerated(t *testing.T) {
+	mb := setupMailbox(t)
+
+	mb.Send("alice", "bob", Message{Text: "This is a long message that should get truncated for the summary field"})
+
+	msgs, _ := mb.ReadAll("bob")
+	if msgs[0].Summary == "" {
+		t.Error("expected auto-generated summary")
+	}
+}
+
+func TestMailbox_ReadAll_NonexistentInbox(t *testing.T) {
+	mb := setupMailbox(t)
+
+	msgs, err := mb.ReadAll("nobody")
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages for nonexistent inbox, got %d", len(msgs))
+	}
+}

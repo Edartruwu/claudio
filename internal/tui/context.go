@@ -11,6 +11,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/teams"
 )
 
 // AppContext provides shared application state to TUI panels.
@@ -27,6 +28,8 @@ type AppContext struct {
 	Hooks       *hooks.Manager
 	Rules       *rules.Registry
 	Auditor     *security.Auditor
+	TeamManager *teams.Manager
+	TeamRunner  *teams.TeammateRunner
 }
 
 // WithAppContext sets the shared application context for TUI panels.

@@ -469,6 +469,8 @@ func runInteractive() error {
 		Hooks:       appInstance.Hooks,
 		Rules:       nil, // Rules are loaded separately in system prompt building
 		Auditor:     appInstance.Auditor,
+		TeamManager: appInstance.Teams,
+		TeamRunner:  appInstance.TeamRunner,
 	}
 	model := tui.New(appInstance.API, appInstance.Tools, systemPrompt, sess,
 		tui.WithSkills(appInstance.Skills),

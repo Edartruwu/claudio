@@ -69,6 +69,7 @@ type APIToolDef struct {
 type SubAgentObserver interface {
 	OnSubAgentToolStart(agentDesc string, tu ToolUse)
 	OnSubAgentToolEnd(agentDesc string, tu ToolUse, result *Result)
+	OnSubAgentText(agentDesc string, text string)
 }
 
 type subAgentObserverKey struct{}

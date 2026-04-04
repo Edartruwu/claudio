@@ -35,6 +35,8 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/skillspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
+	"github.com/Abraxas-365/claudio/internal/tui/teampanel"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
@@ -117,6 +119,16 @@ type Model struct {
 	askUserDialog *askUserDialogState // active AskUser question dialog (nil = not showing)
 
 	pendingModelRestore string // non-empty = restore this model after current interaction finishes
+
+	// Agent detail overlay
+	agentDetail *agentDetailOverlay
+	prevFocus   Focus // saved focus before opening agent detail
+}
+
+// agentDetailOverlay holds state for the full-screen agent conversation view.
+type agentDetailOverlay struct {
+	state  *teams.TeammateState
+	scroll int // vertical scroll offset
 }
 
 // askUserDialogState holds the state for an interactive AskUser question dialog.
@@ -130,13 +142,14 @@ type askUserDialogState struct {
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
 type tuiEvent struct {
-	typ        string
-	text       string
-	toolUse    tools.ToolUse
-	result     *tools.Result
-	usage      api.Usage
-	err        error
-	askUserReq tools.AskUserRequest // for "askuser_request" events
+	typ           string
+	text          string
+	toolUse       tools.ToolUse
+	result        *tools.Result
+	usage         api.Usage
+	err           error
+	askUserReq    tools.AskUserRequest     // for "askuser_request" events
+	teammateEvent *teams.TeammateEvent     // for "teammate_event" events
 }
 
 // Tea messages
@@ -330,6 +343,11 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	// File picker for @ mentions
 	cwd, _ := os.Getwd()
 	m.filePicker = filepicker.New(cwd)
+
+	// Wire teammate event handler to TUI event channel
+	if m.appCtx != nil && m.appCtx.TeamRunner != nil {
+		m.appCtx.TeamRunner.SetEventHandler(&tuiTeammateEventHandler{ch: m.eventCh})
+	}
 
 	return m
 }
@@ -807,6 +825,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleAskUserKey(msg)
 		}
 
+		// Agent detail overlay
+		if m.focus == FocusAgentDetail {
+			return m.handleAgentDetailKey(msg)
+		}
+
 		// Command palette intercepts keys when active
 		if m.focus == FocusPrompt && !m.streaming && m.palette.IsActive() {
 			if cmd, consumed := m.palette.Update(msg); consumed {
@@ -1021,6 +1044,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case teampanel.RefreshMsg:
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*teampanel.Panel); ok {
+				cmd := ap.HandleRefresh()
+				return m, cmd
+			}
+		}
+		return m, nil
+
+	case panels.ActionMsg:
+		switch msg.Type {
+		case "agent_message":
+			// Prefill prompt with >>agentname
+			if name, ok := msg.Payload.(string); ok {
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+				m.prompt.SetValue(">>" + name + " ")
+			}
+		case "agent_detail":
+			// Open agent detail overlay
+			if agentID, ok := msg.Payload.(string); ok {
+				return m.openAgentDetail(agentID)
+			}
+		}
+		return m, nil
+
 	case engineEventMsg:
 		return m.handleEngineEvent(tuiEvent(msg))
 
@@ -1130,6 +1179,11 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 
 	if cmdName, cmdArgs, isCmd := commands.Parse(text); isCmd {
 		return m.handleCommand(cmdName, cmdArgs)
+	}
+
+	// Handle >>agent messages
+	if strings.HasPrefix(text, ">>") {
+		return m.handleAgentMessage(text)
 	}
 
 	// If already streaming, enqueue the message for later
@@ -1497,6 +1551,12 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		// the "done" event adds the error message after it.
 		m.finalizeStreamingMessage()
 		m.refreshViewport()
+
+	case "teammate_event":
+		if event.teammateEvent != nil {
+			m.handleTeammateEvent(*event.teammateEvent)
+			m.refreshViewport()
+		}
 	}
 
 	return m, tea.Batch(m.spinner.Tick(), m.waitForEvent())
@@ -2115,6 +2175,13 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 		case "/":
 			// Search sessions (open picker with search focused)
 			return m.openSessionPicker()
+		case "a":
+			// Agents panel
+			m.openPanel(PanelAgents)
+			if _, ok := m.activePanel.(*teampanel.Panel); ok {
+				return true, teampanel.ScheduleRefresh()
+			}
+			return true, nil
 		}
 		return true, nil // consumed but no match
 
@@ -2829,6 +2896,388 @@ func (m *Model) openPanel(id PanelID) {
 	m.refreshViewport()
 }
 
+// openAgentDetail opens the full-screen agent detail overlay.
+func (m *Model) openAgentDetail(agentID string) (Model, tea.Cmd) {
+	if m.appCtx == nil || m.appCtx.TeamRunner == nil {
+		return *m, nil
+	}
+	state, ok := m.appCtx.TeamRunner.GetState(agentID)
+	if !ok {
+		return *m, nil
+	}
+	m.agentDetail = &agentDetailOverlay{
+		state:  state,
+		scroll: 0,
+	}
+	m.prevFocus = m.focus
+	m.focus = FocusAgentDetail
+	m.prompt.Blur()
+	return *m, nil
+}
+
+// handleTeammateEvent renders agent lifecycle events inline in the main chat.
+func (m *Model) handleTeammateEvent(event teams.TeammateEvent) {
+	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(event.Color))
+	name := nameStyle.Render(event.AgentName)
+
+	switch event.Type {
+	case "started":
+		task := event.Text
+		if len(task) > 80 {
+			task = task[:77] + "..."
+		}
+		m.addMessage(ChatMessage{
+			Type:    MsgSystem,
+			Content: fmt.Sprintf("◐ %s started — %s", name, task),
+		})
+	case "complete":
+		result := event.Text
+		if result == "" {
+			result = "done"
+		}
+		m.addMessage(ChatMessage{
+			Type:    MsgSystem,
+			Content: fmt.Sprintf("● %s finished — %s", name, result),
+		})
+	case "error":
+		m.addMessage(ChatMessage{
+			Type:    MsgError,
+			Content: fmt.Sprintf("✗ %s failed — %s", name, event.Text),
+		})
+	}
+}
+
+// handleAgentMessage handles >>agent message syntax.
+func (m Model) handleAgentMessage(text string) (tea.Model, tea.Cmd) {
+	if m.appCtx == nil || m.appCtx.TeamRunner == nil {
+		m.addMessage(ChatMessage{Type: MsgError, Content: "No active team"})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	// Parse >>agentname message
+	rest := text[2:] // strip >>
+	parts := strings.SplitN(rest, " ", 2)
+	agentName := parts[0]
+	message := ""
+	if len(parts) > 1 {
+		message = parts[1]
+	}
+	if agentName == "" {
+		m.addMessage(ChatMessage{Type: MsgError, Content: "Usage: >>agentname message"})
+		m.refreshViewport()
+		return m, nil
+	}
+	if message == "" {
+		m.addMessage(ChatMessage{Type: MsgError, Content: "Message cannot be empty"})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	mailbox := m.appCtx.TeamRunner.GetMailbox()
+	if mailbox == nil {
+		m.addMessage(ChatMessage{Type: MsgError, Content: "No mailbox available"})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	// Handle >>all for broadcast
+	if agentName == "all" {
+		// Send to all agents
+		states := m.appCtx.TeamRunner.AllStates()
+		for _, s := range states {
+			mailbox.Send("you", s.Identity.AgentName, teams.Message{
+				Text:    message,
+				Summary: "from you: " + truncateStr(message, 50),
+			})
+			s.AddConversation(teams.ConversationEntry{
+				Time:    time.Now(),
+				Type:    "message_in",
+				Content: message,
+			})
+		}
+		m.addMessage(ChatMessage{
+			Type:    MsgSystem,
+			Content: fmt.Sprintf("✉ you → all: %s", message),
+		})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	// Send to specific agent
+	state, ok := m.appCtx.TeamRunner.GetStateByName(agentName)
+	if !ok {
+		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Agent '%s' not found", agentName)})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	mailbox.Send("you", agentName, teams.Message{
+		Text:    message,
+		Summary: "from you: " + truncateStr(message, 50),
+	})
+	state.AddConversation(teams.ConversationEntry{
+		Time:    time.Now(),
+		Type:    "message_in",
+		Content: message,
+	})
+
+	m.addMessage(ChatMessage{
+		Type:    MsgSystem,
+		Content: fmt.Sprintf("✉ you → %s: %s", agentName, message),
+	})
+	m.refreshViewport()
+	return m, nil
+}
+
+// handleAgentDetailKey handles keys when the agent detail overlay is focused.
+func (m *Model) handleAgentDetailKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.agentDetail = nil
+		m.focus = m.prevFocus
+		if m.focus == FocusPrompt {
+			m.prompt.Focus()
+		}
+		return *m, nil
+	case "j", "down":
+		m.agentDetail.scroll++
+		return *m, nil
+	case "k", "up":
+		if m.agentDetail.scroll > 0 {
+			m.agentDetail.scroll--
+		}
+		return *m, nil
+	case "G":
+		// Jump to bottom
+		m.agentDetail.scroll = 999999
+		return *m, nil
+	case "g":
+		// Jump to top
+		m.agentDetail.scroll = 0
+		return *m, nil
+	case "m":
+		// Message this agent
+		name := m.agentDetail.state.Identity.AgentName
+		m.agentDetail = nil
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		m.prompt.SetValue(">>" + name + " ")
+		return *m, nil
+	}
+	return *m, nil
+}
+
+// renderAgentDetail renders the full-screen WhatsApp-style conversation view.
+func (m Model) renderAgentDetail(width, height int) string {
+	if m.agentDetail == nil {
+		return ""
+	}
+	state := m.agentDetail.state
+	conversation := state.GetConversation()
+	progress := state.GetProgress()
+
+	var b strings.Builder
+
+	// Header
+	icon := "◐"
+	statusText := "working"
+	statusColor := styles.Warning
+	switch state.Status {
+	case teams.StatusComplete:
+		icon = "●"
+		statusText = "done"
+		statusColor = styles.Success
+	case teams.StatusFailed:
+		icon = "✗"
+		statusText = "failed"
+		statusColor = styles.Error
+	case teams.StatusShutdown:
+		icon = "⊘"
+		statusText = "stopped"
+		statusColor = styles.Muted
+	}
+	dur := time.Since(state.StartedAt).Truncate(time.Second)
+
+	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(state.Identity.Color))
+	headerLeft := fmt.Sprintf(" %s %s · %s %s · %dt",
+		icon,
+		nameStyle.Render(state.Identity.AgentName),
+		lipgloss.NewStyle().Foreground(statusColor).Render(statusText),
+		lipgloss.NewStyle().Foreground(styles.Dim).Render(dur.String()),
+		progress.ToolCalls,
+	)
+	escHint := lipgloss.NewStyle().Foreground(styles.Subtle).Render("[ESC]")
+	headerRight := escHint
+	padding := width - lipgloss.Width(headerLeft) - lipgloss.Width(headerRight) - 1
+	if padding < 1 {
+		padding = 1
+	}
+	b.WriteString(headerLeft + strings.Repeat(" ", padding) + headerRight + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).Render(strings.Repeat("─", width)) + "\n")
+
+	// Task line
+	taskStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1)
+	task := state.Prompt
+	if len(task) > width-4 {
+		task = task[:width-7] + "..."
+	}
+	b.WriteString(taskStyle.Render("Task: "+task) + "\n\n")
+
+	// Conversation entries
+	contentLines := make([]string, 0, len(conversation)*3)
+	for _, entry := range conversation {
+		lines := m.renderConversationEntry(entry, width-2)
+		contentLines = append(contentLines, lines...)
+	}
+
+	// Working indicator at bottom
+	if state.Status == teams.StatusWorking {
+		contentLines = append(contentLines, "")
+		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.Warning).PaddingLeft(1).Render("◐ working..."))
+	}
+
+	// Apply scroll
+	visibleH := height - 5 // header + task + hints
+	if visibleH < 3 {
+		visibleH = 3
+	}
+
+	// Clamp scroll
+	maxScroll := len(contentLines) - visibleH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.agentDetail.scroll > maxScroll {
+		m.agentDetail.scroll = maxScroll
+	}
+	scroll := m.agentDetail.scroll
+
+	end := scroll + visibleH
+	if end > len(contentLines) {
+		end = len(contentLines)
+	}
+	start := scroll
+	if start > len(contentLines) {
+		start = len(contentLines)
+	}
+
+	for _, line := range contentLines[start:end] {
+		b.WriteString(line + "\n")
+	}
+
+	// Pad remaining height
+	currentLines := 4 + (end - start) // header(2) + task(2) + content
+	for i := currentLines; i < height-1; i++ {
+		b.WriteString("\n")
+	}
+
+	// Hint bar
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).Render(strings.Repeat("─", width)) + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1).Render("j/k scroll  m message  ESC back"))
+
+	return b.String()
+}
+
+// renderConversationEntry renders a single conversation entry.
+func (m Model) renderConversationEntry(entry teams.ConversationEntry, width int) []string {
+	var lines []string
+
+	switch entry.Type {
+	case "text":
+		// Agent's thinking/response text
+		agentStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).PaddingLeft(1)
+		lines = append(lines, agentStyle.Render("● assistant"))
+		textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ebdbb2")).PaddingLeft(3)
+		// Wrap long text
+		for _, paragraph := range strings.Split(entry.Content, "\n") {
+			if len(paragraph) > width-4 {
+				// Simple word wrap
+				for len(paragraph) > width-4 {
+					cut := width - 4
+					for cut > 0 && paragraph[cut] != ' ' {
+						cut--
+					}
+					if cut == 0 {
+						cut = width - 4
+					}
+					lines = append(lines, textStyle.Render(paragraph[:cut]))
+					paragraph = paragraph[cut:]
+				}
+			}
+			lines = append(lines, textStyle.Render(paragraph))
+		}
+		lines = append(lines, "")
+
+	case "tool_start":
+		toolStyle := lipgloss.NewStyle().Foreground(styles.Warning).PaddingLeft(1)
+		box := fmt.Sprintf("┌─ %s", entry.ToolName)
+		if entry.Content != "" {
+			content := entry.Content
+			if len(content) > width-8 {
+				content = content[:width-11] + "..."
+			}
+			box += fmt.Sprintf("(%s)", content)
+		}
+		lines = append(lines, toolStyle.Render(box))
+
+	case "tool_end":
+		toolStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1)
+		content := entry.Content
+		if content != "" {
+			// Show truncated result
+			resultLines := strings.Split(content, "\n")
+			maxLines := 5
+			if len(resultLines) > maxLines {
+				for _, rl := range resultLines[:maxLines] {
+					if len(rl) > width-8 {
+						rl = rl[:width-11] + "..."
+					}
+					lines = append(lines, toolStyle.Render("│ "+rl))
+				}
+				lines = append(lines, toolStyle.Render(fmt.Sprintf("│ ... (%d more lines)", len(resultLines)-maxLines)))
+			} else {
+				for _, rl := range resultLines {
+					if len(rl) > width-8 {
+						rl = rl[:width-11] + "..."
+					}
+					lines = append(lines, toolStyle.Render("│ "+rl))
+				}
+			}
+		}
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1).Render("└─"))
+		lines = append(lines, "")
+
+	case "complete":
+		doneStyle := lipgloss.NewStyle().Foreground(styles.Success).PaddingLeft(1)
+		lines = append(lines, doneStyle.Render("✓ Complete"))
+		if entry.Content != "" {
+			contentStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(3)
+			for _, line := range strings.Split(entry.Content, "\n") {
+				if len(line) > width-6 {
+					line = line[:width-9] + "..."
+				}
+				lines = append(lines, contentStyle.Render(line))
+			}
+		}
+		lines = append(lines, "")
+
+	case "error":
+		errStyle := lipgloss.NewStyle().Foreground(styles.Error).PaddingLeft(1)
+		lines = append(lines, errStyle.Render("✗ Error: "+entry.Content))
+		lines = append(lines, "")
+
+	case "message_in":
+		msgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#83a598")).PaddingLeft(1)
+		lines = append(lines, msgStyle.Render("┌─ ✉ from you"))
+		lines = append(lines, msgStyle.Render("│ "+entry.Content))
+		lines = append(lines, msgStyle.Render("└─"))
+		lines = append(lines, "")
+	}
+
+	return lines
+}
+
 // applyConfigChange applies a config change to the live session immediately.
 func (m *Model) applyConfigChange(key, value string) {
 	switch key {
@@ -2897,6 +3346,11 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 	case PanelTasks:
 		if m.appCtx != nil && m.appCtx.TaskRuntime != nil {
 			return taskspanel.New(m.appCtx.TaskRuntime)
+		}
+	case PanelAgents:
+		if m.appCtx != nil && m.appCtx.TeamManager != nil && m.appCtx.TeamRunner != nil {
+			p := teampanel.New(m.appCtx.TeamManager, m.appCtx.TeamRunner)
+			return p
 		}
 	}
 	return nil
@@ -3394,9 +3848,14 @@ func (m Model) View() string {
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
 
+	// Full-screen agent detail overlay replaces viewport entirely
+	if m.focus == FocusAgentDetail && m.agentDetail != nil {
+		vpView = m.renderAgentDetail(m.width, m.viewport.Height)
+	}
+
 	// 2. If panel is active, join viewport + panel side-by-side
 	topArea := vpView
-	if hasPanel {
+	if hasPanel && m.focus != FocusAgentDetail {
 		topArea = splitLayout(vpView, m.activePanel, m.width, m.viewport.Height)
 	}
 
@@ -3425,6 +3884,7 @@ func (m Model) View() string {
 	// 6. Status bar (full width)
 	hint := m.statusHint()
 	ctxUsed, ctxMax := m.contextBudget()
+	teamSummary, unreadMail := m.teamStatus()
 	sections = append(sections, renderStatusBar(m.width, StatusBarState{
 		Model:       m.model,
 		Tokens:      m.totalTokens,
@@ -3439,9 +3899,32 @@ func (m Model) View() string {
 		ContextUsed:        ctxUsed,
 		ContextMax:         ctxMax,
 		BackgroundSessions: m.countBackgroundSessions(),
+		TeamSummary:        teamSummary,
+		UnreadMailbox:      unreadMail,
 	}))
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+// teamStatus returns the team summary string and unread mailbox count.
+func (m Model) teamStatus() (string, int) {
+	if m.appCtx == nil || m.appCtx.TeamRunner == nil {
+		return "", 0
+	}
+	teamName := m.appCtx.TeamRunner.ActiveTeamName()
+	if teamName == "" {
+		return "", 0
+	}
+	working := m.appCtx.TeamRunner.WorkingCount()
+	states := m.appCtx.TeamRunner.AllStates()
+	total := len(states)
+	summary := fmt.Sprintf("team:%s %d/%d ◐", teamName, working, total)
+
+	unread := 0
+	if mb := m.appCtx.TeamRunner.GetMailbox(); mb != nil {
+		unread = mb.TotalUnreadCount()
+	}
+	return summary, unread
 }
 
 // PermissionMode constants for display
@@ -3670,6 +4153,9 @@ func (m Model) panelName() string {
 }
 
 func (m Model) statusHint() string {
+	if m.focus == FocusAgentDetail {
+		return "j/k scroll · m message · esc back"
+	}
 	if m.focus == FocusPlanApproval {
 		return "j/k navigate · enter confirm · ctrl+g edit plan · esc dismiss"
 	}
@@ -3773,6 +4259,21 @@ func (o *tuiSubAgentObserver) OnSubAgentToolStart(desc string, tu tools.ToolUse)
 
 func (o *tuiSubAgentObserver) OnSubAgentToolEnd(desc string, tu tools.ToolUse, result *tools.Result) {
 	o.ch <- tuiEvent{typ: "subagent_tool_end", text: desc, toolUse: tu, result: result}
+}
+
+// tuiTeammateEventHandler forwards teammate events to the TUI event channel.
+type tuiTeammateEventHandler struct {
+	ch chan<- tuiEvent
+}
+
+func (h *tuiTeammateEventHandler) OnTeammateEvent(event teams.TeammateEvent) {
+	e := event
+	h.ch <- tuiEvent{typ: "teammate_event", teammateEvent: &e}
+}
+
+func (o *tuiSubAgentObserver) OnSubAgentText(_ string, _ string) {
+	// Text events are not forwarded to the main TUI chat — they're captured
+	// per-teammate by the teammateObserver for the agent detail view.
 }
 
 func shortModelName(model string) string {
