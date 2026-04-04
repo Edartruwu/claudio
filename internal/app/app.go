@@ -235,7 +235,12 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// populates TeammateState.Conversation and Progress in real time.
 	teamRunner.SetContextDecorator(func(ctx context.Context, state *teams.TeammateState) context.Context {
 		obs := &teammateObserver{state: state, runner: teamRunner}
-		return tools.WithSubAgentObserver(ctx, obs)
+		ctx = tools.WithSubAgentObserver(ctx, obs)
+		ctx = tools.WithTeamContext(ctx, tools.TeamContext{
+			TeamName:  state.TeamName,
+			AgentName: state.Identity.AgentName,
+		})
+		return ctx
 	})
 
 	// Inject task runtime into tools that support background execution
@@ -248,6 +253,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		if at, ok := agent.(*tools.AgentTool); ok {
 			at.TaskRuntime = taskRuntime
 			at.ParentRegistry = registry
+			at.TeamRunner = teamRunner
 			// Wire real sub-agent execution
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
@@ -294,11 +300,13 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	if tc, err := registry.Get("TeamCreate"); err == nil {
 		if tool, ok := tc.(*tools.TeamCreateTool); ok {
 			tool.Manager = teamMgr
+			tool.Runner = teamRunner
 		}
 	}
 	if td, err := registry.Get("TeamDelete"); err == nil {
 		if tool, ok := td.(*tools.TeamDeleteTool); ok {
 			tool.Manager = teamMgr
+			tool.Runner = teamRunner
 		}
 	}
 	if sm, err := registry.Get("SendMessage"); err == nil {

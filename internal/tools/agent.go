@@ -12,6 +12,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/teams"
 )
 
 // SubAgentDBContext carries DB access for sub-agent session persistence.
@@ -31,6 +32,26 @@ func WithSubAgentDB(ctx context.Context, db *storage.DB, parentID, model string)
 // SubAgentDBFromContext retrieves the DB context (nil if not set).
 func SubAgentDBFromContext(ctx context.Context) *SubAgentDBContext {
 	v, _ := ctx.Value(ctxKeySubAgentDB{}).(*SubAgentDBContext)
+	return v
+}
+
+// TeamContext carries team identity for sub-agents so SendMessage works
+// without mutating shared tool pointers.
+type TeamContext struct {
+	TeamName  string
+	AgentName string
+}
+
+type ctxKeyTeamContext struct{}
+
+// WithTeamContext stores team identity in context for teammate sub-agents.
+func WithTeamContext(ctx context.Context, tc TeamContext) context.Context {
+	return context.WithValue(ctx, ctxKeyTeamContext{}, &tc)
+}
+
+// TeamContextFromCtx retrieves the team context (nil if not in a team).
+func TeamContextFromCtx(ctx context.Context) *TeamContext {
+	v, _ := ctx.Value(ctxKeyTeamContext{}).(*TeamContext)
 	return v
 }
 
@@ -87,6 +108,8 @@ type AgentTool struct {
 	RunAgentWithMemory func(ctx context.Context, system, prompt, memoryDir string) (string, error)
 	// TaskRuntime for background agent execution.
 	TaskRuntime *tasks.Runtime
+	// TeamRunner for spawning agents visible in the team panel.
+	TeamRunner *teams.TeammateRunner
 }
 
 type agentInput struct {
@@ -188,6 +211,41 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 	}
 	if modelOverride != "" {
 		ctx = WithSubAgentModel(ctx, modelOverride)
+	}
+
+	// Team-aware execution: if a team is active, route through TeammateRunner
+	// so agents appear in the team panel.
+	if t.TeamRunner != nil && t.TeamRunner.ActiveTeamName() != "" {
+		teamName := t.TeamRunner.ActiveTeamName()
+		state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
+			TeamName:  teamName,
+			AgentName: desc,
+			Prompt:    in.Prompt,
+			System:    agentDef.SystemPrompt,
+			Model:     modelOverride,
+		})
+		if err != nil {
+			return &Result{Content: fmt.Sprintf("Failed to spawn teammate: %v", err), IsError: true}, nil
+		}
+
+		if in.RunInBackground {
+			return &Result{Content: fmt.Sprintf("Teammate spawned in team %q: %s\nAgent ID: %s\nOpen the Agents panel (space a) to monitor progress.", teamName, desc, state.Identity.AgentID)}, nil
+		}
+
+		// Foreground: wait for the teammate to finish
+		done := t.TeamRunner.WaitForOne(state.Identity.AgentID, 30*time.Minute)
+		if !done {
+			return &Result{Content: fmt.Sprintf("Teammate %s timed out after 30 minutes", desc), IsError: true}, nil
+		}
+		if state.Error != "" {
+			return &Result{Content: fmt.Sprintf("Teammate error: %s", state.Error), IsError: true}, nil
+		}
+		result := state.Result
+		const maxAgentBytes = 50_000
+		if len(result) > maxAgentBytes {
+			result = result[:maxAgentBytes] + fmt.Sprintf("\n[Agent output truncated at %d bytes]", maxAgentBytes)
+		}
+		return &Result{Content: result}, nil
 	}
 
 	// Background execution via task runtime

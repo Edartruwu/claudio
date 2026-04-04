@@ -561,6 +561,38 @@ func TestTeammateRunner_GetMailbox(t *testing.T) {
 	}
 }
 
+func TestTeammateRunner_ContextDecoratorReceivesTeamName(t *testing.T) {
+	var capturedTeamName, capturedAgentName string
+
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	runner.SetContextDecorator(func(ctx context.Context, state *TeammateState) context.Context {
+		capturedTeamName = state.TeamName
+		capturedAgentName = state.Identity.AgentName
+		return ctx
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "worker-1",
+		Prompt:    "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	if capturedTeamName != "test-team" {
+		t.Errorf("expected TeamName %q, got %q", "test-team", capturedTeamName)
+	}
+	if capturedAgentName != "worker-1" {
+		t.Errorf("expected AgentName %q, got %q", "worker-1", capturedAgentName)
+	}
+}
+
 func TestTeammateRunner_EmitEvent_NilHandler(t *testing.T) {
 	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
 		return "ok", nil

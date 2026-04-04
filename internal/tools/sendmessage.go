@@ -70,13 +70,21 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
 
-	if t.Manager == nil || t.TeamName == "" {
+	// Resolve team context: prefer context (set per-teammate) over tool fields.
+	teamName := t.TeamName
+	agentName := t.AgentName
+	if tc := TeamContextFromCtx(ctx); tc != nil {
+		teamName = tc.TeamName
+		agentName = tc.AgentName
+	}
+
+	if t.Manager == nil || teamName == "" {
 		return &Result{Content: "Not in a team context", IsError: true}, nil
 	}
 
-	mailbox := teams.NewMailbox(t.Manager.TeamsDir(), t.TeamName)
+	mailbox := teams.NewMailbox(t.Manager.TeamsDir(), teamName)
 
-	from := t.AgentName
+	from := agentName
 	if from == "" {
 		from = "team-lead"
 	}
