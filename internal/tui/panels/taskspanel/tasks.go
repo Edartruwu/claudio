@@ -433,10 +433,10 @@ func (p *Panel) renderPlanRow(t *tools.Task, selected bool) string {
 	}
 	subjectStr := nameStyle.Render(subject)
 
-	// Owner badge
+	// Assignee badge
 	ownerStr := ""
-	if t.Owner != "" {
-		ownerStr = " " + lipgloss.NewStyle().Foreground(styles.Aqua).Render("@"+t.Owner)
+	if t.AssignedTo != "" {
+		ownerStr = " " + lipgloss.NewStyle().Foreground(styles.Aqua).Render("@"+t.AssignedTo)
 	}
 
 	return prefix + icon + " " + idBadge + " " + subjectStr + ownerStr

@@ -37,11 +37,14 @@ type Panel struct {
 }
 
 type agentItem struct {
-	name   string
-	id     string
-	color  string
-	status teams.MemberStatus
-	state  *teams.TeammateState
+	name     string
+	id       string
+	color    string
+	model    string
+	prompt   string
+	worktree string
+	status   teams.MemberStatus
+	state    *teams.TeammateState
 }
 
 // New creates a new team panel.
@@ -111,10 +114,18 @@ func (p *Panel) refresh() {
 			name:   mem.Identity.AgentName,
 			id:     mem.Identity.AgentID,
 			color:  mem.Identity.Color,
+			model:  mem.Model,
+			prompt: mem.Prompt,
 			status: mem.Status,
 		}
 		if state, ok := p.runner.GetState(mem.Identity.AgentID); ok {
 			item.state = state
+			if item.model == "" && state.Model != "" {
+				item.model = state.Model
+			}
+			if state.WorktreePath != "" {
+				item.worktree = state.WorktreePath
+			}
 		}
 		p.agents = append(p.agents, item)
 	}
@@ -208,6 +219,36 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return tickCmd(), true
 		}
 		return nil, true
+	case "q":
+		// Exit team view (without deleting)
+		if p.runner != nil {
+			p.runner.SetActiveTeam("")
+			p.agents = nil
+			return func() tea.Msg {
+				return panels.ActionMsg{Type: "exit_team"}
+			}, true
+		}
+		return nil, true
+	case "t":
+		// Cycle through available teams
+		if p.runner != nil {
+			names := p.runner.ListTeamNames()
+			if len(names) > 1 {
+				current := p.runner.ActiveTeamName()
+				idx := 0
+				for i, n := range names {
+					if n == current {
+						idx = i
+						break
+					}
+				}
+				next := names[(idx+1)%len(names)]
+				p.runner.SetActiveTeam(next)
+				p.cursor = 0
+				p.refresh()
+			}
+		}
+		return nil, true
 	}
 	return nil, false
 }
@@ -285,25 +326,45 @@ func (p *Panel) View() string {
 		}
 	}
 
-	// Mailbox preview
+	// Mailbox preview with messages
 	if p.runner != nil {
 		mailbox := p.runner.GetMailbox()
 		if mailbox != nil {
+			allMsgs := mailbox.AllMessages()
 			unread := mailbox.TotalUnreadCount()
-			if unread > 0 {
+			if len(allMsgs) > 0 {
 				b.WriteString("\n")
 				b.WriteString(styles.SeparatorLine(p.width))
 				b.WriteString("\n")
+				label := fmt.Sprintf("✉ Mailbox (%d)", len(allMsgs))
+				if unread > 0 {
+					label = fmt.Sprintf("✉ Mailbox (%d unread / %d)", unread, len(allMsgs))
+				}
 				mailLabel := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).PaddingLeft(2).
-					Render(fmt.Sprintf("✉ Mailbox (%d)", unread))
+					Render(label)
 				b.WriteString(mailLabel)
 				b.WriteString("\n")
+
+				// Show last N messages
+				maxShow := 6
+				start := 0
+				if len(allMsgs) > maxShow {
+					start = len(allMsgs) - maxShow
+				}
+				for _, msg := range allMsgs[start:] {
+					p.renderMailMessage(&b, msg)
+				}
+				if start > 0 {
+					b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+						Render(fmt.Sprintf("… %d older messages", start)))
+					b.WriteString("\n")
+				}
 			}
 		}
 	}
 
 	b.WriteString("\n")
-	writeHint(&b, p.width, "  j/k ⏎detail m msg s share f fwd x kill")
+	writeHint(&b, p.width, "  j/k ⏎detail t team q exit m msg s share f fwd x kill")
 
 	return renderPanel(b.String(), p.width, p.height)
 }
@@ -326,7 +387,12 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 
 	dur := ""
 	if a.state != nil {
-		d := time.Since(a.state.StartedAt).Truncate(time.Second)
+		var d time.Duration
+		if !a.state.FinishedAt.IsZero() {
+			d = a.state.FinishedAt.Sub(a.state.StartedAt).Truncate(time.Second)
+		} else {
+			d = time.Since(a.state.StartedAt).Truncate(time.Second)
+		}
 		dur = lipgloss.NewStyle().Foreground(styles.Dim).Render(fmt.Sprintf(" %s", smartDuration(d)))
 	}
 
@@ -340,9 +406,33 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 		statusLabel = lipgloss.NewStyle().Foreground(styles.Muted).Render(" ⊘")
 	}
 
-	lines.WriteString(prefix + icon + " " + nameStyle.Render(a.name) + statusLabel + dur + "\n")
+	modelTag := ""
+	if a.model != "" {
+		modelTag = lipgloss.NewStyle().Foreground(styles.Dim).Render(" (" + a.model + ")")
+	}
 
-	// Second line: last activity
+	lines.WriteString(prefix + icon + " " + nameStyle.Render(a.name) + modelTag + statusLabel + dur + "\n")
+
+	// Prompt preview line
+	if a.prompt != "" {
+		preview := a.prompt
+		maxW := p.width - 8
+		if maxW < 10 {
+			maxW = 10
+		}
+		if len(preview) > maxW {
+			preview = preview[:maxW-1] + "…"
+		}
+		lines.WriteString("    " + lipgloss.NewStyle().Foreground(styles.Dim).Italic(true).Render(preview) + "\n")
+	}
+
+	// Worktree path
+	if a.worktree != "" {
+		wtLabel := lipgloss.NewStyle().Foreground(styles.Dim).Render("    ⎇ " + a.worktree)
+		lines.WriteString(wtLabel + "\n")
+	}
+
+	// Activity line
 	if a.state != nil {
 		progress := a.state.GetProgress()
 		activities := progress.Activities
@@ -369,6 +459,44 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 	return lines.String()
 }
 
+func (p *Panel) renderMailMessage(b *strings.Builder, msg teams.Message) {
+	fromColor := lipgloss.Color(msg.Color)
+	if msg.Color == "" {
+		fromColor = styles.Dim
+	}
+	fromStyle := lipgloss.NewStyle().Foreground(fromColor).Bold(true)
+	arrow := lipgloss.NewStyle().Foreground(styles.Dim).Render(" → ")
+	toStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
+
+	header := "    " + fromStyle.Render(msg.From) + arrow + toStyle.Render(msg.To)
+
+	// Timestamp
+	ago := time.Since(msg.Timestamp).Truncate(time.Second)
+	ts := lipgloss.NewStyle().Foreground(styles.Dim).Render(" " + smartDuration(ago))
+	header += ts
+
+	// Unread indicator
+	if !msg.Read {
+		header += lipgloss.NewStyle().Foreground(styles.Warning).Render(" •")
+	}
+
+	b.WriteString(header + "\n")
+
+	// Message preview
+	preview := msg.Summary
+	if preview == "" {
+		preview = msg.Text
+	}
+	maxW := p.width - 8
+	if maxW < 10 {
+		maxW = 10
+	}
+	if len(preview) > maxW {
+		preview = preview[:maxW-1] + "…"
+	}
+	b.WriteString("      " + lipgloss.NewStyle().Foreground(styles.Muted).Render(preview) + "\n")
+}
+
 // TeamSummary returns a one-line summary for the status bar.
 func (p *Panel) TeamSummary() string {
 	if p.runner == nil {
@@ -386,6 +514,10 @@ func (p *Panel) TeamSummary() string {
 		total = len(p.agents)
 	}
 	if total == 0 {
+		return ""
+	}
+	if working == 0 {
+		// All agents finished — don't clutter the status bar
 		return ""
 	}
 	return fmt.Sprintf("team:%s %d/%d ◐", teamName, working, total)

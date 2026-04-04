@@ -240,7 +240,25 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			TeamName:  state.TeamName,
 			AgentName: state.Identity.AgentName,
 		})
+		// Propagate model override so runSubAgentWithMemory picks it up
+		if state.Model != "" {
+			ctx = tools.WithSubAgentModel(ctx, state.Model)
+		}
+		// Propagate maxTurns if specified
+		if state.MaxTurns > 0 {
+			ctx = tools.WithMaxTurns(ctx, state.MaxTurns)
+		}
 		return ctx
+	})
+
+	// Wire CWD injector for worktree isolation
+	teamRunner.SetCwdInjector(func(ctx context.Context, cwd string) context.Context {
+		return tools.WithCwd(ctx, cwd)
+	})
+
+	// Wire task completer for auto-updating tasks when agents finish
+	teamRunner.SetTaskCompleter(func(agentName, status string) {
+		tools.GlobalTaskStore.CompleteByAssignee(agentName, status)
 	})
 
 	// Inject task runtime into tools that support background execution
@@ -254,6 +272,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.TaskRuntime = taskRuntime
 			at.ParentRegistry = registry
 			at.TeamRunner = teamRunner
+			// Wire available models: Anthropic aliases + provider shortcuts
+			at.AvailableModels = buildAvailableModels(apiClient)
 			// Wire real sub-agent execution
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
@@ -301,6 +321,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		if tool, ok := tc.(*tools.TeamCreateTool); ok {
 			tool.Manager = teamMgr
 			tool.Runner = teamRunner
+			tool.AvailableModels = buildAvailableModels(apiClient)
 		}
 	}
 	if td, err := registry.Get("TeamDelete"); err == nil {
@@ -312,6 +333,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	if sm, err := registry.Get("SendMessage"); err == nil {
 		if tool, ok := sm.(*tools.SendMessageTool); ok {
 			tool.Manager = teamMgr
+			tool.Runner = teamRunner
 		}
 	}
 
@@ -382,6 +404,27 @@ func (a *App) Close() error {
 // runs a single prompt through it, capturing all text output.
 func runSubAgent(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt string) (string, error) {
 	return runSubAgentWithMemory(ctx, apiClient, parentRegistry, system, prompt, "")
+}
+
+// buildAvailableModels returns the list of model names the AI can pick from.
+// Includes Anthropic aliases when Anthropic is reachable (default provider),
+// plus all configured provider model shortcuts.
+func buildAvailableModels(apiClient *api.Client) []string {
+	var models []string
+
+	// Anthropic aliases are available when using the default Anthropic API
+	// (always true unless the user overrides the base URL to a non-Anthropic provider)
+	currentModel := apiClient.GetModel()
+	if strings.Contains(currentModel, "claude") || currentModel == "" {
+		models = append(models, "sonnet", "opus", "haiku")
+	}
+
+	// Add all provider model shortcuts
+	for shortcut := range apiClient.GetModelShortcuts() {
+		models = append(models, shortcut)
+	}
+
+	return models
 }
 
 // resolveModelAlias converts short aliases ("haiku", "sonnet", "opus") to full model IDs.
@@ -461,6 +504,24 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 	engine.SetSystem(system)
 	if maxTurns := tools.MaxTurnsFromContext(ctx); maxTurns > 0 {
 		engine.SetMaxTurns(maxTurns)
+	}
+
+	// Wire mailbox poller for team agents so they can receive messages mid-run
+	if tc := tools.TeamContextFromCtx(ctx); tc != nil {
+		teamsDir := filepath.Join(os.Getenv("HOME"), ".claudio", "teams")
+		mb := teams.NewMailbox(teamsDir, tc.TeamName)
+		agentName := tc.AgentName
+		engine.SetMailboxPoller(func() []string {
+			msgs, err := mb.ReadUnread(agentName)
+			if err != nil || len(msgs) == 0 {
+				return nil
+			}
+			var result []string
+			for _, m := range msgs {
+				result = append(result, fmt.Sprintf("[From %s]: %s", m.From, m.Text))
+			}
+			return result
+		})
 	}
 
 	if err := engine.Run(ctx, prompt); err != nil {

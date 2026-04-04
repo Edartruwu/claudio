@@ -3,9 +3,13 @@ package teams
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/git"
 )
 
 // TeammateProgress tracks a teammate's work activity.
@@ -26,13 +30,15 @@ type ConversationEntry struct {
 
 // TeammateEvent is emitted when something happens in a teammate's execution.
 type TeammateEvent struct {
-	TeamName  string
-	AgentID   string
-	AgentName string
-	Type      string // "started", "text", "tool_start", "tool_end", "complete", "error"
-	Text      string
-	ToolName  string
-	Color     string
+	TeamName       string
+	AgentID        string
+	AgentName      string
+	Type           string // "started", "text", "tool_start", "tool_end", "complete", "error"
+	Text           string
+	ToolName       string
+	Color          string
+	WorktreePath   string // set on complete/error if worktree has changes
+	WorktreeBranch string
 }
 
 // TeammateEventHandler receives events from teammate execution.
@@ -44,16 +50,21 @@ const maxConversationEntries = 200
 
 // TeammateState holds the runtime state of an in-process teammate.
 type TeammateState struct {
-	Identity     TeammateIdentity
-	TeamName     string
-	Prompt       string
-	Status       MemberStatus
-	Progress     TeammateProgress
-	Result       string // final output
-	Error        string
-	IsIdle       bool
-	StartedAt    time.Time
-	Conversation []ConversationEntry
+	Identity       TeammateIdentity
+	TeamName       string
+	Prompt         string
+	Model          string // model override for this teammate
+	MaxTurns       int    // optional max agentic turns (0 = unlimited)
+	Status         MemberStatus
+	Progress       TeammateProgress
+	Result         string // final output
+	Error          string
+	IsIdle         bool
+	StartedAt      time.Time
+	FinishedAt     time.Time
+	Conversation   []ConversationEntry
+	WorktreePath   string // path to git worktree (empty if no isolation)
+	WorktreeBranch string // branch name used for the worktree
 
 	cancel context.CancelFunc
 	mu     sync.Mutex
@@ -88,6 +99,13 @@ func (s *TeammateState) IncrToolCalls() {
 	s.Progress.ToolCalls++
 }
 
+// GetStatus returns the current status, thread-safe.
+func (s *TeammateState) GetStatus() MemberStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Status
+}
+
 // GetConversation returns a snapshot of the conversation, thread-safe.
 func (s *TeammateState) GetConversation() []ConversationEntry {
 	s.mu.Lock()
@@ -116,22 +134,34 @@ type RunAgentFunc func(ctx context.Context, system, prompt string) (string, erro
 // (e.g., SubAgentObserver, SubAgentDB) without the teams package importing tools.
 type ContextDecorator func(ctx context.Context, state *TeammateState) context.Context
 
+// CwdInjector injects a CWD override into context. Set by the app layer so
+// the teams package doesn't need to import the tools package.
+type CwdInjector func(ctx context.Context, cwd string) context.Context
+
+// TaskCompleter is called when an agent finishes to update assigned tasks.
+// Set by the app layer to bridge teams → tasks without circular imports.
+type TaskCompleter func(agentName, status string)
+
 // TeammateRunner manages in-process teammate goroutines.
 type TeammateRunner struct {
 	mu               sync.RWMutex
 	teammates        map[string]*TeammateState // keyed by agent ID
 	manager          *Manager
-	mailbox          *Mailbox
+	mailboxes        map[string]*Mailbox
 	runAgent         RunAgentFunc
 	eventHandler     TeammateEventHandler
 	parentCtx        context.Context // parent context with observer/DB from TUI
 	contextDecorator ContextDecorator
+	cwdInjector      CwdInjector
+	taskCompleter    TaskCompleter
+	activeTeam       string // explicitly set active team name
 }
 
 // NewTeammateRunner creates a runner for spawning in-process teammates.
 func NewTeammateRunner(manager *Manager, runAgent RunAgentFunc) *TeammateRunner {
 	return &TeammateRunner{
 		teammates: make(map[string]*TeammateState),
+		mailboxes: make(map[string]*Mailbox),
 		manager:   manager,
 		runAgent:  runAgent,
 		parentCtx: context.Background(),
@@ -154,6 +184,16 @@ func (r *TeammateRunner) SetContextDecorator(d ContextDecorator) {
 	r.contextDecorator = d
 }
 
+// SetCwdInjector sets the function that injects CWD override into context.
+func (r *TeammateRunner) SetCwdInjector(fn CwdInjector) {
+	r.cwdInjector = fn
+}
+
+// SetTaskCompleter sets the callback for updating tasks when agents finish.
+func (r *TeammateRunner) SetTaskCompleter(fn TaskCompleter) {
+	r.taskCompleter = fn
+}
+
 // EmitEvent sends an event to the registered handler.
 func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 	if r.eventHandler != nil {
@@ -168,12 +208,30 @@ type SpawnConfig struct {
 	Prompt      string
 	System      string // system prompt override
 	Model       string // model override
+	MaxTurns    int    // optional max agentic turns (0 = unlimited)
+	Isolation   string // "worktree" for git worktree isolation
 }
 
 // Spawn starts a new teammate goroutine.
 func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
+	// Fall back to team-level default model if no per-agent model specified
+	if cfg.Model == "" {
+		if team, ok := r.manager.GetTeam(cfg.TeamName); ok && team.Model != "" {
+			cfg.Model = team.Model
+		}
+	}
+
+	// Default to worktree isolation when inside a git repo
+	if cfg.Isolation == "" {
+		cwd, _ := os.Getwd()
+		repo := git.NewRepo(cwd)
+		if repo.IsRepo() {
+			cfg.Isolation = "worktree"
+		}
+	}
+
 	// Add member to team
-	member, err := r.manager.AddMember(cfg.TeamName, cfg.AgentName, cfg.Model)
+	member, err := r.manager.AddMember(cfg.TeamName, cfg.AgentName, cfg.Model, cfg.Prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +242,8 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		Identity:     member.Identity,
 		TeamName:     cfg.TeamName,
 		Prompt:       cfg.Prompt,
+		Model:        cfg.Model,
+		MaxTurns:     cfg.MaxTurns,
 		Status:       StatusWorking,
 		StartedAt:    time.Now(),
 		cancel:       cancel,
@@ -198,11 +258,11 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 	// Update team status
 	r.manager.UpdateMemberStatus(cfg.TeamName, member.Identity.AgentID, StatusWorking)
 
-	// Set up mailbox
-	if r.mailbox == nil {
+	// Set up mailbox for this team (one per team)
+	if _, ok := r.mailboxes[cfg.TeamName]; !ok {
 		team, _ := r.manager.GetTeam(cfg.TeamName)
 		if team != nil {
-			r.mailbox = NewMailbox(r.manager.teamsDir, cfg.TeamName)
+			r.mailboxes[cfg.TeamName] = NewMailbox(r.manager.teamsDir, cfg.TeamName)
 		}
 	}
 
@@ -223,6 +283,32 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 	// Decorate context with per-teammate observer/DB if configured
 	if r.contextDecorator != nil {
 		ctx = r.contextDecorator(ctx, state)
+	}
+
+	// Set up worktree isolation if requested
+	var worktreeRepo *git.Repo
+	if cfg.Isolation == "worktree" {
+		cwd, _ := os.Getwd()
+		repo := git.NewRepo(cwd)
+		if repo.IsRepo() {
+			branch := fmt.Sprintf("claudio/%s/%s", cfg.TeamName, cfg.AgentName)
+			root, _ := repo.Root()
+			wtPath := filepath.Join(root, ".claudio-worktrees", branch)
+			wtErr := repo.WorktreeAdd(wtPath, branch)
+			if wtErr == nil {
+				worktreeRepo = git.NewRepo(wtPath)
+
+				state.mu.Lock()
+				state.WorktreePath = wtPath
+				state.WorktreeBranch = branch
+				state.mu.Unlock()
+
+				// Inject CWD override into context
+				if r.cwdInjector != nil {
+					ctx = r.cwdInjector(ctx, wtPath)
+				}
+			}
+		}
 	}
 
 	// Emit started event
@@ -251,9 +337,19 @@ Guidelines:
 Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	}
 
+	// Add worktree notice to system prompt
+	if state.WorktreePath != "" {
+		cwd, _ := os.Getwd()
+		system += fmt.Sprintf("\n\nYou are operating in an isolated git worktree at %s — same repository, same relative file structure, separate working copy. "+
+			"Paths in conversation context from the parent agent refer to %s; translate them to your worktree root. "+
+			"Re-read files before editing if the parent may have modified them. "+
+			"Your changes stay in this worktree and will not affect the parent's files.", state.WorktreePath, cwd)
+	}
+
 	result, err := r.runAgent(ctx, system, cfg.Prompt)
 
 	state.mu.Lock()
+	state.FinishedAt = time.Now()
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			state.Status = StatusShutdown
@@ -268,7 +364,33 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	}
 	state.mu.Unlock()
 
-	// Add completion to conversation
+	// Worktree cleanup: remove if no changes, keep if there are changes
+	if worktreeRepo != nil && state.WorktreePath != "" {
+		hasChanges, chkErr := worktreeRepo.HasChanges()
+		if chkErr != nil || !hasChanges {
+			// No changes — clean up worktree and branch
+			cwd, _ := os.Getwd()
+			mainRepo := git.NewRepo(cwd)
+			if mainRepo.IsRepo() {
+				_ = mainRepo.WorktreeRemove(state.WorktreePath, true)
+				if state.WorktreeBranch != "" {
+					_ = mainRepo.DeleteBranch(state.WorktreeBranch)
+				}
+			}
+			state.mu.Lock()
+			state.WorktreePath = ""
+			state.WorktreeBranch = ""
+			state.mu.Unlock()
+		} else {
+			// Has changes — append worktree info to result
+			worktreeNote := fmt.Sprintf("\n\n[Worktree with changes kept at: %s (branch: %s)]", state.WorktreePath, state.WorktreeBranch)
+			state.mu.Lock()
+			state.Result += worktreeNote
+			state.mu.Unlock()
+		}
+	}
+
+	// Emit completion event (after worktree cleanup so worktree fields reflect final state)
 	if err != nil {
 		state.AddConversation(ConversationEntry{
 			Time:    time.Now(),
@@ -276,12 +398,14 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			Content: state.Error,
 		})
 		r.EmitEvent(TeammateEvent{
-			TeamName:  cfg.TeamName,
-			AgentID:   state.Identity.AgentID,
-			AgentName: cfg.AgentName,
-			Type:      "error",
-			Text:      state.Error,
-			Color:     state.Identity.Color,
+			TeamName:       cfg.TeamName,
+			AgentID:        state.Identity.AgentID,
+			AgentName:      cfg.AgentName,
+			Type:           "error",
+			Text:           state.Error,
+			Color:          state.Identity.Color,
+			WorktreePath:   state.WorktreePath,
+			WorktreeBranch: state.WorktreeBranch,
 		})
 	} else {
 		state.AddConversation(ConversationEntry{
@@ -290,28 +414,44 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			Content: truncateForSummary(result, 500),
 		})
 		r.EmitEvent(TeammateEvent{
-			TeamName:  cfg.TeamName,
-			AgentID:   state.Identity.AgentID,
-			AgentName: cfg.AgentName,
-			Type:      "complete",
-			Text:      truncateForSummary(result, 200),
-			Color:     state.Identity.Color,
+			TeamName:       cfg.TeamName,
+			AgentID:        state.Identity.AgentID,
+			AgentName:      cfg.AgentName,
+			Type:           "complete",
+			Text:           truncateForSummary(result, 200),
+			Color:          state.Identity.Color,
+			WorktreePath:   state.WorktreePath,
+			WorktreeBranch: state.WorktreeBranch,
 		})
+	}
+
+	// Auto-complete assigned tasks
+	if r.taskCompleter != nil {
+		taskStatus := "completed"
+		if state.Status == StatusFailed {
+			taskStatus = "failed"
+		}
+		r.taskCompleter(cfg.AgentName, taskStatus)
 	}
 
 	// Update team status
 	r.manager.UpdateMemberStatus(cfg.TeamName, state.Identity.AgentID, state.Status)
 
 	// Send completion notification to leader's inbox
-	if r.mailbox != nil {
+	if mb := r.getMailbox(cfg.TeamName); mb != nil {
 		team, _ := r.manager.GetTeam(cfg.TeamName)
 		if team != nil {
 			summary := truncateForSummary(result, 200)
 			if err != nil {
 				summary = fmt.Sprintf("FAILED: %s", err.Error())
 			}
-			r.mailbox.Send(state.Identity.AgentName, "team-lead", Message{
-				Text:    fmt.Sprintf("[%s] Task complete: %s\n\nResult:\n%s", state.Status, state.Prompt, summary),
+			// Include worktree info in completion message if changes were kept
+			completionText := fmt.Sprintf("[%s] Task complete: %s\n\nResult:\n%s", state.Status, state.Prompt, summary)
+			if state.WorktreePath != "" {
+				completionText += fmt.Sprintf("\n\n[Changes in worktree: %s (branch: %s)]", state.WorktreePath, state.WorktreeBranch)
+			}
+			mb.Send(state.Identity.AgentName, "team-lead", Message{
+				Text:    completionText,
 				Summary: fmt.Sprintf("%s: %s", state.Identity.AgentName, state.Status),
 				Color:   state.Identity.Color,
 			})
@@ -350,10 +490,30 @@ func (r *TeammateRunner) GetStateByName(name string) (*TeammateState, bool) {
 	return nil, false
 }
 
-// ActiveTeamName returns the name of the team that has active teammates, or empty string.
+// ListTeamNames returns all known team names from the manager.
+func (r *TeammateRunner) ListTeamNames() []string {
+	all := r.manager.ListTeams()
+	names := make([]string, len(all))
+	for i, t := range all {
+		names[i] = t.Name
+	}
+	return names
+}
+
+// SetActiveTeam explicitly sets the active team name.
+func (r *TeammateRunner) SetActiveTeam(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.activeTeam = name
+}
+
+// ActiveTeamName returns the explicitly set active team, or infers from running teammates.
 func (r *TeammateRunner) ActiveTeamName() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if r.activeTeam != "" {
+		return r.activeTeam
+	}
 	for _, s := range r.teammates {
 		return s.TeamName
 	}
@@ -375,9 +535,19 @@ func (r *TeammateRunner) WorkingCount() int {
 	return count
 }
 
-// GetMailbox returns the mailbox, if any.
+// GetMailbox returns the mailbox for the active team, if any.
 func (r *TeammateRunner) GetMailbox() *Mailbox {
-	return r.mailbox
+	return r.getMailbox(r.ActiveTeamName())
+}
+
+// getMailbox returns the mailbox for a specific team.
+func (r *TeammateRunner) getMailbox(teamName string) *Mailbox {
+	if teamName == "" {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.mailboxes[teamName]
 }
 
 // Kill terminates a teammate.

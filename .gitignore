@@ -3,4 +3,5 @@ bin/
 *.db
 *.db-journal
 .claudio/
+.claudio-worktrees/
 .DS_Store

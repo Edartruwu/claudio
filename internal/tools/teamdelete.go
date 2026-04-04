@@ -12,6 +12,7 @@ import (
 type TeamDeleteTool struct {
 	deferrable
 	Manager *teams.Manager
+	Runner  *teams.TeammateRunner
 }
 
 type teamDeleteInput struct {
@@ -52,6 +53,11 @@ func (t *TeamDeleteTool) Execute(ctx context.Context, input json.RawMessage) (*R
 
 	if err := t.Manager.DeleteTeam(in.TeamName); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to delete team: %v", err), IsError: true}, nil
+	}
+
+	// Clear active team if this was the active one
+	if t.Runner != nil && t.Runner.ActiveTeamName() == in.TeamName {
+		t.Runner.SetActiveTeam("")
 	}
 
 	return &Result{Content: fmt.Sprintf("Team %q deleted", in.TeamName)}, nil

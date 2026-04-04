@@ -12,6 +12,7 @@ import (
 type SendMessageTool struct {
 	deferrable
 	Manager   *teams.Manager
+	Runner    *teams.TeammateRunner
 	TeamName  string // current team context
 	AgentName string // sender's name
 }
@@ -76,6 +77,11 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 	if tc := TeamContextFromCtx(ctx); tc != nil {
 		teamName = tc.TeamName
 		agentName = tc.AgentName
+	}
+
+	// Fall back to the active team from the runner (covers the team-lead case).
+	if teamName == "" && t.Runner != nil {
+		teamName = t.Runner.ActiveTeamName()
 	}
 
 	if t.Manager == nil || teamName == "" {

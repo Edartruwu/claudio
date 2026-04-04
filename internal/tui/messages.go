@@ -812,8 +812,8 @@ func renderMessage(msg ChatMessage, maxW int) string {
 
 	switch msg.Type {
 	case MsgUser:
-		content := styles.UserContent.Render(msg.Content)
-		block := styles.UserBlock.Render(content)
+		content := styles.UserContent.Width(maxW - 4).Render(msg.Content)
+		block := styles.UserBlock.Width(maxW).Render(content)
 		return pinPrefix + block
 
 	case MsgAssistant:
@@ -874,6 +874,10 @@ type StatusBarState struct {
 	// Team status
 	TeamSummary   string // e.g. "team:web-scraper 2/3 ◐"
 	UnreadMailbox int    // unread mailbox count
+	// Rate limits
+	RateLimitWarning  string // e.g. "You've used 85% of your session limit · resets in 2h"
+	RateLimitError    string // e.g. "You've hit your session limit"
+	IsUsingOverage    bool   // true when subscription exhausted, using extra usage
 }
 
 func renderStatusBar(width int, s StatusBarState) string {
@@ -944,6 +948,19 @@ func renderStatusBar(width int, s StatusBarState) string {
 	if s.UnreadMailbox > 0 {
 		mailStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
 		parts = append(parts, mailStyle.Render(fmt.Sprintf("✉ %d", s.UnreadMailbox)))
+	}
+
+	// Rate limit indicators
+	if s.IsUsingOverage {
+		ovStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+		parts = append(parts, ovStyle.Render("⚡ Extra Usage"))
+	}
+	if s.RateLimitError != "" {
+		rlStyle := lipgloss.NewStyle().Foreground(styles.Error).Bold(true)
+		parts = append(parts, rlStyle.Render(s.RateLimitError))
+	} else if s.RateLimitWarning != "" {
+		rlStyle := lipgloss.NewStyle().Foreground(styles.Warning)
+		parts = append(parts, rlStyle.Render(s.RateLimitWarning))
 	}
 
 	if s.Cost > 0 {

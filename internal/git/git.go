@@ -145,6 +145,26 @@ func (r *Repo) WorktreeRemove(path string, force bool) error {
 	return err
 }
 
+// HeadCommit returns the current HEAD commit hash.
+func (r *Repo) HeadCommit() (string, error) {
+	return r.run("rev-parse", "HEAD")
+}
+
+// HasChanges checks if there are uncommitted changes in the working tree.
+func (r *Repo) HasChanges() (bool, error) {
+	out, err := r.run("status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
+// DeleteBranch deletes a local branch.
+func (r *Repo) DeleteBranch(name string) error {
+	_, err := r.run("branch", "-D", name)
+	return err
+}
+
 // Blame returns git blame for a file.
 func (r *Repo) Blame(file string) (string, error) {
 	return r.run("blame", "--line-porcelain", file)

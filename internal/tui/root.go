@@ -15,6 +15,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
+	"github.com/Abraxas-365/claudio/internal/ratelimit"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
@@ -116,6 +117,11 @@ type Model struct {
 	planApprovalCursor  int    // selected option in the plan approval dialog (0-3)
 	planApprovalFeedback string // typed feedback when option 3 is selected
 
+	// Rate limit state
+	rateLimitWarning string
+	rateLimitError   string
+	isUsingOverage   bool
+
 	askUserDialog *askUserDialogState // active AskUser question dialog (nil = not showing)
 
 	pendingModelRestore string // non-empty = restore this model after current interaction finishes
@@ -123,6 +129,9 @@ type Model struct {
 	// Agent detail overlay
 	agentDetail *agentDetailOverlay
 	prevFocus   Focus // saved focus before opening agent detail
+
+	// Welcome screen logo animation
+	logoFrame int // increments on each logoTickMsg to drive the color-wave animation
 }
 
 // agentDetailOverlay holds state for the full-screen agent conversation view.
@@ -162,6 +171,7 @@ type (
 		err       error
 	}
 	timerTickMsg  struct{}
+	logoTickMsg   struct{} // drives the welcome-screen logo color-wave animation
 	compactDoneMsg struct {
 		compacted []api.Message
 		summary   string
@@ -327,6 +337,38 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			}
 			return infos
 		},
+		ListTeams: func() string {
+			if m.appCtx == nil || m.appCtx.TeamManager == nil {
+				return ""
+			}
+			teamsList := m.appCtx.TeamManager.ListTeams()
+			if len(teamsList) == 0 {
+				return ""
+			}
+			var sb strings.Builder
+			activeTeam := ""
+			if m.appCtx.TeamRunner != nil {
+				activeTeam = m.appCtx.TeamRunner.ActiveTeamName()
+			}
+			sb.WriteString("Teams:\n")
+			for _, t := range teamsList {
+				marker := "  "
+				if t.Name == activeTeam {
+					marker = "▶ "
+				}
+				sb.WriteString(fmt.Sprintf("%s%s — %s (%d members)\n", marker, t.Name, t.Description, len(t.Members)))
+				for _, mem := range t.Members {
+					status := string(mem.Status)
+					if m.appCtx.TeamRunner != nil {
+						if st, ok := m.appCtx.TeamRunner.GetState(mem.Identity.AgentID); ok {
+							status = string(st.GetStatus())
+						}
+					}
+					sb.WriteString(fmt.Sprintf("    • %s [%s]\n", mem.Identity.AgentName, status))
+				}
+			}
+			return strings.TrimRight(sb.String(), "\n")
+		},
 	})
 	m.commands = cmdRegistry
 
@@ -349,6 +391,11 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		m.appCtx.TeamRunner.SetEventHandler(&tuiTeammateEventHandler{ch: m.eventCh})
 	}
 
+	// Wire rate limit listener to TUI event channel
+	ratelimit.OnStatusChange(func(limits ratelimit.Limits) {
+		m.eventCh <- tuiEvent{typ: "ratelimit_changed"}
+	})
+
 	return m
 }
 
@@ -370,6 +417,7 @@ func (m Model) Init() tea.Cmd {
 		tea.SetWindowTitle("Claudio"),
 		tea.EnableBracketedPaste,
 		m.waitForEvent(),
+		tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return logoTickMsg{} }),
 	)
 }
 
@@ -1034,6 +1082,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case logoTickMsg:
+		if m.isWelcomeScreen() {
+			m.logoFrame++
+			m.refreshViewport()
+			return m, tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return logoTickMsg{} })
+		}
+		// Welcome screen is gone — stop ticking; it will be restarted by Init on next launch.
+		return m, nil
+
 	case taskspanel.RefreshMsg:
 		if m.activePanel != nil {
 			if tp, ok := m.activePanel.(*taskspanel.Panel); ok {
@@ -1067,6 +1124,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if agentID, ok := msg.Payload.(string); ok {
 				return m.openAgentDetail(agentID)
 			}
+		case "exit_team":
+			// Close team panel and return to prompt
+			m.closePanel()
 		}
 		return m, nil
 
@@ -1089,13 +1149,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingModelRestore = ""
 		}
 		m.refreshViewport()
-		// Process queued messages
+		// Process queued messages — batch all pending task notifications into one
 		if len(m.messageQueue) > 0 {
-			next := m.messageQueue[0]
-			m.messageQueue = m.messageQueue[1:]
+			var notifications []string
+			var others []string
+			for _, qm := range m.messageQueue {
+				if strings.Contains(qm, "<task-notification>") {
+					notifications = append(notifications, qm)
+				} else {
+					others = append(others, qm)
+				}
+			}
+			m.messageQueue = nil
+			if len(notifications) > 0 {
+				combined := strings.Join(notifications, "\n\n")
+				m.messageQueue = others // re-queue non-notification messages
+				return m.handleSubmit(combined)
+			}
+			next := others[0]
+			m.messageQueue = others[1:]
 			return m.handleSubmit(next)
 		}
-		return m, nil
+		// Keep listening for teammate events even when engine is idle
+		return m, m.waitForEvent()
 
 	case compactDoneMsg:
 		m.streaming = false
@@ -1401,7 +1477,11 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			// Extract the plan file path from the result content.
 			if event.result != nil {
 				if idx := strings.Index(event.result.Content, "Plan file: "); idx >= 0 {
-					m.planFilePath = strings.TrimSpace(event.result.Content[idx+len("Plan file: "):])
+					rest := event.result.Content[idx+len("Plan file: "):]
+					if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+						rest = rest[:nl]
+					}
+					m.planFilePath = strings.TrimSpace(rest)
 				}
 			}
 		case "ExitPlanMode":
@@ -1435,6 +1515,18 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 				IsError:   event.result.IsError,
 				ToolUseID: event.toolUse.ID,
 			})
+			m.refreshViewport()
+		}
+
+	case "ratelimit_changed":
+		limits := ratelimit.Current()
+		m.rateLimitWarning = ratelimit.GetWarning(limits)
+		m.rateLimitError = ratelimit.GetError(limits)
+		prevOverage := m.isUsingOverage
+		m.isUsingOverage = limits.IsUsingOverage
+		// Notify user when transitioning to overage
+		if limits.IsUsingOverage && !prevOverage {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: ratelimit.GetUsingOverageText(limits)})
 			m.refreshViewport()
 		}
 
@@ -1556,6 +1648,45 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		if event.teammateEvent != nil {
 			m.handleTeammateEvent(*event.teammateEvent)
 			m.refreshViewport()
+
+			// Mark team-lead's inbox as read since we consume notifications via the event system
+			if mb := m.appCtx.TeamRunner.GetMailbox(); mb != nil {
+				mb.ReadUnread("team-lead")
+			}
+
+			// When an agent completes or fails, notify the AI so it can act on the result
+			ev := event.teammateEvent
+			if ev.Type == "complete" || ev.Type == "error" {
+				// Build task summary for this agent
+				taskInfo := ""
+				if agentTasks := tools.GlobalTaskStore.ByAssignee(ev.AgentName); len(agentTasks) > 0 {
+					taskInfo = "\nAssigned tasks:\n"
+					for _, t := range agentTasks {
+						taskInfo += fmt.Sprintf("  #%s [%s] %s\n", t.ID, t.Status, t.Subject)
+					}
+				}
+
+				// Include worktree info if agent has changes
+				worktreeInfo := ""
+				if ev.WorktreePath != "" {
+					worktreeInfo = fmt.Sprintf("\nWorktree with changes: %s (branch: %s)\nTo use these files, copy them from the worktree to the main repo, or run: git merge %s", ev.WorktreePath, ev.WorktreeBranch, ev.WorktreeBranch)
+				}
+
+				var notification string
+				if ev.Type == "complete" {
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.AgentName, ev.TeamName, ev.Text, taskInfo, worktreeInfo)
+				} else {
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.AgentName, ev.TeamName, ev.Text, taskInfo, worktreeInfo)
+				}
+
+				if m.streaming {
+					// Engine is running — queue for next turn
+					m.messageQueue = append(m.messageQueue, notification)
+				} else {
+					// Engine is idle — deliver notification immediately
+					return m.handleSubmit(notification)
+				}
+			}
 		}
 	}
 
@@ -1710,6 +1841,39 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 			m.refreshViewport()
 			return m, nil
 		}
+		// Team invocation: intercept [team:PROMPT] and send to engine with team instruction
+		if strings.HasPrefix(output, "[team:") && strings.HasSuffix(output, "]") {
+			userPrompt := output[6 : len(output)-1]
+
+			// Build context about existing teams
+			teamContext := ""
+			if m.appCtx != nil && m.appCtx.TeamManager != nil {
+				if teams := m.appCtx.TeamManager.ListTeams(); len(teams) > 0 {
+					teamContext = "Existing teams:\n"
+					for _, t := range teams {
+						desc := t.Description
+						if desc == "" {
+							desc = "no description"
+						}
+						teamContext += fmt.Sprintf("- %s: %s (%d members)\n", t.Name, desc, len(t.Members))
+					}
+					teamContext += "\nReuse an existing team if appropriate, or create a new one.\n\n"
+				}
+			}
+
+			teamInstruction := teamContext + `Use agent teams to accomplish this task. Follow this workflow:
+
+1. If a suitable team already exists, reuse it. Otherwise, create a new team with TeamCreate.
+2. Break the work into discrete tasks using TaskCreate — assign each task to an agent name (assigned_to field).
+3. Spawn one agent per task using the Agent tool with run_in_background=true. Include the task ID in the agent's prompt so it knows which task it owns.
+4. Tasks are auto-completed when agents finish — no manual status updates needed.
+5. You will be notified when agents complete. Summarize results for the user.
+
+Task:
+` + userPrompt
+			return m.handleSubmit(teamInstruction)
+		}
+
 		// Skill invocation: intercept [skill:NAME] and send skill content to engine
 		if strings.HasPrefix(output, "[skill:") && strings.Contains(output, "]") {
 			skillName := output[7:strings.Index(output, "]")]
@@ -1960,6 +2124,27 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 
 	var rows []string
 	rows = append(rows, title, "")
+
+	// Show a truncated preview of the plan file content (max 10 lines).
+	if m.planFilePath != "" {
+		if raw, err := os.ReadFile(m.planFilePath); err == nil && len(raw) > 0 {
+			previewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#aaaaaa"))
+			lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+			const maxPreviewLines = 10
+			truncated := false
+			if len(lines) > maxPreviewLines {
+				lines = lines[:maxPreviewLines]
+				truncated = true
+			}
+			for _, l := range lines {
+				rows = append(rows, previewStyle.Render(l))
+			}
+			if truncated {
+				rows = append(rows, previewStyle.Render("…"))
+			}
+			rows = append(rows, "")
+		}
+	}
 	for i, opt := range options {
 		cursor := "  "
 		style := lipgloss.NewStyle()
@@ -3116,7 +3301,16 @@ func (m Model) renderAgentDetail(width, height int) string {
 	b.WriteString(headerLeft + strings.Repeat(" ", padding) + headerRight + "\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).Render(strings.Repeat("─", width)) + "\n")
 
-	// Task line
+	// Info lines: model, max_turns, prompt
+	infoStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1)
+	if state.Model != "" {
+		b.WriteString(infoStyle.Render("Model: "+state.Model) + "\n")
+	}
+	if state.MaxTurns > 0 {
+		b.WriteString(infoStyle.Render(fmt.Sprintf("Max turns: %d", state.MaxTurns)) + "\n")
+	}
+
+	// Task / prompt
 	taskStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1)
 	task := state.Prompt
 	if len(task) > width-4 {
@@ -3667,11 +3861,45 @@ func (m *Model) sectionToolGroupIdx(sectionIdx int) int {
 	return -1
 }
 
+// logoColors is the palette used for the welcome-screen title wave animation.
+// Each letter is colored based on (logoFrame + charIndex) % len(logoColors).
+var logoColors = []lipgloss.Color{
+	"#FF6B6B",
+	"#FFD93D",
+	"#6BCB77",
+	"#4D96FF",
+	"#9B59B6",
+	"#FF8E53",
+	"#00C9A7",
+}
+
+// animatedLogoWithRenderer renders "claudio" with a color-wave driven by frame,
+// using the supplied lipgloss.Renderer. This is the core implementation; it is
+// also called directly in tests with a color-forced renderer so that ANSI
+// escape codes are emitted even outside a real terminal.
+func animatedLogoWithRenderer(frame int, r *lipgloss.Renderer) string {
+	const word = "claudio"
+	n := len(logoColors)
+	var b strings.Builder
+	for i, ch := range word {
+		color := logoColors[(frame+i)%n]
+		b.WriteString(
+			r.NewStyle().
+				Foreground(color).
+				Bold(true).
+				Render(string(ch)),
+		)
+	}
+	return b.String()
+}
+
+// animatedLogo renders "claudio" using the default lipgloss renderer.
+func animatedLogo(frame int) string {
+	return animatedLogoWithRenderer(frame, lipgloss.DefaultRenderer())
+}
+
 func (m *Model) welcomeScreen() string {
-	title := lipgloss.NewStyle().
-		Foreground(styles.Warning).
-		Bold(true).
-		Render("claudio")
+	title := animatedLogo(m.logoFrame)
 
 	subtitle := lipgloss.NewStyle().
 		Foreground(styles.Muted).
@@ -3901,6 +4129,9 @@ func (m Model) View() string {
 		BackgroundSessions: m.countBackgroundSessions(),
 		TeamSummary:        teamSummary,
 		UnreadMailbox:      unreadMail,
+		RateLimitWarning:   m.rateLimitWarning,
+		RateLimitError:     m.rateLimitError,
+		IsUsingOverage:     m.isUsingOverage,
 	}))
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)

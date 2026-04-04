@@ -109,6 +109,11 @@ type Engine struct {
 
 	// tool result disk offload for oversized outputs
 	toolCache *toolcache.Store
+
+	// mailboxPoller is called each turn to check for incoming team messages.
+	// Returns messages to inject as user messages. If a message signals "stop",
+	// it should return the message and the engine will stop after injecting it.
+	mailboxPoller func() []string
 }
 
 // defaultContextWindow is the context window size for all current Claude models.
@@ -197,6 +202,12 @@ func (e *Engine) SetMaxTurns(n int) {
 	e.maxTurns = n
 }
 
+// SetMailboxPoller sets a function called each turn to check for incoming team messages.
+// It should return messages to inject into the conversation.
+func (e *Engine) SetMailboxPoller(fn func() []string) {
+	e.mailboxPoller = fn
+}
+
 // SetPermissionRules replaces the engine's permission rules at runtime.
 func (e *Engine) SetPermissionRules(rules []config.PermissionRule) {
 	e.permissionRules = rules
@@ -270,6 +281,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 				e.handler.OnTextDelta("\n[Cleared old tool results to save context]\n")
 			}
 		}
+
+		// Poll mailbox for incoming team messages before the API call,
+		// so the model sees them in the current turn.
+		e.pollMailbox()
 
 		// Merge consecutive user messages before sending (reduces message count overhead)
 		mergedMessages := mergeConsecutiveUserMessages(e.messages)
@@ -390,7 +405,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			e.lastOutputTokens = outputTokens
 
 			// Inject continuation prompt
-			contContent, _ := json.Marshal("Please continue from where you left off.")
+			contContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock("Please continue from where you left off.")})
 			e.messages = append(e.messages, api.Message{
 				Role:    "user",
 				Content: contContent,
@@ -836,7 +851,7 @@ func (e *Engine) pollBackgroundTasks() {
 		reminderText := fmt.Sprintf("<system-reminder>\n%s\n</system-reminder>",
 			strings.Join(notifications, "\n\n"))
 
-		content, _ := json.Marshal(reminderText)
+		content, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(reminderText)})
 		e.messages = append(e.messages, api.Message{
 			Role:    "user",
 			Content: content,
@@ -845,6 +860,28 @@ func (e *Engine) pollBackgroundTasks() {
 
 	// Evict old terminal tasks (older than 5 minutes)
 	e.taskRuntime.Evict(5 * time.Minute)
+}
+
+// pollMailbox checks for incoming team messages and injects them into the conversation.
+func (e *Engine) pollMailbox() {
+	if e.mailboxPoller == nil {
+		return
+	}
+
+	msgs := e.mailboxPoller()
+	if len(msgs) == 0 {
+		return
+	}
+
+	// Inject as a user message so the model sees the team messages
+	reminderText := fmt.Sprintf("<system-reminder>\nIncoming team messages:\n%s\n</system-reminder>",
+		strings.Join(msgs, "\n\n"))
+
+	content, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(reminderText)})
+	e.messages = append(e.messages, api.Message{
+		Role:    "user",
+		Content: content,
+	})
 }
 
 // shouldRequireApproval checks if a tool needs user approval based on permission mode.

@@ -123,6 +123,11 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", in.Command)
 
+	// Use context CWD override for worktree-isolated agents
+	if cwd := CwdFromContext(ctx); cwd != "" {
+		cmd.Dir = cwd
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

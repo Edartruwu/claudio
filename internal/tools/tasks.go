@@ -24,7 +24,7 @@ type Task struct {
 	Subject     string    `json:"subject"`
 	Description string    `json:"description"`
 	Status      string    `json:"status"` // pending, in_progress, completed, deleted
-	Owner       string    `json:"owner,omitempty"`
+	AssignedTo  string    `json:"assigned_to,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -47,6 +47,35 @@ func (s *TaskStore) List() []*Task {
 	return out
 }
 
+// CompleteByAssignee marks all pending/in_progress tasks assigned to the given agent
+// as the specified status ("completed" or "failed"). Returns the affected tasks.
+func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var affected []*Task
+	for _, t := range s.tasks {
+		if t.AssignedTo == agentName && (t.Status == "pending" || t.Status == "in_progress") {
+			t.Status = status
+			t.UpdatedAt = time.Now()
+			affected = append(affected, t)
+		}
+	}
+	return affected
+}
+
+// ByAssignee returns all non-deleted tasks assigned to the given agent.
+func (s *TaskStore) ByAssignee(agentName string) []*Task {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*Task
+	for _, t := range s.tasks {
+		if t.AssignedTo == agentName && t.Status != "deleted" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // --- TaskCreateTool ---
 
 type TaskCreateTool struct {
@@ -56,6 +85,7 @@ type TaskCreateTool struct {
 type taskCreateInput struct {
 	Subject     string `json:"subject"`
 	Description string `json:"description"`
+	AssignedTo  string `json:"assigned_to,omitempty"`
 }
 
 func (t *TaskCreateTool) Name() string { return "TaskCreate" }
@@ -68,6 +98,7 @@ func (t *TaskCreateTool) InputSchema() json.RawMessage {
 		"properties": {
 			"subject": {"type": "string", "description": "A brief title for the task"},
 			"description": {"type": "string", "description": "What needs to be done"},
+			"assigned_to": {"type": "string", "description": "Agent name to assign this task to (for team coordination)"},
 			"activeForm": {"type": "string", "description": "Present continuous form shown in spinner when in_progress (e.g., \"Running tests\")"}
 		},
 		"required": ["subject", "description"]
@@ -90,6 +121,7 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		Subject:     in.Subject,
 		Description: in.Description,
 		Status:      "pending",
+		AssignedTo:  in.AssignedTo,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -135,7 +167,11 @@ func (t *TaskListTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		case "completed":
 			icon = "●"
 		}
-		lines = append(lines, fmt.Sprintf("#%s %s [%s] %s", task.ID, icon, task.Status, task.Subject))
+		assignee := ""
+		if task.AssignedTo != "" {
+			assignee = fmt.Sprintf(" → %s", task.AssignedTo)
+		}
+		lines = append(lines, fmt.Sprintf("#%s %s [%s] %s%s", task.ID, icon, task.Status, task.Subject, assignee))
 	}
 
 	return &Result{Content: strings.Join(lines, "\n")}, nil
@@ -177,6 +213,18 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	if err := json.Unmarshal(input, &in); err != nil {
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
+
+	// Accept both "taskId" and "task_id" (models sometimes use snake_case)
+	if in.TaskID == "" {
+		var alt struct {
+			TaskID string `json:"task_id"`
+		}
+		_ = json.Unmarshal(input, &alt)
+		in.TaskID = alt.TaskID
+	}
+
+	// Strip leading "#" if present (e.g. "#3" -> "3")
+	in.TaskID = strings.TrimPrefix(in.TaskID, "#")
 
 	store := GlobalTaskStore
 	store.mu.Lock()

@@ -17,8 +17,9 @@ import (
 type TeamConfig struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description,omitempty"`
-	LeadAgent   string            `json:"lead_agent"`   // e.g., "team-lead@my-team"
-	LeadSession string            `json:"lead_session"`  // leader's session ID
+	Model       string            `json:"model,omitempty"` // default model for all agents in this team
+	LeadAgent   string            `json:"lead_agent"`      // e.g., "team-lead@my-team"
+	LeadSession string            `json:"lead_session"`    // leader's session ID
 	Members     []*TeamMember     `json:"members"`
 	CreatedAt   time.Time         `json:"created_at"`
 	AllowPaths  []string          `json:"allow_paths,omitempty"` // shared filesystem access
@@ -31,6 +32,7 @@ type TeamMember struct {
 	JoinedAt  time.Time        `json:"joined_at"`
 	TaskID    string           `json:"task_id,omitempty"`    // background task ID
 	Model     string           `json:"model,omitempty"`
+	Prompt    string           `json:"prompt,omitempty"`
 }
 
 // TeammateIdentity uniquely identifies an agent within a team.
@@ -89,7 +91,7 @@ func NewManager(teamsDir string) *Manager {
 }
 
 // CreateTeam initializes a new team with the calling agent as lead.
-func (m *Manager) CreateTeam(name, description, sessionID string) (*TeamConfig, error) {
+func (m *Manager) CreateTeam(name, description, sessionID, model string) (*TeamConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -102,6 +104,7 @@ func (m *Manager) CreateTeam(name, description, sessionID string) (*TeamConfig, 
 	team := &TeamConfig{
 		Name:        name,
 		Description: description,
+		Model:       model,
 		LeadAgent:   leadID,
 		LeadSession: sessionID,
 		CreatedAt:   time.Now(),
@@ -134,7 +137,7 @@ func (m *Manager) CreateTeam(name, description, sessionID string) (*TeamConfig, 
 }
 
 // AddMember adds a teammate to an existing team.
-func (m *Manager) AddMember(teamName, agentName, model string) (*TeamMember, error) {
+func (m *Manager) AddMember(teamName, agentName, model, prompt string) (*TeamMember, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -163,6 +166,7 @@ func (m *Manager) AddMember(teamName, agentName, model string) (*TeamMember, err
 		Status:   StatusIdle,
 		JoinedAt: time.Now(),
 		Model:    model,
+		Prompt:   prompt,
 	}
 
 	team.Members = append(team.Members, member)

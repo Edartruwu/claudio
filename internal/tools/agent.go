@@ -15,6 +15,21 @@ import (
 	"github.com/Abraxas-365/claudio/internal/teams"
 )
 
+// CWD context key — allows goroutine-scoped CWD override for worktree isolation.
+type ctxKeyCwd struct{}
+
+// WithCwd stores a working directory override in the context.
+// Tools that respect CWD (Bash, Glob, Grep) will use this instead of os.Getwd().
+func WithCwd(ctx context.Context, cwd string) context.Context {
+	return context.WithValue(ctx, ctxKeyCwd{}, cwd)
+}
+
+// CwdFromContext returns the CWD override, or "" if none is set.
+func CwdFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyCwd{}).(string)
+	return v
+}
+
 // SubAgentDBContext carries DB access for sub-agent session persistence.
 type SubAgentDBContext struct {
 	DB       *storage.DB
@@ -110,6 +125,8 @@ type AgentTool struct {
 	TaskRuntime *tasks.Runtime
 	// TeamRunner for spawning agents visible in the team panel.
 	TeamRunner *teams.TeammateRunner
+	// AvailableModels lists extra model names from configured providers (e.g., Groq, OpenAI-compatible).
+	AvailableModels []string
 }
 
 type agentInput struct {
@@ -129,7 +146,8 @@ func (t *AgentTool) Description() string {
 }
 
 func (t *AgentTool) InputSchema() json.RawMessage {
-	return json.RawMessage(`{
+	modelEnum := buildModelEnum(t.AvailableModels)
+	return json.RawMessage(fmt.Sprintf(`{
 		"type": "object",
 		"properties": {
 			"prompt": {
@@ -147,7 +165,7 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 			"model": {
 				"type": "string",
 				"description": "Optional model override for this agent",
-				"enum": ["sonnet", "opus", "haiku"]
+				"enum": %s
 			},
 			"max_turns": {
 				"type": "number",
@@ -164,7 +182,7 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 			}
 		},
 		"required": ["description", "prompt"]
-	}`)
+	}`, modelEnum))
 }
 
 func (t *AgentTool) IsReadOnly() bool                        { return false }
@@ -217,19 +235,26 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 	// so agents appear in the team panel.
 	if t.TeamRunner != nil && t.TeamRunner.ActiveTeamName() != "" {
 		teamName := t.TeamRunner.ActiveTeamName()
+		shortName := slugifyName(desc)
 		state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
 			TeamName:  teamName,
-			AgentName: desc,
+			AgentName: shortName,
 			Prompt:    in.Prompt,
 			System:    agentDef.SystemPrompt,
 			Model:     modelOverride,
+			MaxTurns:  maxTurns,
 		})
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Failed to spawn teammate: %v", err), IsError: true}, nil
 		}
 
 		if in.RunInBackground {
-			return &Result{Content: fmt.Sprintf("Teammate spawned in team %q: %s\nAgent ID: %s\nOpen the Agents panel (space a) to monitor progress.", teamName, desc, state.Identity.AgentID)}, nil
+			msg := fmt.Sprintf("Teammate spawned in team %q: %s\nAgent ID: %s\nOpen the Agents panel (space a) to monitor progress.", teamName, desc, state.Identity.AgentID)
+			if state.WorktreePath != "" {
+				msg += fmt.Sprintf("\nRunning in isolated worktree: %s", state.WorktreePath)
+			}
+			msg += "\n\nDo not duplicate this agent's work — avoid working with the same files or topics it is using."
+			return &Result{Content: msg}, nil
 		}
 
 		// Foreground: wait for the teammate to finish
@@ -314,6 +339,25 @@ type runningAgent struct {
 	desc      string
 	startTime time.Time
 	cancel    context.CancelFunc
+}
+
+// slugifyName turns a description like "Explore core packages tests" into "explore-core-pkg".
+// Takes first 3 words, lowercases, joins with dashes, max 20 chars.
+func slugifyName(s string) string {
+	words := strings.Fields(strings.ToLower(s))
+	if len(words) > 3 {
+		words = words[:3]
+	}
+	slug := strings.Join(words, "-")
+	if len(slug) > 20 {
+		slug = slug[:20]
+		// Trim trailing dash
+		slug = strings.TrimRight(slug, "-")
+	}
+	if slug == "" {
+		slug = "agent"
+	}
+	return slug
 }
 
 // NewAgentPool creates an agent pool with a max concurrency limit.

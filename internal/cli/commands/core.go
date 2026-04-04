@@ -513,47 +513,20 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 
 	r.Register(&Command{
 		Name:        "team",
-		Description: "Manage agent teams: /team [create|status|spawn|message|kill|delete]",
+		Aliases:     []string{"teams"},
+		Description: "Use agent teams: /team <prompt> — tells the AI to use a team for your request",
 		Execute: func(args string) (string, error) {
-			parts := strings.Fields(args)
-			if len(parts) == 0 {
-				return "Usage:\n  /team create <name>         — create a new team\n  /team status                — show team status\n  /team spawn <name> <prompt> — spawn a teammate\n  /team message <name> <text> — send message to teammate\n  /team kill <name>           — kill a teammate\n  /team delete                — delete the team", nil
+			if args == "" {
+				// No args: show team listing if available
+				if deps.ListTeams != nil {
+					if out := deps.ListTeams(); out != "" {
+						return out, nil
+					}
+				}
+				return "No teams active. Use /team <prompt> to have the AI create and manage a team for your task.", nil
 			}
-
-			subCmd := parts[0]
-			subArgs := ""
-			if len(parts) > 1 {
-				subArgs = strings.Join(parts[1:], " ")
-			}
-
-			switch subCmd {
-			case "create":
-				if subArgs == "" {
-					return "Usage: /team create <name>", nil
-				}
-				return "[action:team_create:" + subArgs + "]", nil
-			case "status":
-				return "[action:team_status]", nil
-			case "spawn":
-				if len(parts) < 3 {
-					return "Usage: /team spawn <agent-name> <prompt>", nil
-				}
-				return "[action:team_spawn:" + parts[1] + ":" + strings.Join(parts[2:], " ") + "]", nil
-			case "message", "msg":
-				if len(parts) < 3 {
-					return "Usage: /team message <agent-name> <text>", nil
-				}
-				return "[action:team_message:" + parts[1] + ":" + strings.Join(parts[2:], " ") + "]", nil
-			case "kill":
-				if subArgs == "" {
-					return "Usage: /team kill <agent-name>", nil
-				}
-				return "[action:team_kill:" + subArgs + "]", nil
-			case "delete":
-				return "[action:team_delete]", nil
-			default:
-				return fmt.Sprintf("Unknown team command: %s. Use /team for help.", subCmd), nil
-			}
+			// Forward to AI with team instruction
+			return "[team:" + args + "]", nil
 		},
 	})
 
@@ -648,6 +621,30 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 			}
 		},
 	})
+
+	r.Register(&Command{
+		Name:        "extra-usage",
+		Aliases:     []string{"usage"},
+		Description: "Open extra usage settings in browser",
+		Execute: func(args string) (string, error) {
+			url := "https://claude.ai/settings/usage"
+			if err := openBrowser(url); err != nil {
+				return fmt.Sprintf("Could not open browser: %v\nVisit: %s", err, url), nil
+			}
+			return fmt.Sprintf("Opened %s in your browser.", url), nil
+		},
+	})
+}
+
+func openBrowser(url string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", url).Start()
+	case "linux":
+		return exec.Command("xdg-open", url).Start()
+	default:
+		return fmt.Errorf("unsupported platform %s", runtime.GOOS)
+	}
 }
 
 func runDoctor() string {

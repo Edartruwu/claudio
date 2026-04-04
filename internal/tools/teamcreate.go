@@ -11,13 +11,16 @@ import (
 // TeamCreateTool creates a new agent team.
 type TeamCreateTool struct {
 	deferrable
-	Manager   *teams.Manager
-	SessionID string
+	Manager         *teams.Manager
+	Runner          *teams.TeammateRunner
+	SessionID       string
+	AvailableModels []string // dynamic model list from configured providers
 }
 
 type teamCreateInput struct {
 	TeamName    string `json:"team_name"`
 	Description string `json:"description,omitempty"`
+	Model       string `json:"model,omitempty"`
 }
 
 func (t *TeamCreateTool) Name() string { return "TeamCreate" }
@@ -47,7 +50,8 @@ func (t *TeamCreateTool) Description() string {
 }
 
 func (t *TeamCreateTool) InputSchema() json.RawMessage {
-	return json.RawMessage(`{
+	modelEnum := buildModelEnum(t.AvailableModels)
+	return json.RawMessage(fmt.Sprintf(`{
 		"type": "object",
 		"properties": {
 			"team_name": {
@@ -57,10 +61,15 @@ func (t *TeamCreateTool) InputSchema() json.RawMessage {
 			"description": {
 				"type": "string",
 				"description": "What this team will accomplish"
+			},
+			"model": {
+				"type": "string",
+				"description": "Default model for all agents in this team. Per-agent model overrides this.",
+				"enum": %s
 			}
 		},
 		"required": ["team_name"]
-	}`)
+	}`, modelEnum))
 }
 
 func (t *TeamCreateTool) IsReadOnly() bool                        { return false }
@@ -80,10 +89,20 @@ func (t *TeamCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		return &Result{Content: "Team system not available", IsError: true}, nil
 	}
 
-	team, err := t.Manager.CreateTeam(in.TeamName, in.Description, t.SessionID)
+	team, err := t.Manager.CreateTeam(in.TeamName, in.Description, t.SessionID, in.Model)
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to create team: %v", err), IsError: true}, nil
 	}
 
-	return &Result{Content: fmt.Sprintf("Team created: %s\nLead: %s\nYou are the team lead. Use Agent tool to spawn teammates.", team.Name, team.LeadAgent)}, nil
+	// Set this as the active team so Agent tool routes through the runner
+	if t.Runner != nil {
+		t.Runner.SetActiveTeam(team.Name)
+	}
+
+	msg := fmt.Sprintf("Team created: %s\nLead: %s", team.Name, team.LeadAgent)
+	if team.Model != "" {
+		msg += fmt.Sprintf("\nDefault model: %s", team.Model)
+	}
+	msg += "\nYou are the team lead. Use Agent tool to spawn teammates."
+	return &Result{Content: msg}, nil
 }

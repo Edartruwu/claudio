@@ -161,7 +161,7 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 	}
 
 	// Build new message list: [system summary] + pinned messages + recent messages
-	summaryContent, _ := json.Marshal(fmt.Sprintf("[Conversation Summary]\n%s", summary))
+	summaryContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(fmt.Sprintf("[Conversation Summary]\n%s", summary))})
 	compacted := []api.Message{
 		{Role: "user", Content: summaryContent},
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"Understood. I have the context from the summary. Let's continue."}]`)},
@@ -169,7 +169,7 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 
 	// Insert pinned messages (they need to maintain valid user/assistant alternation)
 	if len(pinnedMessages) > 0 {
-		pinnedContent, _ := json.Marshal("[Pinned context — preserved through compaction]")
+		pinnedContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock("[Pinned context — preserved through compaction]")})
 		compacted = append(compacted, api.Message{Role: "user", Content: pinnedContent})
 		for _, pm := range pinnedMessages {
 			compacted = append(compacted, pm)

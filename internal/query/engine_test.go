@@ -660,8 +660,8 @@ func TestMergeConsecutiveUserMessages_TaskNotifBeforeToolResults(t *testing.T) {
 	})
 	assistantMsg := api.Message{Role: "assistant", Content: assistantContent}
 
-	// user notification injected by pollBackgroundTasks (plain string)
-	notifContent, _ := json.Marshal("<system-reminder>\n[Background task abc (shell): done]\n</system-reminder>")
+	// user notification injected by pollBackgroundTasks (content block array)
+	notifContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock("<system-reminder>\n[Background task abc (shell): done]\n</system-reminder>")})
 	notifMsg := api.Message{Role: "user", Content: notifContent}
 
 	// user tool_results

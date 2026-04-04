@@ -41,6 +41,8 @@ type CommandDeps struct {
 	// Session sharing
 	ShareSession  func(path string) (string, error)
 	TeleportSession func(path string) (string, error)
+	// Teams
+	ListTeams func() string // returns formatted team/agent listing
 }
 
 // SkillInfo holds skill data for command registration.

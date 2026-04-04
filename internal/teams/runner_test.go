@@ -3,6 +3,7 @@ package teams
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -167,7 +168,7 @@ func setupRunner(t *testing.T, runFn RunAgentFunc) (*TeammateRunner, *Manager) {
 	t.Helper()
 	dir := t.TempDir()
 	mgr := NewManager(dir)
-	_, err := mgr.CreateTeam("test-team", "test", "sess-1")
+	_, err := mgr.CreateTeam("test-team", "test", "sess-1", "")
 	if err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
@@ -600,4 +601,401 @@ func TestTeammateRunner_EmitEvent_NilHandler(t *testing.T) {
 
 	// Should not panic
 	runner.EmitEvent(TeammateEvent{Type: "test"})
+}
+
+// --- Model propagation tests ---
+
+func TestTeammateRunner_SpawnStoresModelInState(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "model-agent",
+		Prompt:    "test",
+		Model:     "haiku",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	if state.Model != "haiku" {
+		t.Errorf("expected model %q on state, got %q", "haiku", state.Model)
+	}
+}
+
+func TestTeammateRunner_SpawnFallsBackToTeamModel(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	// Create team with default model "sonnet"
+	_, err := mgr.CreateTeam("model-team", "test", "sess-1", "sonnet")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	// Spawn without per-agent model — should fall back to team's "sonnet"
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "model-team",
+		AgentName: "fallback-agent",
+		Prompt:    "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	if state.Model != "sonnet" {
+		t.Errorf("expected model %q (team default), got %q", "sonnet", state.Model)
+	}
+}
+
+func TestTeammateRunner_PerAgentModelOverridesTeamDefault(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	// Create team with default model "haiku"
+	_, err := mgr.CreateTeam("override-team", "test", "sess-1", "haiku")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	// Spawn with per-agent model "opus" — should override team's "haiku"
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "override-team",
+		AgentName: "opus-agent",
+		Prompt:    "test",
+		Model:     "opus",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	if state.Model != "opus" {
+		t.Errorf("expected model %q (per-agent override), got %q", "opus", state.Model)
+	}
+}
+
+func TestTeammateRunner_ModelPassedToContextDecorator(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	_, err := mgr.CreateTeam("ctx-model-team", "test", "sess-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var capturedModel string
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	runner.SetContextDecorator(func(ctx context.Context, state *TeammateState) context.Context {
+		capturedModel = state.Model
+		return ctx
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "ctx-model-team",
+		AgentName: "ctx-agent",
+		Prompt:    "test",
+		Model:     "deepseek-r1-70b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	if capturedModel != "deepseek-r1-70b" {
+		t.Errorf("context decorator got model %q, want %q", capturedModel, "deepseek-r1-70b")
+	}
+}
+
+func TestTeammateRunner_MixedModelsInTeam(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	// Team default is "haiku"
+	_, err := mgr.CreateTeam("mixed-team", "test", "sess-1", "haiku")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	// Agent 1: no model → uses team default "haiku"
+	s1, _ := runner.Spawn(SpawnConfig{
+		TeamName:  "mixed-team",
+		AgentName: "agent-1",
+		Prompt:    "simple task",
+	})
+
+	// Agent 2: explicit "opus"
+	s2, _ := runner.Spawn(SpawnConfig{
+		TeamName:  "mixed-team",
+		AgentName: "agent-2",
+		Prompt:    "complex task",
+		Model:     "opus",
+	})
+
+	// Agent 3: explicit "deepseek-r1-70b" (provider model)
+	s3, _ := runner.Spawn(SpawnConfig{
+		TeamName:  "mixed-team",
+		AgentName: "agent-3",
+		Prompt:    "reasoning task",
+		Model:     "deepseek-r1-70b",
+	})
+
+	runner.WaitForAll(5 * time.Second)
+
+	if s1.Model != "haiku" {
+		t.Errorf("agent-1: expected %q, got %q", "haiku", s1.Model)
+	}
+	if s2.Model != "opus" {
+		t.Errorf("agent-2: expected %q, got %q", "opus", s2.Model)
+	}
+	if s3.Model != "deepseek-r1-70b" {
+		t.Errorf("agent-3: expected %q, got %q", "deepseek-r1-70b", s3.Model)
+	}
+}
+
+func TestTeammateRunner_NoModelNoTeamDefault(t *testing.T) {
+	// Team has no default model, agent has no model → empty (inherits parent session)
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "no-model-agent",
+		Prompt:    "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	if state.Model != "" {
+		t.Errorf("expected empty model (inherit parent), got %q", state.Model)
+	}
+}
+
+// --- Per-team mailbox tests ---
+
+func TestTeammateRunner_PerTeamMailboxIsolation(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.CreateTeam("team-a", "test", "sess-1", "")
+	mgr.CreateTeam("team-b", "test", "sess-2", "")
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return "done: " + prompt, nil
+	})
+
+	s1, _ := runner.Spawn(SpawnConfig{TeamName: "team-a", AgentName: "agent-a", Prompt: "task a"})
+	s2, _ := runner.Spawn(SpawnConfig{TeamName: "team-b", AgentName: "agent-b", Prompt: "task b"})
+
+	runner.WaitForOne(s1.Identity.AgentID, 5*time.Second)
+	runner.WaitForOne(s2.Identity.AgentID, 5*time.Second)
+
+	// Each team should have its own mailbox
+	mbA := runner.getMailbox("team-a")
+	mbB := runner.getMailbox("team-b")
+
+	if mbA == nil {
+		t.Fatal("expected mailbox for team-a")
+	}
+	if mbB == nil {
+		t.Fatal("expected mailbox for team-b")
+	}
+	if mbA == mbB {
+		t.Error("team-a and team-b should have different mailbox instances")
+	}
+
+	// team-lead inbox for team-a should have agent-a's completion message
+	msgsA, _ := mbA.ReadAll("team-lead")
+	msgsB, _ := mbB.ReadAll("team-lead")
+
+	if len(msgsA) == 0 {
+		t.Error("expected team-lead message in team-a mailbox")
+	}
+	if len(msgsB) == 0 {
+		t.Error("expected team-lead message in team-b mailbox")
+	}
+
+	// Messages should be from the correct agents
+	if len(msgsA) > 0 && msgsA[0].From != "agent-a" {
+		t.Errorf("team-a message from %q, expected agent-a", msgsA[0].From)
+	}
+	if len(msgsB) > 0 && msgsB[0].From != "agent-b" {
+		t.Errorf("team-b message from %q, expected agent-b", msgsB[0].From)
+	}
+}
+
+func TestTeammateRunner_GetMailbox_ActiveTeam(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.CreateTeam("team-x", "test", "sess-1", "")
+	mgr.CreateTeam("team-y", "test", "sess-2", "")
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	// Spawn in both teams to create mailboxes
+	s1, _ := runner.Spawn(SpawnConfig{TeamName: "team-x", AgentName: "ax", Prompt: "t"})
+	s2, _ := runner.Spawn(SpawnConfig{TeamName: "team-y", AgentName: "ay", Prompt: "t"})
+	runner.WaitForOne(s1.Identity.AgentID, 5*time.Second)
+	runner.WaitForOne(s2.Identity.AgentID, 5*time.Second)
+
+	// Set active team to team-x
+	runner.SetActiveTeam("team-x")
+	mb := runner.GetMailbox()
+	if mb == nil {
+		t.Fatal("expected mailbox for active team")
+	}
+
+	// Should be team-x's mailbox
+	mbX := runner.getMailbox("team-x")
+	if mb != mbX {
+		t.Error("GetMailbox() should return active team's mailbox")
+	}
+
+	// Switch active team
+	runner.SetActiveTeam("team-y")
+	mb = runner.GetMailbox()
+	mbY := runner.getMailbox("team-y")
+	if mb != mbY {
+		t.Error("GetMailbox() should return team-y's mailbox after switching")
+	}
+}
+
+func TestTeammateRunner_TaskCompleter_Success(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "done", nil
+	})
+
+	var mu sync.Mutex
+	var completedAgent, completedStatus string
+	runner.SetTaskCompleter(func(agentName, status string) {
+		mu.Lock()
+		completedAgent = agentName
+		completedStatus = status
+		mu.Unlock()
+	})
+
+	state, _ := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "task-agent",
+		Prompt:    "do work",
+	})
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if completedAgent != "task-agent" {
+		t.Errorf("expected agent name %q, got %q", "task-agent", completedAgent)
+	}
+	if completedStatus != "completed" {
+		t.Errorf("expected status %q, got %q", "completed", completedStatus)
+	}
+}
+
+func TestTeammateRunner_TaskCompleter_Failure(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "", fmt.Errorf("boom")
+	})
+
+	var mu sync.Mutex
+	var completedAgent, completedStatus string
+	runner.SetTaskCompleter(func(agentName, status string) {
+		mu.Lock()
+		completedAgent = agentName
+		completedStatus = status
+		mu.Unlock()
+	})
+
+	state, _ := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "fail-agent",
+		Prompt:    "fail",
+	})
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if completedAgent != "fail-agent" {
+		t.Errorf("expected agent name %q, got %q", "fail-agent", completedAgent)
+	}
+	if completedStatus != "failed" {
+		t.Errorf("expected status %q, got %q", "failed", completedStatus)
+	}
+}
+
+func TestTeammateRunner_CompletionMailboxMessage(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "result text here", nil
+	})
+
+	state, _ := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "notifier",
+		Prompt:    "notify test",
+	})
+
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	mb := runner.getMailbox("test-team")
+	if mb == nil {
+		t.Fatal("expected mailbox for test-team")
+	}
+
+	msgs, err := mb.ReadAll("team-lead")
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(msgs) == 0 {
+		t.Fatal("expected completion message in team-lead inbox")
+	}
+
+	msg := msgs[0]
+	if msg.From != "notifier" {
+		t.Errorf("expected from %q, got %q", "notifier", msg.From)
+	}
+	if !strings.Contains(msg.Text, "result text here") {
+		t.Errorf("expected result in message text, got %q", msg.Text)
+	}
+	if !strings.Contains(msg.Summary, "notifier") {
+		t.Errorf("expected agent name in summary, got %q", msg.Summary)
+	}
+}
+
+func TestTeammateRunner_GetMailbox_NoActiveTeam(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	// No active team, no agents — should return nil
+	if runner.GetMailbox() != nil {
+		t.Error("expected nil mailbox when no active team")
+	}
 }

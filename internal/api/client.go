@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/auth"
+	"github.com/Abraxas-365/claudio/internal/ratelimit"
 )
 
 const (
@@ -486,6 +487,7 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			ratelimit.ExtractFromError(resp.StatusCode, resp.Header)
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			retryAfter := resp.Header.Get("retry-after")
 			extra := ""
@@ -495,6 +497,9 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 			errCh <- fmt.Errorf("API error (HTTP %d): %s%s", resp.StatusCode, string(bodyBytes), extra)
 			return
 		}
+
+		// Extract rate-limit headers from every successful response
+		ratelimit.ExtractFromHeaders(resp.Header)
 
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer

@@ -44,7 +44,7 @@ In plan mode, you should:
 3. Consider multiple approaches and their trade-offs
 4. Use AskUser if you need to clarify the approach
 5. Design a concrete implementation strategy
-6. Write your plan to the plan file: %s
+6. Write your plan to Plan file: %s
 7. When ready, use ExitPlanMode to present your plan for approval
 
 Remember: DO NOT write or edit any files except the plan file. This is a read-only exploration and planning phase.`, planFile)

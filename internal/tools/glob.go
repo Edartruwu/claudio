@@ -59,10 +59,15 @@ func (t *GlobTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 
 	baseDir := in.Path
 	if baseDir == "" {
-		var err error
-		baseDir, err = os.Getwd()
-		if err != nil {
-			return &Result{Content: fmt.Sprintf("Failed to get cwd: %v", err), IsError: true}, nil
+		// Use context CWD override (worktree isolation) if available
+		if cwd := CwdFromContext(ctx); cwd != "" {
+			baseDir = cwd
+		} else {
+			var err error
+			baseDir, err = os.Getwd()
+			if err != nil {
+				return &Result{Content: fmt.Sprintf("Failed to get cwd: %v", err), IsError: true}, nil
+			}
 		}
 	}
 

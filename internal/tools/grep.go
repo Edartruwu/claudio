@@ -174,6 +174,11 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 
 	cmd := exec.CommandContext(ctx, "rg", args...)
 
+	// Use context CWD override for worktree-isolated agents
+	if cwd := CwdFromContext(ctx); cwd != "" {
+		cmd.Dir = cwd
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -236,6 +241,9 @@ func (t *GrepTool) fallbackGrep(ctx context.Context, in grepInput) (*Result, err
 	args = append(args, path)
 
 	cmd := exec.CommandContext(ctx, "grep", args...)
+	if cwd := CwdFromContext(ctx); cwd != "" {
+		cmd.Dir = cwd
+	}
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Run()

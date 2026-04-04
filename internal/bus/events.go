@@ -37,6 +37,9 @@ const (
 	EventInstinctLearned = "instinct.learned"
 	EventInstinctEvolved = "instinct.evolved"
 
+	// Rate limits
+	EventRateLimitChanged = "ratelimit.changed"
+
 	// Audit
 	EventAuditEntry = "audit.entry"
 )
