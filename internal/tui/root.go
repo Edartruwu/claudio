@@ -745,15 +745,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Viewport scrolling shortcuts: vim Normal mode + empty prompt
-		if m.focus == FocusPrompt && m.prompt.IsVimNormal() && m.prompt.Value() == "" {
+		// Viewport scrolling shortcuts: vim Normal mode
+		if m.focus == FocusPrompt && m.prompt.IsVimNormal() {
+			emptyPrompt := m.prompt.Value() == ""
+			atTopLine := m.prompt.CursorLine() == 0
+			atBottomLine := m.prompt.CursorLine() >= m.prompt.LineCount()-1
+
 			switch msg.String() {
 			case "j":
-				m.viewport.ScrollDown(1)
-				return m, nil
+				if emptyPrompt || atBottomLine {
+					m.viewport.ScrollDown(1)
+					return m, nil
+				}
 			case "k":
-				m.viewport.ScrollUp(1)
-				return m, nil
+				if emptyPrompt || atTopLine {
+					m.viewport.ScrollUp(1)
+					return m, nil
+				}
 			case "ctrl+d":
 				m.viewport.HalfPageDown()
 				return m, nil
@@ -761,11 +769,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.HalfPageUp()
 				return m, nil
 			case "G":
-				m.viewport.GotoBottom()
-				return m, nil
+				if emptyPrompt {
+					m.viewport.GotoBottom()
+					return m, nil
+				}
 			case "g":
-				m.viewport.GotoTop()
-				return m, nil
+				if emptyPrompt {
+					m.viewport.GotoTop()
+					return m, nil
+				}
 			}
 		}
 

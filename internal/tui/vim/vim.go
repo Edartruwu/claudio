@@ -169,12 +169,12 @@ func (s *State) handleNormal(key rune, text string, cursor int) Action {
 		s.Mode = ModeInsert
 		s.startRecording()
 		end := lineEndPos(text, cursor)
-		return Action{Type: ActionInsertText, Text: "\n", SetCursor: end + 1, SwitchMode: ModeInsert}
+		return Action{Type: ActionInsertText, Text: "\n", SetCursor: end, SwitchMode: ModeInsert}
 	case 'O':
 		s.Mode = ModeInsert
 		s.startRecording()
 		start := lineStartPos(text, cursor)
-		return Action{Type: ActionInsertText, Text: "\n", SetCursor: start, SwitchMode: ModeInsert}
+		return Action{Type: ActionInsertText, Text: "\n", SetCursor: start, SwitchMode: ModeInsert, MoveCursor: -1}
 	case 'v':
 		s.Mode = ModeVisual
 		s.VisualStart = cursor

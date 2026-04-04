@@ -151,6 +151,16 @@ func (m *Model) IsVimNormal() bool {
 	return m.vimEnabled && m.vimState.Mode == vim.ModeNormal
 }
 
+// CursorLine returns the current cursor line (0-based) in the textarea.
+func (m *Model) CursorLine() int {
+	return m.textarea.Line()
+}
+
+// LineCount returns the total number of lines in the textarea.
+func (m *Model) LineCount() int {
+	return m.textarea.LineCount()
+}
+
 // Update handles input events.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.focused {
@@ -356,7 +366,8 @@ func (m Model) applyVimAction(action vim.Action, cursor int) (Model, tea.Cmd) {
 			pos = clamp(pos, 0, len(text))
 			newText := text[:pos] + action.Text + text[pos:]
 			m.textarea.SetValue(newText)
-			m.setFlatCursor(pos + len(action.Text))
+			finalPos := pos + len(action.Text) + action.MoveCursor
+			m.setFlatCursor(clamp(finalPos, 0, len(newText)))
 		}
 
 	case vim.ActionSwitchMode:
