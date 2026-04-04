@@ -540,6 +540,7 @@ func ExitPlanModeDescription() string {
 - This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
 - This tool simply signals that you're done planning and ready for the user to review and approve
 - The user will see the contents of your plan file when they review it
+- After calling this tool, STOP and WAIT. Do NOT proceed with implementation until the user explicitly approves in a follow-up message
 
 ## When to Use This Tool
 IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.

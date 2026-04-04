@@ -66,25 +66,9 @@ func (t *ExitPlanModeTool) InputSchema() json.RawMessage {
 func (t *ExitPlanModeTool) IsReadOnly() bool                        { return false }
 func (t *ExitPlanModeTool) RequiresApproval(_ json.RawMessage) bool { return false }
 func (t *ExitPlanModeTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
-	// Read the plan content from the most recent plan file and include it
-	// in the tool result, matching Claude Code's mapToolResultToToolResultBlockParam.
-	home, _ := os.UserHomeDir()
-	planDir := filepath.Join(home, ".claudio", "plans")
-	entries, err := os.ReadDir(planDir)
-	if err == nil && len(entries) > 0 {
-		// Pick the last entry (lexicographic = chronological since filenames use unix timestamps)
-		latest := entries[len(entries)-1]
-		planPath := filepath.Join(planDir, latest.Name())
-		if data, err := os.ReadFile(planPath); err == nil && len(data) > 0 {
-			plan := string(data)
-			return &Result{Content: fmt.Sprintf(`User has approved your plan. You can now start coding. Start with updating your todo list if applicable.
-
-Your plan has been saved to: %s
-You can refer back to it if needed during implementation.
-
-## Approved Plan:
-%s`, planPath, plan)}, nil
-		}
-	}
-	return &Result{Content: "User has approved exiting plan mode. You can now proceed."}, nil
+	// Do NOT say "approved" here — the user hasn't approved yet.
+	// The TUI will show an approval dialog and send the actual approval
+	// as a user message via handleSubmit. We just signal that the plan
+	// is ready for review.
+	return &Result{Content: "Plan submitted for user review. Do NOT start implementation until you receive explicit user approval in the next message."}, nil
 }
