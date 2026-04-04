@@ -344,7 +344,14 @@ type runningAgent struct {
 // slugifyName turns a description like "Explore core packages tests" into "explore-core-pkg".
 // Takes first 3 words, lowercases, joins with dashes, max 20 chars.
 func slugifyName(s string) string {
-	words := strings.Fields(strings.ToLower(s))
+	// Strip everything except letters, digits, spaces, and dashes
+	var cleaned strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == ' ' || r == '-' {
+			cleaned.WriteRune(r)
+		}
+	}
+	words := strings.Fields(cleaned.String())
 	if len(words) > 3 {
 		words = words[:3]
 	}
