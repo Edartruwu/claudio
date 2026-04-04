@@ -72,6 +72,7 @@ type Model struct {
 	totalCost      float64
 	turns          int
 	spinText       string // current spinner status text
+	toolSpinFrame  int    // braille spinner frame counter for in-progress tool status
 	expandedGroups  map[int]bool          // tool group msg indices that are expanded
 	lastToolGroup   int                   // msg index of the last tool group start (-1 = none)
 	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
@@ -1203,6 +1204,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var spinCmd tea.Cmd
 		m.spinner, spinCmd = m.spinner.Update(msg)
 		cmds = append(cmds, spinCmd)
+		m.toolSpinFrame++
 	}
 
 	return m, tea.Batch(cmds...)
@@ -3795,7 +3797,7 @@ func (m *Model) refreshViewport() {
 		if m.focus == FocusViewport {
 			cursorIdx = m.vpCursor
 		}
-		result := renderMessages(m.messages, m.viewport.Width, m.expandedGroups, cursorIdx)
+		result := renderMessages(m.messages, m.viewport.Width, m.expandedGroups, cursorIdx, m.toolSpinFrame)
 		content = result.Content
 		m.vpSections = result.Sections
 

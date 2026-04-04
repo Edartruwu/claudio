@@ -12,6 +12,14 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// brailleFrames are the spinner animation frames for in-progress tool status.
+var brailleFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// spinnerChar returns the braille spinner character for the given frame.
+func spinnerChar(frame int) string {
+	return brailleFrames[frame%len(brailleFrames)]
+}
+
 // MessageType identifies the kind of message.
 type MessageType int
 
@@ -73,7 +81,7 @@ type RenderResult struct {
 
 // renderMessages renders all messages, grouping consecutive tool pairs.
 // cursorSection is the section index to highlight (-1 = none).
-func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, cursorSection int) RenderResult {
+func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, cursorSection int, spinFrame int) RenderResult {
 	maxW := width - 4
 	if maxW > 110 {
 		maxW = 110
@@ -108,7 +116,7 @@ func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, 
 		if msg.Type == MsgToolUse {
 			group := collectToolGroup(msgs, i)
 			expanded := expandedGroups[i]
-			block = renderToolGroup(group, maxW, expanded)
+			block = renderToolGroup(group, maxW, expanded, spinFrame)
 			sec = Section{MsgIndex: i, IsToolGroup: true}
 			i += countGroupMessages(group)
 			lastWasToolGroup = true
@@ -178,21 +186,33 @@ type toolPair struct {
 }
 
 // collectToolGroup gathers consecutive ToolUse(+ToolResult) pairs starting at idx.
+// Results are matched by ToolUseID so that parallel tool calls pair correctly
+// even when results arrive in a different order than the tool_use messages.
 func collectToolGroup(msgs []ChatMessage, idx int) []toolPair {
+	// First, collect all consecutive ToolUse messages.
 	var group []toolPair
-	for i := idx; i < len(msgs); i++ {
-		if msgs[i].Type != MsgToolUse {
-			break
-		}
-		pair := toolPair{use: msgs[i]}
-		// Check if next message is the matching result
-		if i+1 < len(msgs) && msgs[i+1].Type == MsgToolResult {
-			r := msgs[i+1]
-			pair.result = &r
-			i++ // skip the result
-		}
-		group = append(group, pair)
+	end := idx
+	for end < len(msgs) && msgs[end].Type == MsgToolUse {
+		group = append(group, toolPair{use: msgs[end]})
+		end++
 	}
+
+	// Then, scan the ToolResult messages that follow and match by ID.
+	resultEnd := end
+	for resultEnd < len(msgs) && msgs[resultEnd].Type == MsgToolResult {
+		resultEnd++
+	}
+
+	for ri := end; ri < resultEnd; ri++ {
+		for gi := range group {
+			if group[gi].result == nil && group[gi].use.ToolUseID == msgs[ri].ToolUseID {
+				r := msgs[ri]
+				group[gi].result = &r
+				break
+			}
+		}
+	}
+
 	return group
 }
 
@@ -234,7 +254,7 @@ func splitIntoRuns(group []toolPair) []toolRun {
 // renderToolGroup renders a compact block of tool calls with tree connectors.
 // Consecutive runs of the same tool (≥ collapseRunThreshold) are collapsed into
 // a single summary row unless the group is expanded.
-func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
+func renderToolGroup(group []toolPair, maxW int, expanded bool, spinFrame int) string {
 	nameW := 8
 
 	var lines []string
@@ -285,7 +305,7 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 		}
 
 		if item.isRun {
-			lines = append(lines, renderCollapsedRun(item.run, connector, maxW, nameW))
+			lines = append(lines, renderCollapsedRun(item.run, connector, maxW, nameW, spinFrame))
 			continue
 		}
 
@@ -298,7 +318,7 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 
 		var status string
 		if p.result == nil {
-			status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(" running")
+			status = styles.SpinnerStyle.Render(spinnerChar(spinFrame)) + styles.SpinnerText.Render(" running")
 		} else if p.result.IsError {
 			brief := firstLine(p.result.Content)
 			status = styles.ToolError.Render("✗ " + truncate(brief, 30))
@@ -317,7 +337,7 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 		lines = append(lines, left+strings.Repeat(" ", gap)+status)
 
 		if len(p.use.SubagentTools) > 0 {
-			lines = append(lines, renderSubagentTools(p.use.SubagentTools, p.use.DurationMs, maxW, nameW, expanded)...)
+			lines = append(lines, renderSubagentTools(p.use.SubagentTools, p.use.DurationMs, maxW, nameW, expanded, spinFrame)...)
 		}
 
 		if p.result != nil && p.result.IsError && p.result.Content != "" {
@@ -342,7 +362,7 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool) string {
 
 // renderCollapsedRun shows only the latest (last) item in a run, with a dim
 // "+N more" hint so the user knows there are hidden entries. ctrl+o reveals all.
-func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) string {
+func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int, spinFrame int) string {
 	n := len(pairs)
 
 	// Show the last pair — it's the most recent and most relevant.
@@ -367,7 +387,7 @@ func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) str
 	}
 	switch {
 	case running > 0:
-		status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(fmt.Sprintf(" %d/%d", n-running, n))
+		status = styles.SpinnerStyle.Render(spinnerChar(spinFrame)) + styles.SpinnerText.Render(fmt.Sprintf(" %d/%d", n-running, n))
 	case errors > 0:
 		status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
 	default:
@@ -390,14 +410,14 @@ func renderCollapsedRun(pairs []toolPair, connector string, maxW, nameW int) str
 // Collapsed (default): one summary line — "Done (28 tool uses · 1m 20s)".
 // Expanded (ctrl+o):   full list, consecutive same-tool runs ≥ collapseRunThreshold
 //                      are still collapsed into a single row with a +N badge.
-func renderSubagentTools(subs []SubagentToolCall, agentDurationMs int64, maxW, nameW int, expanded bool) []string {
+func renderSubagentTools(subs []SubagentToolCall, agentDurationMs int64, maxW, nameW int, expanded bool, spinFrame int) []string {
 	if len(subs) == 0 {
 		return nil
 	}
 	ind := "   "
 
 	if !expanded {
-		return []string{renderSubagentSummary(subs, agentDurationMs, ind, maxW)}
+		return []string{renderSubagentSummary(subs, agentDurationMs, ind, maxW, spinFrame)}
 	}
 
 	// ── Expanded view ──────────────────────────────────────────────────────
@@ -461,7 +481,7 @@ func renderSubagentTools(subs []SubagentToolCall, agentDurationMs int64, maxW, n
 			var status string
 			switch {
 			case running > 0:
-				status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(fmt.Sprintf(" %d/%d", n-running, n))
+				status = styles.SpinnerStyle.Render(spinnerChar(spinFrame)) + styles.SpinnerText.Render(fmt.Sprintf(" %d/%d", n-running, n))
 			case errors > 0:
 				status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
 			default:
@@ -487,7 +507,7 @@ func renderSubagentTools(subs []SubagentToolCall, agentDurationMs int64, maxW, n
 
 		var status string
 		if sub.Result == nil {
-			status = styles.SpinnerStyle.Render("⠋") + styles.SpinnerText.Render(" running")
+			status = styles.SpinnerStyle.Render(spinnerChar(spinFrame)) + styles.SpinnerText.Render(" running")
 		} else if sub.IsError {
 			status = styles.ToolError.Render("✗ " + truncate(*sub.Result, 30))
 		} else {
@@ -510,7 +530,7 @@ func renderSubagentTools(subs []SubagentToolCall, agentDurationMs int64, maxW, n
 // renderSubagentSummary produces the single collapsed line for sub-agent tools.
 // Mirrors Claude Code: "└─ Done (28 tool uses · 1m 20s)  ✓"
 //                   or "└─ In progress… · 3/28 tool uses  ⠋"
-func renderSubagentSummary(subs []SubagentToolCall, agentDurationMs int64, ind string, maxW int) string {
+func renderSubagentSummary(subs []SubagentToolCall, agentDurationMs int64, ind string, maxW int, spinFrame int) string {
 	total := len(subs)
 	running, errors := 0, 0
 	for _, s := range subs {
@@ -533,7 +553,7 @@ func renderSubagentSummary(subs []SubagentToolCall, agentDurationMs int64, ind s
 	case running > 0:
 		done := total - running
 		left = ind + connector + styles.SpinnerText.Render(fmt.Sprintf("In progress… · %d/%d %s", done, total, toolWord))
-		status = styles.SpinnerStyle.Render("⠋")
+		status = styles.SpinnerStyle.Render(spinnerChar(spinFrame))
 	case errors > 0:
 		left = ind + connector + styles.ToolSummary.Render(fmt.Sprintf("Done (%d %s)", total, toolWord))
 		status = styles.ToolError.Render(fmt.Sprintf("✗ %d errors", errors))
