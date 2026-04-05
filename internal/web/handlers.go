@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/web/templates"
 )
 
@@ -28,7 +29,12 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	} else if strings.HasSuffix(path, ".js") {
 		w.Header().Set("Content-Type", "application/javascript")
 	}
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+	w.Header().Set("ETag", fmt.Sprintf(`"%x"`, len(content)))
+	if match := r.Header.Get("If-None-Match"); match == fmt.Sprintf(`"%x"`, len(content)) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	io.WriteString(w, content)
 }
 
@@ -56,7 +62,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   86400,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -85,6 +91,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleChatPage renders the chat page for a project.
+// Creates or resumes a session and renders the full multi-session layout.
 func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 	projectPath := r.URL.Query().Get("project")
 	if projectPath == "" {
@@ -92,11 +99,33 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure session exists
-	sess, err := s.sessions.GetOrCreate(projectPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	// Determine which session to show
+	sessionID := r.URL.Query().Get("session")
+	var sess *ProjectSession
+	var err error
+
+	if sessionID != "" {
+		sess = s.sessions.Get(sessionID)
+	}
+	if sess == nil {
+		sess, err = s.sessions.GetOrCreateDefault(projectPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Build session list for sidebar
+	sessionInfos := s.sessions.ListByProject(projectPath)
+	tplSessions := make([]templates.SessionInfo, len(sessionInfos))
+	for i, si := range sessionInfos {
+		tplSessions[i] = templates.SessionInfo{
+			ID:       si.ID,
+			Title:    si.Title,
+			State:    string(si.State),
+			MsgCount: si.MsgCount,
+			Active:   si.ID == sess.ID,
+		}
 	}
 
 	sess.mu.Lock()
@@ -104,7 +133,7 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 	copy(messages, sess.Messages)
 	sess.mu.Unlock()
 
-	templates.ChatPage(projectPath, messages).Render(r.Context(), w)
+	templates.ChatPage(projectPath, sess.ID, tplSessions, messages).Render(r.Context(), w)
 }
 
 // handleProjectInit initializes Claudio in a project directory.
@@ -170,48 +199,136 @@ func (s *Server) handleProjectInit(w http.ResponseWriter, r *http.Request) {
 	templates.ProjectList(projects).Render(r.Context(), w)
 }
 
-// handleChatSend handles a new user message.
-// Flow: creates a new WebHandler, starts Engine.Run in background, returns HTML
-// that includes an SSE connection div which connects to /api/chat/stream.
-func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
+// ── Session API ──
+
+// handleSessionCreate creates a new session for a project.
+func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	projectPath := r.FormValue("project")
-	message := r.FormValue("message")
-	if projectPath == "" || message == "" {
-		http.Error(w, "missing project or message", http.StatusBadRequest)
+	title := r.FormValue("title")
+	if projectPath == "" {
+		http.Error(w, "missing project", http.StatusBadRequest)
 		return
 	}
-
-	sess, err := s.sessions.GetOrCreate(projectPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	if title == "" {
+		// Auto-generate title
+		existing := s.sessions.ListByProject(projectPath)
+		title = fmt.Sprintf("Session %d", len(existing)+1)
 	}
 
-	sess.AddMessage("user", message)
-
-	// Create a fresh handler and start the query
-	handler, err := sess.SendMessage(context.Background(), message)
+	sess, err := s.sessions.Create(projectPath, title)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_ = handler // handler is stored in session, SSE endpoint reads it
 
-	// Return user message bubble + an SSE-connected div for the response stream
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.UserMessage(message).Render(r.Context(), w)
-	templates.StreamingResponse(projectPath).Render(r.Context(), w)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sess.Info())
 }
 
-// handleChatStream is the SSE endpoint — streams events from the current handler.
-func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+// handleSessionList returns all sessions for a project.
+func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
 	projectPath := r.URL.Query().Get("project")
 	if projectPath == "" {
 		http.Error(w, "missing project", http.StatusBadRequest)
 		return
 	}
+	infos := s.sessions.ListByProject(projectPath)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(infos)
+}
 
-	sess := s.sessions.Get(projectPath)
+// handleSessionDelete deletes a session.
+func (s *Server) handleSessionDelete(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.FormValue("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
+		return
+	}
+	s.sessions.Delete(sessionID)
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleSessionRename renames a session.
+func (s *Server) handleSessionRename(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.FormValue("session")
+	title := r.FormValue("title")
+	if sessionID == "" || title == "" {
+		http.Error(w, "missing session or title", http.StatusBadRequest)
+		return
+	}
+	sess := s.sessions.Get(sessionID)
+	if sess == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	sess.Rename(title)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sess.Info())
+}
+
+// handleSessionHistory returns the full message history for a session.
+func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
+		return
+	}
+	sess := s.sessions.Get(sessionID)
+	if sess == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	sess.mu.Lock()
+	messages := make([]templates.ChatMessage, len(sess.Messages))
+	copy(messages, sess.Messages)
+	sess.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
+}
+
+// ── Chat API (session-aware) ──
+
+// handleChatSend handles a new user message for a specific session.
+func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.FormValue("session")
+	message := r.FormValue("message")
+	if sessionID == "" || message == "" {
+		http.Error(w, "missing session or message", http.StatusBadRequest)
+		return
+	}
+
+	sess := s.sessions.Get(sessionID)
+	if sess == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	sess.AddMessage("user", message)
+
+	handler, err := sess.SendMessage(context.Background(), message)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = handler
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "streaming",
+		"session_id": sessionID,
+	})
+}
+
+// handleChatStream is the SSE endpoint — streams events from the current handler for a session.
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
+		return
+	}
+
+	sess := s.sessions.Get(sessionID)
 	if sess == nil {
 		http.Error(w, "no active session", http.StatusBadRequest)
 		return
@@ -229,7 +346,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Replay any buffered events that the client missed (reconnect scenario)
 	sinceStr := r.URL.Query().Get("since")
 	sinceSeq := 0
 	if sinceStr != "" {
@@ -242,7 +358,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	flusher.Flush()
 
-	// First, replay missed events from the buffer
+	// Replay missed events from the buffer
 	if sinceSeq > 0 {
 		missed := handler.EventsSince(sinceSeq)
 		for _, evt := range missed {
@@ -273,22 +389,18 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			// Format the SSE data — escape newlines per SSE protocol
 			data := strings.ReplaceAll(evt.Data, "\n", "\ndata: ")
 			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", evt.Seq, evt.Event, data)
 			flusher.Flush()
 
-			// Track assistant text
 			if evt.Event == "text" {
 				assistantText.WriteString(evt.Data)
 			}
 
-			// On done, save message + update analytics, then exit
 			if evt.Event == "done" {
 				if text := assistantText.String(); text != "" {
 					sess.AddMessage("assistant", text)
 				}
-				// Parse usage for analytics
 				var usage struct {
 					InputTokens  int `json:"input_tokens"`
 					OutputTokens int `json:"output_tokens"`
@@ -302,7 +414,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// On error, also exit
 			if evt.Event == "error" {
 				if text := assistantText.String(); text != "" {
 					sess.AddMessage("assistant", text)
@@ -313,15 +424,15 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleChatStatus returns the current streaming status for a project session.
+// handleChatStatus returns the current streaming status for a session.
 func (s *Server) handleChatStatus(w http.ResponseWriter, r *http.Request) {
-	projectPath := r.URL.Query().Get("project")
-	if projectPath == "" {
-		http.Error(w, "missing project", http.StatusBadRequest)
+	sessionID := r.URL.Query().Get("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
 		return
 	}
 
-	sess := s.sessions.Get(projectPath)
+	sess := s.sessions.Get(sessionID)
 	running := false
 	eventCount := 0
 
@@ -340,11 +451,11 @@ func (s *Server) handleChatStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleChatReplay returns buffered SSE events since a given sequence number.
+// handleChatReplay returns buffered SSE events since a given sequence number for a session.
 func (s *Server) handleChatReplay(w http.ResponseWriter, r *http.Request) {
-	projectPath := r.URL.Query().Get("project")
-	if projectPath == "" {
-		http.Error(w, "missing project", http.StatusBadRequest)
+	sessionID := r.URL.Query().Get("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
 		return
 	}
 
@@ -354,49 +465,43 @@ func (s *Server) handleChatReplay(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(sinceStr, "%d", &sinceSeq)
 	}
 
-	sess := s.sessions.Get(projectPath)
+	sess := s.sessions.Get(sessionID)
 	if sess == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"events": []interface{}{},
-		})
+		json.NewEncoder(w).Encode(map[string]interface{}{"events": []interface{}{}})
 		return
 	}
 
 	handler := sess.CurrentHandler()
 	if handler == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"events": []interface{}{},
-		})
+		json.NewEncoder(w).Encode(map[string]interface{}{"events": []interface{}{}})
 		return
 	}
 
 	events := handler.EventsSince(sinceSeq)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"events": events,
-	})
+	json.NewEncoder(w).Encode(map[string]interface{}{"events": events})
 }
 
-// handleToolApprove approves a pending tool execution.
+// handleToolApprove approves a pending tool execution for a session.
 func (s *Server) handleToolApprove(w http.ResponseWriter, r *http.Request) {
 	s.handleApproval(w, r, true)
 }
 
-// handleToolDeny denies a pending tool execution.
+// handleToolDeny denies a pending tool execution for a session.
 func (s *Server) handleToolDeny(w http.ResponseWriter, r *http.Request) {
 	s.handleApproval(w, r, false)
 }
 
 func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request, approved bool) {
-	projectPath := r.FormValue("project")
-	if projectPath == "" {
-		http.Error(w, "missing project", http.StatusBadRequest)
+	sessionID := r.FormValue("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
 		return
 	}
 
-	sess := s.sessions.Get(projectPath)
+	sess := s.sessions.Get(sessionID)
 	if sess == nil {
 		http.Error(w, "no active session", http.StatusBadRequest)
 		return
@@ -412,18 +517,17 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request, approved
 // handlePanel serves panel HTML fragments via HTMX.
 func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 	panelName := strings.TrimPrefix(r.URL.Path, "/api/panel/")
-	projectPath := r.URL.Query().Get("project")
+	sessionID := r.URL.Query().Get("session")
 
-	sess := s.sessions.Get(projectPath)
+	sess := s.sessions.Get(sessionID)
 
 	data := templates.PanelData{
 		Model:          "claude-sonnet-4-6",
 		PermissionMode: "headless",
-		ProjectPath:    projectPath,
 	}
 
-	// Enrich with session analytics if available
 	if sess != nil {
+		data.ProjectPath = sess.ProjectPath
 		sess.mu.Lock()
 		data.InputTokens = sess.TotalInputTokens
 		data.OutputTokens = sess.TotalOutputTokens
@@ -441,6 +545,8 @@ func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 		templates.ConfigPanel(data).Render(r.Context(), w)
 	case "tasks":
 		templates.TasksPanel(data).Render(r.Context(), w)
+	case "agents":
+		templates.AgentsPanelContent().Render(r.Context(), w)
 	default:
 		fmt.Fprintf(w, `<div style="color:var(--dim);padding:8px">Unknown panel: %s</div>`, panelName)
 	}
@@ -510,4 +616,284 @@ func (s *Server) listKnownProjects() []templates.ProjectInfo {
 	})
 
 	return projects
+}
+
+// ── Autocomplete API ──
+
+// skipDirs are directories to skip during file scanning.
+var autocompleteSkipDirs = map[string]bool{
+	"node_modules": true, "vendor": true, "__pycache__": true,
+	"dist": true, "build": true, ".git": true, ".claudio": true,
+}
+
+// handleAutocompleteFiles returns file/dir suggestions for the @ file picker.
+func (s *Server) handleAutocompleteFiles(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	projectPath := r.URL.Query().Get("project")
+	if projectPath == "" {
+		http.Error(w, "missing project", http.StatusBadRequest)
+		return
+	}
+
+	// Split query into directory prefix and fuzzy filter
+	scanDir, fuzzy := splitAutocompletePath(query)
+
+	// Resolve scan directory relative to project
+	var scanAbs string
+	var displayPrefix string
+	if strings.HasPrefix(scanDir, "~") {
+		home, _ := os.UserHomeDir()
+		scanAbs = filepath.Clean(strings.Replace(scanDir, "~", home, 1))
+		displayPrefix = scanDir
+		if !strings.HasSuffix(displayPrefix, "/") {
+			displayPrefix += "/"
+		}
+	} else {
+		scanAbs = filepath.Clean(filepath.Join(projectPath, scanDir))
+		if scanDir != "." {
+			displayPrefix = filepath.Clean(scanDir) + "/"
+		}
+	}
+
+	info, err := os.Stat(scanAbs)
+	if err != nil || !info.IsDir() {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{})
+		return
+	}
+
+	showHidden := strings.HasPrefix(fuzzy, ".")
+	fq := strings.ToLower(fuzzy)
+
+	entries, err := os.ReadDir(scanAbs)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{})
+		return
+	}
+
+	type fileItem struct {
+		Path  string `json:"path"`
+		IsDir bool   `json:"is_dir"`
+	}
+	var items []fileItem
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") && !showHidden {
+			continue
+		}
+		if entry.IsDir() && autocompleteSkipDirs[name] {
+			continue
+		}
+		if fq != "" && !fuzzyMatch(strings.ToLower(name), fq) {
+			continue
+		}
+		items = append(items, fileItem{
+			Path:  displayPrefix + name,
+			IsDir: entry.IsDir(),
+		})
+	}
+
+	// Dirs first, then alphabetical
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].IsDir != items[j].IsDir {
+			return items[i].IsDir
+		}
+		return items[i].Path < items[j].Path
+	})
+
+	// Limit results
+	if len(items) > 50 {
+		items = items[:50]
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}
+
+func splitAutocompletePath(query string) (dir, fuzzy string) {
+	if query == "" {
+		return ".", ""
+	}
+	if strings.HasSuffix(query, "/") {
+		return filepath.Clean(query), ""
+	}
+	lastSep := strings.LastIndexByte(query, '/')
+	if lastSep < 0 {
+		return ".", query
+	}
+	return filepath.Clean(query[:lastSep+1]), query[lastSep+1:]
+}
+
+func fuzzyMatch(str, pattern string) bool {
+	pi := 0
+	for si := 0; si < len(str) && pi < len(pattern); si++ {
+		if str[si] == pattern[pi] {
+			pi++
+		}
+	}
+	return pi == len(pattern)
+}
+
+// webCommand describes a slash command available in the web UI.
+type webCommand struct {
+	Name        string `json:"name"`
+	Description string `json:"desc"`
+	ClientOnly  bool   `json:"client_only,omitempty"` // handled purely in JS
+}
+
+// handleAutocompleteCommands returns the list of available slash commands.
+func (s *Server) handleAutocompleteCommands(w http.ResponseWriter, _ *http.Request) {
+	cmds := []webCommand{
+		{Name: "help", Description: "Show available commands", ClientOnly: true},
+		{Name: "clear", Description: "Clear conversation history"},
+		{Name: "model", Description: "Show or change the AI model"},
+		{Name: "compact", Description: "Compact conversation to save context"},
+		{Name: "cost", Description: "Show session cost and token usage", ClientOnly: true},
+		{Name: "new", Description: "Start a new session"},
+		{Name: "rename", Description: "Rename the current session"},
+		{Name: "diff", Description: "Show git diff"},
+		{Name: "status", Description: "Show git status"},
+		{Name: "commit", Description: "Create a git commit with AI message"},
+		{Name: "export", Description: "Export conversation as markdown"},
+		{Name: "undo", Description: "Undo the last exchange"},
+		{Name: "tasks", Description: "Show background tasks", ClientOnly: true},
+		{Name: "agents", Description: "Show agents panel", ClientOnly: true},
+		{Name: "analytics", Description: "Show analytics panel", ClientOnly: true},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cmds)
+}
+
+// handleAutocompleteAgents returns the list of available agents for >> communication.
+func (s *Server) handleAutocompleteAgents(w http.ResponseWriter, _ *http.Request) {
+	type agentInfo struct {
+		Name string `json:"name"`
+		Desc string `json:"desc"`
+	}
+
+	allAgents := agents.AllAgents()
+	items := make([]agentInfo, 0, len(allAgents))
+	for _, a := range allAgents {
+		items = append(items, agentInfo{
+			Name: a.Type,
+			Desc: a.WhenToUse,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}
+
+// handleCommandExecute executes a slash command server-side and returns the result.
+func (s *Server) handleCommandExecute(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.FormValue("session")
+	command := r.FormValue("command")
+	args := r.FormValue("args")
+
+	sess := s.sessions.Get(sessionID)
+	if sess == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	type cmdResult struct {
+		Status  string `json:"status"` // "ok", "redirect", "error"
+		Message string `json:"message,omitempty"`
+		Action  string `json:"action,omitempty"`  // client-side action hint
+		Data    string `json:"data,omitempty"`
+	}
+
+	var result cmdResult
+
+	switch command {
+	case "clear":
+		sess.mu.Lock()
+		sess.Messages = sess.Messages[:0]
+		if sess.engine != nil {
+			sess.engine = nil // reset engine to clear conversation context
+		}
+		sess.mu.Unlock()
+		result = cmdResult{Status: "ok", Action: "clear_messages", Message: "Conversation cleared."}
+
+	case "new":
+		newSess, err := s.sessions.Create(sess.ProjectPath, "")
+		if err != nil {
+			result = cmdResult{Status: "error", Message: err.Error()}
+		} else {
+			result = cmdResult{Status: "redirect", Data: "/chat?project=" + sess.ProjectPath + "&session=" + newSess.ID}
+		}
+
+	case "rename":
+		if args == "" {
+			result = cmdResult{Status: "error", Message: "Usage: /rename <new title>"}
+		} else {
+			sess.Rename(args)
+			result = cmdResult{Status: "ok", Action: "rename", Data: args, Message: "Session renamed to: " + args}
+		}
+
+	case "model":
+		if args == "" {
+			sess.mu.Lock()
+			model := "unknown"
+			if sess.Client != nil {
+				model = sess.Client.GetModel()
+			}
+			sess.mu.Unlock()
+			result = cmdResult{Status: "ok", Message: "Current model: " + model}
+		} else {
+			sess.mu.Lock()
+			if sess.Client != nil {
+				sess.Client.SetModel(args)
+			}
+			sess.mu.Unlock()
+			result = cmdResult{Status: "ok", Message: "Model set to: " + args}
+		}
+
+	case "cost":
+		sess.mu.Lock()
+		in := sess.TotalInputTokens
+		out := sess.TotalOutputTokens
+		sess.mu.Unlock()
+		msg := fmt.Sprintf("Session usage:\n  Input tokens:  %d\n  Output tokens: %d\n  Total:         %d", in, out, in+out)
+		result = cmdResult{Status: "ok", Message: msg}
+
+	case "undo":
+		sess.mu.Lock()
+		n := len(sess.Messages)
+		if n >= 2 && sess.Messages[n-1].Role == "assistant" && sess.Messages[n-2].Role == "user" {
+			sess.Messages = sess.Messages[:n-2]
+			result = cmdResult{Status: "ok", Action: "undo", Message: "Last exchange removed."}
+		} else if n >= 1 {
+			sess.Messages = sess.Messages[:n-1]
+			result = cmdResult{Status: "ok", Action: "undo", Message: "Last message removed."}
+		} else {
+			result = cmdResult{Status: "ok", Message: "Nothing to undo."}
+		}
+		sess.mu.Unlock()
+
+	case "export":
+		sess.mu.Lock()
+		var sb strings.Builder
+		for _, msg := range sess.Messages {
+			if msg.Role == "user" {
+				sb.WriteString("## User\n\n")
+			} else {
+				sb.WriteString("## Assistant\n\n")
+			}
+			sb.WriteString(msg.Content)
+			sb.WriteString("\n\n---\n\n")
+		}
+		sess.mu.Unlock()
+		result = cmdResult{Status: "ok", Action: "export", Data: sb.String(), Message: "Conversation exported."}
+
+	default:
+		// For commands we don't handle server-side, send as a regular message to the AI
+		// prefixed with the command so the AI can interpret it
+		result = cmdResult{Status: "ok", Action: "send_as_message", Data: "/" + command + " " + args}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

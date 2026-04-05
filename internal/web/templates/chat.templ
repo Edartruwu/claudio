@@ -2,236 +2,125 @@ package templates
 
 import "fmt"
 
-templ ChatPage(projectPath string, messages []ChatMessage) {
+templ ChatPage(projectPath string, sessionID string, sessions []SessionInfo, messages []ChatMessage) {
 	@Layout("Chat") {
-		<div class="chat-layout" id="chat-app" data-project={ projectPath }>
-			<header class="chat-header">
-				<a href="/" class="back-link">&larr; Projects</a>
-				<span class="project-name">{ projectPath }</span>
-				<div class="panel-toggles">
-					<button class="panel-toggle" onclick="togglePanel('analytics')" id="pt-analytics">Analytics</button>
-					<button class="panel-toggle" onclick="togglePanel('config')" id="pt-config">Config</button>
-					<button class="panel-toggle" onclick="togglePanel('tasks')" id="pt-tasks">Tasks</button>
+		<div class="chat-layout" id="chat-app" data-project={ projectPath } data-session={ sessionID }>
+			<!-- Session sidebar (desktop: always visible, mobile: slide-over) -->
+			<div class="session-sidebar" id="session-sidebar">
+				<div class="sidebar-header">
+					<a href="/" class="back-link" title="Back to projects">&larr;</a>
+					<span class="sidebar-title">Sessions</span>
+					<button class="btn btn-sm btn-primary" onclick="createSession()" title="New session">+</button>
 				</div>
-				<button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileDrawer()" aria-label="Menu">&#9776;</button>
-			</header>
-			<div class="chat-body">
-				<div class="chat-main">
-					<div id="messages" class="messages-area">
-						for _, msg := range messages {
-							if msg.Role == "user" {
-								@UserMessage(msg.Content)
-							} else {
-								@AssistantMessage(msg.Content)
-							}
-						}
-					</div>
-					<div id="stream-area" class="stream-area"></div>
-					<div id="approval-area"></div>
-					<div class="chat-input-bar">
-						<form id="chat-form" hx-post="/api/chat/send" hx-target="#messages" hx-swap="beforeend" hx-on::after-request="this.reset(); resetTextarea(); startStreaming()" class="chat-input-form">
-							<input type="hidden" name="project" value={ projectPath }/>
-							<textarea name="message" placeholder="Ask Claudio anything..." autocomplete="off" required class="chat-input-textarea" id="chat-input" rows="1"></textarea>
-							<button type="submit" class="btn btn-primary" id="send-btn">Send</button>
-						</form>
-					</div>
-				</div>
-				<div id="side-panel" class="side-panel">
-					<div class="panel-header">
-						<span class="panel-title" id="panel-title">Panel</span>
-						<button class="panel-close" onclick="closePanel()">&times;</button>
-					</div>
-					<div class="panel-content" id="panel-content"></div>
+				<div class="session-list" id="session-list">
+					for _, s := range sessions {
+						<div
+							class={ "session-item", templ.KV("active", s.Active), templ.KV("streaming", s.State == "streaming"), templ.KV("approval", s.State == "approval") }
+							data-id={ s.ID }
+							onclick={ templ.ComponentScript{Call: fmt.Sprintf("switchSession('%s')", s.ID)} }
+						>
+							<div class="session-item-top">
+								<span class="session-indicator"></span>
+								<span class="session-title">{ s.Title }</span>
+								<span class="session-badge">{ fmt.Sprintf("%d", s.MsgCount) }</span>
+							</div>
+							<div class="session-item-actions">
+								<button class="btn-icon" onclick={ templ.ComponentScript{Call: fmt.Sprintf("event.stopPropagation();renameSession('%s')", s.ID)} } title="Rename">&#9998;</button>
+								<button class="btn-icon btn-icon-danger" onclick={ templ.ComponentScript{Call: fmt.Sprintf("event.stopPropagation();deleteSession('%s')", s.ID)} } title="Delete">&times;</button>
+							</div>
+						</div>
+					}
 				</div>
 			</div>
-			<!-- Mobile panel drawer -->
+			<!-- Sidebar overlay for mobile -->
+			<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+			<!-- Main chat area -->
+			<div class="chat-main-wrap">
+				<header class="chat-header">
+					<button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleSidebar()" aria-label="Sessions">&#9776;</button>
+					<span class="chat-session-title" id="chat-session-title">
+						for _, s := range sessions {
+							if s.Active {
+								{ s.Title }
+							}
+						}
+					</span>
+					<span class="header-project-path">{ projectPath }</span>
+					<div class="header-actions">
+						<div class="panel-toggles">
+							<button class="panel-toggle" onclick="togglePanel('agents')" id="pt-agents">Agents</button>
+							<button class="panel-toggle" onclick="togglePanel('analytics')" id="pt-analytics">Stats</button>
+							<button class="panel-toggle" onclick="togglePanel('tasks')" id="pt-tasks">Tasks</button>
+						</div>
+						<button class="mobile-panel-btn" id="mobile-panel-btn" onclick="toggleMobileDrawer()" aria-label="Panels">&#8943;</button>
+					</div>
+				</header>
+				<div class="chat-body">
+					<div class="chat-main">
+						<div id="messages" class="messages-area">
+							for _, msg := range messages {
+								if msg.Role == "user" {
+									@UserMessage(msg.Content)
+								} else {
+									@AssistantMessage(msg.Content)
+								}
+							}
+						</div>
+						<div id="stream-area" class="stream-area"></div>
+						<div id="approval-area"></div>
+						<div class="chat-input-bar">
+							<div class="ac-popup" id="ac-popup"></div>
+							<div id="chat-form" class="chat-input-form">
+								<textarea placeholder="Type / for commands, @ for files, >> for agents..." autocomplete="off" class="chat-input-textarea" id="chat-input" rows="1"></textarea>
+								<button type="button" class="btn btn-primary" id="send-btn">Send</button>
+							</div>
+						</div>
+					</div>
+					<!-- Right panel (agents/analytics/tasks) -->
+					<div id="side-panel" class="side-panel">
+						<div class="panel-header">
+							<span class="panel-title" id="panel-title">Panel</span>
+							<button class="panel-close" onclick="closePanel()">&times;</button>
+						</div>
+						<div class="panel-content" id="panel-content"></div>
+					</div>
+				</div>
+				<!-- Reconnection banner -->
+				<div class="reconnect-banner" id="reconnect-banner">
+					<span class="reconnect-spinner">&#8987;</span> Connection lost. Reconnecting...
+				</div>
+				<!-- Toast container for background session notifications -->
+				<div class="toast-container" id="toast-container"></div>
+				<div class="status-bar">
+					<span class="status-item">
+						<span class="connection-indicator" id="conn-indicator">
+							<span class="connection-dot" id="conn-dot"></span>
+						</span>
+					</span>
+					<span class="status-sep">|</span>
+					<span class="status-item"><span class="status-label">MODEL</span> <span class="status-model" id="status-model">-</span></span>
+					<span class="status-sep">|</span>
+					<span class="status-item"><span class="status-label">IN</span> <span class="status-value" id="status-in">0</span></span>
+					<span class="status-sep">|</span>
+					<span class="status-item"><span class="status-label">OUT</span> <span class="status-value" id="status-out">0</span></span>
+					<span class="status-sep">|</span>
+					<span class="status-item"><span class="status-label">TOTAL</span> <span class="status-value" id="status-total">0</span></span>
+					<span style="flex:1"></span>
+					<span class="status-item"><span class="status-ok" id="status-state">Ready</span></span>
+				</div>
+			</div>
+			<!-- Mobile panel drawer (slides up from bottom) -->
 			<div class="mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="closeMobileDrawer()"></div>
 			<div class="mobile-panel-drawer" id="mobile-panel-drawer">
 				<div class="drawer-items">
+					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('agents')"><span class="icon">&#129302;</span> Agents</button>
 					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('analytics')"><span class="icon">&#9776;</span> Analytics</button>
-					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('config')"><span class="icon">&#9881;</span> Config</button>
 					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('tasks')"><span class="icon">&#9744;</span> Tasks</button>
 				</div>
 			</div>
-			<div class="status-bar">
-				<span class="status-item">
-					<span class="connection-indicator" id="conn-indicator">
-						<span class="connection-dot" id="conn-dot"></span>
-					</span>
-				</span>
-				<span class="status-sep">|</span>
-				<span class="status-item"><span class="status-label">MODEL</span> <span class="status-model" id="status-model">-</span></span>
-				<span class="status-sep">|</span>
-				<span class="status-item"><span class="status-label">IN</span> <span class="status-value" id="status-in">0</span></span>
-				<span class="status-sep">|</span>
-				<span class="status-item"><span class="status-label">OUT</span> <span class="status-value" id="status-out">0</span></span>
-				<span class="status-sep">|</span>
-				<span class="status-item"><span class="status-label">TOTAL</span> <span class="status-value" id="status-total">0</span></span>
-				<span style="flex:1"></span>
-				<span class="status-item"><span class="status-ok" id="status-state">Ready</span></span>
-			</div>
 		</div>
-		<script>
-		(function(){
-			var PROJECT=document.getElementById('chat-app').dataset.project;
-			var es=null,rd=null,txt='',think='',tIn=0,tOut=0;
-			var lastSeq=0,isStreaming=false,reconnecting=false;
-			function $(id){return document.getElementById(id);}
-			function mk(t,c){var e=document.createElement(t);e.className=c;return e;}
-			function sb(){$('messages').scrollTop=$('messages').scrollHeight;}
-			function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-			function trn(s,m){if(!s||s.length<=m)return s||'';return s.substring(0,m)+'... ('+s.length+' chars)';}
-			function fn(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return''+n;}
-			function md(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/```(\w*)\n([\s\S]*?)```/g,function(_,l,c){return'<pre><code>'+c+'</code></pre>';}).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\n/g,'<br>');}
-			function ibc(el){var c=rd.querySelector('.msg-content'),cur=c.querySelector('.cursor');if(cur)c.insertBefore(el,cur);else c.appendChild(el);}
-			function rr(){if(!rd)return;var c=rd.querySelector('.msg-content'),el=c.querySelector('.response-text');if(!el){el=mk('div','response-text');var cur=c.querySelector('.cursor');if(cur)c.insertBefore(el,cur);else c.appendChild(el);}el.innerHTML=md(txt);sb();}
-			function rt(){if(!rd)return;var c=rd.querySelector('.msg-content'),b=c.querySelector('.thinking-block');if(!b){b=mk('div','thinking-block');b.innerHTML='<div class="thinking-toggle" onclick="toggleThinking(this)"><span class="arrow">&#9654;</span> Thinking...</div><div class="thinking-content"></div>';c.insertBefore(b,c.firstChild);}b.querySelector('.thinking-content').textContent=think;sb();}
-			function setConn(state){var dot=$('conn-dot');dot.className='connection-dot'+(state==='ok'?'':state==='disconnected'?' disconnected':' reconnecting');}
-			function fin(){if(es){es.close();es=null;}isStreaming=false;if(rd){var c=rd.querySelector('.cursor');if(c)c.remove();$('messages').appendChild(rd);$('stream-area').innerHTML='';}rd=null;$('send-btn').disabled=false;$('chat-input').disabled=false;$('chat-input').focus();$('status-state').textContent='Ready';$('status-state').className='status-ok';setConn('ok');sb();}
-
-			/* ── Process a single SSE event (used for both live and replay) ── */
-			function processEvent(evtName, evtData, seq) {
-				if(seq && seq > lastSeq) lastSeq = seq;
-				if(evtName==='text'){txt+=evtData;rr();}
-				else if(evtName==='thinking'){think+=evtData;rt();}
-				else if(evtName==='tool_start'){
-					try{var d=JSON.parse(evtData);var tc=mk('div','tool-card');tc.id='tool-'+d.id;
-					tc.innerHTML='<div class="tool-header" onclick="toggleToolBody(this)"><span class="tool-icon">&#9881;</span><span class="tool-name">'+esc(d.name)+'</span><span class="tool-status running">running</span><span class="tool-expand">&#9654;</span></div><div class="tool-body"><div class="tool-input"><pre>'+esc(trn(d.input,500))+'</pre></div></div>';
-					ibc(tc);sb();}catch(x){}
-				}
-				else if(evtName==='tool_end'){
-					try{var d=JSON.parse(evtData);var tc=document.getElementById('tool-'+d.id);if(tc){var s=tc.querySelector('.tool-status');s.className='tool-status '+(d.is_error?'error':'done');s.textContent=d.is_error?'error':'done';if(d.content){var o=mk('div','tool-output'+(d.is_error?' error-output':''));o.innerHTML='<pre>'+esc(trn(d.content,2000))+'</pre>';tc.querySelector('.tool-body').appendChild(o);}}sb();}catch(x){}
-				}
-				else if(evtName==='approval_needed'){
-					try{var d=JSON.parse(evtData);$('approval-area').innerHTML='<div class="approval-overlay" onclick="if(event.target===this)doApproval(false)"><div class="approval-dialog"><div class="approval-dialog-header"><span class="icon">&#9888;</span><span class="title">Tool Requires Approval</span></div><div class="approval-dialog-body"><div class="approval-tool-name">'+esc(d.name)+'</div><pre class="approval-input-preview">'+esc(trn(d.input,1000))+'</pre></div><div class="approval-actions"><button class="btn btn-deny" onclick="doApproval(false)">Deny</button><button class="btn btn-approve" onclick="doApproval(true)">Approve</button></div></div></div>';}catch(x){}
-				}
-				else if(evtName==='approval_result'){$('approval-area').innerHTML='';}
-				else if(evtName==='done'){
-					try{var d=JSON.parse(evtData);tIn+=(d.input_tokens||0);tOut+=(d.output_tokens||0);$('status-in').textContent=fn(tIn);$('status-out').textContent=fn(tOut);$('status-total').textContent=fn(tIn+tOut);}catch(x){}
-					fin();return true;
-				}
-				else if(evtName==='error'){
-					if(evtData){txt+='\n**Error:** '+evtData;rr();}
-					fin();return true;
-				}
-				return false;
-			}
-
-			/* ── Ensure the streaming response div exists ── */
-			function ensureStreamDiv() {
-				if(rd)return;
-				rd=mk('div','msg msg-assistant');
-				rd.innerHTML='<div class="msg-label">Assistant</div><div class="msg-content"><span class="cursor blink">&#9608;</span></div>';
-				$('stream-area').appendChild(rd);sb();
-			}
-
-			/* ── Connect SSE with replay support ── */
-			function connectSSE() {
-				if(es)es.close();
-				var url='/api/chat/stream?project='+encodeURIComponent(PROJECT);
-				if(lastSeq>0) url+='&since='+lastSeq;
-				es=new EventSource(url);
-				setConn('ok');
-				['text','thinking','tool_start','tool_end','approval_needed','approval_result','done','error'].forEach(function(evt){
-					es.addEventListener(evt,function(e){
-						ensureStreamDiv();
-						var seq=e.lastEventId?parseInt(e.lastEventId,10):0;
-						processEvent(evt,e.data,seq);
-					});
-				});
-				es.onerror=function(){
-					if(!isStreaming)return fin();
-					/* SSE dropped while streaming — try reconnect */
-					es.close();es=null;
-					setConn('disconnected');
-					$('status-state').textContent='Reconnecting...';$('status-state').className='status-value yellow';
-					tryReconnect();
-				};
-			}
-
-			/* ── Reconnect: check server status, replay missed events, reattach SSE ── */
-			function tryReconnect(){
-				if(reconnecting)return;
-				reconnecting=true;
-				setConn('reconnecting');
-				setTimeout(function doCheck(){
-					fetch('/api/chat/status?project='+encodeURIComponent(PROJECT))
-					.then(function(r){return r.json();})
-					.then(function(data){
-						if(!data.running){
-							/* Query finished while we were disconnected — replay remaining events */
-							return fetch('/api/chat/replay?project='+encodeURIComponent(PROJECT)+'&since='+lastSeq)
-							.then(function(r){return r.json();})
-							.then(function(replay){
-								ensureStreamDiv();
-								var events=replay.events||[];
-								for(var i=0;i<events.length;i++){
-									processEvent(events[i].event,events[i].data,events[i].seq);
-								}
-								if(!events.some(function(e){return e.event==='done'||e.event==='error';})){
-									fin();
-								}
-								reconnecting=false;
-							});
-						} else {
-							/* Still running — reconnect SSE to get live events */
-							reconnecting=false;
-							connectSSE();
-						}
-					})
-					.catch(function(){
-						/* Network still down — retry in 2 seconds */
-						setTimeout(doCheck,2000);
-					});
-				},500);
-			}
-
-			window.startStreaming=function(){
-				if(es)es.close();
-				isStreaming=true;lastSeq=0;
-				$('send-btn').disabled=true;$('chat-input').disabled=true;
-				$('status-state').textContent='Streaming...';$('status-state').className='status-value yellow';
-				$('stream-area').innerHTML='';
-				rd=null;txt='';think='';
-				ensureStreamDiv();
-				connectSSE();
-			};
-
-			/* ── Visibility change: detect phone wake/tab return ── */
-			document.addEventListener('visibilitychange',function(){
-				if(document.visibilityState==='visible' && isStreaming && (!es || es.readyState===EventSource.CLOSED)){
-					tryReconnect();
-				}
-			});
-
-			window.doApproval=function(a){var fd=new FormData();fd.append('project',PROJECT);fetch(a?'/api/chat/approve':'/api/chat/deny',{method:'POST',body:fd});$('approval-area').innerHTML='';};
-
-			/* ── Panel toggles ── */
-			var ap=null;
-			window.togglePanel=function(n){var p=$('side-panel');if(ap===n){p.classList.remove('open');var btn=$('pt-'+n);if(btn)btn.classList.remove('active');ap=null;return;}if(ap){var b2=$('pt-'+ap);if(b2)b2.classList.remove('active');}ap=n;var btn=$('pt-'+n);if(btn)btn.classList.add('active');p.classList.add('open');$('panel-title').textContent=n.charAt(0).toUpperCase()+n.slice(1);fetch('/api/panel/'+n+'?project='+encodeURIComponent(PROJECT)).then(function(r){return r.text();}).then(function(h){$('panel-content').innerHTML=h;});};
-			window.closePanel=function(){$('side-panel').classList.remove('open');if(ap){var b=$('pt-'+ap);if(b)b.classList.remove('active');}ap=null;};
-			window.toggleToolBody=function(h){h.nextElementSibling.classList.toggle('open');h.querySelector('.tool-expand').classList.toggle('open');};
-			window.toggleThinking=function(t){t.querySelector('.arrow').classList.toggle('open');t.nextElementSibling.classList.toggle('open');};
-
-			/* ── Mobile drawer ── */
-			window.toggleMobileDrawer=function(){$('mobile-panel-drawer').classList.toggle('open');$('mobile-drawer-overlay').classList.toggle('open');};
-			window.closeMobileDrawer=function(){$('mobile-panel-drawer').classList.remove('open');$('mobile-drawer-overlay').classList.remove('open');};
-
-			/* ── Textarea auto-resize ── */
-			var ta=$('chat-input');
-			ta.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';});
-			ta.addEventListener('keydown',function(e){
-				if(e.key==='Enter'&&!e.shiftKey){
-					e.preventDefault();
-					if(ta.value.trim())$('chat-form').requestSubmit();
-				}
-			});
-			window.resetTextarea=function(){ta.style.height='auto';};
-
-			document.addEventListener('keydown',function(e){if(e.key==='Escape'){closePanel();closeMobileDrawer();$('approval-area').innerHTML='';}});
-			sb();ta.focus();
-		})();
-		</script>
+		<script src="/static/app.js?v=2"></script>
 	}
 }
 
@@ -248,8 +137,15 @@ templ UserMessage(content string) {
 templ AssistantMessage(content string) {
 	<div class="msg msg-assistant">
 		<div class="msg-label">Assistant</div>
-		<div class="msg-content">
-			@templ.Raw(fmt.Sprintf("%s", content))
+		<div class="msg-content markdown-body">{ content }</div>
+	</div>
+}
+
+templ AgentPanel() {
+	<div class="panel-section">
+		<div class="panel-section-title">Active Agents</div>
+		<div id="agents-list" class="agents-list">
+			<div style="color:var(--dim);padding:8px 0;">No active agents</div>
 		</div>
 	</div>
 }

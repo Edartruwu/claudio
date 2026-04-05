@@ -605,11 +605,12 @@ type MessageResp struct {
 	Usage      Usage          `json:"usage"`
 }
 
-// normalizeMessages ensures every message's Content is a valid JSON array.
-// The Anthropic API requires content to be a list of content blocks, but
-// various code paths (compaction, session restore, etc.) can accidentally
-// produce a plain JSON string (e.g. `"hello"`) or null. This function
-// catches those cases and wraps them into `[{"type":"text","text":"..."}]`.
+// normalizeMessages ensures every message's Content is a valid JSON array
+// with no broken content blocks. The Anthropic API requires content to be a
+// list of content blocks, but various code paths (compaction, session restore,
+// streaming) can accidentally produce a plain JSON string, null, or text
+// blocks with a missing "text" field (omitempty drops empty strings). This
+// function catches all those cases.
 func normalizeMessages(msgs []Message) {
 	for i := range msgs {
 		c := msgs[i].Content
@@ -621,7 +622,9 @@ func normalizeMessages(msgs []Message) {
 		// Fast check: valid content starts with '['
 		trimmed := bytes.TrimLeft(c, " \t\n\r")
 		if len(trimmed) > 0 && trimmed[0] == '[' {
-			continue // already an array
+			// Already an array — but sanitize blocks that may have missing fields.
+			msgs[i].Content = sanitizeContentBlocks(c)
+			continue
 		}
 		// It's a JSON string, number, object, or something else — wrap it.
 		var s string
@@ -633,6 +636,45 @@ func normalizeMessages(msgs []Message) {
 			msgs[i].Content, _ = json.Marshal([]UserContentBlock{NewTextBlock(string(c))})
 		}
 	}
+}
+
+// sanitizeContentBlocks ensures every text-type block in a JSON content array
+// has the "text" field present. The omitempty tag on ContentBlock.Text causes
+// empty strings to be dropped during marshaling, which the API rejects with
+// "text: Field required". This re-marshals only when a fix is needed.
+func sanitizeContentBlocks(raw json.RawMessage) json.RawMessage {
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) != nil {
+		return raw
+	}
+	modified := false
+	for i, b := range blocks {
+		var peek struct {
+			Type string  `json:"type"`
+			Text *string `json:"text"` // pointer distinguishes missing from empty
+		}
+		if json.Unmarshal(b, &peek) != nil {
+			continue
+		}
+		if peek.Type == "text" && peek.Text == nil {
+			// text field is missing — inject it
+			var obj map[string]json.RawMessage
+			if json.Unmarshal(b, &obj) != nil {
+				continue
+			}
+			obj["text"], _ = json.Marshal("")
+			blocks[i], _ = json.Marshal(obj)
+			modified = true
+		}
+	}
+	if !modified {
+		return raw
+	}
+	out, err := json.Marshal(blocks)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 // StreamMessages sends a streaming messages request and returns a channel of events.

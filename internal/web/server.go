@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -72,23 +73,53 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /", s.requireAuth(s.handleHome))
 	s.mux.HandleFunc("GET /chat", s.requireAuth(s.handleChatPage))
 
-	// API
+	// Project API
 	s.mux.HandleFunc("POST /api/projects/init", s.requireAuth(s.handleProjectInit))
+
+	// Session API
+	s.mux.HandleFunc("POST /api/sessions/create", s.requireAuth(s.handleSessionCreate))
+	s.mux.HandleFunc("GET /api/sessions/list", s.requireAuth(s.handleSessionList))
+	s.mux.HandleFunc("POST /api/sessions/delete", s.requireAuth(s.handleSessionDelete))
+	s.mux.HandleFunc("POST /api/sessions/rename", s.requireAuth(s.handleSessionRename))
+	s.mux.HandleFunc("GET /api/sessions/history", s.requireAuth(s.handleSessionHistory))
+
+	// Chat API (session-aware)
 	s.mux.HandleFunc("POST /api/chat/send", s.requireAuth(s.handleChatSend))
 	s.mux.HandleFunc("GET /api/chat/stream", s.requireAuth(s.handleChatStream))
 	s.mux.HandleFunc("POST /api/chat/approve", s.requireAuth(s.handleToolApprove))
 	s.mux.HandleFunc("POST /api/chat/deny", s.requireAuth(s.handleToolDeny))
 	s.mux.HandleFunc("GET /api/chat/status", s.requireAuth(s.handleChatStatus))
 	s.mux.HandleFunc("GET /api/chat/replay", s.requireAuth(s.handleChatReplay))
+
+	// Autocomplete
+	s.mux.HandleFunc("GET /api/autocomplete/files", s.requireAuth(s.handleAutocompleteFiles))
+	s.mux.HandleFunc("GET /api/autocomplete/commands", s.requireAuth(s.handleAutocompleteCommands))
+	s.mux.HandleFunc("GET /api/autocomplete/agents", s.requireAuth(s.handleAutocompleteAgents))
+
+	// Command execution
+	s.mux.HandleFunc("POST /api/commands/execute", s.requireAuth(s.handleCommandExecute))
+
+	// Panels
 	s.mux.HandleFunc("GET /api/panel/", s.requireAuth(s.handlePanel))
 }
 
 // requireAuth wraps a handler with authentication check.
+// API requests (/api/) get a 401 JSON response; page requests get a redirect.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		deny := func() {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte(`{"error":"unauthorized"}`))
+			} else {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			}
+		}
+
 		cookie, err := r.Cookie("claudio_token")
 		if err != nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			deny()
 			return
 		}
 		s.mu.RLock()
@@ -96,12 +127,11 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		s.mu.RUnlock()
 		if !ok || time.Now().After(expiry) {
 			if ok {
-				// Clean up expired token
 				s.mu.Lock()
 				delete(s.tokens, cookie.Value)
 				s.mu.Unlock()
 			}
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			deny()
 			return
 		}
 		next(w, r)

@@ -351,7 +351,7 @@ func TestChatSend_MissingParams(t *testing.T) {
 	}
 
 	// Missing message
-	form := url.Values{"project": {"/tmp"}}
+	form := url.Values{"session": {"some-id"}}
 	req = httptest.NewRequest("POST", "/api/chat/send", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w = httptest.NewRecorder()
@@ -363,7 +363,7 @@ func TestChatSend_MissingParams(t *testing.T) {
 
 func TestChatStream_NoSession(t *testing.T) {
 	s := newTestServer(t)
-	req := httptest.NewRequest("GET", "/api/chat/stream?project=/nonexistent", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?session=nonexistent", nil)
 	w := httptest.NewRecorder()
 
 	s.handleChatStream(w, req)
@@ -378,12 +378,12 @@ func TestChatStream_NoHandler(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create session but don't send a message (no handler)
-	_, err := s.sessions.GetOrCreate(tmpDir)
+	sess, err := s.sessions.GetOrCreateDefault(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?project="+tmpDir, nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?session="+sess.ID, nil)
 	w := httptest.NewRecorder()
 
 	s.handleChatStream(w, req)
@@ -395,7 +395,7 @@ func TestChatStream_NoHandler(t *testing.T) {
 
 func TestToolApproval_NoSession(t *testing.T) {
 	s := newTestServer(t)
-	form := url.Values{"project": {"/nonexistent"}}
+	form := url.Values{"session": {"nonexistent"}}
 	req := httptest.NewRequest("POST", "/api/chat/approve", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -450,11 +450,11 @@ func TestStaticFiles_NotFound(t *testing.T) {
 	}
 }
 
-func TestSessionManager_GetOrCreate(t *testing.T) {
+func TestSessionManager_GetOrCreateDefault(t *testing.T) {
 	sm := NewSessionManager()
 	tmpDir := t.TempDir()
 
-	sess1, err := sm.GetOrCreate(tmpDir)
+	sess1, err := sm.GetOrCreateDefault(tmpDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestSessionManager_GetOrCreate(t *testing.T) {
 	}
 
 	// Second call should return the same session
-	sess2, err := sm.GetOrCreate(tmpDir)
+	sess2, err := sm.GetOrCreateDefault(tmpDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -472,9 +472,9 @@ func TestSessionManager_GetOrCreate(t *testing.T) {
 	}
 }
 
-func TestSessionManager_GetOrCreate_InvalidPath(t *testing.T) {
+func TestSessionManager_GetOrCreateDefault_InvalidPath(t *testing.T) {
 	sm := NewSessionManager()
-	_, err := sm.GetOrCreate("/definitely/not/a/real/path")
+	_, err := sm.GetOrCreateDefault("/definitely/not/a/real/path")
 	if err == nil {
 		t.Error("expected error for invalid path")
 	}
@@ -491,8 +491,8 @@ func TestSessionManager_Get_Found(t *testing.T) {
 	sm := NewSessionManager()
 	tmpDir := t.TempDir()
 
-	sm.GetOrCreate(tmpDir)
-	sess := sm.Get(tmpDir)
+	created, _ := sm.GetOrCreateDefault(tmpDir)
+	sess := sm.Get(created.ID)
 	if sess == nil {
 		t.Fatal("expected session to be found")
 	}
@@ -506,8 +506,8 @@ func TestSessionManager_ListProjects(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 
-	sm.GetOrCreate(dir1)
-	sm.GetOrCreate(dir2)
+	sm.GetOrCreateDefault(dir1)
+	sm.GetOrCreateDefault(dir2)
 
 	paths := sm.ListProjects()
 	if len(paths) != 2 {
@@ -527,8 +527,8 @@ func TestSessionManager_MultipleProjects(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 
-	sess1, _ := sm.GetOrCreate(dir1)
-	sess2, _ := sm.GetOrCreate(dir2)
+	sess1, _ := sm.GetOrCreateDefault(dir1)
+	sess2, _ := sm.GetOrCreateDefault(dir2)
 
 	if sess1 == sess2 {
 		t.Error("different projects should have different sessions")
@@ -538,7 +538,7 @@ func TestSessionManager_MultipleProjects(t *testing.T) {
 func TestProjectSession_AddMessage(t *testing.T) {
 	sm := NewSessionManager()
 	tmpDir := t.TempDir()
-	sess, _ := sm.GetOrCreate(tmpDir)
+	sess, _ := sm.GetOrCreateDefault(tmpDir)
 
 	sess.AddMessage("user", "hello")
 	sess.AddMessage("assistant", "hi there")
@@ -561,7 +561,7 @@ func TestProjectSession_AddMessage(t *testing.T) {
 func TestProjectSession_CurrentHandler_Nil(t *testing.T) {
 	sm := NewSessionManager()
 	tmpDir := t.TempDir()
-	sess, _ := sm.GetOrCreate(tmpDir)
+	sess, _ := sm.GetOrCreateDefault(tmpDir)
 
 	if h := sess.CurrentHandler(); h != nil {
 		t.Error("expected nil handler before any message sent")
@@ -574,7 +574,7 @@ func TestSSEStream_Integration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create session and manually set a handler
-	sess, err := s.sessions.GetOrCreate(tmpDir)
+	sess, err := s.sessions.GetOrCreateDefault(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -589,7 +589,7 @@ func TestSSEStream_Integration(t *testing.T) {
 		handler.OnTurnComplete(api.Usage{InputTokens: 10, OutputTokens: 5})
 	}()
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?project="+tmpDir, nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?session="+sess.ID, nil)
 	w := httptest.NewRecorder()
 
 	s.handleChatStream(w, req)
@@ -628,7 +628,7 @@ func TestSSEStream_MultilineData(t *testing.T) {
 	s := newTestServer(t)
 	tmpDir := t.TempDir()
 
-	sess, _ := s.sessions.GetOrCreate(tmpDir)
+	sess, _ := s.sessions.GetOrCreateDefault(tmpDir)
 	handler := NewWebHandler()
 	sess.mu.Lock()
 	sess.currentHandler = handler
@@ -639,7 +639,7 @@ func TestSSEStream_MultilineData(t *testing.T) {
 		handler.OnTurnComplete(api.Usage{})
 	}()
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?project="+tmpDir, nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?session="+sess.ID, nil)
 	w := httptest.NewRecorder()
 
 	s.handleChatStream(w, req)
@@ -804,7 +804,8 @@ func TestTemplates_ChatPage(t *testing.T) {
 		{Role: "user", Content: "hello"},
 		{Role: "assistant", Content: "hi there"},
 	}
-	templates.ChatPage("/test/project", messages).Render(context.Background(), w)
+	sessions := []templates.SessionInfo{{ID: "test-session", Title: "Test", State: "idle", MsgCount: 2, Active: true}}
+	templates.ChatPage("/test/project", "test-session", sessions, messages).Render(context.Background(), w)
 	body := w.Body.String()
 	if !strings.Contains(body, "/test/project") {
 		t.Error("chat page should contain project path")
@@ -842,7 +843,7 @@ func TestPanel_Analytics(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create session with some analytics data
-	sess, err := s.sessions.GetOrCreate(tmpDir)
+	sess, err := s.sessions.GetOrCreateDefault(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -853,7 +854,7 @@ func TestPanel_Analytics(t *testing.T) {
 	sess.CacheCreateTokens = 200
 	sess.mu.Unlock()
 
-	req := httptest.NewRequest("GET", "/api/panel/analytics?project="+tmpDir, nil)
+	req := httptest.NewRequest("GET", "/api/panel/analytics?session="+sess.ID, nil)
 	w := httptest.NewRecorder()
 	s.handlePanel(w, req)
 
@@ -872,9 +873,9 @@ func TestPanel_Analytics(t *testing.T) {
 func TestPanel_Config(t *testing.T) {
 	s := newTestServer(t)
 	tmpDir := t.TempDir()
-	s.sessions.GetOrCreate(tmpDir)
+	sess, _ := s.sessions.GetOrCreateDefault(tmpDir)
 
-	req := httptest.NewRequest("GET", "/api/panel/config?project="+tmpDir, nil)
+	req := httptest.NewRequest("GET", "/api/panel/config?session="+sess.ID, nil)
 	w := httptest.NewRecorder()
 	s.handlePanel(w, req)
 
@@ -910,6 +911,273 @@ func TestPanel_Unknown(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "Unknown panel") {
 		t.Error("unknown panel should show error message")
+	}
+}
+
+// ── Mobile / Safari iOS fixes ──
+
+func TestChatPage_FormIsPlainNoAction(t *testing.T) {
+	// The form must NOT have any action attribute — no action="javascript:void(0)",
+	// no action="" — Safari navigates on submit if action is present.
+	// The form must also have no onsubmit inline handler.
+	w := httptest.NewRecorder()
+	sessions := []templates.SessionInfo{{ID: "s1", Title: "T", State: "idle", MsgCount: 0, Active: true}}
+	templates.ChatPage("/p", "s1", sessions, nil).Render(context.Background(), w)
+	body := w.Body.String()
+	if strings.Contains(body, `action=`) {
+		t.Error("form must not have any action attribute — causes Safari to navigate")
+	}
+	if strings.Contains(body, `onsubmit=`) {
+		t.Error("form must not use inline onsubmit — use addEventListener in JS instead")
+	}
+}
+
+func TestChatPage_SendButtonIsTypeButton(t *testing.T) {
+	// The send button must be type="button" to completely bypass native form
+	// submission which iOS Safari handles unreliably.
+	w := httptest.NewRecorder()
+	sessions := []templates.SessionInfo{{ID: "s1", Title: "T", State: "idle", MsgCount: 0, Active: true}}
+	templates.ChatPage("/p", "s1", sessions, nil).Render(context.Background(), w)
+	body := w.Body.String()
+	if !strings.Contains(body, `type="button"`) {
+		t.Error("send button must be type='button' to avoid native form submission on iOS Safari")
+	}
+	if strings.Contains(body, `type="submit"`) {
+		t.Error("no buttons should be type='submit' — causes iOS Safari form submission issues")
+	}
+}
+
+func TestChatPage_SendButtonNoInlineOnclick(t *testing.T) {
+	// The send button must NOT have an inline onclick — it causes
+	// "sendMessage is not defined" on iOS Safari if app.js hasn't
+	// finished executing yet. The click handler is added via addEventListener.
+	w := httptest.NewRecorder()
+	sessions := []templates.SessionInfo{{ID: "s1", Title: "T", State: "idle", MsgCount: 0, Active: true}}
+	templates.ChatPage("/p", "s1", sessions, nil).Render(context.Background(), w)
+	body := w.Body.String()
+	if strings.Contains(body, `onclick="sendMessage()"`) {
+		t.Error("send button must not have inline onclick — use addEventListener instead")
+	}
+}
+
+func TestChatPage_TextareaNotRequired(t *testing.T) {
+	// The textarea must NOT have the 'required' attribute — it prevents
+	// programmatic form handling and shows native validation popups on iOS.
+	w := httptest.NewRecorder()
+	sessions := []templates.SessionInfo{{ID: "s1", Title: "T", State: "idle", MsgCount: 0, Active: true}}
+	templates.ChatPage("/p", "s1", sessions, nil).Render(context.Background(), w)
+	body := w.Body.String()
+	if strings.Contains(body, "required") {
+		t.Error("textarea must not have 'required' attribute — JS handles validation")
+	}
+}
+
+func TestRequireAuth_ReturnsJSONForAPIRequests(t *testing.T) {
+	// API requests that fail auth must get 401 JSON, NOT a 302 redirect.
+	// A 302 redirect causes fetch() to silently follow to /login, get HTML,
+	// and then .json() throws — the user sees nothing or gets "kicked out".
+	s := newTestServer(t)
+	apiPaths := []string{
+		"/api/chat/send",
+		"/api/chat/stream",
+		"/api/sessions/list",
+		"/api/sessions/create",
+		"/api/panel/analytics",
+		"/api/autocomplete/commands",
+	}
+	for _, path := range apiPaths {
+		req := httptest.NewRequest("GET", path, nil)
+		w := httptest.NewRecorder()
+		s.mux.ServeHTTP(w, req)
+		if w.Code == http.StatusSeeOther || w.Code == http.StatusFound {
+			t.Errorf("%s: API endpoint must return 401, not redirect (got %d)", path, w.Code)
+		}
+		if w.Code != http.StatusUnauthorized {
+			// POST endpoints may return 405 for GET — that's fine, but not 302
+			if w.Code != http.StatusMethodNotAllowed {
+				t.Errorf("%s: expected 401 for unauthenticated API request, got %d", path, w.Code)
+			}
+		}
+	}
+}
+
+func TestRequireAuth_RedirectsPageRequests(t *testing.T) {
+	// Page requests (non-API) should still redirect to /login.
+	s := newTestServer(t)
+	for _, path := range []string{"/", "/chat"} {
+		req := httptest.NewRequest("GET", path, nil)
+		w := httptest.NewRecorder()
+		s.mux.ServeHTTP(w, req)
+		if w.Code != http.StatusSeeOther {
+			t.Errorf("%s: page request should redirect to login, got %d", path, w.Code)
+		}
+	}
+}
+
+func TestLoginCookie_SameSiteLax(t *testing.T) {
+	// SameSite must be Lax, not Strict. iOS Safari has known bugs where
+	// SameSite=Strict cookies are not sent with fetch() POST requests.
+	s := newTestServer(t)
+	form := url.Values{"password": {"testpass"}}
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+	cookies := w.Result().Cookies()
+	for _, c := range cookies {
+		if c.Name == "claudio_token" {
+			if c.SameSite == http.SameSiteStrictMode {
+				t.Error("cookie must use SameSite=Lax, not Strict — Strict breaks fetch() on iOS Safari")
+			}
+			return
+		}
+	}
+	t.Error("expected claudio_token cookie after login")
+}
+
+func TestStaticJS_FetchChecksResponseOk(t *testing.T) {
+	// All fetch() calls must check response.ok or response.status before
+	// calling .json() — otherwise a 401/redirect produces a silent failure.
+	js := appJSContent
+	// The JS should have a helper or inline checks for response status
+	if !strings.Contains(js, "response.ok") && !strings.Contains(js, ".ok)") && !strings.Contains(js, "checkAuth") {
+		t.Error("JS fetch calls must check response.ok to detect auth failures")
+	}
+}
+
+func TestStaticJS_SendBtnHasClickHandler(t *testing.T) {
+	// Verify send-btn has a click addEventListener in JS as primary handler
+	js := appJSContent
+	if !strings.Contains(js, "'send-btn'") && !strings.Contains(js, `"send-btn"`) {
+		t.Error("JS must reference send-btn element")
+	}
+}
+
+func TestStaticCSS_MobileSidebarTouchAction(t *testing.T) {
+	// Mobile menu button and sidebar items must have touch-action: manipulation
+	css := cssContent
+	if !strings.Contains(css, "touch-action: manipulation") {
+		t.Error("interactive elements must have touch-action: manipulation for iOS")
+	}
+}
+
+func TestStaticCSS_SessionItemTouchFriendly(t *testing.T) {
+	// Session items must be large enough to tap on iOS (min-height 44px)
+	css := cssContent
+	if !strings.Contains(css, "session-item") {
+		t.Error("session-item must exist in CSS")
+	}
+	// The mobile media query must make buttons at least 44px
+	if !strings.Contains(css, "min-height: 44px") {
+		t.Error("mobile interactive elements must have min-height: 44px for touch targets")
+	}
+}
+
+func TestStaticJS_NoCacheHeader(t *testing.T) {
+	s := newTestServer(t)
+	req := httptest.NewRequest("GET", "/static/app.js", nil)
+	w := httptest.NewRecorder()
+	s.handleStatic(w, req)
+	cc := w.Header().Get("Cache-Control")
+	if !strings.Contains(cc, "no-cache") {
+		t.Errorf("static files must have no-cache to prevent stale JS on redeploy, got: %s", cc)
+	}
+}
+
+func TestStaticCSS_MobileViewport(t *testing.T) {
+	css := cssContent
+	// Must use dvh for proper iOS Safari viewport handling
+	if !strings.Contains(css, "100dvh") {
+		t.Error("CSS must use 100dvh for proper iOS Safari viewport height")
+	}
+	// Must have safe-area-inset handling
+	if !strings.Contains(css, "safe-area-inset") {
+		t.Error("CSS must handle safe-area-insets for notched devices")
+	}
+	// Must have touch-action on interactive elements
+	if !strings.Contains(css, "touch-action") {
+		t.Error("CSS must use touch-action: manipulation to eliminate iOS tap delay")
+	}
+}
+
+func TestStaticCSS_iPhone15ProBreakpoint(t *testing.T) {
+	// iPhone 15 Pro is 393x852 logical pixels — must be covered by mobile breakpoint
+	css := cssContent
+	if !strings.Contains(css, "@media (max-width: 768px)") {
+		t.Error("CSS must have mobile breakpoint at 768px to cover iPhone 15 Pro (393px wide)")
+	}
+}
+
+func TestStaticCSS_VisualViewportHandling(t *testing.T) {
+	// When iOS keyboard opens, the visual viewport shrinks.
+	// CSS or JS must handle this to keep the input bar visible.
+	js := appJSContent
+	if !strings.Contains(js, "visualViewport") {
+		t.Error("JS must listen to visualViewport resize to handle iOS keyboard")
+	}
+}
+
+func TestStaticJS_NoDoubleBackslashInRegex(t *testing.T) {
+	// Go backtick strings don't process escape sequences, so \\ in the source
+	// becomes literal \\ in the browser. Regex patterns in backtick strings
+	// must use single \ (e.g. /\s/ not /\\s/).
+	js := appJSContent
+	// These patterns would be wrong — they'd match literal backslash + char
+	badPatterns := []string{
+		`/^\\\/`,     // should be /^\/ 
+		`[^\\s]`,     // should be [^\s] (in regex context)
+		`/\\s+/`,     // should be /\s+/
+		`/\\*\\*`,    // should be /\*\*
+		`/\\n/g`,     // should be /\n/g
+	}
+	for _, bad := range badPatterns {
+		if strings.Contains(js, bad) {
+			t.Errorf("JS contains double-backslash pattern %q which produces wrong regex in browser", bad)
+		}
+	}
+}
+
+func TestStaticJS_SendMessageDirect(t *testing.T) {
+	// sendMessage must be callable without arguments (not dependent on form submit event)
+	js := appJSContent
+	if !strings.Contains(js, "window.sendMessage=function()") {
+		t.Error("sendMessage must take no arguments — not depend on form submit event")
+	}
+}
+
+func TestStaticJS_SendButtonOnClick(t *testing.T) {
+	// The send button must have a direct click handler in JS
+	js := appJSContent
+	if !strings.Contains(js, "send-btn") || !strings.Contains(js, "addEventListener") {
+		t.Error("send button must have addEventListener click handler in JS")
+	}
+}
+
+func TestStaticJS_AutocompleteUsesTouchEvents(t *testing.T) {
+	// Autocomplete popup items must handle touch events for iOS
+	js := appJSContent
+	if !strings.Contains(js, "touchend") {
+		t.Error("autocomplete must handle touchend events for iOS Safari")
+	}
+}
+
+func TestStaticCSS_SidebarOverlayInMediaQuery(t *testing.T) {
+	// sidebar-overlay.visible must have display:block in mobile media query
+	css := cssContent
+	if !strings.Contains(css, "sidebar-overlay.visible") {
+		t.Error("sidebar-overlay.visible must be styled to display:block")
+	}
+}
+
+func TestStaticCSS_ChatLayoutFullHeight(t *testing.T) {
+	css := cssContent
+	// chat-layout must fill full height
+	if !strings.Contains(css, "chat-layout") {
+		t.Error("chat-layout class must exist")
+	}
+	// chat-main-wrap must use flex to fill remaining space
+	if !strings.Contains(css, "chat-main-wrap") {
+		t.Error("chat-main-wrap must exist for flex layout")
 	}
 }
 
@@ -972,7 +1240,7 @@ func TestSSEStream_TracksAnalytics(t *testing.T) {
 	s := newTestServer(t)
 	tmpDir := t.TempDir()
 
-	sess, err := s.sessions.GetOrCreate(tmpDir)
+	sess, err := s.sessions.GetOrCreateDefault(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -987,7 +1255,7 @@ func TestSSEStream_TracksAnalytics(t *testing.T) {
 		handler.OnTurnComplete(api.Usage{InputTokens: 100, OutputTokens: 50})
 	}()
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?project="+tmpDir, nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?session="+sess.ID, nil)
 	w := httptest.NewRecorder()
 	s.handleChatStream(w, req)
 

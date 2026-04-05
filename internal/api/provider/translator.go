@@ -333,7 +333,7 @@ func translateStreamChunk(chunk openAIStreamChunk, state *streamState) []api.Str
 		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 			if !state.textStarted {
 				// Emit content_block_start for text
-				blockJSON, _ := json.Marshal(api.ContentBlock{Type: "text"})
+				blockJSON, _ := json.Marshal(api.ContentBlock{Type: "text", Text: ""})
 				events = append(events, api.StreamEvent{
 					Type:         "content_block_start",
 					Index:        state.blockIndex,

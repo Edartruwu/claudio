@@ -13,6 +13,15 @@ type ChatMessage struct {
 	Content string
 }
 
+// SessionInfo represents a session summary for the sidebar.
+type SessionInfo struct {
+	ID       string
+	Title    string
+	State    string // "idle", "streaming", "approval"
+	MsgCount int
+	Active   bool // currently selected
+}
+
 // PanelData holds data for the side panels.
 type PanelData struct {
 	// Analytics
