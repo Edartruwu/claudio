@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Abraxas-365/claudio/internal/tools"
+	"github.com/Abraxas-365/claudio/internal/tools/grepcache"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
@@ -347,6 +348,107 @@ func TestFileReadTool_ReadCache_ModifiedFileBypassesCache(t *testing.T) {
 	}
 	if !strings.Contains(second.Content, "updated") {
 		t.Fatalf("second read after file change: expected 'updated', got: %s", second.Content)
+	}
+}
+
+// ── GrepTool cache deduplication ─────────────────────────────────────────────
+
+// TestGrepTool_Cache_DeduplicatesIdenticalSearch verifies that running the same
+// grep twice returns a cached result on the second call without re-executing rg.
+// This is the main fix for `Grep "." file` being used as a Read substitute
+// and then repeated across turns.
+func TestGrepTool_Cache_DeduplicatesIdenticalSearch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "server.go")
+	os.WriteFile(path, []byte("package web\n\nfunc Serve() {}\n"), 0644)
+
+	gc := grepcache.New(64)
+	tool := &tools.GrepTool{Cache: gc}
+
+	input, _ := json.Marshal(map[string]any{
+		"pattern":     ".",
+		"path":        path,
+		"output_mode": "content",
+	})
+
+	first, err := tool.Execute(context.Background(), input)
+	if err != nil || first.IsError {
+		t.Fatalf("first grep failed: %v / %s", err, first.Content)
+	}
+	if !strings.Contains(first.Content, "package web") {
+		t.Fatalf("first grep: expected file content, got: %s", first.Content)
+	}
+
+	// Second call with identical input and unchanged file: must return cached result.
+	second, err := tool.Execute(context.Background(), input)
+	if err != nil || second.IsError {
+		t.Fatalf("second grep failed: %v / %s", err, second.Content)
+	}
+	if second.Content != first.Content {
+		t.Fatalf("second grep should return identical cached content\ngot:  %s\nwant: %s", second.Content, first.Content)
+	}
+}
+
+// TestGrepTool_Cache_NilCacheAlwaysRuns confirms that when Cache is nil every
+// invocation runs rg normally.
+func TestGrepTool_Cache_NilCacheAlwaysRuns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file.go")
+	os.WriteFile(path, []byte("func A() {}\n"), 0644)
+
+	tool := &tools.GrepTool{} // no cache
+
+	input, _ := json.Marshal(map[string]any{"pattern": "func", "path": path, "output_mode": "content"})
+	result, err := tool.Execute(context.Background(), input)
+	if err != nil || result.IsError {
+		t.Fatalf("grep failed: %v / %s", err, result.Content)
+	}
+	if !strings.Contains(result.Content, "func A") {
+		t.Fatalf("expected grep result, got: %s", result.Content)
+	}
+}
+
+// TestGrepTool_Cache_DifferentFlagsAreSeparateEntries verifies that changing
+// any input field (e.g. IgnoreCase) results in a separate cache entry.
+func TestGrepTool_Cache_DifferentFlagsAreSeparateEntries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file.go")
+	os.WriteFile(path, []byte("HELLO\nhello\n"), 0644)
+
+	gc := grepcache.New(64)
+	tool := &tools.GrepTool{Cache: gc}
+
+	caseSensitive, _ := json.Marshal(map[string]any{"pattern": "HELLO", "path": path, "output_mode": "content"})
+	caseInsensitive, _ := json.Marshal(map[string]any{"pattern": "HELLO", "path": path, "output_mode": "content", "-i": true})
+
+	r1, _ := tool.Execute(context.Background(), caseSensitive)
+	r2, _ := tool.Execute(context.Background(), caseInsensitive)
+
+	// Case-sensitive: only "HELLO" line; case-insensitive: both lines.
+	if strings.Count(r1.Content, "hello") != 0 || strings.Count(r1.Content, "HELLO") == 0 {
+		t.Fatalf("case-sensitive result unexpected: %s", r1.Content)
+	}
+	if !strings.Contains(r2.Content, "HELLO") || !strings.Contains(r2.Content, "hello") {
+		t.Fatalf("case-insensitive result unexpected: %s", r2.Content)
+	}
+}
+
+// TestFileReadTool_ReadCache_NudgesAwayFromGrep verifies the dedup stub message
+// does NOT suggest using Grep as a workaround (which caused the bypass loop).
+func TestFileReadTool_ReadCache_NudgesAwayFromGrep(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "handler.go")
+	os.WriteFile(path, []byte("package web\n"), 0644)
+
+	rc := readcache.New(64)
+	tool := &tools.FileReadTool{ReadCache: rc}
+	input, _ := json.Marshal(map[string]any{"file_path": path})
+
+	tool.Execute(context.Background(), input) // prime cache
+
+	second, _ := tool.Execute(context.Background(), input)
+	if strings.Contains(strings.ToLower(second.Content), "use grep") {
+		t.Fatalf("dedup stub must not suggest 'use Grep' — causes bypass loop; got: %s", second.Content)
 	}
 }
 

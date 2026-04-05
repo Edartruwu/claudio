@@ -110,6 +110,9 @@ type Engine struct {
 	// tool result disk offload for oversized outputs
 	toolCache *toolcache.Store
 
+	// tool result budget — tracks replacements across turns for prompt cache stability
+	replacementState *compact.ReplacementState
+
 	// mailboxPoller is called each turn to check for incoming team messages.
 	// Returns messages to inject as user messages. If a message signals "stop",
 	// it should return the message and the engine will stop after injecting it.
@@ -123,15 +126,16 @@ const defaultContextWindow = 200_000
 func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandler) *Engine {
 	tc, _ := toolcache.New(os.TempDir()+"/claudio-tool-results", 0)
 	return &Engine{
-		client:          client,
-		registry:        registry,
-		handler:         handler,
-		permissionMode:  "default",
-		discoveredTools: make(map[string]bool),
-		cacheTracker:    &cachetracker.Tracker{},
-		cacheExpiry:     cachetracker.NewExpiryWatcher(5 * time.Minute),
-		toolCache:       tc,
-		compactState:    &compact.State{MaxTokens: defaultContextWindow},
+		client:           client,
+		registry:         registry,
+		handler:          handler,
+		permissionMode:   "default",
+		discoveredTools:  make(map[string]bool),
+		cacheTracker:     &cachetracker.Tracker{},
+		cacheExpiry:      cachetracker.NewExpiryWatcher(60 * time.Minute),
+		toolCache:        tc,
+		compactState:     &compact.State{MaxTokens: defaultContextWindow},
+		replacementState: compact.NewReplacementState(),
 	}
 }
 
@@ -261,10 +265,12 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			return ctx.Err()
 		}
 
-		// Warn once per turn if the cache has likely expired (>5 min since last call)
+		// When the prompt cache has likely expired (>5 min gap), aggressively
+		// clear old tool results — they can't benefit from caching anyway,
+		// and clearing them frees token space. Keeps the last 5 results.
 		if e.cacheExpiry.IsExpired() {
-			e.handler.OnTextDelta("\n[Note: prompt cache likely expired — first response may be slower]\n")
-			// Reset so we don't repeat the warning every loop iteration
+			e.messages = compact.TimeBasedMicroCompact(e.messages, 5)
+			e.handler.OnTextDelta("\n[Note: prompt cache likely expired — cleared old tool results]\n")
 			e.cacheExpiry.RecordCall()
 		}
 
@@ -275,15 +281,18 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 				e.fireHook(ctx, hooks.PreCompact, "", "")
 				compacted, summary, err := compact.Compact(ctx, e.client, e.messages, 10)
 				if err == nil && summary != "" {
-					e.messages = compacted
+					e.messages = compact.EnsureToolResultPairing(compacted)
 					e.compactState.TotalTokens = 0
+					// Reset replacement state — compacted messages are new, no cached replacements apply
+					e.replacementState = compact.NewReplacementState()
 					e.handler.OnTextDelta("\n[Auto-compacted conversation: " + summary[:min(len(summary), 100)] + "...]\n")
 					e.fireHook(ctx, hooks.PostCompact, "", "")
 					prompts.ClearAllSections()
 				}
 			} else if e.compactState.ShouldPartialCompact() {
-				// Partial: clear old tool results at 70%
-				e.messages = compact.ContentClearCompact(e.messages, 20, 4096)
+				// At 70% context usage, run an aggressive MicroCompact pass
+				// (lower target, fewer protected results) to free space.
+				e.messages = compact.MicroCompact(e.messages, 5, 512, e.registry.ReadCache())
 				e.handler.OnTextDelta("\n[Cleared old tool results to save context]\n")
 			}
 		}
@@ -291,6 +300,15 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		// Poll mailbox for incoming team messages before the API call,
 		// so the model sees them in the current turn.
 		e.pollMailbox()
+
+		// Enforce per-message tool result budget: replace large results with
+		// 2KB previews (full content saved to disk). Cached replacements are
+		// re-applied byte-identically to preserve prompt cache stability.
+		e.messages = compact.EnforceToolResultBudget(e.messages, e.replacementState, e.toolCache)
+
+		// Ensure tool_use/tool_result pairs are valid after any compaction.
+		// Inserts synthetic error results for orphaned tool_use blocks.
+		e.messages = compact.EnsureToolResultPairing(e.messages)
 
 		// Merge consecutive user messages before sending (reduces message count overhead)
 		mergedMessages := mergeConsecutiveUserMessages(e.messages)
@@ -357,10 +375,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			e.compactState.TotalTokens = response.Usage.InputTokens
 		}
 
-		// Special handling: if input tokens exceed 200K, trigger immediate partial
-		// compaction to avoid prompt bloat on the next turn.
+		// Special handling: if input tokens exceed 200K, trigger aggressive
+		// microcompact to avoid prompt bloat on the next turn.
 		if response.Usage.InputTokens > 200_000 && e.compactState != nil {
-			e.messages = compact.ContentClearCompact(e.messages, 10, 2048)
+			e.messages = compact.MicroCompact(e.messages, 5, 256, e.registry.ReadCache())
 		}
 
 		// Check cost threshold

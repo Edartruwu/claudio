@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/api"
@@ -82,6 +83,29 @@ func (s *State) DetectPhase(recentTools []string) string {
 	return "mixed"
 }
 
+// noToolsPreamble is set as the system prompt during compaction to prevent
+// the summarizer from attempting to call any tools.
+const noToolsPreamble = `CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
+- Do NOT use Read, Bash, Grep, Glob, Edit, Write, or ANY other tool.
+- You already have all the context you need in the conversation below.
+- Tool calls will be REJECTED and will waste your only turn.
+- Your entire response must be plain text: an <analysis> block followed by a <summary> block.`
+
+// compactPrompt instructs the summarizer to produce a structured, detailed
+// conversation summary modeled on claude-code's compaction prompt.
+const compactPrompt = `Create a detailed summary of this conversation. Use an <analysis> block as a scratchpad (it will be stripped), then a <summary> block with the actual summary.
+
+Your summary MUST cover these sections:
+1. Primary Request and Intent — what the user asked for and why
+2. Key Technical Concepts — important terms, patterns, or design decisions
+3. Files and Code — specific file paths and code sections that were read, modified, or discussed (include relevant snippets)
+4. Errors and Fixes — any errors encountered and how they were resolved
+5. Current State — what has been accomplished vs what remains
+6. Pending Tasks — anything the user asked for that hasn't been done yet
+7. Important Context — non-obvious facts or decisions needed to continue the work
+
+Be specific: include file paths, function names, variable names, error messages, and code snippets. A vague summary wastes tokens on the next turn when the model has to re-read files to reconstruct context.`
+
 // Compact summarizes old messages using the API.
 // pinnedIndices is an optional set of message indices that should be preserved
 // verbatim through compaction (not summarized). Pass nil to compact everything.
@@ -120,7 +144,8 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 		}
 	}
 
-	// Build summary prompt from non-pinned old messages
+	// Build conversation content from non-pinned old messages. Include more
+	// context per message (up to 2KB) so the summarizer has enough signal.
 	var summaryParts []string
 	for _, msg := range oldMessages {
 		var content string
@@ -129,23 +154,21 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 			content = string(msg.Content)
 		}
 		preview := content
-		if len(preview) > 200 {
-			preview = preview[:200] + "..."
+		if len(preview) > 2000 {
+			preview = preview[:2000] + "..."
 		}
 		summaryParts = append(summaryParts, fmt.Sprintf("[%s]: %s", msg.Role, preview))
 	}
 
-	summaryPrompt := fmt.Sprintf(
-		"Summarize this conversation history in 2-3 paragraphs. Focus on: what was accomplished, key decisions made, current state of work, and any important context for continuing.\n\n%s",
-		strings.Join(summaryParts, "\n"),
-	)
+	summaryPrompt := compactPrompt + "\n\n" + strings.Join(summaryParts, "\n")
 
 	contentJSON, _ := json.Marshal(summaryPrompt)
 	summaryReq := &api.MessagesRequest{
 		Messages: []api.Message{
 			{Role: "user", Content: contentJSON},
 		},
-		MaxTokens: 1024,
+		System:    noToolsPreamble,
+		MaxTokens: 4096,
 	}
 
 	resp, err := client.SendMessage(ctx, summaryReq)
@@ -153,12 +176,15 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 		return messages, "", fmt.Errorf("compaction summary failed: %w", err)
 	}
 
-	var summary string
+	var rawSummary string
 	for _, block := range resp.Content {
 		if block.Type == "text" {
-			summary += block.Text
+			rawSummary += block.Text
 		}
 	}
+
+	// Extract the <summary> block content, stripping the <analysis> scratchpad.
+	summary := formatCompactSummary(rawSummary)
 
 	// Build new message list: [system summary] + pinned messages + recent messages
 	summaryContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(fmt.Sprintf("[Conversation Summary]\n%s", summary))})
@@ -190,6 +216,29 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 	compacted = sanitizeToolPairs(compacted)
 
 	return compacted, summary, nil
+}
+
+// formatCompactSummary extracts the <summary> block from the compaction output,
+// stripping the <analysis> scratchpad. Falls back to the raw text if no tags found.
+func formatCompactSummary(raw string) string {
+	// Strip <analysis>...</analysis>
+	if start := strings.Index(raw, "<analysis>"); start >= 0 {
+		if end := strings.Index(raw, "</analysis>"); end >= 0 {
+			raw = raw[:start] + raw[end+len("</analysis>"):]
+		}
+	}
+
+	// Extract content from <summary>...</summary>
+	if start := strings.Index(raw, "<summary>"); start >= 0 {
+		content := raw[start+len("<summary>"):]
+		if end := strings.Index(content, "</summary>"); end >= 0 {
+			content = content[:end]
+		}
+		return strings.TrimSpace(content)
+	}
+
+	// No tags found — return raw text.
+	return strings.TrimSpace(raw)
 }
 
 // messageHasToolResults returns true if the message contains any tool_result content blocks.
@@ -418,20 +467,32 @@ func filePathForToolUseID(messages []api.Message, toolUseID string) string {
 	return ""
 }
 
-// MicroCompact proactively clears large read-heavy tool results from old messages
-// on every tool turn, without waiting for a token threshold.
-// It preserves the last keepLastResults tool results intact.
-// This runs continuously to keep the message history lean.
-// Pass rc to invalidate ReadCache entries for any Read results that get cleared,
-// so the model can re-read those files instead of receiving a stale stub.
+// MicroCompact proactively clears large tool results from old messages on
+// every tool turn. Unlike the old positional approach (keep last N), this
+// version is size-aware: it calculates the total tool result bytes and clears
+// the largest results first (outside the protected recent window) until the
+// total is under the target budget.
+//
+// Parameters:
+//   - keepLastResults: number of most-recent tool results to protect from clearing
+//   - targetBytes: target total size for all tool results (0 = use default 100KB)
+//   - minSizeBytes: skip results smaller than this
 func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int, rc ...*readcache.Cache) []api.Message {
 	if len(messages) == 0 {
 		return messages
 	}
 
-	// Count total tool_result blocks to find cutoff
-	type resultPos struct{ msgIdx, blockIdx int }
-	var positions []resultPos
+	const defaultTargetBytes = 100_000 // 100KB target for total tool result content
+
+	// Collect all tool_result blocks with their size.
+	type resultInfo struct {
+		msgIdx    int
+		blockIdx  int
+		toolUseID string
+		size      int
+		isError   bool
+	}
+	var all []resultInfo
 	for i, msg := range messages {
 		if msg.Role != "user" {
 			continue
@@ -442,26 +503,78 @@ func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int,
 		}
 		for j, b := range blocks {
 			var tr struct {
-				Type string `json:"type"`
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+				IsError   bool   `json:"is_error,omitempty"`
 			}
-			if json.Unmarshal(b, &tr) == nil && tr.Type == "tool_result" {
-				positions = append(positions, resultPos{i, j})
+			if json.Unmarshal(b, &tr) != nil || tr.Type != "tool_result" {
+				continue
 			}
+			// Skip results already processed by the budget system or prior compaction.
+			// These are small stubs that shouldn't count toward the size budget.
+			if isAlreadyCompacted(tr.Content) {
+				continue
+			}
+			all = append(all, resultInfo{
+				msgIdx: i, blockIdx: j, toolUseID: tr.ToolUseID,
+				size: len(tr.Content), isError: tr.IsError,
+			})
 		}
 	}
 
-	if len(positions) <= keepLastResults {
+	if len(all) <= keepLastResults {
 		return messages
 	}
 
-	// Mark positions that should be cleared (all but the last keepLastResults)
-	type clearKey struct{ msgIdx, blockIdx int }
-	toClear := make(map[clearKey]bool)
-	cutoff := len(positions) - keepLastResults
-	for _, pos := range positions[:cutoff] {
-		toClear[clearKey{pos.msgIdx, pos.blockIdx}] = true
+	// Protect the last keepLastResults from clearing.
+	protectedStart := len(all) - keepLastResults
+	protected := make(map[int]bool, keepLastResults)
+	for i := protectedStart; i < len(all); i++ {
+		protected[i] = true
 	}
 
+	// Calculate total size and identify clearable candidates.
+	totalSize := 0
+	type clearCandidate struct {
+		idx  int // index in `all`
+		size int
+	}
+	var candidates []clearCandidate
+	for i, r := range all {
+		totalSize += r.size
+		if !protected[i] && !r.isError && r.size >= minSizeBytes {
+			candidates = append(candidates, clearCandidate{idx: i, size: r.size})
+		}
+	}
+
+	if totalSize <= defaultTargetBytes {
+		return messages // already under budget
+	}
+
+	// Sort candidates by size descending — clear biggest first.
+	sort.Slice(candidates, func(a, b int) bool {
+		return candidates[a].size > candidates[b].size
+	})
+
+	// Select candidates to clear until we're under the target.
+	type clearKey struct{ msgIdx, blockIdx int }
+	toClear := make(map[clearKey]bool)
+	remaining := totalSize
+	for _, c := range candidates {
+		if remaining <= defaultTargetBytes {
+			break
+		}
+		r := all[c.idx]
+		toClear[clearKey{r.msgIdx, r.blockIdx}] = true
+		remaining -= r.size
+	}
+
+	if len(toClear) == 0 {
+		return messages
+	}
+
+	// Apply clears.
 	result := make([]api.Message, len(messages))
 	copy(result, messages)
 
@@ -487,20 +600,13 @@ func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int,
 			if json.Unmarshal(b, &tr) != nil || tr.Type != "tool_result" {
 				continue
 			}
-			if len(tr.Content) < minSizeBytes || tr.IsError {
-				continue
-			}
-			// Intentionally do NOT invalidate ReadCache here. Keeping the cache
-			// entry valid means a subsequent re-read of the same file returns the
-			// dedup stub ("File unchanged since last read — refer to earlier result")
-			// instead of the full content, breaking the clear→re-read→clear loop
-			// that was causing the same file to be sent 6-8× per session.
+			// Build an informative stub. Include file path for Read results.
 			fp := ""
 			if len(rc) > 0 && rc[0] != nil {
 				fp = filePathForToolUseID(messages, tr.ToolUseID)
 			}
 			if fp != "" {
-				tr.Content = fmt.Sprintf("[Read result for %s cleared (%d bytes) — file is unchanged; use Grep to find specific content rather than re-reading the full file]", fp, len(tr.Content))
+				tr.Content = fmt.Sprintf("[Read result for %s cleared (%d bytes) — file is unchanged; refer to earlier Read result or use Grep for specific content]", fp, len(tr.Content))
 			} else {
 				tr.Content = fmt.Sprintf("[result cleared — %d bytes]", len(tr.Content))
 			}
@@ -567,6 +673,140 @@ func ContentClearCompact(messages []api.Message, keepLast int, minSize int) []ap
 	}
 
 	return result
+}
+
+// TimeBasedMicroCompact aggressively clears old tool results when the prompt
+// cache has likely expired (called when cacheExpiry.IsExpired() is true).
+// Since the cache is cold anyway, clearing old results doesn't hurt cache hit
+// rates but frees significant token space. Keeps the last keepRecent results
+// and clears everything else regardless of size.
+func TimeBasedMicroCompact(messages []api.Message, keepRecent int) []api.Message {
+	if keepRecent <= 0 {
+		keepRecent = 5
+	}
+
+	// Collect all compactable tool_result positions.
+	type resultPos struct{ msgIdx, blockIdx int }
+	var positions []resultPos
+	for i, msg := range messages {
+		if msg.Role != "user" {
+			continue
+		}
+		var blocks []json.RawMessage
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+		for j, b := range blocks {
+			var tr struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+			}
+			if json.Unmarshal(b, &tr) != nil || tr.Type != "tool_result" {
+				continue
+			}
+			// Check if this tool_use_id belongs to a compactable tool.
+			if isCompactableTool(messages, tr.ToolUseID) {
+				positions = append(positions, resultPos{i, j})
+			}
+		}
+	}
+
+	if len(positions) <= keepRecent {
+		return messages
+	}
+
+	// Clear all but the last keepRecent.
+	type clearKey struct{ msgIdx, blockIdx int }
+	toClear := make(map[clearKey]bool)
+	cutoff := len(positions) - keepRecent
+	for _, pos := range positions[:cutoff] {
+		toClear[clearKey{pos.msgIdx, pos.blockIdx}] = true
+	}
+
+	result := make([]api.Message, len(messages))
+	copy(result, messages)
+
+	for i, msg := range result {
+		if msg.Role != "user" {
+			continue
+		}
+		var blocks []json.RawMessage
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+		modified := false
+		for j, b := range blocks {
+			if !toClear[clearKey{i, j}] {
+				continue
+			}
+			var tr struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+				IsError   bool   `json:"is_error,omitempty"`
+			}
+			if json.Unmarshal(b, &tr) != nil || tr.Type != "tool_result" || tr.IsError {
+				continue
+			}
+			if len(tr.Content) < 100 { // don't bother with tiny results
+				continue
+			}
+			tr.Content = "[Old tool result content cleared]"
+			blocks[j], _ = json.Marshal(tr)
+			modified = true
+		}
+		if modified {
+			result[i].Content, _ = json.Marshal(blocks)
+		}
+	}
+	return result
+}
+
+// isAlreadyCompacted returns true if a tool result has already been replaced by
+// the budget system, MicroCompact, TimeBasedMicroCompact, or ContentClearCompact.
+// These stubs are tiny and should not be counted toward size budgets or cleared again.
+func isAlreadyCompacted(content string) bool {
+	if len(content) > 300 {
+		return false // stubs are always short
+	}
+	return strings.HasPrefix(content, "[Tool output too large") ||
+		strings.HasPrefix(content, "[result cleared") ||
+		strings.HasPrefix(content, "[Read result for") ||
+		strings.HasPrefix(content, "[Old tool result") ||
+		strings.HasPrefix(content, "[content cleared") ||
+		strings.HasPrefix(content, "[tool result persisted")
+}
+
+// compactableTools lists tools whose results can be safely cleared.
+var compactableTools = map[string]bool{
+	"Read": true, "Edit": true, "Write": true,
+	"Glob": true, "Grep": true, "Bash": true,
+	"WebSearch": true, "WebFetch": true,
+}
+
+// isCompactableTool checks if the tool_use block for the given ID is a compactable tool.
+func isCompactableTool(messages []api.Message, toolUseID string) bool {
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		var blocks []json.RawMessage
+		if json.Unmarshal(m.Content, &blocks) != nil {
+			continue
+		}
+		for _, b := range blocks {
+			var tu struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(b, &tu) == nil && tu.Type == "tool_use" && tu.ID == toolUseID {
+				return compactableTools[tu.Name]
+			}
+		}
+	}
+	// If we can't find the tool_use, assume it's compactable (conservative).
+	return true
 }
 
 // PartialCompact strips content from read-heavy tool results in old messages.

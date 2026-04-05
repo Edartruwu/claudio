@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/auth"
 	"github.com/Abraxas-365/claudio/internal/ratelimit"
@@ -215,6 +216,143 @@ func (c *Client) HasProvider(name string) bool {
 	return ok
 }
 
+// GetProviderNames returns names of all registered providers.
+func (c *Client) GetProviderNames() []string {
+	names := make([]string, 0, len(c.providers))
+	for name := range c.providers {
+		names = append(names, name)
+	}
+	return names
+}
+
+// GetProvider returns a provider by name, or nil if not found.
+func (c *Client) GetProvider(name string) Provider {
+	return c.providers[name]
+}
+
+// HealthCheckResult holds the result of a provider connectivity test.
+type HealthCheckResult struct {
+	ProviderName string
+	OK           bool
+	Latency      time.Duration
+	Error        string
+	Model        string // model used for the test
+}
+
+// HealthCheck tests connectivity to a specific provider by sending a tiny request.
+func (c *Client) HealthCheck(ctx context.Context, providerName string) HealthCheckResult {
+	result := HealthCheckResult{ProviderName: providerName}
+
+	p, ok := c.providers[providerName]
+	if !ok {
+		result.Error = "provider not registered"
+		return result
+	}
+
+	// Find a model routed to this provider for the test.
+	testModel := ""
+	for pattern, pName := range c.modelRoutes {
+		if pName == providerName {
+			testModel = pattern
+			break
+		}
+	}
+	// If the pattern is a glob, try a shortcut instead.
+	if strings.Contains(testModel, "*") || testModel == "" {
+		for shortcut, modelID := range c.modelShortcuts {
+			for pattern, pName := range c.modelRoutes {
+				if pName == providerName {
+					matched, _ := filepath.Match(pattern, shortcut)
+					if matched {
+						testModel = modelID
+						break
+					}
+				}
+			}
+			if !strings.Contains(testModel, "*") && testModel != "" {
+				break
+			}
+		}
+	}
+	if testModel == "" {
+		testModel = "test"
+	}
+	result.Model = testModel
+
+	// Send a minimal request.
+	testContent, _ := json.Marshal([]UserContentBlock{NewTextBlock("hi")})
+	req := &MessagesRequest{
+		Model:     testModel,
+		MaxTokens: 1,
+		Messages: []Message{
+			{Role: "user", Content: testContent},
+		},
+	}
+
+	start := time.Now()
+	_, err := p.SendMessage(ctx, c.httpClient, req)
+	result.Latency = time.Since(start)
+
+	if err != nil {
+		result.Error = err.Error()
+		// Some errors indicate the provider is reachable but rejected our test
+		// (auth error, model not found, etc.) — that still counts as "reachable".
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "401") || strings.Contains(errStr, "403") ||
+			strings.Contains(errStr, "model") || strings.Contains(errStr, "authentication") {
+			result.OK = true // reachable but auth/model issue
+			result.Error = "reachable but: " + result.Error
+		}
+	} else {
+		result.OK = true
+	}
+
+	return result
+}
+
+// HealthCheckAll tests connectivity to all registered providers.
+func (c *Client) HealthCheckAll(ctx context.Context) []HealthCheckResult {
+	var results []HealthCheckResult
+	for name := range c.providers {
+		results = append(results, c.HealthCheck(ctx, name))
+	}
+	return results
+}
+
+// ModelLister is an optional interface that providers can implement to support
+// model discovery. Type-assert a Provider to check if it supports listing.
+type ModelLister interface {
+	ListModels(ctx context.Context, httpClient *http.Client) ([]ModelInfo, error)
+}
+
+// ModelInfo describes an available model from a provider.
+type ModelInfo struct {
+	ID           string `json:"id"`
+	OwnedBy      string `json:"owned_by,omitempty"`
+	ProviderName string `json:"-"` // set by DiscoverModels, not part of API response
+}
+
+// DiscoverModels queries all providers that support model listing and returns
+// the combined results. Providers that don't implement ModelLister are skipped.
+func (c *Client) DiscoverModels(ctx context.Context) []ModelInfo {
+	var all []ModelInfo
+	for name, p := range c.providers {
+		lister, ok := p.(ModelLister)
+		if !ok {
+			continue
+		}
+		models, err := lister.ListModels(ctx, c.httpClient)
+		if err != nil {
+			continue // skip providers that fail
+		}
+		for i := range models {
+			models[i].ProviderName = name
+		}
+		all = append(all, models...)
+	}
+	return all
+}
+
 // AddModelShortcut registers a slash-command shortcut for a model.
 func (c *Client) AddModelShortcut(shortcut, modelID string) {
 	if c.modelShortcuts == nil {
@@ -355,6 +493,37 @@ type MessagesRequest struct {
 	StopReason   string          `json:"stop_reason,omitempty"`
 	Thinking     *ThinkingConfig `json:"thinking,omitempty"`
 	OutputConfig *OutputConfig   `json:"output_config,omitempty"`
+
+	// ContextManagement enables server-side context editing (Anthropic only).
+	// When set, the API strips old tool results from the cached prefix.
+	ContextManagement *ContextManagement `json:"context_management,omitempty"`
+}
+
+// ContextManagement configures server-side context editing strategies.
+// See: https://platform.claude.com/docs/en/build-with-claude/context-editing
+type ContextManagement struct {
+	Edits []ContextEdit `json:"edits"`
+}
+
+// ContextEdit is a single context editing strategy.
+type ContextEdit struct {
+	Type             string      `json:"type"`                         // e.g. "clear_tool_uses_20250919"
+	Trigger          *Trigger    `json:"trigger,omitempty"`
+	Keep             *KeepConfig `json:"keep,omitempty"`               // which tool uses to protect
+	ExcludeTools     []string    `json:"exclude_tools,omitempty"`      // tool names to never clear
+	ClearToolInputs  bool        `json:"clear_tool_inputs,omitempty"`  // also clear tool_use input params
+}
+
+// KeepConfig specifies how many recent tool uses to preserve.
+type KeepConfig struct {
+	Type  string `json:"type"`            // "tool_uses"
+	Value int    `json:"value,omitempty"` // number to keep
+}
+
+// Trigger defines when a context edit activates.
+type Trigger struct {
+	Type  string `json:"type"`            // "input_tokens" or "tool_uses"
+	Value int    `json:"value,omitempty"` // threshold value
 }
 
 // Message represents a conversation message.
@@ -488,6 +657,7 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 	c.applyThinking(req)
 	c.applyEffort(req)
 	c.applyAttribution(req)
+	c.applyContextManagement(req)
 	c.applyMessageCacheBreakpoints(req)
 
 	eventCh := make(chan StreamEvent, 64)
@@ -587,6 +757,7 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	c.applyThinking(req)
 	c.applyEffort(req)
 	c.applyAttribution(req)
+	c.applyContextManagement(req)
 	c.applyMessageCacheBreakpoints(req)
 
 	body, err := json.Marshal(req)
@@ -760,6 +931,36 @@ func (c *Client) applyThinking(req *MessagesRequest) {
 	}
 }
 
+// applyContextManagement adds server-side context editing for Anthropic requests.
+// This configures the API to automatically clear old tool results from the cached
+// prefix when context grows large, keeping the last N tool uses intact.
+// Only applies to first-party Anthropic requests (not external providers).
+func (c *Client) applyContextManagement(req *MessagesRequest) {
+	// Don't override if already set explicitly.
+	if req.ContextManagement != nil {
+		return
+	}
+
+	// Only apply for Anthropic models (external providers don't support this).
+	if c.resolveProvider(req.Model) != nil {
+		return
+	}
+
+	req.ContextManagement = &ContextManagement{
+		Edits: []ContextEdit{
+			{
+				Type: "clear_tool_uses_20250919",
+				Trigger: &Trigger{
+					Type:      "input_tokens",
+					Value: 80_000, // ~40% of 200K context — clear early to preserve cache
+				},
+				Keep: &KeepConfig{Type: "tool_uses", Value: 10},
+				ClearToolInputs: true,
+			},
+		},
+	}
+}
+
 // applyEffort sets the effort level on the request for models that support it.
 func (c *Client) applyEffort(req *MessagesRequest) {
 	if req.OutputConfig != nil {
@@ -785,12 +986,12 @@ func (c *Client) setHeaders(req *http.Request) {
 	authResult := c.authResolver.Resolve()
 	if authResult.IsOAuth {
 		req.Header.Set("Authorization", "Bearer "+authResult.Token)
-		req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,advanced-tool-use-2025-11-20,effort-2025-11-24")
+		req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,advanced-tool-use-2025-11-20,effort-2025-11-24,context-management-2025-06-27")
 		req.Header.Set("User-Agent", "claude-code/2.1.0 claude-cli")
 		req.Header.Set("x-app", "cli")
 	} else if authResult.Token != "" {
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("x-api-key", authResult.Token)
-		req.Header.Set("anthropic-beta", "advanced-tool-use-2025-11-20,effort-2025-11-24")
+		req.Header.Set("anthropic-beta", "advanced-tool-use-2025-11-20,effort-2025-11-24,context-management-2025-06-27")
 	}
 }

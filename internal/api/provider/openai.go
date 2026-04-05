@@ -160,3 +160,33 @@ func (o *OpenAI) setHeaders(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
 }
+
+// ListModels queries the /v1/models endpoint to discover available models.
+// This works with OpenAI, Groq, Ollama, vLLM, and other OpenAI-compatible APIs.
+// Returns api.ModelInfo slices (satisfies api.ModelLister interface).
+func (o *OpenAI) ListModels(ctx context.Context, httpClient *http.Client) ([]api.ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", o.baseURL+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	o.setHeaders(req)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("model discovery failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("model discovery returned %d: %s", resp.StatusCode, string(body[:min(200, len(body))]))
+	}
+
+	var result struct {
+		Data []api.ModelInfo `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse model list: %w", err)
+	}
+	return result.Data, nil
+}

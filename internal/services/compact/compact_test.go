@@ -245,12 +245,13 @@ func TestMicroCompact_NoOp_FewResults(t *testing.T) {
 }
 
 func TestMicroCompact_ClearsOldLargeResult(t *testing.T) {
-	// 7 results, keepLastResults=6 → oldest 1 should be cleared if >= minSizeBytes
+	// Total tool results exceed 100KB target → oldest (outside keepLast window) is cleared.
 	var msgs []api.Message
+	largeContent := strings.Repeat("X", 20_000) // 20KB each
 	for i := 0; i < 6; i++ {
-		msgs = append(msgs, makeTRMsg("id-recent", "short"))
+		msgs = append(msgs, makeTRMsg("id-recent", largeContent))
 	}
-	largeContent := "this is definitely larger than ten bytes for sure"
+	// Prepend an old large result — total will be ~140KB, triggering clear.
 	msgs = append([]api.Message{makeTRMsg("id-old", largeContent)}, msgs...)
 
 	result := MicroCompact(msgs, 6, 10)
@@ -268,9 +269,10 @@ func TestMicroCompact_ClearsOldLargeResult(t *testing.T) {
 }
 
 func TestMicroCompact_PreservesRecentResults(t *testing.T) {
-	// 8 results, keepLastResults=6: last 6 untouched, first 2 cleared (if large enough)
+	// 8 results at 20KB each = 160KB → over 100KB target.
+	// Last 6 are protected, first 2 should be cleared.
 	var msgs []api.Message
-	largeContent := "this content is definitely larger than ten bytes"
+	largeContent := strings.Repeat("Y", 20_000) // 20KB each
 	for i := 0; i < 2; i++ {
 		msgs = append(msgs, makeTRMsg("id-old", largeContent))
 	}
@@ -291,18 +293,19 @@ func TestMicroCompact_PreservesRecentResults(t *testing.T) {
 	for i := 2; i < 8; i++ {
 		content := extractTRContent(t, result[i])
 		if content != largeContent {
-			t.Fatalf("result[%d]: expected original content, got %q", i, content)
+			t.Fatalf("result[%d]: expected original content, got %q", i, content[:min(50, len(content))])
 		}
 	}
 }
 
 func TestMicroCompact_SkipsSmallResults(t *testing.T) {
-	// Old result but content < minSizeBytes: NOT cleared
+	// Old result but content < minSizeBytes: NOT cleared even if over budget.
 	smallContent := "tiny"
+	largeContent := strings.Repeat("Z", 20_000)
 	var msgs []api.Message
-	msgs = append(msgs, makeTRMsg("id-old", smallContent))
+	msgs = append(msgs, makeTRMsg("id-small-old", smallContent))
 	for i := 0; i < 6; i++ {
-		msgs = append(msgs, makeTRMsg("id-recent", "something"))
+		msgs = append(msgs, makeTRMsg("id-recent", largeContent))
 	}
 
 	result := MicroCompact(msgs, 6, 10)
@@ -314,29 +317,29 @@ func TestMicroCompact_SkipsSmallResults(t *testing.T) {
 }
 
 func TestMicroCompact_SkipsErrorResults(t *testing.T) {
-	// Old result with is_error=true: NOT cleared even if large
-	largeContent := "this content is definitely larger than ten bytes"
+	// Old result with is_error=true: NOT cleared even if large and over budget.
+	largeContent := strings.Repeat("E", 20_000)
 	var msgs []api.Message
 	msgs = append(msgs, makeTRMsgError("id-err", largeContent))
 	for i := 0; i < 6; i++ {
-		msgs = append(msgs, makeTRMsg("id-recent", "something"))
+		msgs = append(msgs, makeTRMsg("id-recent", largeContent))
 	}
 
 	result := MicroCompact(msgs, 6, 10)
 
 	content := extractTRContent(t, result[0])
 	if content != largeContent {
-		t.Fatalf("expected error result to remain unchanged, got %q", content)
+		t.Fatalf("expected error result to remain unchanged, got %q", content[:min(50, len(content))])
 	}
 }
 
 func TestMicroCompact_PreservesToolUseID(t *testing.T) {
-	// Cleared result still has original tool_use_id
-	largeContent := "this content is definitely larger than ten bytes"
+	// Cleared result still has original tool_use_id.
+	largeContent := strings.Repeat("T", 20_000)
 	var msgs []api.Message
 	msgs = append(msgs, makeTRMsg("my-tool-use-id", largeContent))
 	for i := 0; i < 6; i++ {
-		msgs = append(msgs, makeTRMsg("id-recent", "something"))
+		msgs = append(msgs, makeTRMsg("id-recent", largeContent))
 	}
 
 	result := MicroCompact(msgs, 6, 10)
@@ -543,7 +546,8 @@ func TestMicroCompact_DoesNotInvalidateReadCache(t *testing.T) {
 	rc.Put(readcache.Key{FilePath: filePath, Offset: 1, Limit: 2000}, "file content", info.ModTime())
 
 	// Build: assistant Read tool_use + tool_result (large enough to be cleared).
-	largeContent := strings.Repeat("x", 4096)
+	// Use 10KB per result × 11 results = 110KB → over 100KB target → old one gets cleared.
+	largeContent := strings.Repeat("x", 10_000)
 	msgs := []api.Message{
 		makeReadToolUseMsg(toolUseID, filePath),
 		makeTRMsg(toolUseID, largeContent),
@@ -571,7 +575,8 @@ func TestMicroCompact_ClearedStubIncludesFilePath(t *testing.T) {
 	const filePath = "/src/query/engine.go"
 	const toolUseID = "tu-read-2"
 
-	largeContent := strings.Repeat("y", 4096)
+	// 10KB × 11 = 110KB → over 100KB target.
+	largeContent := strings.Repeat("y", 10_000)
 	msgs := []api.Message{
 		makeReadToolUseMsg(toolUseID, filePath),
 		makeTRMsg(toolUseID, largeContent),
@@ -584,7 +589,7 @@ func TestMicroCompact_ClearedStubIncludesFilePath(t *testing.T) {
 
 	stub := extractTRContent(t, result[1])
 	if !strings.Contains(stub, filePath) {
-		t.Fatalf("cleared stub should include file path %q; got: %q", filePath, stub)
+		t.Fatalf("cleared stub should include file path %q; got: %q", filePath, stub[:min(200, len(stub))])
 	}
 }
 
@@ -592,7 +597,8 @@ func TestMicroCompact_ClearedStubIncludesFilePath(t *testing.T) {
 // tool_use block cannot be found (non-Read tool or unknown ID), the generic
 // "[result cleared — N bytes]" stub is used rather than panicking.
 func TestMicroCompact_ClearedStubFallbackWithoutFilePath(t *testing.T) {
-	largeContent := strings.Repeat("z", 4096)
+	// 10KB × 11 = 110KB → over 100KB target.
+	largeContent := strings.Repeat("z", 10_000)
 	msgs := []api.Message{
 		// No matching assistant tool_use in the messages.
 		makeTRMsg("unknown-id", largeContent),
@@ -605,7 +611,7 @@ func TestMicroCompact_ClearedStubFallbackWithoutFilePath(t *testing.T) {
 
 	stub := extractTRContent(t, result[0])
 	if !strings.Contains(stub, "result cleared") {
-		t.Fatalf("expected fallback stub to contain 'result cleared'; got: %q", stub)
+		t.Fatalf("expected fallback stub to contain 'result cleared'; got: %q", stub[:min(200, len(stub))])
 	}
 	if strings.Contains(stub, "nil") || stub == "" {
 		t.Fatalf("unexpected empty or nil stub: %q", stub)

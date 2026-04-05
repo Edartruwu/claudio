@@ -6,6 +6,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/snippets"
+	"github.com/Abraxas-365/claudio/internal/tools/grepcache"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
@@ -146,9 +147,11 @@ func (r *Registry) Clone() *Registry {
 		clone.Register(r.tools[name])
 	}
 
-	// Give the sub-agent its own ReadCache so it doesn't share state with the
-	// parent session.
+	// Give the sub-agent its own caches so it doesn't share state with the
+	// parent session — otherwise the parent sees spurious cache hits for files
+	// or searches it never performed itself (the sub-agent did).
 	freshRC := readcache.New(256)
+	freshGC := grepcache.New(512)
 	if t, err := clone.Get("Read"); err == nil {
 		if ft, ok := t.(*FileReadTool); ok {
 			cloned := *ft
@@ -161,6 +164,13 @@ func (r *Registry) Clone() *Registry {
 			cloned := *ft
 			cloned.ReadCache = freshRC
 			clone.tools["Write"] = &cloned
+		}
+	}
+	if t, err := clone.Get("Grep"); err == nil {
+		if gt, ok := t.(*GrepTool); ok {
+			cloned := *gt
+			cloned.Cache = freshGC
+			clone.tools["Grep"] = &cloned
 		}
 	}
 
@@ -204,8 +214,9 @@ func (r *Registry) Names() []string {
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
 
-	// Shared read cache for deduplicating repeated file reads within a session
+	// Shared caches for deduplicating repeated tool calls within a session.
 	rc := readcache.New(256)
+	gc := grepcache.New(512)
 
 	// Core file & shell tools (always loaded — never deferred)
 	r.Register(&BashTool{})
@@ -213,7 +224,7 @@ func DefaultRegistry() *Registry {
 	r.Register(&FileWriteTool{ReadCache: rc})
 	r.Register(&FileEditTool{})
 	r.Register(&GlobTool{})
-	r.Register(&GrepTool{})
+	r.Register(&GrepTool{Cache: gc})
 
 	// Agent (always loaded)
 	r.Register(&AgentTool{})

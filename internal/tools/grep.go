@@ -9,10 +9,13 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/tools/grepcache"
 )
 
 // GrepTool searches file contents using ripgrep.
-type GrepTool struct{}
+type GrepTool struct {
+	Cache *grepcache.Cache
+}
 
 type grepInput struct {
 	Pattern    string `json:"pattern"`
@@ -111,6 +114,21 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 
 	if in.Pattern == "" {
 		return &Result{Content: "No pattern provided", IsError: true}, nil
+	}
+
+	// Check cache before running the process. This prevents repeated identical
+	// grep invocations from re-scanning the same files — a common pattern when
+	// the model uses `Grep "."` as a substitute for Read on a file it already searched.
+	cacheKey := grepcache.Key{
+		Pattern: in.Pattern, Path: in.Path, Glob: in.Glob, Type: in.Type,
+		OutputMode: in.OutputMode, Context: in.Context, BeforeCtx: in.BeforeCtx,
+		AfterCtx: in.AfterCtx, IgnoreCase: in.IgnoreCase, HeadLimit: in.HeadLimit,
+		Offset: in.Offset, Multiline: in.Multiline,
+	}
+	if t.Cache != nil {
+		if cached, ok := t.Cache.Get(cacheKey); ok {
+			return &Result{Content: cached}, nil
+		}
 	}
 
 	// Build rg command
@@ -221,7 +239,11 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		return &Result{Content: "No matches found"}, nil
 	}
 
-	return &Result{Content: strings.TrimSpace(output)}, nil
+	result := strings.TrimSpace(output)
+	if t.Cache != nil {
+		t.Cache.Put(cacheKey, result)
+	}
+	return &Result{Content: result}, nil
 }
 
 // fallbackGrep uses system grep when ripgrep isn't available.

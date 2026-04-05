@@ -760,3 +760,93 @@ func TestNormalizeMessages_PreservesToolResultBlocks(t *testing.T) {
 		t.Errorf("tool_result array was modified: got %s", msgs[0].Content)
 	}
 }
+
+// ── Context Management tests ─────────────────────────────────────────────────
+
+func TestApplyContextManagement_AddsForAnthropicModels(t *testing.T) {
+	c := newTestClient(t)
+	req := &MessagesRequest{Model: "claude-sonnet-4-6"}
+	c.applyContextManagement(req)
+
+	if req.ContextManagement == nil {
+		t.Fatal("expected context_management to be set for Anthropic model")
+	}
+	if len(req.ContextManagement.Edits) != 1 {
+		t.Fatalf("expected 1 edit, got %d", len(req.ContextManagement.Edits))
+	}
+	edit := req.ContextManagement.Edits[0]
+	if edit.Type != "clear_tool_uses_20250919" {
+		t.Fatalf("expected clear_tool_uses_20250919, got %s", edit.Type)
+	}
+	if edit.Keep == nil || edit.Keep.Value != 10 {
+		t.Fatalf("expected keep.value=10, got %+v", edit.Keep)
+	}
+}
+
+func TestApplyContextManagement_SkipsExternalProviders(t *testing.T) {
+	c := newTestClient(t)
+	c.RegisterProvider("groq", &mockProvider{name: "groq"})
+	c.AddModelRoute("llama-*", "groq")
+
+	req := &MessagesRequest{Model: "llama-3.3-70b"}
+	c.applyContextManagement(req)
+
+	if req.ContextManagement != nil {
+		t.Fatal("context_management should NOT be set for external provider models")
+	}
+}
+
+func TestApplyContextManagement_DoesNotOverrideExplicit(t *testing.T) {
+	c := newTestClient(t)
+	explicit := &ContextManagement{Edits: []ContextEdit{{Type: "custom"}}}
+	req := &MessagesRequest{Model: "claude-sonnet-4-6", ContextManagement: explicit}
+	c.applyContextManagement(req)
+
+	if len(req.ContextManagement.Edits) != 1 || req.ContextManagement.Edits[0].Type != "custom" {
+		t.Fatal("explicit context_management should not be overridden")
+	}
+}
+
+func TestContextManagement_SerializesToJSON(t *testing.T) {
+	req := &MessagesRequest{
+		Model:     "claude-sonnet-4-6",
+		MaxTokens: 100,
+		Messages:  []Message{makeMsg("user", "hi")},
+		ContextManagement: &ContextManagement{
+			Edits: []ContextEdit{
+				{
+					Type:            "clear_tool_uses_20250919",
+					Trigger:         &Trigger{Type: "input_tokens", Value: 80000},
+					Keep:            &KeepConfig{Type: "tool_uses", Value: 10},
+					ClearToolInputs: true,
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	// Verify it produces valid JSON with context_management field.
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, ok := parsed["context_management"]; !ok {
+		t.Fatal("context_management field missing from serialized JSON")
+	}
+
+	// Verify the edits structure.
+	var cm ContextManagement
+	if err := json.Unmarshal(parsed["context_management"], &cm); err != nil {
+		t.Fatalf("failed to parse context_management: %v", err)
+	}
+	if len(cm.Edits) != 1 || cm.Edits[0].Type != "clear_tool_uses_20250919" {
+		t.Fatalf("unexpected edits: %+v", cm.Edits)
+	}
+	if cm.Edits[0].Trigger.Value != 80000 {
+		t.Fatalf("expected threshold 80000, got %d", cm.Edits[0].Trigger.Value)
+	}
+}
