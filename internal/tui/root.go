@@ -179,6 +179,12 @@ type (
 		summary   string
 		err       error
 	}
+	planCompactDoneMsg struct {
+		compacted []api.Message
+		summary   string
+		err       error
+		submitMsg string // message to submit after compaction
+	}
 )
 
 // ModelOption configures optional TUI model fields.
@@ -1189,6 +1195,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refreshViewport()
 		return m, nil
+
+	case planCompactDoneMsg:
+		m.streaming = false
+		m.spinText = ""
+		m.spinner.Stop()
+		if msg.err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Compaction failed: %v", msg.err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		if msg.summary != "" {
+			m.pendingEngineMessages = msg.compacted
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Context cleared. Starting implementation..."})
+		}
+		m.refreshViewport()
+		return m.handleSubmit(msg.submitMsg)
 	}
 
 	// Delegate to focused component
@@ -1949,12 +1971,43 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// planApprovalOptionCount returns the number of options in the plan approval dialog.
+// When context usage is above 30%, an extra "clear context" option is prepended.
+func (m Model) planApprovalOptionCount() int {
+	if m.planContextUsedPercent() > 30 {
+		return 5
+	}
+	return 4
+}
+
+// planContextUsedPercent returns the percentage of context window used (0-100), or 0 if unknown.
+func (m Model) planContextUsedPercent() int {
+	if m.engineConfig == nil || m.engineConfig.CompactState == nil {
+		return 0
+	}
+	s := m.engineConfig.CompactState
+	if s.MaxTokens <= 0 {
+		return 0
+	}
+	return s.TotalTokens * 100 / s.MaxTokens
+}
+
+// planApprovalOffset returns the offset to apply to cursor indices.
+// When the "clear context" option is shown, all subsequent options shift by 1.
+func (m Model) planApprovalOffset() int {
+	if m.planContextUsedPercent() > 30 {
+		return 0
+	}
+	return -1 // no clear-context option; cursor 0 maps to "auto-accept"
+}
+
 // handlePlanApprovalKey handles key events in the plan approval dialog shown after ExitPlanMode.
 func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	const numOptions = 3
+	numOptions := m.planApprovalOptionCount() - 1 // max cursor index
+	feedbackIdx := m.planApprovalOptionCount() - 1 // last option is always feedback
 
-	// If we're in feedback input mode (option 3 selected and confirmed once), collect text.
-	if m.planApprovalCursor == 3 && m.planApprovalFeedback != "" {
+	// If we're in feedback input mode (last option selected and confirmed once), collect text.
+	if m.planApprovalCursor == feedbackIdx && m.planApprovalFeedback != "" {
 		switch msg.Type {
 		case tea.KeyEnter:
 			// Send feedback to engine and exit plan mode.
@@ -1982,6 +2035,17 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Map cursor position to logical action using offset.
+	// With clear-context: 0=clear+auto, 1=auto, 2=manual, 3=revise, 4=feedback
+	// Without:            0=auto,        1=manual, 2=revise, 3=feedback
+	logicalIdx := func() int {
+		off := m.planApprovalOffset()
+		if off < 0 {
+			return m.planApprovalCursor - off // shift up: cursor 0 → logical 1
+		}
+		return m.planApprovalCursor
+	}
+
 	switch msg.String() {
 	case "j", "down":
 		if m.planApprovalCursor < numOptions {
@@ -2000,27 +2064,51 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.waitForEvent()
 	case "enter":
-		switch m.planApprovalCursor {
-		case 0: // Yes, auto-accept edits
+		switch logicalIdx() {
+		case 0: // Yes, clear context + auto-accept edits
 			m.planModeActive = false
+			if m.engineConfig != nil {
+				m.engineConfig.PermissionMode = "auto"
+			}
+			// Run compaction in background, then submit
+			msgs := m.pendingEngineMessages
+			planPath := m.planFilePath
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+			m.streaming = true
+			m.spinText = "Compacting context..."
+			m.spinner.Start("Compacting context...")
+			m.refreshViewport()
+			return m, func() tea.Msg {
+				compacted, summary, err := compact.Compact(
+					context.Background(), m.apiClient, msgs, 2,
+				)
+				submitMsg := fmt.Sprintf("Implement the plan from %s. The planning conversation has been compacted — refer to the summary and plan file for context.", planPath)
+				return planCompactDoneMsg{compacted: compacted, summary: summary, err: err, submitMsg: submitMsg}
+			}
+		case 1: // Yes, auto-accept edits (keep context)
+			m.planModeActive = false
+			if m.engineConfig != nil {
+				m.engineConfig.PermissionMode = "auto"
+			}
 			m.focus = FocusPrompt
 			m.prompt.Focus()
 			m.refreshViewport()
 			return m.handleSubmit("Yes, proceed with implementation. Auto-accept all file edits.")
-		case 1: // Yes, manually approve edits
+		case 2: // Yes, manually approve edits
 			m.planModeActive = false
 			m.focus = FocusPrompt
 			m.prompt.Focus()
 			m.refreshViewport()
 			return m.handleSubmit("Yes, proceed with implementation.")
-		case 2: // No, let me revise
+		case 3: // No, let me revise
 			m.planModeActive = false
 			m.focus = FocusPrompt
 			m.prompt.Focus()
 			m.planApprovalFeedback = ""
 			m.refreshViewport()
 			return m, nil
-		case 3: // Type feedback
+		case 4: // Type feedback
 			// Switch to feedback input mode — wait for more typing.
 			m.planApprovalFeedback = " " // sentinel so we enter feedback mode on next key
 		}
@@ -2118,12 +2206,17 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 
 	title := lipgloss.NewStyle().Bold(true).Foreground(styles.Primary).Render("Plan ready — how would you like to proceed?")
 
-	options := []string{
+	usedPct := m.planContextUsedPercent()
+	var options []string
+	if usedPct > 30 {
+		options = append(options, fmt.Sprintf("Yes, clear context (%d%% used) and auto-accept edits", usedPct))
+	}
+	options = append(options,
 		"Yes, auto-accept edits",
 		"Yes, manually approve edits",
 		"No, let me revise",
 		"Type feedback for Claude",
-	}
+	)
 
 	var rows []string
 	rows = append(rows, title, "")
@@ -2148,6 +2241,7 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 			rows = append(rows, "")
 		}
 	}
+	feedbackIdx := len(options) - 1
 	for i, opt := range options {
 		cursor := "  "
 		style := lipgloss.NewStyle()
@@ -2156,7 +2250,7 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 			style = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
 		}
 		label := cursor + style.Render(opt)
-		if i == 3 && m.planApprovalCursor == 3 && len(m.planApprovalFeedback) > 1 {
+		if i == feedbackIdx && m.planApprovalCursor == feedbackIdx && len(m.planApprovalFeedback) > 1 {
 			// Show typed feedback inline
 			label += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render(m.planApprovalFeedback)
 		}
