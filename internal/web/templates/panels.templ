@@ -1,0 +1,60 @@
+package templates
+
+import "fmt"
+
+templ AnalyticsPanel(data PanelData) {
+	<div class="panel-section">
+		<div class="panel-section-title">Token Usage</div>
+		<div class="panel-row"><span class="label">Input</span><span class="value">{ fmt.Sprintf("%d", data.InputTokens) }</span></div>
+		<div class="panel-row"><span class="label">Output</span><span class="value">{ fmt.Sprintf("%d", data.OutputTokens) }</span></div>
+		<div class="panel-row"><span class="label">Total</span><span class="value purple">{ fmt.Sprintf("%d", data.TotalTokens) }</span></div>
+	</div>
+	<div class="panel-section">
+		<div class="panel-section-title">Cache</div>
+		<div class="panel-row"><span class="label">Cache Read</span><span class="value green">{ fmt.Sprintf("%d", data.CacheRead) }</span></div>
+		<div class="panel-row"><span class="label">Cache Create</span><span class="value yellow">{ fmt.Sprintf("%d", data.CacheCreate) }</span></div>
+	</div>
+	if data.Cost != "" {
+		<div class="panel-section">
+			<div class="panel-section-title">Cost</div>
+			<div class="panel-row"><span class="label">Session</span><span class="value">{ data.Cost }</span></div>
+		</div>
+	}
+}
+
+templ ConfigPanel(data PanelData) {
+	<div class="panel-section">
+		<div class="panel-section-title">Session</div>
+		<div class="config-item">
+			<div class="config-key">Model</div>
+			<div class="config-val">{ data.Model }</div>
+		</div>
+		<div class="config-item">
+			<div class="config-key">Permission Mode</div>
+			<div class="config-val">{ data.PermissionMode }</div>
+		</div>
+		<div class="config-item">
+			<div class="config-key">Project Path</div>
+			<div class="config-val">{ data.ProjectPath }</div>
+		</div>
+	</div>
+}
+
+templ TasksPanel(data PanelData) {
+	<div class="panel-section">
+		<div class="panel-section-title">Tasks</div>
+		if len(data.Tasks) == 0 {
+			<div style="color:var(--dim);padding:8px 0;">No tasks yet</div>
+		} else {
+			for _, t := range data.Tasks {
+				<div class="task-item">
+					<div class="task-title">{ t.Title }</div>
+					<span class={ "task-status " + t.Status }>{ t.Status }</span>
+					if t.Description != "" {
+						<div style="font-size:0.75rem;color:var(--fg2);margin-top:4px;">{ t.Description }</div>
+					}
+				</div>
+			}
+		}
+	</div>
+}

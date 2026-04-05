@@ -47,6 +47,350 @@ func newTestEngine() *Engine {
 // mergeConsecutiveUserMessages
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Mock event handler for executeTools tests
+// ---------------------------------------------------------------------------
+
+type mockHandler struct {
+	toolUseStarts   []tools.ToolUse
+	toolUseEnds     []tools.ToolUse
+	endResults      []*tools.Result
+	approvalCalls   int
+	approvalReturn  bool
+}
+
+func (h *mockHandler) OnTextDelta(string)                          {}
+func (h *mockHandler) OnThinkingDelta(string)                      {}
+func (h *mockHandler) OnTurnComplete(api.Usage)                    {}
+func (h *mockHandler) OnError(error)                               {}
+func (h *mockHandler) OnCostConfirmNeeded(float64, float64) bool   { return true }
+
+func (h *mockHandler) OnToolUseStart(tu tools.ToolUse) {
+	h.toolUseStarts = append(h.toolUseStarts, tu)
+}
+
+func (h *mockHandler) OnToolUseEnd(tu tools.ToolUse, result *tools.Result) {
+	h.toolUseEnds = append(h.toolUseEnds, tu)
+	h.endResults = append(h.endResults, result)
+}
+
+func (h *mockHandler) OnToolApprovalNeeded(tu tools.ToolUse) bool {
+	h.approvalCalls++
+	return h.approvalReturn
+}
+
+// ---------------------------------------------------------------------------
+// Mock tool that implements Validatable
+// ---------------------------------------------------------------------------
+
+type validatableMockTool struct {
+	name        string
+	validateErr *tools.Result // non-nil → Validate returns this
+	execResult  *tools.Result
+	readOnly    bool
+}
+
+func (t *validatableMockTool) Name() string                 { return t.name }
+func (t *validatableMockTool) Description() string          { return "mock validatable tool" }
+func (t *validatableMockTool) InputSchema() json.RawMessage { return json.RawMessage(`{}`) }
+func (t *validatableMockTool) IsReadOnly() bool             { return t.readOnly }
+func (t *validatableMockTool) RequiresApproval(json.RawMessage) bool { return true }
+
+func (t *validatableMockTool) Execute(_ context.Context, _ json.RawMessage) (*tools.Result, error) {
+	if t.execResult != nil {
+		return t.execResult, nil
+	}
+	return &tools.Result{Content: "executed"}, nil
+}
+
+func (t *validatableMockTool) Validate(input json.RawMessage) *tools.Result {
+	return t.validateErr
+}
+
+// Mock tool that does NOT implement Validatable
+type plainMockTool struct {
+	name       string
+	execResult *tools.Result
+	readOnly   bool
+}
+
+func (t *plainMockTool) Name() string                              { return t.name }
+func (t *plainMockTool) Description() string                       { return "mock plain tool" }
+func (t *plainMockTool) InputSchema() json.RawMessage              { return json.RawMessage(`{}`) }
+func (t *plainMockTool) IsReadOnly() bool                          { return t.readOnly }
+func (t *plainMockTool) RequiresApproval(json.RawMessage) bool     { return false }
+
+func (t *plainMockTool) Execute(_ context.Context, _ json.RawMessage) (*tools.Result, error) {
+	if t.execResult != nil {
+		return t.execResult, nil
+	}
+	return &tools.Result{Content: "executed"}, nil
+}
+
+// ---------------------------------------------------------------------------
+// executeTools + Validatable integration tests
+// ---------------------------------------------------------------------------
+
+func TestExecuteTools_ValidateFailure_SkipsApproval(t *testing.T) {
+	reg := tools.NewRegistry()
+	vTool := &validatableMockTool{
+		name:        "FailValidate",
+		validateErr: &tools.Result{Content: "validation failed", IsError: true},
+	}
+	reg.Register(vTool)
+
+	handler := &mockHandler{approvalReturn: true}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "default",
+	}
+
+	results := e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-1", Name: "FailValidate", Input: json.RawMessage(`{}`)},
+	})
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if !results[0].IsError {
+		t.Error("expected error result")
+	}
+	if results[0].Content != "validation failed" {
+		t.Errorf("unexpected content: %s", results[0].Content)
+	}
+	// Approval should never have been called
+	if handler.approvalCalls != 0 {
+		t.Errorf("approval was called %d times, expected 0", handler.approvalCalls)
+	}
+}
+
+func TestExecuteTools_ValidatePass_ProceedsToApproval(t *testing.T) {
+	reg := tools.NewRegistry()
+	vTool := &validatableMockTool{
+		name:        "PassValidate",
+		validateErr: nil, // passes
+	}
+	reg.Register(vTool)
+
+	handler := &mockHandler{approvalReturn: true}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "default",
+	}
+
+	results := e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-1", Name: "PassValidate", Input: json.RawMessage(`{}`)},
+	})
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].IsError {
+		t.Errorf("unexpected error: %s", results[0].Content)
+	}
+	// Approval should have been called since tool requires it and passed validation
+	if handler.approvalCalls != 1 {
+		t.Errorf("approval was called %d times, expected 1", handler.approvalCalls)
+	}
+}
+
+func TestExecuteTools_NonValidatable_SkipsValidation(t *testing.T) {
+	reg := tools.NewRegistry()
+	pTool := &plainMockTool{name: "Plain", readOnly: true}
+	reg.Register(pTool)
+
+	handler := &mockHandler{approvalReturn: true}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "auto", // auto-approve so we can test execution
+	}
+
+	results := e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-1", Name: "Plain", Input: json.RawMessage(`{}`)},
+	})
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].IsError {
+		t.Errorf("unexpected error: %s", results[0].Content)
+	}
+	if results[0].Content != "executed" {
+		t.Errorf("unexpected content: %s", results[0].Content)
+	}
+}
+
+func TestExecuteTools_ValidateNonError_ProceedsNormally(t *testing.T) {
+	// Validate returns a non-nil result but with IsError=false → should not short-circuit
+	reg := tools.NewRegistry()
+	vTool := &validatableMockTool{
+		name:        "WarnValidate",
+		validateErr: &tools.Result{Content: "just a warning", IsError: false},
+	}
+	reg.Register(vTool)
+
+	handler := &mockHandler{approvalReturn: true}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "default",
+	}
+
+	results := e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-1", Name: "WarnValidate", Input: json.RawMessage(`{}`)},
+	})
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	// Should have proceeded to approval and execution
+	if handler.approvalCalls != 1 {
+		t.Errorf("approval was called %d times, expected 1", handler.approvalCalls)
+	}
+	if results[0].IsError {
+		t.Error("expected successful execution")
+	}
+}
+
+func TestExecuteTools_ValidateFailure_OnToolUseEndCalled(t *testing.T) {
+	reg := tools.NewRegistry()
+	vTool := &validatableMockTool{
+		name:        "FailValidate",
+		validateErr: &tools.Result{Content: "bad input", IsError: true},
+	}
+	reg.Register(vTool)
+
+	handler := &mockHandler{}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "default",
+	}
+
+	e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-1", Name: "FailValidate", Input: json.RawMessage(`{}`)},
+	})
+
+	// OnToolUseEnd must have been called for the error
+	if len(handler.endResults) != 1 {
+		t.Fatalf("expected 1 OnToolUseEnd call, got %d", len(handler.endResults))
+	}
+	if handler.endResults[0].Content != "bad input" {
+		t.Errorf("unexpected end result: %s", handler.endResults[0].Content)
+	}
+	if !handler.endResults[0].IsError {
+		t.Error("expected error result in OnToolUseEnd")
+	}
+}
+
+func TestExecuteTools_MultipleTools_ValidationFailsOne(t *testing.T) {
+	reg := tools.NewRegistry()
+	failTool := &validatableMockTool{
+		name:        "FailTool",
+		validateErr: &tools.Result{Content: "fail", IsError: true},
+	}
+	passTool := &validatableMockTool{
+		name:        "PassTool",
+		validateErr: nil,
+		readOnly:    true,
+	}
+	reg.Register(failTool)
+	reg.Register(passTool)
+
+	handler := &mockHandler{approvalReturn: true}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "default",
+	}
+
+	results := e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-1", Name: "FailTool", Input: json.RawMessage(`{}`)},
+		{ID: "tu-2", Name: "PassTool", Input: json.RawMessage(`{}`)},
+	})
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	// First tool: validation error
+	if !results[0].IsError || results[0].Content != "fail" {
+		t.Errorf("result[0]: expected validation error, got isError=%v content=%q", results[0].IsError, results[0].Content)
+	}
+
+	// Second tool: should have passed validation and executed
+	if results[1].IsError {
+		t.Errorf("result[1]: unexpected error: %s", results[1].Content)
+	}
+	if results[1].Content != "executed" {
+		t.Errorf("result[1]: expected 'executed', got %q", results[1].Content)
+	}
+
+	// Approval should only be called for the passing tool
+	if handler.approvalCalls != 1 {
+		t.Errorf("approval called %d times, expected 1", handler.approvalCalls)
+	}
+}
+
+func TestExecuteTools_ValidateFailure_ToolUseIDPreserved(t *testing.T) {
+	reg := tools.NewRegistry()
+	vTool := &validatableMockTool{
+		name:        "FailTool",
+		validateErr: &tools.Result{Content: "err", IsError: true},
+	}
+	reg.Register(vTool)
+
+	handler := &mockHandler{}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "default",
+	}
+
+	results := e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-xyz-123", Name: "FailTool", Input: json.RawMessage(`{}`)},
+	})
+
+	if results[0].ToolUseID != "tu-xyz-123" {
+		t.Errorf("ToolUseID = %q, want %q", results[0].ToolUseID, "tu-xyz-123")
+	}
+}
+
+func TestExecuteTools_DeniedApproval_AfterValidation(t *testing.T) {
+	// Validate passes but user denies approval → denied error
+	reg := tools.NewRegistry()
+	vTool := &validatableMockTool{
+		name:        "DeniedTool",
+		validateErr: nil,
+	}
+	reg.Register(vTool)
+
+	handler := &mockHandler{approvalReturn: false}
+	e := &Engine{
+		registry:       reg,
+		handler:        handler,
+		permissionMode: "default",
+	}
+
+	results := e.executeTools(context.Background(), []tools.ToolUse{
+		{ID: "tu-1", Name: "DeniedTool", Input: json.RawMessage(`{}`)},
+	})
+
+	if !results[0].IsError {
+		t.Error("expected error when user denies")
+	}
+	if handler.approvalCalls != 1 {
+		t.Errorf("approval called %d times, expected 1", handler.approvalCalls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mergeConsecutiveUserMessages
+// ---------------------------------------------------------------------------
+
 func TestMergeConsecutiveUserMessages_Empty(t *testing.T) {
 	got := mergeConsecutiveUserMessages(nil)
 	if len(got) != 0 {

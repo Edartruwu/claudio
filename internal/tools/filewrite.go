@@ -70,6 +70,42 @@ func (t *FileWriteTool) RequiresApproval(input json.RawMessage) bool {
 	return true
 }
 
+// Validate runs pre-approval checks so errors surface before the user types "allow".
+func (t *FileWriteTool) Validate(input json.RawMessage) *Result {
+	var in fileWriteInput
+	if err := json.Unmarshal(input, &in); err != nil {
+		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}
+	}
+	if in.FilePath == "" {
+		return &Result{Content: "No file path provided", IsError: true}
+	}
+	if t.Security != nil {
+		if err := t.Security.CheckPath(in.FilePath); err != nil {
+			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}
+		}
+	}
+	// Staleness check: if the file exists and has content, it must have been read first.
+	// Empty files are skipped — there is nothing to review before overwriting.
+	if !isPlanFilePath(in.FilePath) {
+		if info, err := os.Stat(in.FilePath); err == nil && info.Size() > 0 {
+			if t.ReadCache != nil {
+				key := readcache.Key{FilePath: in.FilePath, Offset: 1, Limit: 2000}
+				if _, ok := t.ReadCache.Get(key); !ok {
+					return &Result{
+						Content: fmt.Sprintf(
+							"File %s exists but has not been read in this session (or has changed since last read). "+
+								"Use the Read tool first to review the current contents before overwriting.",
+							in.FilePath,
+						),
+						IsError: true,
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in fileWriteInput
 	if err := json.Unmarshal(input, &in); err != nil {
@@ -84,28 +120,6 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 	if t.Security != nil {
 		if err := t.Security.CheckPath(in.FilePath); err != nil {
 			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}, nil
-		}
-	}
-
-	// Staleness check: if the file exists and was previously read, verify it hasn't
-	// changed on disk since the last Read. Guards against clobbering external edits.
-	// Plan files are exempt — they are created and owned by claudio itself.
-	if !isPlanFilePath(in.FilePath) {
-		if info, err := os.Stat(in.FilePath); err == nil {
-			if t.ReadCache != nil {
-				key := readcache.Key{FilePath: in.FilePath, Offset: 1, Limit: 2000}
-				if _, ok := t.ReadCache.Get(key); !ok {
-					_ = info
-					return &Result{
-						Content: fmt.Sprintf(
-							"File %s exists but has not been read in this session (or has changed since last read). "+
-								"Use the Read tool first to review the current contents before overwriting.",
-							in.FilePath,
-						),
-						IsError: true,
-					}, nil
-				}
-			}
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Abraxas-365/claudio/internal/tools"
+	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
 func TestRegistry(t *testing.T) {
@@ -257,6 +258,95 @@ func TestPlanModeToolsAreNotDeferred(t *testing.T) {
 		if def.Description == "" {
 			t.Errorf("%s should have a full description even in deferred mode", name)
 		}
+	}
+}
+
+// ── FileReadTool ReadCache deduplication ─────────────────────────────────────
+
+// TestFileReadTool_ReadCache_HitReturnsDeupMessage verifies that reading the same
+// unchanged file twice returns the dedup stub on the second call instead of the
+// full content. This is the mechanism that prevents re-read loops after MicroCompact
+// clears old tool results without invalidating the cache.
+func TestFileReadTool_ReadCache_HitReturnsDedupMessage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "engine.go")
+	os.WriteFile(path, []byte("package query\n"), 0644)
+
+	rc := readcache.New(64)
+	tool := &tools.FileReadTool{ReadCache: rc}
+	input, _ := json.Marshal(map[string]any{"file_path": path})
+
+	// First read: cache miss → full content returned and cached.
+	first, err := tool.Execute(context.Background(), input)
+	if err != nil || first.IsError {
+		t.Fatalf("first read failed: %v / %s", err, first.Content)
+	}
+	if !strings.Contains(first.Content, "package query") {
+		t.Fatalf("first read: expected file content, got: %s", first.Content)
+	}
+
+	// Second read of the same unchanged file: cache hit → dedup stub returned.
+	second, err := tool.Execute(context.Background(), input)
+	if err != nil || second.IsError {
+		t.Fatalf("second read failed: %v / %s", err, second.Content)
+	}
+	if strings.Contains(second.Content, "package query") {
+		t.Fatal("second read: should NOT return full file content on cache hit")
+	}
+	if !strings.Contains(second.Content, path) {
+		t.Fatalf("second read: dedup stub should include file path %q; got: %s", path, second.Content)
+	}
+}
+
+// TestFileReadTool_ReadCache_NilCacheAlwaysReadsFile confirms that when ReadCache is
+// nil (e.g. sub-agents with no shared cache) every call reads from disk normally.
+func TestFileReadTool_ReadCache_NilCacheAlwaysReadsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file.go")
+	os.WriteFile(path, []byte("content\n"), 0644)
+
+	tool := &tools.FileReadTool{} // no ReadCache
+
+	for i := 0; i < 3; i++ {
+		input, _ := json.Marshal(map[string]any{"file_path": path})
+		result, err := tool.Execute(context.Background(), input)
+		if err != nil || result.IsError {
+			t.Fatalf("read %d failed: %v / %s", i, err, result.Content)
+		}
+		if !strings.Contains(result.Content, "content") {
+			t.Fatalf("read %d: expected file content, got: %s", i, result.Content)
+		}
+	}
+}
+
+// TestFileReadTool_ReadCache_ModifiedFileBypassesCache verifies that if the file
+// changes after the first read, the cache entry is invalidated and the new content
+// is returned on the next read.
+func TestFileReadTool_ReadCache_ModifiedFileBypassesCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "changing.go")
+	os.WriteFile(path, []byte("original\n"), 0644)
+
+	rc := readcache.New(64)
+	tool := &tools.FileReadTool{ReadCache: rc}
+	input, _ := json.Marshal(map[string]any{"file_path": path})
+
+	// First read: caches "original".
+	first, _ := tool.Execute(context.Background(), input)
+	if !strings.Contains(first.Content, "original") {
+		t.Fatalf("first read: expected 'original', got: %s", first.Content)
+	}
+
+	// Overwrite the file (mtime changes).
+	os.WriteFile(path, []byte("updated\n"), 0644)
+
+	// Second read: mtime mismatch → cache miss → new content returned.
+	second, err := tool.Execute(context.Background(), input)
+	if err != nil || second.IsError {
+		t.Fatalf("second read failed: %v / %s", err, second.Content)
+	}
+	if !strings.Contains(second.Content, "updated") {
+		t.Fatalf("second read after file change: expected 'updated', got: %s", second.Content)
 	}
 }
 

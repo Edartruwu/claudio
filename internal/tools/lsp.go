@@ -1,19 +1,19 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
+	"path/filepath"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/services/lsp"
 )
 
 // LSPTool provides Language Server Protocol operations.
 type LSPTool struct {
 	deferrable
+	manager *lsp.ServerManager
 }
 
 type lspInput struct {
@@ -63,143 +63,77 @@ func (t *LSPTool) InputSchema() json.RawMessage {
 func (t *LSPTool) IsReadOnly() bool                        { return true }
 func (t *LSPTool) RequiresApproval(_ json.RawMessage) bool { return false }
 
+// IsEnabled returns true only when at least one LSP server is configured.
+func (t *LSPTool) IsEnabled() bool {
+	return t.manager != nil && t.manager.HasServers()
+}
+
+// SetLSPManager injects the LSP server manager.
+func (t *LSPTool) SetLSPManager(m *lsp.ServerManager) {
+	t.manager = m
+}
+
 func (t *LSPTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in lspInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
 
+	if t.manager == nil {
+		return &Result{Content: "No LSP servers configured. Add lspServers to your settings.json or install an LSP plugin.", IsError: true}, nil
+	}
+
+	// Resolve to absolute path
+	absPath, err := filepath.Abs(in.FilePath)
+	if err != nil {
+		absPath = in.FilePath
+	}
+
+	// Check if we have a server for this file type
+	if t.manager.ServerForFile(absPath) == "" {
+		ext := filepath.Ext(absPath)
+		return &Result{Content: fmt.Sprintf("No LSP server configured for %s files. Add one to lspServers in settings.json.", ext), IsError: true}, nil
+	}
+
+	srv, err := t.manager.GetServer(ctx, absPath)
+	if err != nil {
+		return &Result{Content: fmt.Sprintf("LSP server error: %v", err), IsError: true}, nil
+	}
+
+	var result json.RawMessage
+
 	switch in.Operation {
 	case "goToDefinition":
-		return lspGoToDefinition(ctx, in)
+		result, err = srv.GoToDefinition(absPath, in.Line, in.Character)
 	case "findReferences":
-		return lspFindReferences(ctx, in)
+		result, err = srv.FindReferences(absPath, in.Line, in.Character)
 	case "hover":
-		return lspHover(ctx, in)
+		result, err = srv.Hover(absPath, in.Line, in.Character)
 	case "documentSymbol":
-		return lspDocumentSymbols(ctx, in)
+		result, err = srv.DocumentSymbols(absPath)
 	default:
 		return &Result{Content: fmt.Sprintf("Unknown operation: %s", in.Operation), IsError: true}, nil
 	}
-}
 
-// For Go files, we can use `gopls` directly via command line.
-// For other languages, we'd need their respective language servers.
-// This is a practical approach that works without a persistent LSP connection.
-
-func lspGoToDefinition(ctx context.Context, in lspInput) (*Result, error) {
-	if strings.HasSuffix(in.FilePath, ".go") {
-		return goplsDefinition(ctx, in.FilePath, in.Line, in.Character)
-	}
-	// Fallback: use grep to find definition
-	return grepDefinition(ctx, in)
-}
-
-func lspFindReferences(ctx context.Context, in lspInput) (*Result, error) {
-	if in.Symbol == "" {
-		return &Result{Content: "Symbol required for findReferences", IsError: true}, nil
-	}
-	// Use ripgrep as a fast fallback
-	grep := &GrepTool{}
-	grepInput, _ := json.Marshal(map[string]any{
-		"pattern":     in.Symbol,
-		"output_mode": "content",
-		"context":     1,
-	})
-	return grep.Execute(ctx, grepInput)
-}
-
-func lspHover(ctx context.Context, in lspInput) (*Result, error) {
-	if strings.HasSuffix(in.FilePath, ".go") {
-		return goplsHover(ctx, in.FilePath, in.Line, in.Character)
-	}
-	return &Result{Content: "Hover only supported for Go files currently"}, nil
-}
-
-func lspDocumentSymbols(ctx context.Context, in lspInput) (*Result, error) {
-	if strings.HasSuffix(in.FilePath, ".go") {
-		return goplsSymbols(ctx, in.FilePath)
-	}
-	// Fallback: use ctags or grep for function/class definitions
-	return grepSymbols(ctx, in.FilePath)
-}
-
-func goplsDefinition(ctx context.Context, file string, line, char int) (*Result, error) {
-	pos := fmt.Sprintf("%s:%d:%d", file, line+1, char+1) // gopls uses 1-based
-	output, err := runGopls(ctx, "definition", pos)
 	if err != nil {
-		return &Result{Content: fmt.Sprintf("gopls error: %v", err), IsError: true}, nil
+		return &Result{Content: fmt.Sprintf("LSP error: %v", err), IsError: true}, nil
 	}
-	return &Result{Content: output}, nil
-}
 
-func goplsHover(ctx context.Context, file string, line, char int) (*Result, error) {
-	pos := fmt.Sprintf("%s:%d:%d", file, line+1, char+1)
-	output, err := runGopls(ctx, "hover", pos)
+	if result == nil {
+		return &Result{Content: "No results"}, nil
+	}
+
+	// Format the output
+	out, err := json.MarshalIndent(json.RawMessage(result), "", "  ")
 	if err != nil {
-		return &Result{Content: fmt.Sprintf("gopls error: %v", err), IsError: true}, nil
+		return &Result{Content: string(result)}, nil
 	}
-	return &Result{Content: output}, nil
-}
 
-func goplsSymbols(ctx context.Context, file string) (*Result, error) {
-	output, err := runGopls(ctx, "symbols", file)
-	if err != nil {
-		return &Result{Content: fmt.Sprintf("gopls error: %v", err), IsError: true}, nil
-	}
-	return &Result{Content: output}, nil
-}
-
-func runGopls(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "gopls", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if strings.Contains(err.Error(), "executable file not found") {
-			return "", fmt.Errorf("gopls not found — install with: go install golang.org/x/tools/gopls@latest")
-		}
-		return "", fmt.Errorf("%v: %s", err, stderr.String())
-	}
-	out := stdout.String()
+	output := string(out)
 	const maxLSPBytes = 20_000
-	if len(out) > maxLSPBytes {
-		out = out[:maxLSPBytes] + fmt.Sprintf("\n[LSP output truncated at %d bytes]", maxLSPBytes)
+	if len(output) > maxLSPBytes {
+		output = output[:maxLSPBytes] + fmt.Sprintf("\n[LSP output truncated at %d bytes]", maxLSPBytes)
 	}
-	return out, nil
+
+	return &Result{Content: output}, nil
 }
-
-func grepDefinition(ctx context.Context, in lspInput) (*Result, error) {
-	if in.Symbol == "" {
-		return &Result{Content: "Symbol required for definition search", IsError: true}, nil
-	}
-	// Search for common definition patterns
-	patterns := []string{
-		fmt.Sprintf("func %s", in.Symbol),
-		fmt.Sprintf("class %s", in.Symbol),
-		fmt.Sprintf("def %s", in.Symbol),
-		fmt.Sprintf("type %s ", in.Symbol),
-		fmt.Sprintf("const %s ", in.Symbol),
-		fmt.Sprintf("var %s ", in.Symbol),
-	}
-	pattern := strings.Join(patterns, "|")
-
-	grep := &GrepTool{}
-	grepInput, _ := json.Marshal(map[string]any{
-		"pattern":     pattern,
-		"output_mode": "content",
-	})
-	return grep.Execute(ctx, grepInput)
-}
-
-func grepSymbols(ctx context.Context, file string) (*Result, error) {
-	pattern := `^(func|class|def|type|const|var|export|interface|struct)\s+\w+`
-	grep := &GrepTool{}
-	grepInput, _ := json.Marshal(map[string]any{
-		"pattern":     pattern,
-		"path":        file,
-		"output_mode": "content",
-	})
-	return grep.Execute(ctx, grepInput)
-}
-

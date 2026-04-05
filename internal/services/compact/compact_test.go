@@ -2,9 +2,12 @@ package compact
 
 import (
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
 func TestSanitizeToolPairs_DropsOrphanedToolResult(t *testing.T) {
@@ -498,6 +501,114 @@ func TestContentClearCompact_ClearedContentFormat(t *testing.T) {
 	expected := "[content cleared — 11 bytes]"
 	if cleared != expected {
 		t.Fatalf("expected cleared format %q, got %q", expected, cleared)
+	}
+}
+
+// makeReadToolUseMsg builds an assistant message containing a Read tool_use block.
+func makeReadToolUseMsg(toolUseID, filePath string) api.Message {
+	type tuBlock struct {
+		Type  string          `json:"type"`
+		ID    string          `json:"id"`
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}
+	inp, _ := json.Marshal(map[string]string{"file_path": filePath})
+	raw, _ := json.Marshal([]tuBlock{{Type: "tool_use", ID: toolUseID, Name: "Read", Input: inp}})
+	return api.Message{Role: "assistant", Content: raw}
+}
+
+// ── MicroCompact ReadCache behaviour (no-invalidate fix) ─────────────────────
+
+// TestMicroCompact_DoesNotInvalidateReadCache verifies that MicroCompact no longer
+// invalidates ReadCache entries when it clears a tool result. Invalidating was the
+// root cause of the re-read loop: clear→invalidate→re-read→clear→…
+func TestMicroCompact_DoesNotInvalidateReadCache(t *testing.T) {
+	rc := readcache.New(64)
+
+	// Create a real temp file so ReadCache.Get can stat it and validate the entry.
+	f, err := os.CreateTemp(t.TempDir(), "readcache-test-*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	info, err := os.Stat(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filePath := f.Name()
+	const toolUseID = "tu-read-1"
+
+	// Pre-populate the ReadCache as the Read tool would after a successful read.
+	rc.Put(readcache.Key{FilePath: filePath, Offset: 1, Limit: 2000}, "file content", info.ModTime())
+
+	// Build: assistant Read tool_use + tool_result (large enough to be cleared).
+	largeContent := strings.Repeat("x", 4096)
+	msgs := []api.Message{
+		makeReadToolUseMsg(toolUseID, filePath),
+		makeTRMsg(toolUseID, largeContent),
+	}
+	// Add 10 more recent results so the old one falls outside keepLastResults=10.
+	for i := 0; i < 10; i++ {
+		msgs = append(msgs, makeTRMsg("recent-id", largeContent))
+	}
+
+	MicroCompact(msgs, 10, 10, rc)
+
+	// Cache entry must still be present after compaction.
+	_, ok := rc.Get(readcache.Key{FilePath: filePath, Offset: 1, Limit: 2000})
+	if !ok {
+		t.Fatal("MicroCompact must NOT invalidate ReadCache entries; cache was cleared but should have been kept")
+	}
+}
+
+// TestMicroCompact_ClearedStubIncludesFilePath verifies that when a Read result is
+// cleared the stub message includes the file path so the model knows which file was
+// compacted and can use Grep instead of re-reading.
+func TestMicroCompact_ClearedStubIncludesFilePath(t *testing.T) {
+	rc := readcache.New(64)
+
+	const filePath = "/src/query/engine.go"
+	const toolUseID = "tu-read-2"
+
+	largeContent := strings.Repeat("y", 4096)
+	msgs := []api.Message{
+		makeReadToolUseMsg(toolUseID, filePath),
+		makeTRMsg(toolUseID, largeContent),
+	}
+	for i := 0; i < 10; i++ {
+		msgs = append(msgs, makeTRMsg("recent-id", largeContent))
+	}
+
+	result := MicroCompact(msgs, 10, 10, rc)
+
+	stub := extractTRContent(t, result[1])
+	if !strings.Contains(stub, filePath) {
+		t.Fatalf("cleared stub should include file path %q; got: %q", filePath, stub)
+	}
+}
+
+// TestMicroCompact_ClearedStubFallbackWithoutFilePath verifies that when the
+// tool_use block cannot be found (non-Read tool or unknown ID), the generic
+// "[result cleared — N bytes]" stub is used rather than panicking.
+func TestMicroCompact_ClearedStubFallbackWithoutFilePath(t *testing.T) {
+	largeContent := strings.Repeat("z", 4096)
+	msgs := []api.Message{
+		// No matching assistant tool_use in the messages.
+		makeTRMsg("unknown-id", largeContent),
+	}
+	for i := 0; i < 10; i++ {
+		msgs = append(msgs, makeTRMsg("recent-id", largeContent))
+	}
+
+	result := MicroCompact(msgs, 10, 10)
+
+	stub := extractTRContent(t, result[0])
+	if !strings.Contains(stub, "result cleared") {
+		t.Fatalf("expected fallback stub to contain 'result cleared'; got: %q", stub)
+	}
+	if strings.Contains(stub, "nil") || stub == "" {
+		t.Fatalf("unexpected empty or nil stub: %q", stub)
 	}
 }
 

@@ -15,14 +15,29 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/config"
 )
 
-// ServerConfig defines how to start an LSP server.
+// ServerConfig defines how to start an LSP server (extension-based routing).
 type ServerConfig struct {
-	Language string   // e.g., "go", "typescript", "python"
-	Command  string   // e.g., "gopls", "typescript-language-server"
-	Args     []string // additional args
-	RootDir  string   // workspace root
+	Name       string            // server name (e.g., "gopls")
+	Command    string            // executable
+	Args       []string          // additional args
+	Extensions []string          // file extensions this server handles
+	Env        map[string]string // extra environment variables
+	RootDir    string            // workspace root (set at start time)
+}
+
+// FromLspServerConfig converts a config.LspServerConfig to a ServerConfig.
+func FromLspServerConfig(name string, cfg config.LspServerConfig) ServerConfig {
+	return ServerConfig{
+		Name:       name,
+		Command:    cfg.Command,
+		Args:       cfg.Args,
+		Extensions: cfg.Extensions,
+		Env:        cfg.Env,
+	}
 }
 
 // ServerInstance represents a running LSP server process.
@@ -40,117 +55,88 @@ type ServerInstance struct {
 
 // ServerManager manages LSP server lifecycles.
 type ServerManager struct {
-	mu       sync.RWMutex
-	servers  map[string]*ServerInstance // keyed by language
-	configs  map[string]ServerConfig    // default configs per language
+	mu          sync.RWMutex
+	servers     map[string]*ServerInstance    // keyed by server name
+	configs     map[string]ServerConfig       // keyed by server name
+	extMap      map[string]string             // extension -> server name
 	idleTimeout time.Duration
 }
 
-// DefaultConfigs returns the default LSP server configurations.
-func DefaultConfigs() map[string]ServerConfig {
-	return map[string]ServerConfig{
-		"go": {
-			Language: "go",
-			Command:  "gopls",
-			Args:     []string{"serve"},
-		},
-		"typescript": {
-			Language: "typescript",
-			Command:  "typescript-language-server",
-			Args:     []string{"--stdio"},
-		},
-		"python": {
-			Language: "python",
-			Command:  "pyright-langserver",
-			Args:     []string{"--stdio"},
-		},
-		"rust": {
-			Language: "rust",
-			Command:  "rust-analyzer",
-		},
-		"java": {
-			Language: "java",
-			Command:  "jdtls",
-		},
-	}
-}
-
-// NewServerManager creates a new LSP server manager.
-func NewServerManager() *ServerManager {
-	return &ServerManager{
+// NewServerManager creates a new LSP server manager with the given configs.
+// No servers are started until requested. Pass nil for no servers.
+func NewServerManager(cfgs map[string]config.LspServerConfig) *ServerManager {
+	m := &ServerManager{
 		servers:     make(map[string]*ServerInstance),
-		configs:     DefaultConfigs(),
+		configs:     make(map[string]ServerConfig),
+		extMap:      make(map[string]string),
 		idleTimeout: 5 * time.Minute,
 	}
+
+	for name, cfg := range cfgs {
+		sc := FromLspServerConfig(name, cfg)
+		m.configs[name] = sc
+		for _, ext := range sc.Extensions {
+			ext = strings.ToLower(ext)
+			if !strings.HasPrefix(ext, ".") {
+				ext = "." + ext
+			}
+			m.extMap[ext] = name
+		}
+	}
+
+	return m
 }
 
-// DetectLanguage returns the language for a file path based on extension.
-func DetectLanguage(filePath string) string {
+// HasServers returns true if at least one LSP server is configured.
+func (m *ServerManager) HasServers() bool {
+	return len(m.configs) > 0
+}
+
+// HasConnected returns true if at least one LSP server is currently running.
+func (m *ServerManager) HasConnected() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.servers) > 0
+}
+
+// ServerForFile returns the server name that handles the given file extension,
+// or empty string if none configured.
+func (m *ServerManager) ServerForFile(filePath string) string {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	switch ext {
-	case ".go":
-		return "go"
-	case ".ts", ".tsx", ".js", ".jsx":
-		return "typescript"
-	case ".py":
-		return "python"
-	case ".rs":
-		return "rust"
-	case ".java":
-		return "java"
-	case ".kt", ".kts":
-		return "kotlin"
-	case ".c", ".cpp", ".cc", ".h", ".hpp":
-		return "cpp"
-	case ".cs":
-		return "csharp"
-	case ".rb":
-		return "ruby"
-	case ".php":
-		return "php"
-	case ".swift":
-		return "swift"
-	default:
-		return ""
-	}
+	return m.extMap[ext]
 }
 
-// IsAvailable checks if an LSP server command is available on PATH.
-func IsAvailable(language string) bool {
-	configs := DefaultConfigs()
-	cfg, ok := configs[language]
-	if !ok {
-		return false
-	}
-	_, err := exec.LookPath(cfg.Command)
-	return err == nil
-}
-
-// StartServer starts an LSP server for the given language.
-func (m *ServerManager) StartServer(ctx context.Context, language, rootDir string) error {
+// StartServer starts the named LSP server.
+func (m *ServerManager) StartServer(ctx context.Context, name, rootDir string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Already running?
-	if srv, ok := m.servers[language]; ok && srv.Process != nil && srv.Process.Process != nil {
+	if srv, ok := m.servers[name]; ok && srv.Process != nil && srv.Process.Process != nil {
 		srv.LastUsed = time.Now()
 		return nil
 	}
 
-	cfg, ok := m.configs[language]
+	cfg, ok := m.configs[name]
 	if !ok {
-		return fmt.Errorf("no LSP config for language: %s", language)
+		return fmt.Errorf("no LSP config for server: %s", name)
 	}
 	cfg.RootDir = rootDir
 
 	// Check if command exists
 	if _, err := exec.LookPath(cfg.Command); err != nil {
-		return fmt.Errorf("%s not found: %w", cfg.Command, err)
+		return fmt.Errorf("%s not found on PATH: %w", cfg.Command, err)
 	}
 
 	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
 	cmd.Dir = rootDir
-	cmd.Env = append(os.Environ(), "GOPATH="+os.Getenv("GOPATH"))
+
+	// Build environment
+	env := os.Environ()
+	for k, v := range cfg.Env {
+		env = append(env, k+"="+v)
+	}
+	cmd.Env = env
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -182,16 +168,16 @@ func (m *ServerManager) StartServer(ctx context.Context, language, rootDir strin
 	}
 
 	srv.Ready = true
-	m.servers[language] = srv
+	m.servers[name] = srv
 	return nil
 }
 
-// StopServer stops the LSP server for a language.
-func (m *ServerManager) StopServer(language string) error {
+// StopServer stops the named LSP server.
+func (m *ServerManager) StopServer(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	srv, ok := m.servers[language]
+	srv, ok := m.servers[name]
 	if !ok {
 		return nil
 	}
@@ -210,33 +196,33 @@ func (m *ServerManager) StopServer(language string) error {
 		srv.Process.Process.Kill()
 	}
 
-	delete(m.servers, language)
+	delete(m.servers, name)
 	return nil
 }
 
 // StopAll stops all running LSP servers.
 func (m *ServerManager) StopAll() {
 	m.mu.RLock()
-	languages := make([]string, 0, len(m.servers))
-	for lang := range m.servers {
-		languages = append(languages, lang)
+	names := make([]string, 0, len(m.servers))
+	for name := range m.servers {
+		names = append(names, name)
 	}
 	m.mu.RUnlock()
 
-	for _, lang := range languages {
-		m.StopServer(lang)
+	for _, name := range names {
+		m.StopServer(name)
 	}
 }
 
-// GetServer returns the running server for a language, starting it if needed.
+// GetServer returns the running server for a file, starting it if needed.
 func (m *ServerManager) GetServer(ctx context.Context, filePath string) (*ServerInstance, error) {
-	lang := DetectLanguage(filePath)
-	if lang == "" {
-		return nil, fmt.Errorf("unknown language for %s", filePath)
+	name := m.ServerForFile(filePath)
+	if name == "" {
+		return nil, fmt.Errorf("no LSP server configured for %s", filepath.Ext(filePath))
 	}
 
 	m.mu.RLock()
-	srv, ok := m.servers[lang]
+	srv, ok := m.servers[name]
 	m.mu.RUnlock()
 
 	if ok && srv.Ready {
@@ -246,12 +232,12 @@ func (m *ServerManager) GetServer(ctx context.Context, filePath string) (*Server
 
 	// Find root directory
 	rootDir := findProjectRoot(filepath.Dir(filePath))
-	if err := m.StartServer(ctx, lang, rootDir); err != nil {
+	if err := m.StartServer(ctx, name, rootDir); err != nil {
 		return nil, err
 	}
 
 	m.mu.RLock()
-	srv = m.servers[lang]
+	srv = m.servers[name]
 	m.mu.RUnlock()
 	return srv, nil
 }
@@ -260,31 +246,32 @@ func (m *ServerManager) GetServer(ctx context.Context, filePath string) (*Server
 func (m *ServerManager) CleanIdle() {
 	m.mu.RLock()
 	var idle []string
-	for lang, srv := range m.servers {
+	for name, srv := range m.servers {
 		if time.Since(srv.LastUsed) > m.idleTimeout {
-			idle = append(idle, lang)
+			idle = append(idle, name)
 		}
 	}
 	m.mu.RUnlock()
 
-	for _, lang := range idle {
-		m.StopServer(lang)
+	for _, name := range idle {
+		m.StopServer(name)
 	}
 }
 
-// Status returns the status of all servers.
+// Status returns the status of all configured servers.
 func (m *ServerManager) Status() map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	status := make(map[string]string)
-	for lang, srv := range m.servers {
-		if srv.Ready {
-			status[lang] = fmt.Sprintf("running (since %s, last used %s ago)",
+	for name := range m.configs {
+		srv, running := m.servers[name]
+		if running && srv.Ready {
+			status[name] = fmt.Sprintf("running (since %s, last used %s ago)",
 				srv.StartedAt.Format("15:04:05"),
 				time.Since(srv.LastUsed).Round(time.Second))
 		} else {
-			status[lang] = "starting"
+			status[name] = "configured (not running)"
 		}
 	}
 	return status
@@ -293,10 +280,10 @@ func (m *ServerManager) Status() map[string]string {
 // --- LSP Protocol Implementation ---
 
 type lspMessage struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      *int        `json:"id,omitempty"`
-	Method  string      `json:"method,omitempty"`
-	Params  interface{} `json:"params,omitempty"`
+	JSONRPC string          `json:"jsonrpc"`
+	ID      *int            `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  interface{}     `json:"params,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
 }
 
@@ -309,9 +296,9 @@ func (s *ServerInstance) initialize(rootDir string) error {
 		"rootUri":   uri,
 		"capabilities": map[string]interface{}{
 			"textDocument": map[string]interface{}{
-				"definition":    map[string]interface{}{"dynamicRegistration": false},
-				"references":    map[string]interface{}{"dynamicRegistration": false},
-				"hover":         map[string]interface{}{"dynamicRegistration": false},
+				"definition":     map[string]interface{}{"dynamicRegistration": false},
+				"references":     map[string]interface{}{"dynamicRegistration": false},
+				"hover":          map[string]interface{}{"dynamicRegistration": false},
 				"documentSymbol": map[string]interface{}{"dynamicRegistration": false},
 			},
 		},
@@ -352,7 +339,6 @@ func (s *ServerInstance) sendRequest(method string, params interface{}) (json.Ra
 		return nil, err
 	}
 
-	// Read response (simplified — production would need proper message framing)
 	return s.readResponse()
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/models"
 	"github.com/Abraxas-365/claudio/internal/plugins"
 	"github.com/Abraxas-365/claudio/internal/query"
+	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
@@ -52,6 +53,7 @@ type App struct {
 	TeamRunner   *teams.TeammateRunner
 	Plugins      *plugins.Registry
 	Cron         *tasks.CronStore
+	LSP          *lsp.ServerManager
 }
 
 // SecurityContext wraps config-based security settings for tool injection.
@@ -177,6 +179,21 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 
 	paths := config.GetPaths()
 	cwd, _ := os.Getwd()
+
+	// Initialize LSP server manager from settings + plugin configs
+	lspCfgs := make(map[string]config.LspServerConfig)
+	for k, v := range settings.LspServers {
+		lspCfgs[k] = v
+	}
+	// Merge plugin-provided LSP configs (settings take priority)
+	pluginLspCfgs := plugins.LoadLspConfigs(paths.Plugins)
+	for k, v := range pluginLspCfgs {
+		if _, exists := lspCfgs[k]; !exists {
+			lspCfgs[k] = v
+		}
+	}
+	lspManager := lsp.NewServerManager(lspCfgs)
+	registry.SetLSPManager(lspManager)
 
 	// Load hooks
 	hooksMgr := hooks.LoadFromSettings(paths.Settings, paths.Local)
@@ -373,6 +390,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		TeamRunner:  teamRunner,
 		Plugins:     pluginReg,
 		Cron:        cronStore,
+		LSP:         lspManager,
 	}, nil
 }
 

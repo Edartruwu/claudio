@@ -675,6 +675,91 @@ Core tools are always loaded; deferred tools load on-demand via `ToolSearch` to 
 
 Disable any tool with `"denyTools": ["ToolName"]` in settings.
 
+### LSP (Language Server Protocol)
+
+The LSP tool provides code intelligence (go-to-definition, find-references, hover, document symbols) by connecting to language servers. It is **config-driven** — no servers are built-in; you configure them via settings or plugins.
+
+#### Option 1: Settings
+
+Add `lspServers` to your `~/.claudio/settings.json`:
+
+```json
+{
+  "lspServers": {
+    "gopls": {
+      "command": "gopls",
+      "args": ["serve"],
+      "extensions": [".go", ".mod"]
+    },
+    "typescript": {
+      "command": "typescript-language-server",
+      "args": ["--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx"]
+    },
+    "rust-analyzer": {
+      "command": "rust-analyzer",
+      "extensions": [".rs"]
+    },
+    "pyright": {
+      "command": "pyright-langserver",
+      "args": ["--stdio"],
+      "extensions": [".py"]
+    }
+  }
+}
+```
+
+Each server config supports:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `command` | yes | Executable name (must be on `$PATH`) |
+| `args` | no | Command-line arguments |
+| `extensions` | yes | File extensions this server handles (with or without leading `.`) |
+| `env` | no | Extra environment variables (e.g., `{"GOFLAGS": "-mod=vendor"}`) |
+
+#### Option 2: Plugin files
+
+Drop a `*.lsp.json` file in `~/.claudio/plugins/`:
+
+```json
+// ~/.claudio/plugins/go.lsp.json
+{
+  "gopls": {
+    "command": "gopls",
+    "args": ["serve"],
+    "extensions": [".go", ".mod"]
+  }
+}
+```
+
+Multiple servers can be defined in one file. Multiple `*.lsp.json` files are merged. Settings-defined servers take priority over plugin-defined ones.
+
+#### Behavior
+
+- **Deferred tool**: The LSP tool only appears when at least one server is configured. The AI discovers it via `ToolSearch`.
+- **Lazy start**: Servers start on first use and auto-detect the project root (looks for `.git`, `go.mod`, `package.json`, etc.).
+- **Idle cleanup**: Servers shut down after 5 minutes of inactivity.
+- **Extension routing**: Each file is routed to the server that registered its extension.
+
+#### Prerequisites
+
+Install the language server binary for your language:
+
+```bash
+# Go
+go install golang.org/x/tools/gopls@latest
+
+# TypeScript/JavaScript
+npm install -g typescript-language-server typescript
+
+# Rust
+rustup component add rust-analyzer
+
+# Python
+pip install pyright
+```
+
 ---
 
 ## Agents

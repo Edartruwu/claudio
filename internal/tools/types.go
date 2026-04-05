@@ -46,6 +46,15 @@ type ToolResult struct {
 	IsError   bool   `json:"is_error,omitempty"`
 }
 
+// Validatable is an optional interface tools can implement to run lightweight
+// pre-checks before the user is prompted for approval. This avoids wasting
+// tokens on an approval dialog for a tool call that will certainly fail.
+// Validate should only perform fast, non-destructive checks (e.g. cache
+// lookups, input parsing). Return nil if validation passes.
+type Validatable interface {
+	Validate(input json.RawMessage) *Result
+}
+
 // DeferrableTool is an optional interface tools can implement to support deferred loading.
 // Deferred tools are sent to the API with only their name (no description/schema),
 // saving tokens. The model can fetch full schemas on demand via ToolSearch.

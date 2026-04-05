@@ -668,3 +668,95 @@ func TestGetSetEffortLevel(t *testing.T) {
 		t.Errorf("GetEffortLevel() = %q, want %q", got, "high")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// normalizeMessages — prevents "content: Input should be a valid list" errors
+// ---------------------------------------------------------------------------
+
+func TestNormalizeMessages_AlreadyValidArray(t *testing.T) {
+	msgs := []Message{makeMsg("user", "hello")}
+	original := string(msgs[0].Content)
+	normalizeMessages(msgs)
+	if string(msgs[0].Content) != original {
+		t.Errorf("valid array content was modified: got %s, want %s", msgs[0].Content, original)
+	}
+}
+
+func TestNormalizeMessages_PlainString(t *testing.T) {
+	// This is the main bug: json.Marshal("hello") produces `"hello"` (a JSON string)
+	content, _ := json.Marshal("hello world")
+	msgs := []Message{{Role: "user", Content: content}}
+	normalizeMessages(msgs)
+
+	var blocks []map[string]string
+	if err := json.Unmarshal(msgs[0].Content, &blocks); err != nil {
+		t.Fatalf("after normalize, content is not a valid array: %v (raw: %s)", err, msgs[0].Content)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	if blocks[0]["type"] != "text" || blocks[0]["text"] != "hello world" {
+		t.Errorf("unexpected block: %+v", blocks[0])
+	}
+}
+
+func TestNormalizeMessages_NullContent(t *testing.T) {
+	msgs := []Message{{Role: "user", Content: nil}}
+	normalizeMessages(msgs)
+
+	var blocks []map[string]string
+	if err := json.Unmarshal(msgs[0].Content, &blocks); err != nil {
+		t.Fatalf("after normalize, content is not a valid array: %v", err)
+	}
+	if len(blocks) != 1 || blocks[0]["type"] != "text" {
+		t.Errorf("expected single text block, got %+v", blocks)
+	}
+}
+
+func TestNormalizeMessages_EmptyContent(t *testing.T) {
+	msgs := []Message{{Role: "user", Content: json.RawMessage{}}}
+	normalizeMessages(msgs)
+
+	var blocks []map[string]string
+	if err := json.Unmarshal(msgs[0].Content, &blocks); err != nil {
+		t.Fatalf("after normalize, content is not a valid array: %v", err)
+	}
+}
+
+func TestNormalizeMessages_MixedMessages(t *testing.T) {
+	// Simulate a realistic conversation with a mix of valid and invalid content
+	validContent, _ := json.Marshal([]UserContentBlock{NewTextBlock("valid")})
+	stringContent, _ := json.Marshal("I am a plain string")
+	msgs := []Message{
+		{Role: "user", Content: validContent},
+		{Role: "assistant", Content: stringContent},
+		{Role: "user", Content: nil},
+	}
+	normalizeMessages(msgs)
+
+	for i, msg := range msgs {
+		var blocks []json.RawMessage
+		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
+			t.Errorf("message[%d] content is not a valid array after normalize: %v (raw: %s)", i, err, msg.Content)
+		}
+	}
+}
+
+func TestNormalizeMessages_PreservesToolUseBlocks(t *testing.T) {
+	// Tool use content is already an array — must not be modified
+	content := json.RawMessage(`[{"type":"tool_use","id":"tu_123","name":"bash","input":{"command":"ls"}}]`)
+	msgs := []Message{{Role: "assistant", Content: content}}
+	normalizeMessages(msgs)
+	if string(msgs[0].Content) != string(content) {
+		t.Errorf("tool_use array was modified: got %s", msgs[0].Content)
+	}
+}
+
+func TestNormalizeMessages_PreservesToolResultBlocks(t *testing.T) {
+	content := json.RawMessage(`[{"type":"tool_result","tool_use_id":"tu_123","content":"output"}]`)
+	msgs := []Message{{Role: "user", Content: content}}
+	normalizeMessages(msgs)
+	if string(msgs[0].Content) != string(content) {
+		t.Errorf("tool_result array was modified: got %s", msgs[0].Content)
+	}
+}

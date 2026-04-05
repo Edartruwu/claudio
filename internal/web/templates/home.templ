@@ -1,0 +1,73 @@
+package templates
+
+import "fmt"
+
+templ HomePage(projects []ProjectInfo, version string) {
+	@Layout("Projects") {
+		<div class="app-container">
+			<header class="app-header">
+				<div class="header-left">
+					<h1>claudio</h1>
+					<span class="version">{ version }</span>
+				</div>
+				<div class="header-right">
+					<form method="POST" action="/logout">
+						<button type="submit" class="btn btn-ghost">Logout</button>
+					</form>
+				</div>
+			</header>
+			<main class="home-main">
+				<section class="init-section">
+					<h2>Open or Create Project</h2>
+					<form
+						hx-post="/api/projects/init"
+						hx-target="#project-list"
+						hx-swap="innerHTML"
+						class="init-form"
+					>
+						<input
+							type="text"
+							name="path"
+							placeholder="/path/to/your/project"
+							required
+							class="input input-lg"
+						/>
+						<button type="submit" class="btn btn-primary">Init &amp; Open</button>
+					</form>
+				</section>
+				<section class="projects-section">
+					<h2>Projects</h2>
+					<div id="project-list">
+						@ProjectList(projects)
+					</div>
+				</section>
+			</main>
+		</div>
+	}
+}
+
+templ ErrorMessage(msg string) {
+	<div class="error-msg">{ msg }</div>
+}
+
+templ ProjectList(projects []ProjectInfo) {
+	if len(projects) == 0 {
+		<div class="empty-state">
+			<p>No projects found. Enter a path above to get started.</p>
+		</div>
+	} else {
+		<div class="project-grid">
+			for _, p := range projects {
+				<a href={ templ.SafeURL(fmt.Sprintf("/chat?project=%s", p.Path)) } class="project-card">
+					<div class="project-name">{ p.Name }</div>
+					<div class="project-path">{ p.Path }</div>
+					if p.Initialized {
+						<span class="badge badge-ok">initialized</span>
+					} else {
+						<span class="badge">not initialized</span>
+					}
+				</a>
+			}
+		</div>
+	}
+}

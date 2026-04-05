@@ -1,0 +1,28 @@
+package templates
+
+templ LoginPage(errorMsg string) {
+	@Layout("Login") {
+		<div class="login-container">
+			<div class="login-card">
+				<div class="login-header">
+					<h1>claudio</h1>
+					<p class="subtitle">AI Coding Assistant</p>
+				</div>
+				if errorMsg != "" {
+					<div class="error-msg">{ errorMsg }</div>
+				}
+				<form method="POST" action="/login" class="login-form">
+					<input
+						type="password"
+						name="password"
+						placeholder="Password"
+						autofocus
+						required
+						class="input"
+					/>
+					<button type="submit" class="btn btn-primary">Sign In</button>
+				</form>
+			</div>
+		</div>
+	}
+}

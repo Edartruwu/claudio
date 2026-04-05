@@ -125,7 +125,8 @@ type Model struct {
 
 	askUserDialog *askUserDialogState // active AskUser question dialog (nil = not showing)
 
-	pendingModelRestore string // non-empty = restore this model after current interaction finishes
+	pendingModelRestore  string // non-empty = restore this model after current interaction finishes
+	resumeSummarySet     bool   // true once the resumed session summary has been appended to systemPrompt
 
 	// Agent detail overlay
 	agentDetail *agentDetailOverlay
@@ -2636,9 +2637,11 @@ func (m *Model) doSwitchSession(id string) {
 		m.totalCost = float64(m.totalTokens) * 3.0 / 1_000_000
 	}
 
-	// Inject summary into system prompt for AI continuity
-	if resumed.Summary != "" {
+	// Inject summary into system prompt for AI continuity (guard against double-append
+	// if resumeSession is called more than once for the same session).
+	if resumed.Summary != "" && !m.resumeSummarySet {
 		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
+		m.resumeSummarySet = true
 	}
 	m.refreshViewport()
 }

@@ -168,6 +168,12 @@ func (e *Engine) SetSystem(prompt string) {
 	e.system = prompt
 }
 
+// SetHandler replaces the event handler (useful for web sessions that create
+// a fresh handler per user message while reusing the same Engine).
+func (e *Engine) SetHandler(h EventHandler) {
+	e.handler = h
+}
+
 // Messages returns the current conversation messages.
 func (e *Engine) Messages() []api.Message {
 	return e.messages
@@ -427,10 +433,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		})
 
 		// Microcompact: proactively clear large old tool results on every tool turn.
-		// Keeps the last 6 results intact, clears anything larger than 2KB beyond that.
-		// Pass the ReadCache so cleared Read results have their cache entries invalidated —
-		// otherwise the model gets a stale stub pointing to content that no longer exists.
-		e.messages = compact.MicroCompact(e.messages, 6, 2048, e.registry.ReadCache())
+		// Keeps the last 10 results intact, clears anything larger than 2KB beyond that.
+		// ReadCache is intentionally NOT invalidated on clear — keeping it valid means
+		// a re-read attempt returns the dedup stub rather than the full file again.
+		e.messages = compact.MicroCompact(e.messages, 10, 2048, e.registry.ReadCache())
 
 		// Poll background tasks and inject completed results. Runs after tool
 		// results are appended so completed-task notifications appear as a
@@ -693,6 +699,15 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 			e.handler.OnToolUseEnd(tu, res)
 			results[i] = toolResultBlock{Type: "tool_result", ToolUseID: tu.ID, Content: res.Content, IsError: true}
 			continue
+		}
+
+		// Run pre-approval validation so errors surface before the user is prompted.
+		if v, ok := tool.(tools.Validatable); ok {
+			if vr := v.Validate(tu.Input); vr != nil && vr.IsError {
+				e.handler.OnToolUseEnd(tu, vr)
+				results[i] = toolResultBlock{Type: "tool_result", ToolUseID: tu.ID, Content: vr.Content, IsError: true}
+				continue
+			}
 		}
 
 		if e.shouldRequireApproval(tool, tu.Input) {

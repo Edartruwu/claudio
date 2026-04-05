@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
@@ -164,6 +165,15 @@ func (r *Registry) Clone() *Registry {
 	}
 
 	return clone
+}
+
+// SetLSPManager injects the LSP server manager into the LSP tool.
+func (r *Registry) SetLSPManager(m *lsp.ServerManager) {
+	if t, err := r.Get("LSP"); err == nil {
+		if lt, ok := t.(*LSPTool); ok {
+			lt.SetLSPManager(m)
+		}
+	}
 }
 
 // SetSnippetConfig configures snippet expansion on the Write and Edit tools.

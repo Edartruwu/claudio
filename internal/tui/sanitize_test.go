@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -490,3 +491,54 @@ func TestReconstructEngineMessages_UnknownTypeIgnored(t *testing.T) {
 	}
 }
 
+
+// ── Resume summary guard ──────────────────────────────────────────────────────
+
+// TestResumeSummary_NotDoubleAppended verifies that a session summary is appended
+// to the system prompt exactly once even when the guard block is executed twice.
+// This simulates resumeSession being called multiple times on the same Model.
+func TestResumeSummary_NotDoubleAppended(t *testing.T) {
+	m := Model{
+		systemPrompt: "base system prompt",
+	}
+
+	const summary = "previous session: fixed bug in query engine"
+	resumed := &storage.Session{Summary: summary}
+
+	// Simulate the guard block from resumeSession twice.
+	applyResumeSummary := func(m *Model, sess *storage.Session) {
+		if sess.Summary != "" && !m.resumeSummarySet {
+			m.systemPrompt += "\n\n# Previous Session Context\n" + sess.Summary
+			m.resumeSummarySet = true
+		}
+	}
+
+	applyResumeSummary(&m, resumed)
+	applyResumeSummary(&m, resumed)
+
+	count := strings.Count(m.systemPrompt, summary)
+	if count != 1 {
+		t.Fatalf("expected summary to appear exactly once in system prompt, got %d occurrences; prompt: %q", count, m.systemPrompt)
+	}
+}
+
+// TestResumeSummary_EmptySummarySkipped verifies that an empty summary does not
+// modify the system prompt or set the guard flag.
+func TestResumeSummary_EmptySummarySkipped(t *testing.T) {
+	m := Model{
+		systemPrompt: "base",
+	}
+	resumed := &storage.Session{Summary: ""}
+
+	if resumed.Summary != "" && !m.resumeSummarySet {
+		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
+		m.resumeSummarySet = true
+	}
+
+	if m.systemPrompt != "base" {
+		t.Fatalf("expected system prompt unchanged, got: %q", m.systemPrompt)
+	}
+	if m.resumeSummarySet {
+		t.Fatal("resumeSummarySet should remain false for empty summary")
+	}
+}

@@ -490,15 +490,20 @@ func MicroCompact(messages []api.Message, keepLastResults int, minSizeBytes int,
 			if len(tr.Content) < minSizeBytes || tr.IsError {
 				continue
 			}
-			// Invalidate the ReadCache entry for this file so the model can
-			// re-read it fresh instead of receiving a stale "refer to earlier
-			// result" stub that points to content we just cleared.
+			// Intentionally do NOT invalidate ReadCache here. Keeping the cache
+			// entry valid means a subsequent re-read of the same file returns the
+			// dedup stub ("File unchanged since last read — refer to earlier result")
+			// instead of the full content, breaking the clear→re-read→clear loop
+			// that was causing the same file to be sent 6-8× per session.
+			fp := ""
 			if len(rc) > 0 && rc[0] != nil {
-				if fp := filePathForToolUseID(messages, tr.ToolUseID); fp != "" {
-					rc[0].Invalidate(fp)
-				}
+				fp = filePathForToolUseID(messages, tr.ToolUseID)
 			}
-			tr.Content = fmt.Sprintf("[result cleared — %d bytes]", len(tr.Content))
+			if fp != "" {
+				tr.Content = fmt.Sprintf("[Read result for %s cleared (%d bytes) — file is unchanged; use Grep to find specific content rather than re-reading the full file]", fp, len(tr.Content))
+			} else {
+				tr.Content = fmt.Sprintf("[result cleared — %d bytes]", len(tr.Content))
+			}
 			blocks[j], _ = json.Marshal(tr)
 			modified = true
 		}

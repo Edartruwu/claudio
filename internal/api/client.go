@@ -436,6 +436,36 @@ type MessageResp struct {
 	Usage      Usage          `json:"usage"`
 }
 
+// normalizeMessages ensures every message's Content is a valid JSON array.
+// The Anthropic API requires content to be a list of content blocks, but
+// various code paths (compaction, session restore, etc.) can accidentally
+// produce a plain JSON string (e.g. `"hello"`) or null. This function
+// catches those cases and wraps them into `[{"type":"text","text":"..."}]`.
+func normalizeMessages(msgs []Message) {
+	for i := range msgs {
+		c := msgs[i].Content
+		if len(c) == 0 {
+			// null / empty → wrap as empty text block
+			msgs[i].Content, _ = json.Marshal([]UserContentBlock{NewTextBlock("")})
+			continue
+		}
+		// Fast check: valid content starts with '['
+		trimmed := bytes.TrimLeft(c, " \t\n\r")
+		if len(trimmed) > 0 && trimmed[0] == '[' {
+			continue // already an array
+		}
+		// It's a JSON string, number, object, or something else — wrap it.
+		var s string
+		if json.Unmarshal(c, &s) == nil {
+			// It was a JSON string like `"hello world"`
+			msgs[i].Content, _ = json.Marshal([]UserContentBlock{NewTextBlock(s)})
+		} else {
+			// Some other non-array JSON (object, number, etc.) — use raw as text
+			msgs[i].Content, _ = json.Marshal([]UserContentBlock{NewTextBlock(string(c))})
+		}
+	}
+}
+
 // StreamMessages sends a streaming messages request and returns a channel of events.
 // When using OAuth, it proxies through the official claude CLI to bypass third-party restrictions.
 func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-chan StreamEvent, <-chan error) {
@@ -445,6 +475,8 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 	if req.MaxTokens == 0 {
 		req.MaxTokens = 8192
 	}
+
+	normalizeMessages(req.Messages)
 
 	// Route to external provider if a match exists
 	if p := c.resolveProvider(req.Model); p != nil {
@@ -542,6 +574,8 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	if req.MaxTokens == 0 {
 		req.MaxTokens = 8192
 	}
+
+	normalizeMessages(req.Messages)
 
 	// Route to external provider if a match exists
 	if p := c.resolveProvider(req.Model); p != nil {

@@ -67,6 +67,17 @@ type Settings struct {
 
 	// Snippet expansion (AI writes shorthand, expander fills boilerplate)
 	Snippets *snippets.Config `json:"snippets,omitempty"`
+
+	// LSP servers (config-driven, no hardcoded defaults)
+	LspServers map[string]LspServerConfig `json:"lspServers,omitempty"`
+}
+
+// LspServerConfig defines an LSP server connection.
+type LspServerConfig struct {
+	Command    string            `json:"command"`
+	Args       []string          `json:"args,omitempty"`
+	Extensions []string          `json:"extensions"`         // file extensions this server handles (e.g. [".go", ".mod"])
+	Env        map[string]string `json:"env,omitempty"`
 }
 
 // ProviderConfig defines a non-default API provider.
@@ -315,6 +326,14 @@ func mergeFromFile(settings *Settings, path string) {
 	if json.Unmarshal(data, &raw) == nil {
 		if _, ok := raw["outputFilter"]; ok {
 			settings.OutputFilter = overlay.OutputFilter
+		}
+	}
+	if len(overlay.LspServers) > 0 {
+		if settings.LspServers == nil {
+			settings.LspServers = make(map[string]LspServerConfig)
+		}
+		for k, v := range overlay.LspServers {
+			settings.LspServers[k] = v
 		}
 	}
 	if overlay.Snippets != nil {
