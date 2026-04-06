@@ -35,6 +35,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/memorypanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/skillspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
 	"github.com/Abraxas-365/claudio/internal/tui/teampanel"
 	"github.com/Abraxas-365/claudio/internal/teams"
@@ -3111,6 +3112,8 @@ func (m *Model) handlePanelToggleByKey(key string) (bool, tea.Cmd) {
 		m.openPanel(PanelAnalytics)
 	case "t":
 		m.openPanel(PanelTasks)
+	case "o":
+		m.openPanel(PanelTools)
 	}
 	return true, nil
 }
@@ -3595,6 +3598,10 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 		if m.appCtx != nil && m.appCtx.TeamManager != nil && m.appCtx.TeamRunner != nil {
 			p := teampanel.New(m.appCtx.TeamManager, m.appCtx.TeamRunner)
 			return p
+		}
+	case PanelTools:
+		if m.registry != nil {
+			return toolspanel.New(m.registry)
 		}
 	}
 	return nil
@@ -4428,6 +4435,8 @@ func (m Model) panelName() string {
 		return "analytics"
 	case PanelTasks:
 		return "tasks"
+	case PanelTools:
+		return "tools"
 	default:
 		return ""
 	}

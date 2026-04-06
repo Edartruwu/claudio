@@ -41,6 +41,19 @@ type PanelData struct {
 
 	// Tasks
 	Tasks []TaskInfo
+
+	// Tools
+	Tools     []ToolInfo
+	SessionID string
+}
+
+// ToolInfo represents a single tool row in the tools manager panel.
+type ToolInfo struct {
+	Name       string
+	Hint       string
+	Deferred   bool // current effective state
+	Deferrable bool // false = always-eager core tool (cannot be toggled)
+	Overridden bool // user has set an explicit override
 }
 
 // TaskInfo represents a task for the tasks panel.

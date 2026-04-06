@@ -507,6 +507,42 @@ a:hover { text-decoration: underline; }
 .task-item .task-status.done { color: var(--green); }
 .task-item .task-status.failed { color: var(--red); }
 
+/* ── Tools panel ── */
+.tools-group-label {
+  font-size: 0.65rem; font-weight: 700; color: var(--dim);
+  letter-spacing: 0.08em; margin: 4px 0 6px 2px;
+}
+.tool-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 8px; padding: 7px 9px; border-radius: var(--radius);
+  background: var(--bg); border: 1px solid var(--bg1); margin-bottom: 5px;
+}
+.tool-row-main { flex: 1; min-width: 0; }
+.tool-row-name {
+  font-weight: 600; color: var(--fg); font-size: 0.82rem;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.tool-row-hint {
+  font-size: 0.7rem; color: var(--dim); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tool-override-dot { color: var(--purple); font-size: 0.7rem; }
+.tool-badge {
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 3px; letter-spacing: 0.04em;
+}
+.tool-badge-eager    { background: rgba(80,200,120,0.15); color: var(--green); }
+.tool-badge-deferred { background: rgba(120,140,200,0.15); color: var(--blue); }
+.tool-badge-core     { background: rgba(180,180,180,0.12); color: var(--dim); }
+.tool-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.tool-btn {
+  background: var(--bg1); color: var(--fg); border: 1px solid var(--bg2);
+  font-size: 0.7rem; padding: 3px 8px; border-radius: 3px; cursor: pointer;
+  font-family: inherit;
+}
+.tool-btn:hover { background: var(--bg2); color: var(--purple); }
+.tool-btn-reset { color: var(--dim); }
+
 /* ── Markdown ── */
 .msg-content { line-height: 1.6; word-wrap: break-word; overflow-wrap: break-word; }
 .msg-content > p:first-child { margin-top: 0; }

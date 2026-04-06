@@ -26,4 +26,5 @@ const (
 	PanelAnalytics
 	PanelTasks
 	PanelAgents
+	PanelTools
 )

@@ -63,6 +63,7 @@ func PanelBindings() []Binding {
 		{Key: "m", Desc: "memory/rules"},
 		{Key: "a", Desc: "analytics"},
 		{Key: "t", Desc: "tasks"},
+		{Key: "o", Desc: "tools"},
 	}
 }
 

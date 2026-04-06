@@ -14,12 +14,19 @@ import (
 type Registry struct {
 	tools map[string]Tool
 	order []string // preserve insertion order
+
+	// deferOverride lets the user manually pin a normally-deferred tool to be
+	// always loaded (value=false) or force a normally-eager *deferrable* tool
+	// to be deferred (value=true). Tools that do not implement DeferrableTool
+	// cannot be force-deferred and overrides for them are ignored.
+	deferOverride map[string]bool
 }
 
 // NewRegistry creates an empty tool registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		tools: make(map[string]Tool),
+		tools:         make(map[string]Tool),
+		deferOverride: make(map[string]bool),
 	}
 }
 
@@ -69,19 +76,7 @@ func (r *Registry) APIDefinitionsWithDeferral(discoveredTools map[string]bool) j
 	defs := make([]APIToolDef, 0, len(r.order))
 	for _, name := range r.order {
 		t := r.tools[name]
-		shouldDefer := false
-		if dt, ok := t.(DeferrableTool); ok && dt.ShouldDefer() {
-			// Defer unless the model already discovered this tool via ToolSearch
-			if discoveredTools == nil || !discoveredTools[name] {
-				shouldDefer = true
-			}
-			// Auto-activate if the tool's backing service is available
-			if shouldDefer {
-				if aa, ok := t.(AutoActivatable); ok && aa.AutoActivate() {
-					shouldDefer = false
-				}
-			}
-		}
+		shouldDefer := r.resolveDeferral(name, t, discoveredTools)
 
 		if shouldDefer {
 			// Completely omit undiscovered deferred tools from the tools array.
@@ -102,19 +97,15 @@ func (r *Registry) APIDefinitionsWithDeferral(discoveredTools map[string]bool) j
 
 // DeferredToolNames returns the names of tools that support deferred loading
 // and are not auto-activated (i.e. their backing service is unavailable).
+// User overrides are honored: pinned tools are excluded, force-deferred tools
+// are included.
 func (r *Registry) DeferredToolNames() []string {
 	var names []string
 	for _, name := range r.order {
 		t := r.tools[name]
-		dt, ok := t.(DeferrableTool)
-		if !ok || !dt.ShouldDefer() {
-			continue
+		if r.resolveDeferral(name, t, nil) {
+			names = append(names, name)
 		}
-		// Skip tools that auto-activate — they are sent with full schema already.
-		if aa, ok := t.(AutoActivatable); ok && aa.AutoActivate() {
-			continue
-		}
-		names = append(names, name)
 	}
 	return names
 }
@@ -128,6 +119,84 @@ func (r *Registry) ToolSearchHints() map[string]string {
 		}
 	}
 	return hints
+}
+
+// resolveDeferral applies override + auto-activate + discovery rules and returns
+// whether `name` should be deferred for this request.
+func (r *Registry) resolveDeferral(name string, t Tool, discoveredTools map[string]bool) bool {
+	dt, isDeferrable := t.(DeferrableTool)
+	if !isDeferrable {
+		return false // non-deferrable tools are always eager
+	}
+
+	// Start from the tool's own opinion, then apply user override if present.
+	wantDefer := dt.ShouldDefer()
+	if override, ok := r.deferOverride[name]; ok {
+		wantDefer = override
+	}
+	if !wantDefer {
+		return false
+	}
+
+	// Already discovered via ToolSearch — load the full schema.
+	if discoveredTools != nil && discoveredTools[name] {
+		return false
+	}
+
+	// Auto-activate if the tool's backing service is available, but only when
+	// the user has not explicitly forced it deferred.
+	if _, userOverrode := r.deferOverride[name]; !userOverrode {
+		if aa, ok := t.(AutoActivatable); ok && aa.AutoActivate() {
+			return false
+		}
+	}
+
+	return true
+}
+
+// IsDeferrable reports whether the named tool implements DeferrableTool.
+// Non-deferrable (always-eager) tools cannot be toggled by the user.
+func (r *Registry) IsDeferrable(name string) bool {
+	t, ok := r.tools[name]
+	if !ok {
+		return false
+	}
+	_, ok = t.(DeferrableTool)
+	return ok
+}
+
+// IsDeferred reports whether the named tool will be deferred for the next API
+// request given current overrides. discoveredTools may be nil.
+func (r *Registry) IsDeferred(name string) bool {
+	t, ok := r.tools[name]
+	if !ok {
+		return false
+	}
+	return r.resolveDeferral(name, t, nil)
+}
+
+// SetDeferOverride pins a tool's deferral state. Pass deferred=false to load
+// it eagerly even if it normally defers; pass deferred=true to force a
+// deferrable tool to defer even if it would auto-activate. No effect on tools
+// that do not implement DeferrableTool.
+func (r *Registry) SetDeferOverride(name string, deferred bool) {
+	if !r.IsDeferrable(name) {
+		return
+	}
+	r.deferOverride[name] = deferred
+}
+
+// ClearDeferOverride removes any user override for the tool, restoring its
+// natural (tool-defined) behavior.
+func (r *Registry) ClearDeferOverride(name string) {
+	delete(r.deferOverride, name)
+}
+
+// HasDeferOverride reports whether the user has set an explicit override for
+// this tool.
+func (r *Registry) HasDeferOverride(name string) bool {
+	_, ok := r.deferOverride[name]
+	return ok
 }
 
 // ReadCache returns the shared ReadCache used by the FileReadTool, or nil if not present.
@@ -159,6 +228,9 @@ func (r *Registry) Clone() *Registry {
 	clone := NewRegistry()
 	for _, name := range r.order {
 		clone.Register(r.tools[name])
+	}
+	for k, v := range r.deferOverride {
+		clone.deferOverride[k] = v
 	}
 
 	// Give the sub-agent its own caches so it doesn't share state with the

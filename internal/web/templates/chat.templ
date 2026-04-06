@@ -53,6 +53,7 @@ templ ChatPage(projectPath string, sessionID string, sessions []SessionInfo, mes
 							<button class="panel-toggle" onclick="togglePanel('analytics')" id="pt-analytics">Stats</button>
 							<button class="panel-toggle" onclick="togglePanel('tasks')" id="pt-tasks">Tasks</button>
 							<button class="panel-toggle" onclick="togglePanel('config')" id="pt-config">Config</button>
+							<button class="panel-toggle" onclick="togglePanel('tools')" id="pt-tools">Tools</button>
 						</div>
 						<button class="mobile-panel-btn" id="mobile-panel-btn" onclick="toggleMobileDrawer()" aria-label="Panels">&#8943;</button>
 					</div>
@@ -124,6 +125,7 @@ templ ChatPage(projectPath string, sessionID string, sessions []SessionInfo, mes
 					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('analytics')"><span class="icon">&#9776;</span> Analytics</button>
 					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('tasks')"><span class="icon">&#9744;</span> Tasks</button>
 					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('config')"><span class="icon">&#9881;</span> Config</button>
+					<button class="drawer-item" onclick="closeMobileDrawer();togglePanel('tools')"><span class="icon">&#128295;</span> Tools</button>
 					<button class="drawer-item" onclick="closeMobileDrawer();openModelSelector()"><span class="icon">&#129302;</span> Change Model</button>
 				</div>
 			</div>

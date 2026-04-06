@@ -577,9 +577,78 @@ func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 		templates.TasksPanel(data).Render(r.Context(), w)
 	case "agents":
 		templates.AgentsPanelContent().Render(r.Context(), w)
+	case "tools":
+		data.SessionID = sessionID
+		data.Tools = collectToolInfos(sess)
+		templates.ToolsPanel(data).Render(r.Context(), w)
 	default:
 		fmt.Fprintf(w, `<div style="color:var(--dim);padding:8px">Unknown panel: %s</div>`, panelName)
 	}
+}
+
+// collectToolInfos builds the ToolInfo list for the tools panel.
+func collectToolInfos(sess *ProjectSession) []templates.ToolInfo {
+	if sess == nil || sess.Registry == nil {
+		return nil
+	}
+	reg := sess.Registry
+	hints := reg.ToolSearchHints()
+	names := reg.Names()
+	infos := make([]templates.ToolInfo, 0, len(names))
+	for _, name := range names {
+		infos = append(infos, templates.ToolInfo{
+			Name:       name,
+			Hint:       hints[name],
+			Deferred:   reg.IsDeferred(name),
+			Deferrable: reg.IsDeferrable(name),
+			Overridden: reg.HasDeferOverride(name),
+		})
+	}
+	sort.Slice(infos, func(i, j int) bool {
+		return infos[i].Name < infos[j].Name
+	})
+	return infos
+}
+
+// handleToolDeferToggle toggles or resets a tool's deferral override and
+// returns the refreshed tools panel HTML.
+func (s *Server) handleToolDeferToggle(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session")
+	name := r.URL.Query().Get("name")
+	action := r.URL.Query().Get("action")
+
+	sess := s.sessions.Get(sessionID)
+	if sess == nil || sess.Registry == nil {
+		http.Error(w, "no session", http.StatusBadRequest)
+		return
+	}
+	if name == "" {
+		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+
+	reg := sess.Registry
+	switch action {
+	case "reset":
+		reg.ClearDeferOverride(name)
+	case "toggle", "":
+		if !reg.IsDeferrable(name) {
+			http.Error(w, "tool is not deferrable", http.StatusBadRequest)
+			return
+		}
+		// Flip current effective state.
+		reg.SetDeferOverride(name, !reg.IsDeferred(name))
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+
+	data := templates.PanelData{
+		SessionID: sessionID,
+		Tools:     collectToolInfos(sess),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	templates.ToolsPanel(data).Render(r.Context(), w)
 }
 
 // listKnownProjects finds projects with .claudio directories.
