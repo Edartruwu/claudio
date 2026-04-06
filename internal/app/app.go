@@ -20,6 +20,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/learning"
 	"github.com/Abraxas-365/claudio/internal/models"
 	"github.com/Abraxas-365/claudio/internal/plugins"
+	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/security"
@@ -486,11 +487,16 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		}
 	}
 
-	// Inject agent-scoped memories if available
+	// Inject agent-scoped memories if available, plus the auto-memory
+	// writing instructions so the spawned agent can save new memories
+	// back into its own memory dir during the session.
 	if memoryDir != "" {
 		agentMem := memory.NewStore(memoryDir)
 		if memContent := agentMem.ForSystemPrompt(); memContent != "" {
 			system = system + "\n\n" + memContent
+		}
+		if memInstr := prompts.SessionMemorySection(memoryDir); memInstr != "" {
+			system = system + "\n\n" + memInstr
 		}
 	}
 

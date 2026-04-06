@@ -135,6 +135,17 @@ func (s *ScopedStore) GlobalStore() *Store { return s.global }
 // AgentStore returns the agent-scoped store (for direct access if needed).
 func (s *ScopedStore) AgentStore() *Store { return s.agent }
 
+// WriteTargetDir returns the directory the default Save() would write to.
+// Priority matches writeTarget("") — project > global. Returns "" if no
+// store is available.
+func (s *ScopedStore) WriteTargetDir() string {
+	target := s.writeTarget("")
+	if target == nil {
+		return ""
+	}
+	return target.Dir()
+}
+
 // writeTarget returns the store to write to based on the requested scope.
 func (s *ScopedStore) writeTarget(scope string) *Store {
 	switch scope {

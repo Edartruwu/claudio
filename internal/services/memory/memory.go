@@ -42,6 +42,9 @@ func NewStore(dir string) *Store {
 	return &Store{dir: dir}
 }
 
+// Dir returns the directory backing this store.
+func (s *Store) Dir() string { return s.dir }
+
 // Save writes a memory entry to disk and updates the index.
 func (s *Store) Save(entry *Entry) error {
 	if entry.Name == "" {

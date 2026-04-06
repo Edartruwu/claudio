@@ -251,6 +251,15 @@ func buildFullSystemPrompt() string {
 		case "none":
 			// Skip memory loading entirely
 		}
+
+		// Always inject the auto-memory writing instructions, regardless of
+		// selection strategy. This tells the agent how to proactively save
+		// new memories during the session via the Write tool.
+		if memDir := appInstance.Memory.WriteTargetDir(); memDir != "" {
+			if memInstr := prompts.SessionMemorySection(memDir); memInstr != "" {
+				sections = append(sections, memInstr)
+			}
+		}
 	}
 
 	// 4. Learned instincts
