@@ -4,6 +4,8 @@
 package plugins
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,10 +15,11 @@ import (
 
 // Plugin represents a discovered plugin.
 type Plugin struct {
-	Name        string // Derived from filename
-	Path        string // Absolute path to the executable
-	Description string // From --describe flag or first line of output
-	IsScript    bool   // True if it's a script (not compiled binary)
+	Name        string          // Derived from filename
+	Path        string          // Absolute path to the executable
+	Description string          // From --describe flag or first line of output
+	Schema      json.RawMessage // From --schema flag (nil = use generic fallback)
+	IsScript    bool            // True if it's a script (not compiled binary)
 }
 
 // Registry holds all discovered plugins.
@@ -68,8 +71,9 @@ func (r *Registry) LoadDir(dir string) error {
 			IsScript: !isCompiledBinary(path),
 		}
 
-		// Try to get description
+		// Try to get description and schema
 		plugin.Description = getPluginDescription(path)
+		plugin.Schema = getPluginSchema(path)
 
 		r.plugins = append(r.plugins, plugin)
 	}
@@ -129,6 +133,19 @@ func getPluginDescription(path string) string {
 		return strings.TrimSpace(lines[0])
 	}
 	return ""
+}
+
+func getPluginSchema(path string) json.RawMessage {
+	cmd := exec.Command(path, "--schema")
+	output, err := cmd.Output()
+	if err != nil || len(output) == 0 {
+		return nil
+	}
+	trimmed := bytes.TrimSpace(output)
+	if !json.Valid(trimmed) {
+		return nil
+	}
+	return json.RawMessage(trimmed)
 }
 
 func isCompiledBinary(path string) bool {

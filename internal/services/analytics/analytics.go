@@ -13,30 +13,34 @@ import (
 
 // ModelPricing defines per-million-token pricing for a model.
 type ModelPricing struct {
-	InputPerMTok  float64
-	OutputPerMTok float64
+	InputPerMTok      float64
+	OutputPerMTok     float64
+	CacheReadPerMTok  float64
+	CacheWritePerMTok float64
 }
 
 // KnownPricing contains pricing for known Claude models (per million tokens).
 var KnownPricing = map[string]ModelPricing{
-	"claude-opus-4-6":          {InputPerMTok: 15.0, OutputPerMTok: 75.0},
-	"claude-opus-4-5":          {InputPerMTok: 15.0, OutputPerMTok: 75.0},
-	"claude-sonnet-4-6":        {InputPerMTok: 3.0, OutputPerMTok: 15.0},
-	"claude-sonnet-4-5":        {InputPerMTok: 3.0, OutputPerMTok: 15.0},
-	"claude-haiku-4-5-20251001": {InputPerMTok: 0.25, OutputPerMTok: 1.25},
+	"claude-opus-4-6":           {InputPerMTok: 15.0, OutputPerMTok: 75.0, CacheReadPerMTok: 1.5, CacheWritePerMTok: 18.75},
+	"claude-opus-4-5":           {InputPerMTok: 15.0, OutputPerMTok: 75.0, CacheReadPerMTok: 1.5, CacheWritePerMTok: 18.75},
+	"claude-sonnet-4-6":         {InputPerMTok: 3.0, OutputPerMTok: 15.0, CacheReadPerMTok: 0.3, CacheWritePerMTok: 3.75},
+	"claude-sonnet-4-5":         {InputPerMTok: 3.0, OutputPerMTok: 15.0, CacheReadPerMTok: 0.3, CacheWritePerMTok: 3.75},
+	"claude-haiku-4-5-20251001": {InputPerMTok: 0.25, OutputPerMTok: 1.25, CacheReadPerMTok: 0.025, CacheWritePerMTok: 0.3125},
 }
 
 // Tracker accumulates token usage and cost for a session.
 type Tracker struct {
-	mu           sync.Mutex
-	model        string
-	inputTokens  int
-	outputTokens int
-	toolCalls    int
-	apiCalls     int
-	startTime    time.Time
-	maxBudget    float64 // 0 = unlimited
-	saveDir      string
+	mu              sync.Mutex
+	model           string
+	inputTokens     int
+	outputTokens    int
+	cacheReadTokens int
+	cacheCreateTokens int
+	toolCalls       int
+	apiCalls        int
+	startTime       time.Time
+	maxBudget       float64 // 0 = unlimited
+	saveDir         string
 }
 
 // NewTracker creates a new analytics tracker.
@@ -50,11 +54,13 @@ func NewTracker(model string, maxBudget float64, saveDir string) *Tracker {
 }
 
 // RecordUsage adds token usage from an API call.
-func (t *Tracker) RecordUsage(inputTokens, outputTokens int) {
+func (t *Tracker) RecordUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.inputTokens += inputTokens
 	t.outputTokens += outputTokens
+	t.cacheReadTokens += cacheReadTokens
+	t.cacheCreateTokens += cacheCreateTokens
 	t.apiCalls++
 }
 
@@ -86,6 +92,31 @@ func (t *Tracker) OutputTokens() int {
 	return t.outputTokens
 }
 
+// CacheReadTokens returns cache read tokens used.
+func (t *Tracker) CacheReadTokens() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.cacheReadTokens
+}
+
+// CacheCreateTokens returns cache creation tokens used.
+func (t *Tracker) CacheCreateTokens() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.cacheCreateTokens
+}
+
+// CacheHitRate returns the percentage of input tokens served from cache (0-100).
+func (t *Tracker) CacheHitRate() float64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	total := t.inputTokens + t.cacheReadTokens
+	if total == 0 {
+		return 0
+	}
+	return float64(t.cacheReadTokens) / float64(total) * 100
+}
+
 // MaxBudget returns the configured budget limit (0 = unlimited).
 func (t *Tracker) MaxBudget() float64 {
 	return t.maxBudget
@@ -102,7 +133,9 @@ func (t *Tracker) computeCost() float64 {
 	pricing := getPricing(t.model)
 	inputCost := float64(t.inputTokens) / 1_000_000 * pricing.InputPerMTok
 	outputCost := float64(t.outputTokens) / 1_000_000 * pricing.OutputPerMTok
-	return inputCost + outputCost
+	cacheReadCost := float64(t.cacheReadTokens) / 1_000_000 * pricing.CacheReadPerMTok
+	cacheWriteCost := float64(t.cacheCreateTokens) / 1_000_000 * pricing.CacheWritePerMTok
+	return inputCost + outputCost + cacheReadCost + cacheWriteCost
 }
 
 // CheckBudget returns an error if the budget has been exceeded.
@@ -142,8 +175,14 @@ func (t *Tracker) Report() string {
 	sb.WriteString(fmt.Sprintf("Tool Calls:    %d\n", t.toolCalls))
 	sb.WriteString(fmt.Sprintf("Input Tokens:  %d\n", t.inputTokens))
 	sb.WriteString(fmt.Sprintf("Output Tokens: %d\n", t.outputTokens))
+	sb.WriteString(fmt.Sprintf("Cache Read:    %d\n", t.cacheReadTokens))
+	sb.WriteString(fmt.Sprintf("Cache Create:  %d\n", t.cacheCreateTokens))
 	sb.WriteString(fmt.Sprintf("Total Tokens:  %d\n", t.inputTokens+t.outputTokens))
 	sb.WriteString(fmt.Sprintf("Estimated Cost: $%.4f\n", cost))
+	totalInput := t.inputTokens + t.cacheReadTokens
+	if totalInput > 0 {
+		sb.WriteString(fmt.Sprintf("Cache Hit Rate: %.1f%%\n", float64(t.cacheReadTokens)/float64(totalInput)*100))
+	}
 
 	if t.maxBudget > 0 {
 		sb.WriteString(fmt.Sprintf("Budget:        $%.2f (%.0f%% used)\n", t.maxBudget, cost/t.maxBudget*100))
@@ -161,19 +200,27 @@ func (t *Tracker) SaveReport(sessionID string) error {
 	os.MkdirAll(t.saveDir, 0755)
 
 	t.mu.Lock()
+	totalInput := t.inputTokens + t.cacheReadTokens
+	var cacheHitRate float64
+	if totalInput > 0 {
+		cacheHitRate = float64(t.cacheReadTokens) / float64(totalInput) * 100
+	}
 	report := map[string]interface{}{
-		"session_id":    sessionID,
-		"model":         t.model,
-		"start_time":    t.startTime.Format(time.RFC3339),
-		"end_time":      time.Now().Format(time.RFC3339),
-		"duration_s":    time.Since(t.startTime).Seconds(),
-		"input_tokens":  t.inputTokens,
-		"output_tokens": t.outputTokens,
-		"total_tokens":  t.inputTokens + t.outputTokens,
-		"api_calls":     t.apiCalls,
-		"tool_calls":    t.toolCalls,
-		"cost_usd":      t.computeCost(),
-		"max_budget":    t.maxBudget,
+		"session_id":          sessionID,
+		"model":               t.model,
+		"start_time":          t.startTime.Format(time.RFC3339),
+		"end_time":            time.Now().Format(time.RFC3339),
+		"duration_s":          time.Since(t.startTime).Seconds(),
+		"input_tokens":        t.inputTokens,
+		"output_tokens":       t.outputTokens,
+		"cache_read_tokens":   t.cacheReadTokens,
+		"cache_create_tokens": t.cacheCreateTokens,
+		"total_tokens":        t.inputTokens + t.outputTokens,
+		"api_calls":           t.apiCalls,
+		"tool_calls":          t.toolCalls,
+		"cost_usd":            t.computeCost(),
+		"max_budget":          t.maxBudget,
+		"cache_hit_rate":      cacheHitRate,
 	}
 	t.mu.Unlock()
 
@@ -204,11 +251,11 @@ func getPricing(model string) ModelPricing {
 	// Try keyword match
 	lower := strings.ToLower(model)
 	if strings.Contains(lower, "opus") {
-		return ModelPricing{InputPerMTok: 15.0, OutputPerMTok: 75.0}
+		return ModelPricing{InputPerMTok: 15.0, OutputPerMTok: 75.0, CacheReadPerMTok: 1.5, CacheWritePerMTok: 18.75}
 	}
 	if strings.Contains(lower, "haiku") {
-		return ModelPricing{InputPerMTok: 0.25, OutputPerMTok: 1.25}
+		return ModelPricing{InputPerMTok: 0.25, OutputPerMTok: 1.25, CacheReadPerMTok: 0.025, CacheWritePerMTok: 0.3125}
 	}
 	// Default to Sonnet pricing
-	return ModelPricing{InputPerMTok: 3.0, OutputPerMTok: 15.0}
+	return ModelPricing{InputPerMTok: 3.0, OutputPerMTok: 15.0, CacheReadPerMTok: 0.3, CacheWritePerMTok: 3.75}
 }

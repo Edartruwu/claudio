@@ -239,6 +239,7 @@ func (c *responseCollector) OnTurnComplete(usage api.Usage)                     
 func (c *responseCollector) OnToolApprovalNeeded(tu tools.ToolUse) bool           { return true }
 func (c *responseCollector) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true }
 func (c *responseCollector) OnError(err error)                                    {}
+func (c *responseCollector) OnRetry(_ []tools.ToolUse)                            {}
 
 type sseHandler struct {
 	w       http.ResponseWriter
@@ -280,6 +281,16 @@ func (h *sseHandler) OnCostConfirmNeeded(currentCost, threshold float64) bool { 
 
 func (h *sseHandler) OnError(err error) {
 	fmt.Fprintf(h.w, "event: error\ndata: %s\n\n", err.Error())
+	h.flusher.Flush()
+}
+
+func (h *sseHandler) OnRetry(toolUses []tools.ToolUse) {
+	ids := make([]string, len(toolUses))
+	for i, tu := range toolUses {
+		ids[i] = tu.ID
+	}
+	data, _ := json.Marshal(map[string]interface{}{"tool_ids": ids})
+	fmt.Fprintf(h.w, "event: retry\ndata: %s\n\n", data)
 	h.flusher.Flush()
 }
 

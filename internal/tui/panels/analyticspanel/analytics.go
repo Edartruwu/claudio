@@ -57,8 +57,11 @@ func (p *Panel) View() string {
 
 	inputTok := p.tracker.InputTokens()
 	outputTok := p.tracker.OutputTokens()
+	cacheRead := p.tracker.CacheReadTokens()
+	cacheCreate := p.tracker.CacheCreateTokens()
 	totalTok := p.tracker.TotalTokens()
 	cost := p.tracker.Cost()
+	cacheHitRate := p.tracker.CacheHitRate()
 
 	// Token breakdown
 	b.WriteString(labelStyle.Render("  Input tokens"))
@@ -69,8 +72,28 @@ func (p *Panel) View() string {
 	b.WriteString(valStyle.Render(formatTokens(outputTok)))
 	b.WriteString("\n")
 
+	cacheStyle := lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
+	b.WriteString(labelStyle.Render("  Cache read"))
+	b.WriteString(cacheStyle.Render(formatTokens(cacheRead)))
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("  Cache create"))
+	b.WriteString(valStyle.Render(formatTokens(cacheCreate)))
+	b.WriteString("\n")
+
 	b.WriteString(labelStyle.Render("  Total tokens"))
 	b.WriteString(valStyle.Render(formatTokens(totalTok)))
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("  Cache hit rate"))
+	hitColor := styles.Error
+	if cacheHitRate >= 80 {
+		hitColor = styles.Success
+	} else if cacheHitRate >= 50 {
+		hitColor = styles.Warning
+	}
+	hitStyle := lipgloss.NewStyle().Foreground(hitColor).Bold(true)
+	b.WriteString(hitStyle.Render(fmt.Sprintf("%.1f%%", cacheHitRate)))
 	b.WriteString("\n\n")
 
 	// Cost

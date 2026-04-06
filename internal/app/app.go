@@ -231,10 +231,13 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Task runtime for background execution
 	taskRuntime := tasks.NewRuntime(paths.Home + "/task-output")
 
-	// Plugins
+	// Plugins — discover and register as tools
 	pluginReg := plugins.NewRegistry()
 	pluginReg.LoadDir(paths.Plugins)
 	pluginReg.LoadDir(cwd + "/.claudio/plugins")
+	for _, p := range pluginReg.All() {
+		registry.Register(plugins.NewProxyTool(p))
+	}
 
 	// Cron store
 	cronStore := tasks.NewCronStore(filepath.Join(paths.Home, "cron.json"))
@@ -674,6 +677,7 @@ func (f *subAgentForwarder) OnTurnComplete(usage api.Usage) {
 func (f *subAgentForwarder) OnToolApprovalNeeded(tu tools.ToolUse) bool             { return true }
 func (f *subAgentForwarder) OnCostConfirmNeeded(currentCost, threshold float64) bool { return true }
 func (f *subAgentForwarder) OnError(err error)                                       {}
+func (f *subAgentForwarder) OnRetry(_ []tools.ToolUse)                               {}
 
 // teammateObserver implements SubAgentObserver for a specific teammate,
 // updating its ConversationEntry list and Progress in real time.

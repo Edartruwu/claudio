@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
@@ -205,6 +207,16 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 
 	output := stdout.String()
 
+	// Relativize absolute paths in output to save tokens. When the user
+	// provides an absolute path or rg resolves one, every result line starts
+	// with the full path. Converting to relative paths can save 30-80 bytes
+	// per line, which adds up across hundreds of grep results.
+	if cwd := cmd.Dir; cwd != "" {
+		output = relativizePaths(output, cwd)
+	} else if wd, err := os.Getwd(); err == nil {
+		output = relativizePaths(output, wd)
+	}
+
 	// rg exits with 1 when no matches found — that's not an error
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
@@ -244,6 +256,17 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		t.Cache.Put(cacheKey, result)
 	}
 	return &Result{Content: result}, nil
+}
+
+// relativizePaths replaces absolute path prefixes in grep output lines with
+// relative paths. This saves tokens when results contain many file paths.
+func relativizePaths(output, baseDir string) string {
+	// Normalize baseDir to have a trailing separator for prefix matching
+	prefix := filepath.Clean(baseDir) + string(filepath.Separator)
+	if !strings.Contains(output, prefix) {
+		return output
+	}
+	return strings.ReplaceAll(output, prefix, "")
 }
 
 // fallbackGrep uses system grep when ripgrep isn't available.

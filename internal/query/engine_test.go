@@ -63,6 +63,7 @@ func (h *mockHandler) OnTextDelta(string)                          {}
 func (h *mockHandler) OnThinkingDelta(string)                      {}
 func (h *mockHandler) OnTurnComplete(api.Usage)                    {}
 func (h *mockHandler) OnError(error)                               {}
+func (h *mockHandler) OnRetry(_ []tools.ToolUse)                   {}
 func (h *mockHandler) OnCostConfirmNeeded(float64, float64) bool   { return true }
 
 func (h *mockHandler) OnToolUseStart(tu tools.ToolUse) {

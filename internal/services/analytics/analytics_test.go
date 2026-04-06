@@ -81,8 +81,8 @@ func TestNewTracker_Defaults(t *testing.T) {
 
 func TestRecordUsage_AccumulatesTokens(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 0, "")
-	tr.RecordUsage(100, 200)
-	tr.RecordUsage(50, 75)
+	tr.RecordUsage(100, 200, 0, 0)
+	tr.RecordUsage(50, 75, 0, 0)
 
 	if tr.InputTokens() != 150 {
 		t.Errorf("want 150 input tokens, got %d", tr.InputTokens())
@@ -97,8 +97,8 @@ func TestRecordUsage_AccumulatesTokens(t *testing.T) {
 
 func TestRecordUsage_IncreasesAPICallCount(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 0, "")
-	tr.RecordUsage(10, 10)
-	tr.RecordUsage(10, 10)
+	tr.RecordUsage(10, 10, 0, 0)
+	tr.RecordUsage(10, 10, 0, 0)
 
 	report := tr.Report()
 	if !strings.Contains(report, "API Calls:     2") {
@@ -128,7 +128,7 @@ func TestRecordToolCall_Counter(t *testing.T) {
 func TestCost_SonnetPricing(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 0, "")
 	// 1 million input + 1 million output
-	tr.RecordUsage(1_000_000, 1_000_000)
+	tr.RecordUsage(1_000_000, 1_000_000, 0, 0)
 
 	got := tr.Cost()
 	// 3.0 + 15.0 = 18.0 USD
@@ -140,7 +140,7 @@ func TestCost_SonnetPricing(t *testing.T) {
 
 func TestCost_OpusPricing(t *testing.T) {
 	tr := NewTracker("claude-opus-4-5", 0, "")
-	tr.RecordUsage(1_000_000, 1_000_000)
+	tr.RecordUsage(1_000_000, 1_000_000, 0, 0)
 
 	got := tr.Cost()
 	// 15.0 + 75.0 = 90.0 USD
@@ -152,7 +152,7 @@ func TestCost_OpusPricing(t *testing.T) {
 
 func TestCost_HaikuPricing(t *testing.T) {
 	tr := NewTracker("claude-haiku-4-5-20251001", 0, "")
-	tr.RecordUsage(1_000_000, 1_000_000)
+	tr.RecordUsage(1_000_000, 1_000_000, 0, 0)
 
 	got := tr.Cost()
 	// 0.25 + 1.25 = 1.50 USD
@@ -164,7 +164,7 @@ func TestCost_HaikuPricing(t *testing.T) {
 
 func TestCost_FractionalTokens(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 0, "")
-	tr.RecordUsage(500_000, 0)
+	tr.RecordUsage(500_000, 0, 0, 0)
 
 	got := tr.Cost()
 	// 500k / 1M * 3.0 = 1.50
@@ -180,7 +180,7 @@ func TestCost_FractionalTokens(t *testing.T) {
 
 func TestCheckBudget_NoLimit(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 0, "")
-	tr.RecordUsage(1_000_000, 1_000_000)
+	tr.RecordUsage(1_000_000, 1_000_000, 0, 0)
 
 	warn, exceeded := tr.CheckBudget()
 	if warn != "" || exceeded {
@@ -190,7 +190,7 @@ func TestCheckBudget_NoLimit(t *testing.T) {
 
 func TestCheckBudget_UnderBudget(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 100.0, "")
-	tr.RecordUsage(100, 100) // tiny cost
+	tr.RecordUsage(100, 100, 0, 0) // tiny cost
 
 	warn, exceeded := tr.CheckBudget()
 	if warn != "" || exceeded {
@@ -203,7 +203,7 @@ func TestCheckBudget_Warning_At80Percent(t *testing.T) {
 	// We want cost ≈ $0.85 → need input such that input/1M*3.0 ≈ 0.85
 	// 0.85 / 3.0 * 1M ≈ 283_334 input tokens, 0 output
 	tr := NewTracker("claude-sonnet-4-5", 1.0, "")
-	tr.RecordUsage(283_334, 0) // cost ≈ $0.850
+	tr.RecordUsage(283_334, 0, 0, 0) // cost ≈ $0.850
 
 	warn, exceeded := tr.CheckBudget()
 	if exceeded {
@@ -217,7 +217,7 @@ func TestCheckBudget_Warning_At80Percent(t *testing.T) {
 func TestCheckBudget_Exceeded(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 1.0, "")
 	// Cost = 18 USD, budget = 1 USD → exceeded
-	tr.RecordUsage(1_000_000, 1_000_000)
+	tr.RecordUsage(1_000_000, 1_000_000, 0, 0)
 
 	warn, exceeded := tr.CheckBudget()
 	if !exceeded {
@@ -231,7 +231,7 @@ func TestCheckBudget_Exceeded(t *testing.T) {
 func TestCheckBudget_ExactlyAtBudget(t *testing.T) {
 	// Budget = $3.0; Sonnet input cost: 1M tokens = $3.0 exactly
 	tr := NewTracker("claude-sonnet-4-5", 3.0, "")
-	tr.RecordUsage(1_000_000, 0)
+	tr.RecordUsage(1_000_000, 0, 0, 0)
 
 	_, exceeded := tr.CheckBudget()
 	if !exceeded {
@@ -245,7 +245,7 @@ func TestCheckBudget_ExactlyAtBudget(t *testing.T) {
 
 func TestReport_ContainsExpectedFields(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 5.0, "")
-	tr.RecordUsage(1000, 500)
+	tr.RecordUsage(1000, 500, 0, 0)
 	tr.RecordToolCall()
 
 	report := tr.Report()
@@ -268,7 +268,7 @@ func TestReport_ContainsExpectedFields(t *testing.T) {
 
 func TestReport_NoBudgetLine_WhenUnlimited(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 0, "")
-	tr.RecordUsage(100, 100)
+	tr.RecordUsage(100, 100, 0, 0)
 
 	report := tr.Report()
 	if strings.Contains(report, "Budget:") {
@@ -278,7 +278,7 @@ func TestReport_NoBudgetLine_WhenUnlimited(t *testing.T) {
 
 func TestReport_CorrectTokenCounts(t *testing.T) {
 	tr := NewTracker("claude-sonnet-4-5", 0, "")
-	tr.RecordUsage(123, 456)
+	tr.RecordUsage(123, 456, 0, 0)
 
 	report := tr.Report()
 	if !strings.Contains(report, "Input Tokens:  123") {
@@ -306,7 +306,7 @@ func TestSaveReport_NoSaveDir_IsNoop(t *testing.T) {
 func TestSaveReport_WritesValidJSON(t *testing.T) {
 	dir := t.TempDir()
 	tr := NewTracker("claude-sonnet-4-5", 10.0, dir)
-	tr.RecordUsage(100, 200)
+	tr.RecordUsage(100, 200, 50, 30)
 	tr.RecordToolCall()
 
 	if err := tr.SaveReport("test-session-id"); err != nil {
@@ -332,14 +332,16 @@ func TestSaveReport_WritesValidJSON(t *testing.T) {
 	}
 
 	checks := map[string]interface{}{
-		"session_id":    "test-session-id",
-		"model":         "claude-sonnet-4-5",
-		"input_tokens":  float64(100),
-		"output_tokens": float64(200),
-		"total_tokens":  float64(300),
-		"api_calls":     float64(1),
-		"tool_calls":    float64(1),
-		"max_budget":    float64(10.0),
+		"session_id":          "test-session-id",
+		"model":               "claude-sonnet-4-5",
+		"input_tokens":        float64(100),
+		"output_tokens":       float64(200),
+		"cache_read_tokens":   float64(50),
+		"cache_create_tokens": float64(30),
+		"total_tokens":        float64(300),
+		"api_calls":           float64(1),
+		"tool_calls":          float64(1),
+		"max_budget":          float64(10.0),
 	}
 	for k, wantVal := range checks {
 		got, ok := report[k]
@@ -400,6 +402,53 @@ func TestSaveReport_LongSessionID_Truncated(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Cache token tracking
+// ---------------------------------------------------------------------------
+
+func TestRecordUsage_CacheTokens(t *testing.T) {
+	tr := NewTracker("claude-sonnet-4-5", 0, "")
+	tr.RecordUsage(1000, 500, 800, 200)
+	tr.RecordUsage(1000, 500, 900, 100)
+
+	if tr.CacheReadTokens() != 1700 {
+		t.Errorf("want 1700 cache read tokens, got %d", tr.CacheReadTokens())
+	}
+	if tr.CacheCreateTokens() != 300 {
+		t.Errorf("want 300 cache create tokens, got %d", tr.CacheCreateTokens())
+	}
+}
+
+func TestCacheHitRate(t *testing.T) {
+	tr := NewTracker("claude-sonnet-4-5", 0, "")
+	tr.RecordUsage(200, 100, 800, 0) // 800/(200+800) = 80%
+
+	rate := tr.CacheHitRate()
+	if rate < 79.9 || rate > 80.1 {
+		t.Errorf("want ~80%% cache hit rate, got %.1f%%", rate)
+	}
+}
+
+func TestCacheHitRate_NoInput(t *testing.T) {
+	tr := NewTracker("claude-sonnet-4-5", 0, "")
+	if tr.CacheHitRate() != 0 {
+		t.Errorf("expected 0 cache hit rate with no usage")
+	}
+}
+
+func TestCost_WithCacheTokens(t *testing.T) {
+	tr := NewTracker("claude-sonnet-4-5", 0, "")
+	// 1M input + 1M output + 1M cache read + 1M cache create
+	tr.RecordUsage(1_000_000, 1_000_000, 1_000_000, 1_000_000)
+
+	got := tr.Cost()
+	// input: 3.0 + output: 15.0 + cache_read: 0.3 + cache_write: 3.75 = 22.05
+	want := 22.05
+	if got != want {
+		t.Errorf("want cost $%.4f, got $%.4f", want, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Concurrency
 // ---------------------------------------------------------------------------
 
@@ -413,7 +462,7 @@ func TestConcurrentRecordUsage(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			tr.RecordUsage(tokensPerGoroutine, tokensPerGoroutine)
+			tr.RecordUsage(tokensPerGoroutine, tokensPerGoroutine, 0, 0)
 		}()
 	}
 	wg.Wait()

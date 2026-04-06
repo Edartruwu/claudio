@@ -34,6 +34,12 @@ type EventHandler interface {
 	OnTurnComplete(usage api.Usage)
 	OnError(err error)
 
+	// OnRetry is called when the engine silently retries a request at escalated
+	// max_tokens after hitting the limit mid-stream. The handler should tombstone
+	// any tool_use_start events it already rendered for the given tool uses,
+	// since the retry will re-emit them with complete inputs.
+	OnRetry(toolUses []tools.ToolUse)
+
 	// OnToolApprovalNeeded is called when a tool requires approval.
 	// Returns true if the tool is approved, false if denied.
 	OnToolApprovalNeeded(toolUse tools.ToolUse) bool
@@ -66,7 +72,8 @@ const (
 	// capacity (input capacity = context_window - max_tokens). Escalated on retry.
 	defaultMaxTokens  = 8_192
 	escalatedMaxTokens = 64_000
-	maxContinuations  = 5
+	maxContinuations       = 5
+	maxTokensRecoveryLimit = 3
 )
 
 // Engine orchestrates the AI conversation loop.
@@ -100,9 +107,10 @@ type Engine struct {
 	turnCount int
 
 	// continuation tracking for diminishing returns detection
-	continuationCount int
-	lastOutputTokens  int
-	maxTokensOverride int // persisted escalated max_tokens across loop iterations
+	continuationCount      int
+	lastOutputTokens       int
+	maxTokensOverride      int // persisted escalated max_tokens across loop iterations
+	maxTokensRecoveryCount int // tracks max_tokens recovery attempts with tool_use
 
 	// cache observability
 	cacheTracker  *cachetracker.Tracker
@@ -338,11 +346,14 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			return err
 		}
 
-		// If we hit the output token limit, retry once with escalated max_tokens —
-		// but only when no content has been forwarded to the handler yet. Retrying
-		// after partial streaming would re-stream the same text/tool events and
-		// cause split or duplicated messages in the TUI.
-		if response.StopReason == "max_tokens" && req.MaxTokens <= defaultMaxTokens && !forwarded {
+		// If we hit the output token limit and haven't escalated yet, retry the
+		// same request at 64k max_tokens. If tool-use-start events were already
+		// forwarded to the UI we emit OnRetry first so handlers can tombstone the
+		// pending tool cards before we re-stream them with complete inputs.
+		if response.StopReason == "max_tokens" && req.MaxTokens <= defaultMaxTokens {
+			if forwarded && len(response.EmittedToolStarts) > 0 {
+				e.handler.OnRetry(response.EmittedToolStarts)
+			}
 			req.MaxTokens = escalatedMaxTokens
 			e.maxTokensOverride = escalatedMaxTokens
 			response, _, err = e.streamResponse(ctx, req)
@@ -373,7 +384,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 
 		// Track analytics
 		if e.analytics != nil {
-			e.analytics.RecordUsage(response.Usage.InputTokens, response.Usage.OutputTokens)
+			e.analytics.RecordUsage(response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.CacheRead, response.Usage.CacheCreate)
 		}
 		// Track compact state — use InputTokens directly as the current context size
 		// (not a running sum, which would trigger compaction prematurely).
@@ -406,6 +417,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			e.continuationCount = 0
 			e.lastOutputTokens = 0
 			e.maxTokensOverride = 0
+			e.maxTokensRecoveryCount = 0
 
 			// Fire Stop hook
 			e.fireHook(ctx, hooks.Stop, "", "")
@@ -420,12 +432,13 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			return nil
 		}
 
-		// Handle max_tokens continuation with diminishing returns detection
+		// max_tokens mid-text (no tool uses): inject Claude Code's recovery message
+		// so the model picks up mid-thought without apology. Detect diminishing
+		// returns by output-token drop >50% or exceeding maxContinuations.
 		if response.StopReason == "max_tokens" && len(response.ToolUses) == 0 {
 			e.continuationCount++
 			outputTokens := response.Usage.OutputTokens
 
-			// Diminishing returns: output tokens dropped by >50% or max continuations exceeded
 			if e.continuationCount >= maxContinuations ||
 				(e.lastOutputTokens > 0 && outputTokens < e.lastOutputTokens/2) {
 				e.handler.OnTextDelta("\n[Stopped: diminishing returns on continuation]\n")
@@ -435,8 +448,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			}
 			e.lastOutputTokens = outputTokens
 
-			// Inject continuation prompt
-			contContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock("Please continue from where you left off.")})
+			// Use Claude Code's exact recovery prompt.
+			recoveryMsg := "Output token limit hit. Resume directly — no apology, no recap of what you were doing. " +
+				"Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
+			contContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(recoveryMsg)})
 			e.messages = append(e.messages, api.Message{
 				Role:    "user",
 				Content: contContent,
@@ -444,12 +459,17 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			continue
 		}
 
-		// When max_tokens hits mid-tool_use, escalate the token budget for
-		// the next turn. Individual tools validate their own input, so
-		// truncated tool inputs (e.g. "{}") will naturally return errors.
-		// Like Claude Code, we execute tools normally and let the model
-		// see the tool errors alongside the escalated budget.
+		// max_tokens mid-tool_use: the silent 64k escalation in streamResponse
+		// already fired. If we still have tool_use (escalation also hit the cap),
+		// track recovery attempts and stop after maxTokensRecoveryLimit tries.
 		if response.StopReason == "max_tokens" && len(response.ToolUses) > 0 {
+			e.maxTokensRecoveryCount++
+			if e.maxTokensRecoveryCount > maxTokensRecoveryLimit {
+				e.handler.OnTextDelta("\n[Stopped: max_tokens recovery exhausted after repeated truncated tool calls]\n")
+				e.maxTokensRecoveryCount = 0
+				e.maxTokensOverride = 0
+				return nil
+			}
 			e.maxTokensOverride = escalatedMaxTokens
 		}
 
@@ -495,10 +515,11 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 
 // streamedResponse holds the parsed results of a streamed API response.
 type streamedResponse struct {
-	Content    []api.ContentBlock
-	ToolUses   []tools.ToolUse
-	StopReason string
-	Usage      api.Usage
+	Content          []api.ContentBlock
+	ToolUses         []tools.ToolUse
+	EmittedToolStarts []tools.ToolUse // tool_use_start events already sent to handler
+	StopReason       string
+	Usage            api.Usage
 }
 
 const (
@@ -608,6 +629,7 @@ func (e *Engine) streamOnce(ctx context.Context, req *api.MessagesRequest) (*str
 						Name: block.Name,
 					}
 					forwarded = true
+					response.EmittedToolStarts = append(response.EmittedToolStarts, tu)
 					e.handler.OnToolUseStart(tu)
 				}
 				currentBlocks[currentBlockIdx] = block
@@ -1249,4 +1271,8 @@ func (h *StdoutHandler) OnCostConfirmNeeded(currentCost, threshold float64) bool
 
 func (h *StdoutHandler) OnError(err error) {
 	fmt.Printf("\n[error: %v]\n", err)
+}
+
+func (h *StdoutHandler) OnRetry(_ []tools.ToolUse) {
+	// stdout is non-interactive; nothing to tombstone
 }

@@ -195,6 +195,19 @@ func (h *WebHandler) OnError(err error) {
 	h.markDone()
 }
 
+// OnRetry is called when the engine silently retries at escalated max_tokens.
+// We emit a "retry" event so the browser can remove the incomplete tool cards
+// that were rendered for the tool_start events now being re-streamed.
+func (h *WebHandler) OnRetry(toolUses []tools.ToolUse) {
+	ids := make([]string, len(toolUses))
+	for i, tu := range toolUses {
+		ids[i] = tu.ID
+	}
+	h.sendJSON("retry", map[string]interface{}{
+		"tool_ids": ids,
+	})
+}
+
 func (h *WebHandler) OnToolApprovalNeeded(toolUse tools.ToolUse) bool {
 	h.mu.Lock()
 	h.pendingTool = toolUse.Name
