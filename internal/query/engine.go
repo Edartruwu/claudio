@@ -923,7 +923,12 @@ func (e *Engine) shouldRequireApproval(tool tools.Tool, input json.RawMessage) b
 	case "auto", "headless", "dangerously-skip-permissions":
 		return false // auto-approve everything
 	case "plan":
-		return !tool.IsReadOnly() // block write tools in plan mode
+		// In plan mode: allow read-only tools and plan-file writes (RequiresApproval=false).
+		// Block all other write tools (they need explicit user approval).
+		if tool.IsReadOnly() {
+			return false
+		}
+		return tool.RequiresApproval(input)
 	default: // "default"
 		// Check content-pattern permission rules first (first match wins)
 		if behavior, matched := permissions.Match(tool.Name(), input, e.permissionRules); matched {

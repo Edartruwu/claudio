@@ -57,7 +57,13 @@ func (t *FileEditTool) InputSchema() json.RawMessage {
 
 func (t *FileEditTool) IsReadOnly() bool { return false }
 
-func (t *FileEditTool) RequiresApproval(_ json.RawMessage) bool { return true }
+func (t *FileEditTool) RequiresApproval(input json.RawMessage) bool {
+	var in fileEditInput
+	if json.Unmarshal(input, &in) == nil && isPlanFilePath(in.FilePath) {
+		return false // plan files are always auto-accepted
+	}
+	return true
+}
 
 func (t *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in fileEditInput
