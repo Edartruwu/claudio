@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/services/skills"
 )
 
 // Config holds web server configuration.
@@ -26,16 +28,18 @@ type Server struct {
 	config   Config
 	mux      *http.ServeMux
 	sessions *SessionManager
+	skills   *skills.Registry
 	tokens   map[string]time.Time // auth token -> expiry
 	mu       sync.RWMutex
 }
 
 // New creates a new web UI server.
-func New(cfg Config) *Server {
+func New(cfg Config, skillsRegistry *skills.Registry) *Server {
 	s := &Server{
 		config:   cfg,
 		mux:      http.NewServeMux(),
 		sessions: NewSessionManager(),
+		skills:   skillsRegistry,
 		tokens:   make(map[string]time.Time),
 	}
 	s.registerRoutes()

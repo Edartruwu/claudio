@@ -21,7 +21,7 @@
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Project Setup](#project-setup)
-  - [claudio init](#claudio-init)
+  - [/init — Project setup skill](#init--project-setup-skill)
   - [Configuration hierarchy](#configuration-hierarchy)
   - [TUI config editor](#tui-config-editor)
   - [Settings reference](#settings-reference)
@@ -131,9 +131,10 @@ claudio --help
 # 1. Authenticate with Anthropic
 claudio auth login
 
-# 2. Initialize your project (creates .claudio/ with config)
+# 2. Start the TUI in your project and run /init
 cd your-project
-claudio init
+claudio
+# then type: /init
 
 # 3. Start coding
 claudio
@@ -162,28 +163,27 @@ claudio --headless
 
 ## Project Setup
 
-### `claudio init`
+### `/init` — Project setup skill
 
-Run `claudio init` in any project to create the per-project configuration.
+> **Recommended:** Run `/init` inside the TUI (`claudio`) rather than the `claudio init` CLI command. The TUI version is AI-powered and interactive — it surveys your codebase, interviews you with targeted questions, and generates a tailored `CLAUDIO.md`, skills, and hook suggestions in one session.
 
-**When authenticated (AI-powered):**
+```
+claudio        # start the TUI
+/init          # run the init skill
+```
 
-1. Detects project characteristics (Go, JS, Python, Rust, Java, frameworks, CI, Docker)
-2. Gathers codebase context — reads README, manifests (`go.mod`, `package.json`, etc.), CI config, linting config, directory tree, and any existing `CLAUDIO.md`
-3. Sends everything to the AI with a focused prompt: only include what would prevent the AI from making mistakes
-4. Generates three files one by one:
-   - `CLAUDIO.md` — project instructions
-   - `.claudio/settings.json` — model, permissions, effort level
-   - `.claudio/rules/project.md` — project conventions
-5. Shows each proposal in a bordered preview and asks: **(Y)es / (e)dit / (s)kip**
-   - **Yes** → writes as-is
-   - **Edit** → opens in `$EDITOR` for modification
-   - **Skip** → skips that file
-6. Offers built-in skills (`review`, `security-review`)
+The `/init` skill walks through several phases:
 
-**When not authenticated (fallback):**
+1. Asks a few setup questions (scope, branch conventions, gotchas)
+2. Surveys the codebase with a subagent (structure, languages, frameworks, CI)
+3. Fills gaps with follow-up questions and shows you the proposed `CLAUDIO.md`
+4. Writes `CLAUDIO.md` and optionally `CLAUDIO.local.md` (personal overrides, gitignored)
+5. Creates project skills under `.claudio/skills/`
+6. Suggests hooks and GitHub CLI integrations
 
-Template-based init with interactive model and permission selection.
+**CLI fallback (`claudio init`):**
+
+If you prefer a non-interactive bootstrap, `claudio init` creates the `.claudio/` scaffold and a starter `CLAUDIO.md` without the interactive interview. You can then refine with `/init` inside the TUI.
 
 ```
 .claudio/
@@ -1780,7 +1780,7 @@ claudio --headless
   projects/                    # Per-project data
     <project-slug>/memory/     # Project-scoped memories
 
-.claudio/                      # Per-project config (created by claudio init)
+.claudio/                      # Per-project config (created by /init or claudio init)
   settings.json                # Project settings (overrides global)
   rules/                       # Project rules
   skills/                      # Project skills

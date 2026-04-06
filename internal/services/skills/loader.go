@@ -168,6 +168,13 @@ func parseSkillFile(content string) (name, description, body string) {
 }
 
 // bundledSkills returns the built-in skills.
+// LoadBundled registers all bundled skills into an existing registry.
+func LoadBundled(r *Registry) {
+	for _, s := range bundledSkills() {
+		r.Register(s)
+	}
+}
+
 func bundledSkills() []*Skill {
 	return []*Skill{
 		{
@@ -234,6 +241,12 @@ func bundledSkills() []*Skill {
 			Name:        "setup-snippets",
 			Description: "Analyze the project and configure snippet expansion for common boilerplate patterns",
 			Content:     setupSnippetsSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "init",
+			Description: "Initialize CLAUDIO.md, skills, and hooks for this project",
+			Content:     initSkillContent,
 			Source:      "bundled",
 		},
 	}
@@ -807,3 +820,194 @@ var refactorSkillContent = `You are being asked to refactor code.
 - Do NOT add new features during refactoring
 - Keep changes reviewable (small, focused diffs)
 - If tests don't exist, write them BEFORE refactoring`
+
+var initSkillContent = `Set up a minimal CLAUDIO.md (and optionally skills and hooks) for this repo. CLAUDIO.md is loaded into every Claudio session, so it must be concise — only include what Claudio would get wrong without it.
+
+## Phase 1: Ask what to set up
+
+Use AskUserQuestion to find out what the user wants:
+
+- "Which CLAUDIO.md files should /init set up?"
+  Options: "Project CLAUDIO.md" | "Personal CLAUDIO.local.md" | "Both project + personal"
+  Description for project: "Team-shared instructions checked into source control — architecture, coding standards, common workflows."
+  Description for personal: "Your private preferences for this project (gitignored, not shared) — your role, sandbox URLs, preferred test data, workflow quirks."
+
+- "Also set up skills and hooks?"
+  Options: "Skills + hooks" | "Skills only" | "Hooks only" | "Neither, just CLAUDIO.md"
+  Description for skills: "On-demand capabilities you or Claudio invoke with ` + "`/skill-name`" + ` — good for repeatable workflows and reference knowledge."
+  Description for hooks: "Deterministic shell commands that run on tool events (e.g., format after every edit). Claudio can't skip them."
+
+## Phase 2: Explore the codebase
+
+Launch a subagent to survey the codebase, and ask it to read key files to understand the project: manifest files (package.json, Cargo.toml, pyproject.toml, go.mod, pom.xml, etc.), README, Makefile/build configs, CI config, existing CLAUDIO.md, .claudio/rules/, .cursor/rules or .cursorrules, .github/copilot-instructions.md, .windsurfrules, .clinerules, .mcp.json.
+
+Detect:
+- Build, test, and lint commands (especially non-standard ones)
+- Languages, frameworks, and package manager
+- Project structure (monorepo with workspaces, multi-module, or single project)
+- Code style rules that differ from language defaults
+- Non-obvious gotchas, required env vars, or workflow quirks
+- Existing .claudio/skills/ and .claudio/rules/ directories
+- Formatter configuration (prettier, biome, ruff, black, gofmt, rustfmt, or a unified format script like ` + "`npm run format`" + ` / ` + "`make fmt`" + `)
+- Git worktree usage: run ` + "`git worktree list`" + ` to check if this repo has multiple worktrees (only relevant if the user wants a personal CLAUDIO.local.md)
+
+Note what you could NOT figure out from code alone — these become interview questions.
+
+## Phase 3: Fill in the gaps
+
+Use AskUserQuestion to gather what you still need to write good CLAUDIO.md files and skills. Ask only things the code can't answer.
+
+If the user chose project CLAUDIO.md or both: ask about codebase practices — non-obvious commands, gotchas, branch/PR conventions, required env setup, testing quirks. Skip things already in README or obvious from manifest files. Do not mark any options as "recommended" — this is about how their team works, not best practices.
+
+If the user chose personal CLAUDIO.local.md or both: ask about them, not the codebase. Do not mark any options as "recommended" — this is about their personal preferences, not best practices. Examples:
+  - What's their role on the team? (e.g., "backend engineer", "data scientist", "new hire onboarding")
+  - How familiar are they with this codebase and its languages/frameworks? (so Claudio can calibrate explanation depth)
+  - Do they have personal sandbox URLs, test accounts, API key paths, or local setup details Claudio should know?
+  - Only if Phase 2 found multiple git worktrees: ask whether their worktrees are nested inside the main repo (e.g., ` + "`.claudio/worktrees/<name>/`" + `) or siblings/external. If nested, the upward file walk finds the main repo's CLAUDIO.local.md automatically. If sibling/external, personal content should live in ` + "`~/.claudio/<project-name>-instructions.md`" + ` and each worktree gets a one-line CLAUDIO.local.md stub that imports it: ` + "`@~/.claudio/<project-name>-instructions.md`" + `. Never put this import in the project CLAUDIO.md.
+  - Any communication preferences? (e.g., "be terse", "always explain tradeoffs", "don't summarize at the end")
+
+**Synthesize a proposal from Phase 2 findings** — e.g., format-on-edit if a formatter exists, a ` + "`/verify`" + ` skill if tests exist, a CLAUDIO.md note for anything from the gap-fill answers that's a guideline rather than a workflow. For each, pick the artifact type that fits, **constrained by the Phase 1 skills+hooks choice**:
+
+  - **Hook** (stricter) — deterministic shell command on a tool event; Claudio can't skip it. Fits mechanical, fast, per-edit steps: formatting, linting, running a quick test on the changed file.
+  - **Skill** (on-demand) — you or Claudio invoke ` + "`/skill-name`" + ` when you want it. Fits workflows that don't belong on every edit: deep verification, session reports, deploys.
+  - **CLAUDIO.md note** (looser) — influences Claudio's behavior but not enforced. Fits communication/thinking preferences.
+
+  **Respect Phase 1's skills+hooks choice as a hard filter**: if the user picked "Skills only", downgrade any hook you'd suggest to a skill or a CLAUDIO.md note. If "Hooks only", downgrade skills to hooks where mechanically possible or to notes. If "Neither", everything becomes a CLAUDIO.md note. Never propose an artifact type the user didn't opt into.
+
+**Show the proposal via AskUserQuestion, not as a separate text message**. Structure it as:
+  - ` + "`question`" + `: short and plain, e.g. "Does this proposal look right?"
+  - Keep previews compact. One line per item. Example preview content:
+
+    • **Format-on-edit hook** (automatic) — ` + "`gofmt -w <file>`" + ` via PostToolUse
+    • **/verify skill** (on-demand) — ` + "`make lint && go test ./...`" + `
+    • **CLAUDIO.md note** (guideline) — "run lint/test before marking done"
+
+  - Option labels stay short ("Looks good", "Drop the hook", "Drop the skill").
+
+**Build the preference queue** from the accepted proposal. Each entry: {type: hook|skill|note, description, target file, any Phase-2-sourced details like the actual test/format command}. Phases 4-7 consume this queue.
+
+## Phase 4: Write CLAUDIO.md (if user chose project or both)
+
+Write a minimal CLAUDIO.md at the project root. Every line must pass this test: "Would removing this cause Claudio to make mistakes?" If no, cut it.
+
+**Consume ` + "`note`" + ` entries from the Phase 3 preference queue whose target is CLAUDIO.md** — add each as a concise line in the most relevant section.
+
+Include:
+- Build/test/lint commands Claudio can't guess (non-standard scripts, flags, or sequences)
+- Code style rules that DIFFER from language defaults (e.g., "prefer type over interface")
+- Testing instructions and quirks (e.g., "run single test with: pytest -k 'test_name'")
+- Repo etiquette (branch naming, PR conventions, commit style)
+- Required env vars or setup steps
+- Non-obvious gotchas or architectural decisions
+- Important parts from existing AI coding tool configs (.cursor/rules, .cursorrules, .github/copilot-instructions.md, .windsurfrules, .clinerules)
+
+Exclude:
+- File-by-file structure or component lists (Claudio can discover these)
+- Standard language conventions Claudio already knows
+- Generic advice ("write clean code", "handle errors")
+- Detailed API docs or long references — use ` + "`@path/to/import`" + ` syntax instead
+- Information that changes frequently — reference the source with ` + "`@path/to/import`" + `
+- Commands obvious from manifest files (e.g., standard "npm test", "cargo test", "pytest")
+
+Be specific: "Use 2-space indentation in TypeScript" is better than "Format code properly."
+
+Do not repeat yourself. Do not make up sections like "Common Development Tasks" or "Tips for Development".
+
+Prefix the file with:
+
+` + "```" + `
+# CLAUDIO.md
+
+This file provides guidance to Claudio (github.com/Abraxas-365/claudio) when working with code in this repository.
+` + "```" + `
+
+If CLAUDIO.md already exists: read it carefully, then ALWAYS regenerate a complete improved version. Show the user what changed and why. Never skip or say "looks fine" — the user ran /init specifically because they want an update.
+
+For projects with multiple concerns, suggest organizing instructions into ` + "`.claudio/rules/`" + ` as separate focused files (e.g., ` + "`code-style.md`" + `, ` + "`testing.md`" + `, ` + "`security.md`" + `). These are loaded automatically alongside CLAUDIO.md.
+
+For monorepos or multi-module projects: mention that subdirectory CLAUDIO.md files can be added for module-specific instructions. Offer to create them if the user wants.
+
+## Phase 5: Write CLAUDIO.local.md (if user chose personal or both)
+
+Write a minimal CLAUDIO.local.md at the project root. After creating it, add ` + "`CLAUDIO.local.md`" + ` to .gitignore.
+
+**Consume ` + "`note`" + ` entries from the Phase 3 preference queue whose target is CLAUDIO.local.md**.
+
+Include:
+- The user's role and familiarity with the codebase
+- Personal sandbox URLs, test accounts, or local setup details
+- Personal workflow or communication preferences
+
+If CLAUDIO.local.md already exists: read it carefully, then ALWAYS regenerate a complete improved version. Show the user what changed and why. Never skip — the user ran /init because they want an update.
+
+If Phase 2 found multiple git worktrees and the user confirmed they use sibling/external worktrees: write personal content to ` + "`~/.claudio/<project-name>-instructions.md`" + ` and make CLAUDIO.local.md a one-line stub: ` + "`@~/.claudio/<project-name>-instructions.md`" + `.
+
+## Phase 6: Suggest and create skills (if user chose "Skills + hooks" or "Skills only")
+
+Skills add capabilities Claudio can use on demand. They live in ` + "`.claudio/skills/<name>/skill.md`" + ` with YAML frontmatter:
+
+` + "```yaml" + `
+---
+name: <skill-name>
+description: <what the skill does and when to use it>
+---
+
+<Instructions for Claudio>
+` + "```" + `
+
+**First, consume ` + "`skill`" + ` entries from the Phase 3 preference queue.** For each queued skill preference:
+- Name it from the preference (e.g., "verify", "deploy", "report")
+- Write the body using the user's own words from the interview plus Phase 2 findings
+- Ask a quick follow-up if underspecified
+
+**Then suggest additional skills** when you find:
+- Reference knowledge for specific tasks (conventions, patterns for a subsystem)
+- Repeatable workflows the user would want to trigger directly (deploy, release, verify changes)
+
+If ` + "`.claudio/skills/`" + ` already exists with skills, review them first. Do not overwrite existing skills.
+
+Both the user (` + "`/skill-name`" + `) and Claudio can invoke skills by default.
+
+## Phase 7: Suggest additional optimizations
+
+Tell the user you're going to suggest a few additional optimizations.
+
+Check the environment and ask about each gap (use AskUserQuestion):
+
+- **GitHub CLI**: Run ` + "`which gh`" + `. If missing AND the project uses GitHub (check ` + "`git remote -v`" + ` for github.com), ask if they want to install it. Explain it lets Claudio help with commits, PRs, issues, and code review.
+
+- **Linting**: If Phase 2 found no lint config for the project's language, ask if they want Claudio to set up linting. Explain linting catches issues early and gives Claudio fast feedback.
+
+- **Proposal-sourced hooks** (if user chose "Skills + hooks" or "Hooks only"): Consume ` + "`hook`" + ` entries from the Phase 3 preference queue. Hooks are configured in ` + "`.claudio/settings.json`" + ` (project-shared) or ` + "`~/.claudio/settings.json`" + ` (user-level). If Phase 2 found a formatter and the queue has no formatting hook, offer format-on-edit as a fallback.
+
+  Hook events:
+  - "after every edit" → ` + "`PostToolUse`" + ` with matcher ` + "`Write|Edit`" + `
+  - "when Claudio finishes" → ` + "`Stop`" + ` event
+  - "before running bash" → ` + "`PreToolUse`" + ` with matcher ` + "`Bash`" + `
+  - "before committing" → NOT a settings hook (can't filter Bash by content). Route to a git pre-commit hook (` + "`.git/hooks/pre-commit`" + `, husky, etc.) — offer to write one.
+
+  Hook config format in ` + "`.claudio/settings.json`" + `:
+  ` + "```json" + `
+  {
+    "hooks": {
+      "PostToolUse": [
+        {
+          "matcher": "Write|Edit",
+          "hooks": [{ "type": "command", "command": "gofmt -w \"$CLAUDIO_TOOL_INPUT_PATH\"" }]
+        }
+      ]
+    }
+  }
+  ` + "```" + `
+
+Act on each "yes" before moving on.
+
+## Phase 8: Summary and next steps
+
+Recap what was set up — which files were written and the key points in each. Remind the user these files are a starting point: they should review and tweak them, and can run ` + "`/init`" + ` again anytime to re-scan.
+
+Then present a well-formatted to-do list of additional suggestions relevant to this repo. Most impactful first:
+- If frontend code was detected (React, Vue, Svelte, etc.): mention that browser/screenshot testing tools help Claudio verify UI changes visually.
+- If you found gaps in Phase 7 (missing GitHub CLI, missing linting) and the user said no: list them with a one-line reason.
+- If tests are missing or sparse: suggest setting up a test framework so Claudio can verify its own changes.
+- Always suggest: browse and customize ` + "`.claudio/skills/`" + ` to add project-specific workflows.`

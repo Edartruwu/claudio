@@ -890,6 +890,13 @@ func (s *Server) handleCommandExecute(w http.ResponseWriter, r *http.Request) {
 		result = cmdResult{Status: "ok", Action: "export", Data: sb.String(), Message: "Conversation exported."}
 
 	default:
+		// Check if this is a skill command
+		if s.skills != nil {
+			if skill, ok := s.skills.Get(command); ok {
+				result = cmdResult{Status: "ok", Action: "send_as_message", Data: skill.Content}
+				break
+			}
+		}
 		// For commands we don't handle server-side, send as a regular message to the AI
 		// prefixed with the command so the AI can interpret it
 		result = cmdResult{Status: "ok", Action: "send_as_message", Data: "/" + command + " " + args}

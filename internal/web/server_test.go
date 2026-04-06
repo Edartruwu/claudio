@@ -24,7 +24,7 @@ func newTestServer(t *testing.T) *Server {
 		Port:     0,
 		Password: "testpass",
 		Version:  "test-0.1",
-	})
+	}, nil)
 	return s
 }
 

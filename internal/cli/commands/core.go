@@ -256,6 +256,14 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	})
 
 	r.Register(&Command{
+		Name:        "init",
+		Description: "Initialize CLAUDIO.md, skills, and hooks for this project",
+		Execute: func(args string) (string, error) {
+			return "[skill:init]", nil
+		},
+	})
+
+	r.Register(&Command{
 		Name:        "commit",
 		Description: "Create a git commit with AI-generated message",
 		Execute: func(args string) (string, error) {

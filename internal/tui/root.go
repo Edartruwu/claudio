@@ -149,6 +149,8 @@ type askUserDialogState struct {
 	optCursor  int               // cursor within current question's options
 	answers    map[string]string // question label → selected answer
 	responseCh chan<- tools.AskUserResponse
+	freeText   string // typed text when "Other" option is selected
+	typingOther bool  // true when user is typing a custom answer
 }
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
@@ -1930,10 +1932,52 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	q := d.questions[d.qIdx]
+	// otherIdx is the virtual index for the "Other" option (after all real options).
+	otherIdx := len(q.Options)
+
+	// If user is currently typing a free-text answer, handle that first.
+	if d.typingOther {
+		switch msg.Type {
+		case tea.KeyEnter:
+			answer := strings.TrimSpace(d.freeText)
+			if answer == "" {
+				answer = "Other"
+			}
+			d.typingOther = false
+			d.freeText = ""
+			d.answers[q.Label] = answer
+			if d.qIdx < len(d.questions)-1 {
+				d.qIdx++
+				d.optCursor = 0
+			} else {
+				if d.responseCh != nil {
+					d.responseCh <- tools.AskUserResponse{Answers: d.answers}
+				}
+				m.askUserDialog = nil
+				m.focus = FocusPrompt
+				m.refreshViewport()
+				return m, m.waitForEvent()
+			}
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(d.freeText) > 0 {
+				d.freeText = d.freeText[:len(d.freeText)-1]
+			}
+		case tea.KeyEsc:
+			d.typingOther = false
+			d.freeText = ""
+			d.optCursor = otherIdx
+		default:
+			if msg.Type == tea.KeyRunes {
+				d.freeText += string(msg.Runes)
+			}
+		}
+		m.refreshViewport()
+		return m, nil
+	}
 
 	switch msg.String() {
 	case "j", "down":
-		if d.optCursor < len(q.Options)-1 {
+		if d.optCursor < otherIdx {
 			d.optCursor++
 		}
 	case "k", "up":
@@ -1941,6 +1985,13 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			d.optCursor--
 		}
 	case "enter", " ":
+		if d.optCursor == otherIdx {
+			// User selected "Other" — switch to free-text input mode.
+			d.typingOther = true
+			d.freeText = ""
+			m.refreshViewport()
+			return m, nil
+		}
 		// Record the selected option for the current question.
 		d.answers[q.Label] = q.Options[d.optCursor]
 		if d.qIdx < len(d.questions)-1 {
@@ -2147,6 +2198,8 @@ func (m Model) renderAskUserDialog(width int) string {
 	selectedStyle := lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
 	progressStyle := lipgloss.NewStyle().Foreground(styles.Muted)
 
+	otherIdx := len(q.Options)
+
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("? Question"))
 	progress := fmt.Sprintf(" (%d/%d)", d.qIdx+1, len(d.questions))
@@ -2160,19 +2213,34 @@ func (m Model) renderAskUserDialog(width int) string {
 	}
 	b.WriteString("\n")
 	for i, opt := range q.Options {
-		if i == d.optCursor {
+		if i == d.optCursor && !d.typingOther {
 			b.WriteString(selectedStyle.Render("▸ " + opt))
 		} else {
 			b.WriteString(dimStyle.Render("  " + opt))
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("\n")
-	hint := "j/k navigate · enter select"
-	if d.qIdx < len(d.questions)-1 {
-		hint += " · esc cancel"
+	// "Other" option — always shown as the last entry.
+	if d.typingOther {
+		inputText := d.freeText + "█" // block cursor
+		b.WriteString(selectedStyle.Render("▸ Other: " + inputText))
+	} else if d.optCursor == otherIdx {
+		b.WriteString(selectedStyle.Render("▸ Other (type your own...)"))
 	} else {
-		hint += " (submit) · esc cancel"
+		b.WriteString(dimStyle.Render("  Other (type your own...)"))
+	}
+	b.WriteString("\n")
+	b.WriteString("\n")
+	var hint string
+	if d.typingOther {
+		hint = "type answer · enter confirm · esc back"
+	} else {
+		hint = "j/k navigate · enter select"
+		if d.qIdx < len(d.questions)-1 {
+			hint += " · esc cancel"
+		} else {
+			hint += " (submit) · esc cancel"
+		}
 	}
 	b.WriteString(styles.PanelHint.Render(hint))
 

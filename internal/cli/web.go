@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/web"
 )
 
@@ -25,12 +26,16 @@ var webCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		// Load skills registry for web UI skill dispatch
+		skillsRegistry := skills.NewRegistry()
+		skills.LoadBundled(skillsRegistry)
+
 		srv := web.New(web.Config{
 			Port:     flagWebPort,
 			Host:     flagWebHost,
 			Password: flagWebPassword,
 			Version:  Version,
-		})
+		}, skillsRegistry)
 
 		fmt.Printf("Starting Claudio Web UI on http://%s:%d\n", flagWebHost, flagWebPort)
 		fmt.Println("Use --password flag value to log in.")
