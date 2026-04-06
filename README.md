@@ -66,12 +66,8 @@
 | **Token efficiency** | 11-layer optimization: prompt caching, RTK-style output filtering, snippet expansion, microcompaction, tool result offload, read dedup, image compression, deferred tool schemas | Basic prompt caching |
 | **Snippet expansion** | `~name(args)` shorthand expands to full code via templates — saves output tokens on repetitive boilerplate | Not supported |
 | **Learned instincts** | Patterns extracted from sessions, confidence-scored, replayed in future sessions to avoid repeated mistakes | Not supported |
-| **Skills** | Reusable prompt templates from project/user/bundled sources, invoked with `/skill-name` | Slash commands (built-in only) |
-| **Permission rules** | Content-pattern rules (`allow: Bash(git *)`, `deny: Write(*.env)`) + mode-based | Mode-based with pattern matching |
-| **Hooks** | 19 lifecycle events (PreToolUse, PostCompact, SubagentStart, FileChanged, etc.) | 26 events |
 | **Cron tasks** | Schedule recurring agent tasks (`@every 1h`, `@daily`, `HH:MM`) | Feature-gated |
 | **Web UI** | Full browser chat UI (`claudio web`) with streaming, tool approval, plan mode, AskUser, model selector | Not supported |
-| **Headless mode** | HTTP API server (`--headless`) for IDE integration and remote access | Not supported |
 | **Cross-session comms** | Bridge via Unix sockets for parallel agents in worktrees | Not supported |
 | **Vim mode** | Full state machine (normal, insert, visual, operator-pending, registers) | Basic vi-mode |
 | **Persistence** | SQLite + file-based | File-based only |
