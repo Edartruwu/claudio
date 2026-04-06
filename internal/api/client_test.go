@@ -723,9 +723,9 @@ func TestNormalizeMessages_EmptyContent(t *testing.T) {
 	}
 }
 
-func TestNormalizeMessages_EmptyContentHasTextField(t *testing.T) {
-	// Regression: empty content must produce {"type":"text","text":""} —
-	// not {"type":"text"} (missing text field causes API 400).
+func TestNormalizeMessages_EmptyContentHasNonEmptyText(t *testing.T) {
+	// Regression: empty content must produce a non-empty text block.
+	// The API rejects both missing "text" fields and empty "text":"" values.
 	for _, c := range []json.RawMessage{nil, {}} {
 		msgs := []Message{{Role: "user", Content: c}}
 		normalizeMessages(msgs)
@@ -741,8 +741,47 @@ func TestNormalizeMessages_EmptyContentHasTextField(t *testing.T) {
 			t.Fatalf("content=%v: expected 1 block, got %d", c, len(blocks))
 		}
 		if blocks[0].Text == nil {
-			t.Errorf("content=%v: text field is nil (missing from JSON) — API would reject this", c)
+			t.Errorf("content=%v: text field is nil (missing from JSON)", c)
+		} else if *blocks[0].Text == "" {
+			t.Errorf("content=%v: text field is empty — API rejects empty text blocks", c)
 		}
+	}
+}
+
+func TestSanitizeContentBlocks_RemovesEmptyText(t *testing.T) {
+	// Empty text blocks (missing or empty text) should be stripped.
+	input := json.RawMessage(`[{"type":"text"},{"type":"tool_use","id":"tu_1","name":"Bash","input":{}}]`)
+	got := sanitizeContentBlocks(input)
+	var blocks []map[string]json.RawMessage
+	if err := json.Unmarshal(got, &blocks); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block after sanitize, got %d: %s", len(blocks), got)
+	}
+
+	// Also test {"type":"text","text":""}
+	input2 := json.RawMessage(`[{"type":"text","text":""},{"type":"text","text":"hello"}]`)
+	got2 := sanitizeContentBlocks(input2)
+	var blocks2 []map[string]json.RawMessage
+	json.Unmarshal(got2, &blocks2)
+	if len(blocks2) != 1 {
+		t.Fatalf("expected 1 block, got %d: %s", len(blocks2), got2)
+	}
+}
+
+func TestSanitizeContentBlocks_AllEmptyKeepsPlaceholder(t *testing.T) {
+	input := json.RawMessage(`[{"type":"text","text":""}]`)
+	got := sanitizeContentBlocks(input)
+	var blocks []struct {
+		Type string  `json:"type"`
+		Text *string `json:"text"`
+	}
+	if err := json.Unmarshal(got, &blocks); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(blocks) != 1 || blocks[0].Text == nil || *blocks[0].Text == "" {
+		t.Errorf("expected non-empty placeholder, got: %s", got)
 	}
 }
 

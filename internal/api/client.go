@@ -615,10 +615,9 @@ func normalizeMessages(msgs []Message) {
 	for i := range msgs {
 		c := msgs[i].Content
 		if len(c) == 0 {
-			// null / empty → wrap as empty text block.
-			// Use a raw literal so the "text" field is always present
-			// (NewTextBlock("") + omitempty would drop it, causing API 400s).
-			msgs[i].Content = json.RawMessage(`[{"type":"text","text":""}]`)
+			// null / empty → the API rejects empty text blocks entirely,
+			// so use a single-space placeholder instead.
+			msgs[i].Content = json.RawMessage(`[{"type":"text","text":" "}]`)
 			continue
 		}
 		// Fast check: valid content starts with '['
@@ -640,39 +639,41 @@ func normalizeMessages(msgs []Message) {
 	}
 }
 
-// sanitizeContentBlocks ensures every text-type block in a JSON content array
-// has the "text" field present. The omitempty tag on ContentBlock.Text causes
-// empty strings to be dropped during marshaling, which the API rejects with
-// "text: Field required". This re-marshals only when a fix is needed.
+// sanitizeContentBlocks removes empty text blocks from a JSON content array.
+// The Anthropic API rejects text blocks that are empty (missing "text" field
+// due to omitempty, or "text":""). This strips them entirely so the request
+// is valid. If ALL blocks would be removed, a single-space placeholder is kept.
 func sanitizeContentBlocks(raw json.RawMessage) json.RawMessage {
 	var blocks []json.RawMessage
 	if json.Unmarshal(raw, &blocks) != nil {
 		return raw
 	}
 	modified := false
-	for i, b := range blocks {
+	kept := make([]json.RawMessage, 0, len(blocks))
+	for _, b := range blocks {
 		var peek struct {
 			Type string  `json:"type"`
 			Text *string `json:"text"` // pointer distinguishes missing from empty
 		}
 		if json.Unmarshal(b, &peek) != nil {
+			kept = append(kept, b)
 			continue
 		}
-		if peek.Type == "text" && peek.Text == nil {
-			// text field is missing — inject it
-			var obj map[string]json.RawMessage
-			if json.Unmarshal(b, &obj) != nil {
-				continue
-			}
-			obj["text"], _ = json.Marshal("")
-			blocks[i], _ = json.Marshal(obj)
+		if peek.Type == "text" && (peek.Text == nil || *peek.Text == "") {
 			modified = true
+			continue // drop empty text block
 		}
+		kept = append(kept, b)
 	}
 	if !modified {
 		return raw
 	}
-	out, err := json.Marshal(blocks)
+	// If all blocks were empty text, keep a single-space placeholder
+	// so the message is not entirely contentless.
+	if len(kept) == 0 {
+		return json.RawMessage(`[{"type":"text","text":" "}]`)
+	}
+	out, err := json.Marshal(kept)
 	if err != nil {
 		return raw
 	}
