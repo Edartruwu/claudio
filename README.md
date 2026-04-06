@@ -1076,7 +1076,7 @@ Real harnesses often combine two patterns:
 
 ### Building a harness with `/harness`
 
-The `/harness` built-in skill guides you through designing and generating a complete harness for your project. It runs 8 phases automatically:
+The `/harness` built-in skill guides you through designing and generating a complete harness for your project. It runs 11 phases automatically:
 
 ```
 /harness <domain description>
@@ -1093,14 +1093,17 @@ The `/harness` built-in skill guides you through designing and generating a comp
 
 **What it does:**
 
+0. **Audits** — checks for existing harnesses in `.claudio/agents/`, `.claudio/skills/`, and CLAUDIO.md; decides whether to create, extend, repair, or replace
 1. **Clarifies** — asks what task the harness covers, what it should output, and who will use it
 2. **Explores** — scans your project to understand languages, frameworks, existing agents/skills, and coding conventions
-3. **Selects pattern** — proposes the best-fit architecture with an ASCII diagram and explains the trade-offs; asks for your approval before proceeding
-4. **Designs roster** — defines each specialist role, its type (`Explore`, `Plan`, `general-purpose`, or a custom persona), and its communication protocol
-5. **Writes agent files** — generates `.claudio/agents/<name>.md` for each specialist that warrants a dedicated persona
-6. **Writes orchestrator** — generates `.claudio/skills/<harness-name>/skill.md` with `TeamCreate`, `SendMessage`, and `TaskCreate` calls wired up
+3. **Selects execution mode and pattern** — chooses Agent Teams vs Sub-agents based on whether inter-agent communication is needed, then picks the best-fit architecture pattern with an ASCII diagram; asks for your approval
+4. **Designs roster** — defines each specialist role, its type (`Explore`, `Plan`, `general-purpose`, or a custom persona), communication protocol, and QA responsibilities
+5. **Writes agent files** — generates `.claudio/agents/<name>.md` with trigger-rich descriptions, QA protocols, and team communication specs
+6. **Writes orchestrator** — generates `.claudio/skills/<harness-name>/skill.md` using the appropriate template (Agent Team mode or Sub-agent mode) with QA cross-validation built in
 7. **Registers in CLAUDIO.md** — adds an entry documenting how to invoke the harness
-8. **Validates** — checks for leftover placeholder text, verifies agent name consistency, and reports what was created
+8. **Validates structure** — checks for placeholder text, verifies agent name consistency, runs trigger verification (3 should-match + 3 shouldn't-match queries), and performs a dry-run walkthrough
+9. **Sets up evolution** — adds a changelog table and modification criteria to the orchestrator so the harness can be extended incrementally
+10. **Reports** — summarizes files created, agent roster, 3 example invocations, and concrete next steps
 
 ---
 

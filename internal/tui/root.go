@@ -158,6 +158,7 @@ type tuiEvent struct {
 	typ           string
 	text          string
 	toolUse       tools.ToolUse
+	toolUses      []tools.ToolUse          // for "retry" events
 	result        *tools.Result
 	usage         api.Usage
 	err           error
@@ -1623,6 +1624,27 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			return m.handleSubmit(next)
 		}
 		return m, nil
+
+	case "retry":
+		// The engine is silently retrying at escalated max_tokens. Tombstone
+		// any tool_start entries for these tool uses so the re-stream renders
+		// fresh, complete cards rather than duplicating the partial ones.
+		retryIDs := make(map[string]bool, len(event.toolUses))
+		for _, tu := range event.toolUses {
+			retryIDs[tu.ID] = true
+			delete(m.toolStartTimes, tu.ID)
+		}
+		filtered := m.messages[:0]
+		for _, msg := range m.messages {
+			if msg.Type == MsgToolUse && retryIDs[msg.ToolUseID] {
+				continue // drop the partial tool card
+			}
+			filtered = append(filtered, msg)
+		}
+		m.messages = filtered
+		m.spinText = "Retrying with extended output..."
+		m.spinner.SetText(m.spinText)
+		m.refreshViewport()
 
 	case "subagent_tool_start":
 		// Update spinner to show sub-agent activity
@@ -4505,6 +4527,10 @@ func (h *tuiEventHandler) OnCostConfirmNeeded(currentCost, threshold float64) bo
 
 func (h *tuiEventHandler) OnError(err error) {
 	h.ch <- tuiEvent{typ: "error", err: err}
+}
+
+func (h *tuiEventHandler) OnRetry(toolUses []tools.ToolUse) {
+	h.ch <- tuiEvent{typ: "retry", toolUses: toolUses}
 }
 
 // tuiSubAgentObserver forwards sub-agent tool events to the TUI event channel.
