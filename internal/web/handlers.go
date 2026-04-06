@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/web/templates"
 )
 
@@ -289,24 +290,52 @@ func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
 
 // ── Chat API (session-aware) ──
 
+// chatSendRequest is the JSON body for /api/chat/send.
+type chatSendRequest struct {
+	Session string `json:"session"`
+	Message string `json:"message"`
+	Images  []struct {
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
+	} `json:"images,omitempty"`
+}
+
 // handleChatSend handles a new user message for a specific session.
 func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.FormValue("session")
-	message := r.FormValue("message")
-	if sessionID == "" || message == "" {
+	var req chatSendRequest
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		// Backward compat: form-data
+		req.Session = r.FormValue("session")
+		req.Message = r.FormValue("message")
+	}
+
+	if req.Session == "" || (req.Message == "" && len(req.Images) == 0) {
 		http.Error(w, "missing session or message", http.StatusBadRequest)
 		return
 	}
 
-	sess := s.sessions.Get(sessionID)
+	sess := s.sessions.Get(req.Session)
 	if sess == nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
 
-	sess.AddMessage("user", message)
+	sess.AddMessage("user", req.Message)
 
-	handler, err := sess.SendMessage(context.Background(), message)
+	// Convert image attachments to API content blocks
+	var imageBlocks []api.UserContentBlock
+	for _, img := range req.Images {
+		imageBlocks = append(imageBlocks, api.NewImageBlock(img.MediaType, img.Data))
+	}
+
+	handler, err := sess.SendMessage(context.Background(), req.Message, imageBlocks)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -316,7 +345,7 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":     "streaming",
-		"session_id": sessionID,
+		"session_id": req.Session,
 	})
 }
 

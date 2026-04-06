@@ -12,7 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
+	"github.com/Abraxas-365/claudio/internal/storage"
 )
 
 // Config holds web server configuration.
@@ -29,17 +31,25 @@ type Server struct {
 	mux      *http.ServeMux
 	sessions *SessionManager
 	skills   *skills.Registry
+	db       *storage.DB
 	tokens   map[string]time.Time // auth token -> expiry
 	mu       sync.RWMutex
 }
 
 // New creates a new web UI server.
 func New(cfg Config, skillsRegistry *skills.Registry) *Server {
+	// Open the shared global DB so web sessions are persisted alongside CLI sessions.
+	db, err := storage.Open(config.GetPaths().DB)
+	if err != nil {
+		log.Printf("Warning: failed to open DB for session persistence: %v", err)
+	}
+
 	s := &Server{
 		config:   cfg,
 		mux:      http.NewServeMux(),
-		sessions: NewSessionManager(),
+		sessions: NewSessionManager(db),
 		skills:   skillsRegistry,
+		db:       db,
 		tokens:   make(map[string]time.Time),
 	}
 	s.registerRoutes()

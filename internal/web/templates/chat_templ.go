@@ -218,19 +218,19 @@ func ChatPage(projectPath string, sessionID string, sessions []SessionInfo, mess
 				return templ_7745c5c3_Err
 			}
 			for _, msg := range messages {
-				if msg.Role == "user" {
+				switch msg.Role {
+				case "user":
 					templ_7745c5c3_Err = UserMessage(msg.Content).Render(ctx, templ_7745c5c3_Buffer)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
+				case "tool":
+					templ_7745c5c3_Err = ToolMessage(msg.ToolName, msg.Content, msg.ToolOut).Render(ctx, templ_7745c5c3_Buffer)
+				default:
 					templ_7745c5c3_Err = AssistantMessage(msg.Content).Render(ctx, templ_7745c5c3_Buffer)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
+				}
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div><div id=\"stream-area\" class=\"stream-area\"></div><div id=\"approval-area\"></div><div class=\"chat-input-bar\"><div class=\"ac-popup\" id=\"ac-popup\"></div><div id=\"chat-form\" class=\"chat-input-form\"><textarea placeholder=\"Type / for commands, @ for files, >> for agents...\" autocomplete=\"off\" class=\"chat-input-textarea\" id=\"chat-input\" rows=\"1\"></textarea> <button type=\"button\" class=\"btn btn-primary\" id=\"send-btn\">Send</button></div></div></div><!-- Right panel (agents/analytics/tasks) --><div id=\"side-panel\" class=\"side-panel\"><div class=\"panel-header\"><span class=\"panel-title\" id=\"panel-title\">Panel</span> <button class=\"panel-close\" onclick=\"closePanel()\">&times;</button></div><div class=\"panel-content\" id=\"panel-content\"></div></div></div><!-- Reconnection banner --><div class=\"reconnect-banner\" id=\"reconnect-banner\"><span class=\"reconnect-spinner\">&#8987;</span> Connection lost. Reconnecting...</div><!-- Toast container for background session notifications --><div class=\"toast-container\" id=\"toast-container\"></div><div class=\"status-bar\"><span class=\"status-item\"><span class=\"connection-indicator\" id=\"conn-indicator\"><span class=\"connection-dot\" id=\"conn-dot\"></span></span></span> <span class=\"status-sep\">|</span> <span class=\"status-item status-model-item\" onclick=\"openModelSelector()\" title=\"Change model\"><span class=\"status-label\">MODEL</span> <span class=\"status-model\" id=\"status-model\">-</span> <span class=\"status-edit-icon\">&#9660;</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">IN</span> <span class=\"status-value\" id=\"status-in\">0</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">OUT</span> <span class=\"status-value\" id=\"status-out\">0</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">TOTAL</span> <span class=\"status-value\" id=\"status-total\">0</span></span> <span style=\"flex:1\"></span> <span class=\"status-item\"><span class=\"status-ok\" id=\"status-state\">Ready</span></span></div></div><!-- Mobile panel drawer (slides up from bottom) --><div class=\"mobile-drawer-overlay\" id=\"mobile-drawer-overlay\" onclick=\"closeMobileDrawer()\"></div><div class=\"mobile-panel-drawer\" id=\"mobile-panel-drawer\"><div class=\"drawer-items\"><button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('agents')\"><span class=\"icon\">&#129302;</span> Agents</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('analytics')\"><span class=\"icon\">&#9776;</span> Analytics</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('tasks')\"><span class=\"icon\">&#9744;</span> Tasks</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('config')\"><span class=\"icon\">&#9881;</span> Config</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();openModelSelector()\"><span class=\"icon\">&#129302;</span> Change Model</button></div></div></div><!-- Model selector modal --> <div id=\"model-modal\" class=\"modal-overlay\" style=\"display:none\" onclick=\"if(event.target===this)closeModelSelector()\"><div class=\"modal-box\"><div class=\"modal-header\"><span class=\"modal-title\">Select Model</span> <button class=\"modal-close\" onclick=\"closeModelSelector()\">&times;</button></div><div id=\"model-list\" class=\"model-list\"><div style=\"color:var(--dim);padding:12px\">Loading models...</div></div></div></div><script src=\"/static/app.js?v=3\"></script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div><div id=\"stream-area\" class=\"stream-area\"></div><div id=\"approval-area\"></div><div class=\"chat-input-bar\"><div class=\"ac-popup\" id=\"ac-popup\"></div><div id=\"image-preview\" class=\"image-preview\"></div><div id=\"chat-form\" class=\"chat-input-form\"><button type=\"button\" class=\"btn-icon\" id=\"attach-btn\" title=\"Attach image\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48\"/></svg></button><input type=\"file\" id=\"image-input\" accept=\"image/*\" multiple style=\"display:none\"/> <textarea placeholder=\"Type / for commands, @ for files, >> for agents...\" autocomplete=\"off\" class=\"chat-input-textarea\" id=\"chat-input\" rows=\"1\"></textarea> <button type=\"button\" class=\"btn btn-primary\" id=\"send-btn\">Send</button></div></div></div><!-- Right panel (agents/analytics/tasks) --><div id=\"side-panel\" class=\"side-panel\"><div class=\"panel-header\"><span class=\"panel-title\" id=\"panel-title\">Panel</span> <button class=\"panel-close\" onclick=\"closePanel()\">&times;</button></div><div class=\"panel-content\" id=\"panel-content\"></div></div></div><!-- Reconnection banner --><div class=\"reconnect-banner\" id=\"reconnect-banner\"><span class=\"reconnect-spinner\">&#8987;</span> Connection lost. Reconnecting...</div><!-- Toast container for background session notifications --><div class=\"toast-container\" id=\"toast-container\"></div><div class=\"status-bar\"><span class=\"status-item\"><span class=\"connection-indicator\" id=\"conn-indicator\"><span class=\"connection-dot\" id=\"conn-dot\"></span></span></span> <span class=\"status-sep\">|</span> <span class=\"status-item status-model-item\" onclick=\"openModelSelector()\" title=\"Change model\"><span class=\"status-label\">MODEL</span> <span class=\"status-model\" id=\"status-model\">-</span> <span class=\"status-edit-icon\">&#9660;</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">IN</span> <span class=\"status-value\" id=\"status-in\">0</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">OUT</span> <span class=\"status-value\" id=\"status-out\">0</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">TOTAL</span> <span class=\"status-value\" id=\"status-total\">0</span></span> <span style=\"flex:1\"></span> <span class=\"status-item\"><span class=\"status-ok\" id=\"status-state\">Ready</span></span></div></div><!-- Mobile panel drawer (slides up from bottom) --><div class=\"mobile-drawer-overlay\" id=\"mobile-drawer-overlay\" onclick=\"closeMobileDrawer()\"></div><div class=\"mobile-panel-drawer\" id=\"mobile-panel-drawer\"><div class=\"drawer-items\"><button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('agents')\"><span class=\"icon\">&#129302;</span> Agents</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('analytics')\"><span class=\"icon\">&#9776;</span> Analytics</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('tasks')\"><span class=\"icon\">&#9744;</span> Tasks</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('config')\"><span class=\"icon\">&#9881;</span> Config</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();openModelSelector()\"><span class=\"icon\">&#129302;</span> Change Model</button></div></div></div><!-- Model selector modal --> <div id=\"model-modal\" class=\"modal-overlay\" style=\"display:none\" onclick=\"if(event.target===this)closeModelSelector()\"><div class=\"modal-box\"><div class=\"modal-header\"><span class=\"modal-title\">Select Model</span> <button class=\"modal-close\" onclick=\"closeModelSelector()\">&times;</button></div><div id=\"model-list\" class=\"model-list\"><div style=\"color:var(--dim);padding:12px\">Loading models...</div></div></div></div><script src=\"/static/app.js?v=3\"></script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -346,6 +346,56 @@ func AssistantMessage(content string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func ToolMessage(toolName, input, output string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		_ = templ.GetChildren(ctx)
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<div class=\"tool-card\"><div class=\"tool-header\" onclick=\"this.parentElement.classList.toggle('open')\"><span class=\"tool-name\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(toolName))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</span><span class=\"tool-toggle\">&#9654;</span></div><div class=\"tool-input\"><pre>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(input))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</pre></div><div class=\"tool-output\"><pre>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(output))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</pre></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

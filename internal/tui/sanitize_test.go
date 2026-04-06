@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/storage"
 )
 
@@ -58,14 +59,14 @@ func getToolResultIDs(t *testing.T, msg api.Message) []string {
 	return ids
 }
 
-// ── sanitizeToolPairs tests ───────────────────────────────────────────────────
+// ── session.SanitizeToolPairs tests ───────────────────────────────────────────────────
 
 func TestSanitizeTUIPairs_MatchedPairPassesThrough(t *testing.T) {
 	msgs := []api.Message{
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"A","name":"Read","input":{}}]`)},
 		{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"A","content":"data"}]`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -84,7 +85,7 @@ func TestSanitizeTUIPairs_OrphanedToolResult_Dropped(t *testing.T) {
 	msgs := []api.Message{
 		{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"X","content":"orphan"}]`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	// Message becomes empty and is dropped
 	if len(result) != 0 {
 		t.Fatalf("expected 0 messages (orphaned tool_result dropped), got %d", len(result))
@@ -97,7 +98,7 @@ func TestSanitizeTUIPairs_OrphanedToolUse_Stripped(t *testing.T) {
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"let me think"},{"type":"tool_use","id":"A","name":"Read","input":{}}]`)},
 		{Role: "user", Content: json.RawMessage(`"just a question"`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -122,7 +123,7 @@ func TestSanitizeTUIPairs_MismatchedIDs(t *testing.T) {
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"checking"},{"type":"tool_use","id":"A","name":"Read","input":{}}]`)},
 		{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"B","content":"stale"}]`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	// Tool_use A stripped from assistant (text kept), tool_result B dropped entirely
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
@@ -143,7 +144,7 @@ func TestSanitizeTUIPairs_PartialMatch_TwoToolUses(t *testing.T) {
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"A","name":"Read","input":{}},{"type":"tool_use","id":"B","name":"Grep","input":{}}]`)},
 		{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"A","content":"ok"}]`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	if len(result) != 3 {
 		t.Fatalf("expected 3 messages, got %d", len(result))
 	}
@@ -163,7 +164,7 @@ func TestSanitizeTUIPairs_TextPreservedAfterOrphanedToolUse(t *testing.T) {
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"my analysis"},{"type":"tool_use","id":"orphan","name":"Bash","input":{}}]`)},
 		{Role: "user", Content: json.RawMessage(`"follow up"`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -184,7 +185,7 @@ func TestSanitizeTUIPairs_TextPreservedInUserAfterOrphanedToolResult(t *testing.
 	msgs := []api.Message{
 		{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"keep this"},{"type":"tool_result","tool_use_id":"orphan","content":"gone"}]`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(result))
 	}
@@ -208,7 +209,7 @@ func TestSanitizeTUIPairs_MultipleMatchedPairs_AllKept(t *testing.T) {
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"B","name":"Grep","input":{}}]`)},
 		{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"B","content":"data B"}]`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	if len(result) != 4 {
 		t.Fatalf("expected 4 messages, got %d", len(result))
 	}
@@ -231,7 +232,7 @@ func TestSanitizeTUIPairs_MultipleMatchedPairs_AllKept(t *testing.T) {
 }
 
 func TestSanitizeTUIPairs_EmptyMessages(t *testing.T) {
-	result := sanitizeToolPairs(nil)
+	result := session.SanitizeToolPairs(nil)
 	if len(result) != 0 {
 		t.Fatalf("expected empty result for nil input, got %d", len(result))
 	}
@@ -242,7 +243,7 @@ func TestSanitizeTUIPairs_NonToolMessages_PassThrough(t *testing.T) {
 		{Role: "user", Content: json.RawMessage(`"plain text question"`)},
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"plain text answer"}]`)},
 	}
-	result := sanitizeToolPairs(msgs)
+	result := session.SanitizeToolPairs(msgs)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -251,10 +252,10 @@ func TestSanitizeTUIPairs_NonToolMessages_PassThrough(t *testing.T) {
 	}
 }
 
-// ── reconstructEngineMessages tests ──────────────────────────────────────────
+// ── session.ReconstructEngineMessages tests ──────────────────────────────────────────
 
 func TestReconstructEngineMessages_Empty(t *testing.T) {
-	result := reconstructEngineMessages(nil)
+	result := session.ReconstructEngineMessages(nil)
 	if len(result) != 0 {
 		t.Fatalf("expected empty result for nil input, got %d", len(result))
 	}
@@ -265,7 +266,7 @@ func TestReconstructEngineMessages_SimpleConversation(t *testing.T) {
 		dbMsg("user", "hello", "", ""),
 		dbMsg("assistant", "hi there", "", ""),
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -283,7 +284,7 @@ func TestReconstructEngineMessages_AssistantWithToolUse(t *testing.T) {
 		dbMsg("tool_use", `{"file_path":"/foo"}`, "toolu_A", "Read"),
 		dbMsg("tool_result", "file contents", "toolu_A", ""),
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	// Should produce: assistant(text+tool_use), user(tool_result)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
@@ -312,7 +313,7 @@ func TestReconstructEngineMessages_MultipleToolUses(t *testing.T) {
 		dbMsg("tool_result", "result 1", "toolu_1", ""),
 		dbMsg("tool_result", "result 2", "toolu_2", ""),
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages (assistant + user), got %d", len(result))
 	}
@@ -332,7 +333,7 @@ func TestReconstructEngineMessages_OrphanedToolResult_Skipped(t *testing.T) {
 		dbMsg("tool_result", "orphan result", "toolu_X", ""),
 		dbMsg("user", "a question", "", ""),
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 message (orphaned result skipped), got %d", len(result))
 	}
@@ -349,9 +350,9 @@ func TestReconstructEngineMessages_OrphanedToolResult_AfterUser_Skipped(t *testi
 		dbMsg("user", "new question", "", ""),    // clears pendingIDs
 		dbMsg("tool_result", "result", "toolu_1", ""), // orphaned — skipped
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	// Expect: assistant(tool_use), user(text), orphaned result skipped
-	// But sanitizeToolPairs will strip orphaned tool_use from assistant too
+	// But session.SanitizeToolPairs will strip orphaned tool_use from assistant too
 	// The "user" record clears pendingIDs; tool_result after that is skipped
 	roles := make([]string, len(result))
 	for i, m := range result {
@@ -379,7 +380,7 @@ func TestReconstructEngineMessages_ToolUseWithNoID_GetsGenerated(t *testing.T) {
 		dbMsg("tool_use", `{}`, "", "Bash"),      // empty ID
 		dbMsg("tool_result", "output", "", ""),   // empty ID — matched positionally
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -403,7 +404,7 @@ func TestReconstructEngineMessages_IDsPreserved(t *testing.T) {
 		dbMsg("tool_use", `{}`, "stored-id-123", "Read"),
 		dbMsg("tool_result", "content", "stored-id-123", ""),
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -419,14 +420,14 @@ func TestReconstructEngineMessages_IDsPreserved(t *testing.T) {
 
 func TestReconstructEngineMessages_MismatchedStoredIDs_SanitizeHandles(t *testing.T) {
 	// tool_use stored with ID "A", tool_result stored with ID "B":
-	// sanitizeToolPairs should strip both mismatched blocks
+	// session.SanitizeToolPairs should strip both mismatched blocks
 	records := []storage.MessageRecord{
 		dbMsg("assistant", "text only", "", ""),
 		dbMsg("tool_use", `{}`, "A", "Read"),
 		dbMsg("tool_result", "stale result", "B", ""),
 	}
-	result := reconstructEngineMessages(records)
-	// sanitizeToolPairs will strip the mismatched tool_use and tool_result
+	result := session.ReconstructEngineMessages(records)
+	// session.SanitizeToolPairs will strip the mismatched tool_use and tool_result
 	// assistant text should survive; user tool_result message should be gone
 	for _, m := range result {
 		if m.Role == "user" {
@@ -454,7 +455,7 @@ func TestReconstructEngineMessages_ComplexSession(t *testing.T) {
 		dbMsg("assistant", "done", "", ""),
 		dbMsg("user", "thanks", "", ""),
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 
 	if len(result) < 4 {
 		t.Fatalf("expected at least 4 engine messages, got %d", len(result))
@@ -482,7 +483,7 @@ func TestReconstructEngineMessages_UnknownTypeIgnored(t *testing.T) {
 		dbMsg("user", "hello", "", ""),
 		dbMsg("assistant", "hi", "", ""),
 	}
-	result := reconstructEngineMessages(records)
+	result := session.ReconstructEngineMessages(records)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages (unknown types skipped), got %d", len(result))
 	}

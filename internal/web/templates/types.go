@@ -9,8 +9,10 @@ type ProjectInfo struct {
 
 // ChatMessage represents a message in the chat history.
 type ChatMessage struct {
-	Role    string // "user" or "assistant"
-	Content string
+	Role     string // "user", "assistant", or "tool"
+	Content  string
+	ToolName string // tool name for Role="tool"
+	ToolOut  string // tool output for Role="tool"
 }
 
 // SessionInfo represents a session summary for the sidebar.

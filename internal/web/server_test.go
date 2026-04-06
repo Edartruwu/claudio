@@ -451,7 +451,7 @@ func TestStaticFiles_NotFound(t *testing.T) {
 }
 
 func TestSessionManager_GetOrCreateDefault(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	tmpDir := t.TempDir()
 
 	sess1, err := sm.GetOrCreateDefault(tmpDir)
@@ -473,7 +473,7 @@ func TestSessionManager_GetOrCreateDefault(t *testing.T) {
 }
 
 func TestSessionManager_GetOrCreateDefault_InvalidPath(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	_, err := sm.GetOrCreateDefault("/definitely/not/a/real/path")
 	if err == nil {
 		t.Error("expected error for invalid path")
@@ -481,14 +481,14 @@ func TestSessionManager_GetOrCreateDefault_InvalidPath(t *testing.T) {
 }
 
 func TestSessionManager_Get_NotFound(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	if sess := sm.Get("/nonexistent"); sess != nil {
 		t.Error("expected nil for non-existent session")
 	}
 }
 
 func TestSessionManager_Get_Found(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	tmpDir := t.TempDir()
 
 	created, _ := sm.GetOrCreateDefault(tmpDir)
@@ -502,7 +502,7 @@ func TestSessionManager_Get_Found(t *testing.T) {
 }
 
 func TestSessionManager_ListProjects(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 
@@ -523,7 +523,7 @@ func TestSessionManager_ListProjects(t *testing.T) {
 }
 
 func TestSessionManager_MultipleProjects(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 
@@ -536,7 +536,7 @@ func TestSessionManager_MultipleProjects(t *testing.T) {
 }
 
 func TestProjectSession_AddMessage(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	tmpDir := t.TempDir()
 	sess, _ := sm.GetOrCreateDefault(tmpDir)
 
@@ -559,7 +559,7 @@ func TestProjectSession_AddMessage(t *testing.T) {
 }
 
 func TestProjectSession_CurrentHandler_Nil(t *testing.T) {
-	sm := NewSessionManager()
+	sm := NewSessionManager(nil)
 	tmpDir := t.TempDir()
 	sess, _ := sm.GetOrCreateDefault(tmpDir)
 

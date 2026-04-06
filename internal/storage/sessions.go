@@ -152,6 +152,30 @@ func (db *DB) ListSessions(limit int) ([]Session, error) {
 	return sessions, rows.Err()
 }
 
+// ListSessionsByProject returns recent top-level sessions for a specific project, newest first.
+func (db *DB) ListSessionsByProject(projectDir string, limit int) ([]Session, error) {
+	rows, err := db.conn.Query(
+		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type
+		 FROM sessions WHERE parent_session_id = '' AND project_dir = ?
+		 ORDER BY updated_at DESC LIMIT ?`,
+		projectDir, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		var s Session
+		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
 // DeleteSession removes a session and its messages.
 func (db *DB) DeleteSession(id string) error {
 	// Messages have ON DELETE CASCADE, but be explicit
