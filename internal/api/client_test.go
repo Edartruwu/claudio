@@ -833,6 +833,53 @@ func TestNormalizeMessages_PreservesToolResultBlocks(t *testing.T) {
 	}
 }
 
+func TestFilterWhitespaceAssistantMessages(t *testing.T) {
+	mkMsg := func(role, content string) Message {
+		return Message{Role: role, Content: json.RawMessage(content)}
+	}
+
+	msgs := []Message{
+		mkMsg("user", `[{"type":"text","text":"hello"}]`),
+		mkMsg("assistant", `[{"type":"text","text":"  \n\t  "}]`), // whitespace-only → remove
+		mkMsg("user", `[{"type":"text","text":"world"}]`),
+	}
+
+	result := filterWhitespaceAssistantMessages(msgs)
+
+	// The whitespace-only assistant message should be removed and the two
+	// user messages merged.
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message after filtering, got %d", len(result))
+	}
+	if result[0].Role != "user" {
+		t.Errorf("expected user message, got %s", result[0].Role)
+	}
+	// The merged user message should have 2 text blocks
+	var blocks []json.RawMessage
+	json.Unmarshal(result[0].Content, &blocks)
+	if len(blocks) != 2 {
+		t.Errorf("expected 2 blocks in merged user message, got %d", len(blocks))
+	}
+}
+
+func TestFilterWhitespaceAssistantMessages_KeepsNonText(t *testing.T) {
+	mkMsg := func(role, content string) Message {
+		return Message{Role: role, Content: json.RawMessage(content)}
+	}
+
+	// Assistant message with a tool_use block should NOT be filtered
+	msgs := []Message{
+		mkMsg("user", `[{"type":"text","text":"hi"}]`),
+		mkMsg("assistant", `[{"type":"text","text":""},{"type":"tool_use","id":"tu_1","name":"Bash","input":{}}]`),
+		mkMsg("user", `[{"type":"tool_result","tool_use_id":"tu_1","content":"ok"}]`),
+	}
+
+	result := filterWhitespaceAssistantMessages(msgs)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 messages (tool_use preserved), got %d", len(result))
+	}
+}
+
 // ── Context Management tests ─────────────────────────────────────────────────
 
 func TestApplyContextManagement_AddsForAnthropicModels(t *testing.T) {

@@ -617,7 +617,7 @@ func normalizeMessages(msgs []Message) {
 		if len(c) == 0 {
 			// null / empty → the API rejects empty text blocks entirely,
 			// so use a single-space placeholder instead.
-			msgs[i].Content = json.RawMessage(`[{"type":"text","text":"(empty)"}]`)
+			msgs[i].Content = json.RawMessage(`[{"type":"text","text":"[No message content]"}]`)
 			continue
 		}
 		// Fast check: valid content starts with '['
@@ -671,11 +671,72 @@ func sanitizeContentBlocks(raw json.RawMessage) json.RawMessage {
 	// If all blocks were empty text, keep a single-space placeholder
 	// so the message is not entirely contentless.
 	if len(kept) == 0 {
-		return json.RawMessage(`[{"type":"text","text":"(empty)"}]`)
+		return json.RawMessage(`[{"type":"text","text":"[No message content]"}]`)
 	}
 	out, err := json.Marshal(kept)
 	if err != nil {
 		return raw
+	}
+	return out
+}
+
+// filterWhitespaceAssistantMessages removes assistant messages whose content
+// blocks are ALL whitespace-only text (the API rejects these). When removal
+// creates adjacent user messages they are merged to maintain role alternation.
+// Non-final assistant messages that become entirely empty get a placeholder
+// ("[No message content]") to satisfy the API's non-empty requirement.
+func filterWhitespaceAssistantMessages(msgs []Message) []Message {
+	// First pass: mark whitespace-only assistant messages for removal
+	remove := make([]bool, len(msgs))
+	for i, m := range msgs {
+		if m.Role != "assistant" {
+			continue
+		}
+		var blocks []json.RawMessage
+		if json.Unmarshal(m.Content, &blocks) != nil {
+			continue
+		}
+		allWhitespace := true
+		for _, b := range blocks {
+			var peek struct {
+				Type string  `json:"type"`
+				Text *string `json:"text"`
+			}
+			if json.Unmarshal(b, &peek) != nil {
+				allWhitespace = false
+				break
+			}
+			if peek.Type != "text" {
+				allWhitespace = false
+				break
+			}
+			if peek.Text != nil && strings.TrimSpace(*peek.Text) != "" {
+				allWhitespace = false
+				break
+			}
+		}
+		if allWhitespace && len(blocks) > 0 {
+			remove[i] = true
+		}
+	}
+
+	// Second pass: rebuild slice, merging adjacent user messages
+	out := make([]Message, 0, len(msgs))
+	for i, m := range msgs {
+		if remove[i] {
+			continue
+		}
+		// Merge adjacent user messages
+		if m.Role == "user" && len(out) > 0 && out[len(out)-1].Role == "user" {
+			var prev, cur []json.RawMessage
+			if json.Unmarshal(out[len(out)-1].Content, &prev) == nil &&
+				json.Unmarshal(m.Content, &cur) == nil {
+				merged, _ := json.Marshal(append(prev, cur...))
+				out[len(out)-1].Content = merged
+				continue
+			}
+		}
+		out = append(out, m)
 	}
 	return out
 }
@@ -691,6 +752,7 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 	}
 
 	normalizeMessages(req.Messages)
+	req.Messages = filterWhitespaceAssistantMessages(req.Messages)
 
 	// Route to external provider if a match exists
 	if p := c.resolveProvider(req.Model); p != nil {
