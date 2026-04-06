@@ -70,16 +70,20 @@ func (t *PluginProxyTool) RequiresApproval(_ json.RawMessage) bool { return true
 
 func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*tools.Result, error) {
 	var in struct {
-		Args  string `json:"args"`
-		Input string `json:"input"`
+		Command string `json:"command"`
+		Args    string `json:"args"`
+		Input   string `json:"input"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return &tools.Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
 
 	var args []string
+	if in.Command != "" {
+		args = append(args, in.Command)
+	}
 	if in.Args != "" {
-		args = strings.Fields(in.Args)
+		args = append(args, strings.Fields(in.Args)...)
 	}
 
 	cmd := exec.CommandContext(ctx, t.PluginPath, args...)
