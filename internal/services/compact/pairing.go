@@ -134,7 +134,9 @@ func removeOrphanedToolResults(msg api.Message, validToolUseIDs []string) api.Me
 		return msg // nothing removed
 	}
 	if len(kept) == 0 {
-		// Don't create an empty content array — keep original
+		// All blocks were orphaned tool_results — return empty array so the
+		// caller can add synthetic results without the orphans persisting.
+		msg.Content, _ = json.Marshal(kept)
 		return msg
 	}
 	msg.Content, _ = json.Marshal(kept)

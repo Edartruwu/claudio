@@ -140,6 +140,233 @@ func TestEnsureToolResultPairing_EmptyMessages(t *testing.T) {
 	}
 }
 
+func TestEnsureToolResultPairing_AllOrphanedResults(t *testing.T) {
+	// Assistant has tool_use "tu-A", but user message has ONLY tool_results for
+	// "tu-X" and "tu-Y" (both orphaned — no matching tool_use).
+	// This is the primary bug scenario: removeOrphanedToolResults used to return
+	// the original message when all blocks were orphaned, leaving invalid IDs.
+	type trBlock struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
+		Content   string `json:"content"`
+	}
+	userContent, _ := json.Marshal([]trBlock{
+		{Type: "tool_result", ToolUseID: "tu-X", Content: "stale X"},
+		{Type: "tool_result", ToolUseID: "tu-Y", Content: "stale Y"},
+	})
+	msgs := []api.Message{
+		makeToolUseMsg("tu-A", "Bash"),
+		{Role: "user", Content: userContent},
+	}
+
+	result := EnsureToolResultPairing(msgs)
+
+	// The user message should contain ONLY a synthetic result for tu-A.
+	// The orphaned tu-X and tu-Y must be gone.
+	var blocks []json.RawMessage
+	json.Unmarshal(result[1].Content, &blocks)
+
+	ids := map[string]bool{}
+	for _, b := range blocks {
+		var tr struct {
+			Type      string `json:"type"`
+			ToolUseID string `json:"tool_use_id"`
+		}
+		json.Unmarshal(b, &tr)
+		if tr.Type == "tool_result" {
+			ids[tr.ToolUseID] = true
+		}
+	}
+	if ids["tu-X"] || ids["tu-Y"] {
+		t.Fatal("orphaned tool_result IDs tu-X/tu-Y should have been stripped")
+	}
+	if !ids["tu-A"] {
+		t.Fatal("synthetic tool_result for tu-A should be present")
+	}
+}
+
+func TestEnsureToolResultPairing_OrphanedResultsPlusTextBlocks(t *testing.T) {
+	// User message has text blocks + orphaned tool_results. After stripping
+	// orphans, the text should survive and synthetic results should be added.
+	type block struct {
+		Type      string `json:"type,omitempty"`
+		Text      string `json:"text,omitempty"`
+		ToolUseID string `json:"tool_use_id,omitempty"`
+		Content   string `json:"content,omitempty"`
+	}
+	userContent, _ := json.Marshal([]block{
+		{Type: "text", Text: "some context"},
+		{Type: "tool_result", ToolUseID: "tu-stale", Content: "orphaned"},
+	})
+	msgs := []api.Message{
+		makeToolUseMsg("tu-real", "Read"),
+		{Role: "user", Content: userContent},
+	}
+
+	result := EnsureToolResultPairing(msgs)
+
+	var blocks []json.RawMessage
+	json.Unmarshal(result[1].Content, &blocks)
+
+	hasText := false
+	hasReal := false
+	hasStale := false
+	for _, b := range blocks {
+		var generic struct {
+			Type      string `json:"type"`
+			ToolUseID string `json:"tool_use_id"`
+		}
+		json.Unmarshal(b, &generic)
+		if generic.Type == "text" {
+			hasText = true
+		}
+		if generic.Type == "tool_result" && generic.ToolUseID == "tu-real" {
+			hasReal = true
+		}
+		if generic.Type == "tool_result" && generic.ToolUseID == "tu-stale" {
+			hasStale = true
+		}
+	}
+	if !hasText {
+		t.Fatal("text block should survive")
+	}
+	if !hasReal {
+		t.Fatal("synthetic result for tu-real should be added")
+	}
+	if hasStale {
+		t.Fatal("orphaned tu-stale should be stripped")
+	}
+}
+
+func TestEnsureToolResultPairing_ResultFromNonAdjacentAssistant(t *testing.T) {
+	// tool_result references a tool_use from an earlier (non-preceding) assistant
+	// message. Only the immediately preceding assistant's IDs are valid.
+	msgs := []api.Message{
+		makeToolUseMsg("tu-old", "Bash"),
+		makeTRMsg("tu-old", "old result"),
+		makeToolUseMsg("tu-new", "Read"),
+		makeTRMsg("tu-old", "stale reference to old assistant"), // wrong: references tu-old
+	}
+
+	result := EnsureToolResultPairing(msgs)
+
+	// Last user message should have tu-new (synthetic) and NOT tu-old.
+	lastUser := result[len(result)-1]
+	var blocks []json.RawMessage
+	json.Unmarshal(lastUser.Content, &blocks)
+
+	ids := map[string]bool{}
+	for _, b := range blocks {
+		var tr struct {
+			ToolUseID string `json:"tool_use_id"`
+			Type      string `json:"type"`
+		}
+		json.Unmarshal(b, &tr)
+		if tr.Type == "tool_result" {
+			ids[tr.ToolUseID] = true
+		}
+	}
+	if ids["tu-old"] {
+		t.Fatal("tu-old from non-adjacent assistant should be stripped")
+	}
+	if !ids["tu-new"] {
+		t.Fatal("tu-new should have a synthetic result")
+	}
+}
+
+func TestEnsureToolResultPairing_ConsecutiveAssistantMessages(t *testing.T) {
+	// Two assistant messages in a row (e.g., after partial error save + new response).
+	// Each should get its own synthetic results.
+	msgs := []api.Message{
+		makeToolUseMsg("tu-first", "Bash"),
+		makeToolUseMsg("tu-second", "Read"),
+	}
+
+	result := EnsureToolResultPairing(msgs)
+
+	// Should be: assistant(tu-first), user(synthetic tu-first), assistant(tu-second), user(synthetic tu-second)
+	if len(result) != 4 {
+		t.Fatalf("expected 4 messages; got %d", len(result))
+	}
+	if result[1].Role != "user" {
+		t.Fatal("message 1 should be synthetic user")
+	}
+	if result[3].Role != "user" {
+		t.Fatal("message 3 should be synthetic user")
+	}
+
+	id1 := extractTRToolUseID(t, result[1])
+	id2 := extractTRToolUseID(t, result[3])
+	if id1 != "tu-first" {
+		t.Fatalf("first synthetic should reference tu-first; got %q", id1)
+	}
+	if id2 != "tu-second" {
+		t.Fatalf("second synthetic should reference tu-second; got %q", id2)
+	}
+}
+
+func TestEnsureToolResultPairing_AssistantToolUseFollowedByUserText(t *testing.T) {
+	// Assistant has tool_use, but the next user message is plain text (no tool_result).
+	// Synthetic results should be added to the text message.
+	msgs := []api.Message{
+		makeToolUseMsg("tu-1", "Bash"),
+		func() api.Message {
+			content, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock("Please continue.")})
+			return api.Message{Role: "user", Content: content}
+		}(),
+	}
+
+	result := EnsureToolResultPairing(msgs)
+
+	// The user message should now have both the text block and a synthetic tool_result.
+	var blocks []json.RawMessage
+	json.Unmarshal(result[1].Content, &blocks)
+
+	hasText := false
+	hasSynthetic := false
+	for _, b := range blocks {
+		var generic struct {
+			Type      string `json:"type"`
+			ToolUseID string `json:"tool_use_id"`
+		}
+		json.Unmarshal(b, &generic)
+		if generic.Type == "text" {
+			hasText = true
+		}
+		if generic.Type == "tool_result" && generic.ToolUseID == "tu-1" {
+			hasSynthetic = true
+		}
+	}
+	if !hasText {
+		t.Fatal("text block should be preserved")
+	}
+	if !hasSynthetic {
+		t.Fatal("synthetic tool_result for tu-1 should be added")
+	}
+}
+
+func TestRemoveOrphanedToolResults_AllOrphaned(t *testing.T) {
+	// Direct test of removeOrphanedToolResults when ALL blocks are orphaned.
+	type trBlock struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
+		Content   string `json:"content"`
+	}
+	content, _ := json.Marshal([]trBlock{
+		{Type: "tool_result", ToolUseID: "orphan-1", Content: "a"},
+		{Type: "tool_result", ToolUseID: "orphan-2", Content: "b"},
+	})
+	msg := api.Message{Role: "user", Content: content}
+
+	result := removeOrphanedToolResults(msg, []string{"valid-id"})
+
+	var blocks []json.RawMessage
+	json.Unmarshal(result.Content, &blocks)
+	if len(blocks) != 0 {
+		t.Fatalf("all orphaned tool_results should be stripped; got %d blocks", len(blocks))
+	}
+}
+
 // ── TimeBasedMicroCompact tests ─────────────────────────────────────────────
 
 func TestTimeBasedMicroCompact_ClearsOldResults(t *testing.T) {
