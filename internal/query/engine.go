@@ -102,6 +102,7 @@ type Engine struct {
 	// continuation tracking for diminishing returns detection
 	continuationCount int
 	lastOutputTokens  int
+	maxTokensOverride int // persisted escalated max_tokens across loop iterations
 
 	// cache observability
 	cacheTracker  *cachetracker.Tracker
@@ -314,10 +315,14 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		mergedMessages := mergeConsecutiveUserMessages(e.messages)
 
 		// Build request with deferred tool loading
+		maxTok := defaultMaxTokens
+		if e.maxTokensOverride > 0 {
+			maxTok = e.maxTokensOverride
+		}
 		req := &api.MessagesRequest{
 			Messages:  mergedMessages,
 			System:    e.buildSystemWithDeferredTools(),
-			MaxTokens: defaultMaxTokens,
+			MaxTokens: maxTok,
 			Tools:     e.registry.APIDefinitionsWithDeferral(e.discoveredTools),
 		}
 
@@ -337,8 +342,9 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		// but only when no content has been forwarded to the handler yet. Retrying
 		// after partial streaming would re-stream the same text/tool events and
 		// cause split or duplicated messages in the TUI.
-		if response.StopReason == "max_tokens" && req.MaxTokens == defaultMaxTokens && !forwarded {
+		if response.StopReason == "max_tokens" && req.MaxTokens <= defaultMaxTokens && !forwarded {
 			req.MaxTokens = escalatedMaxTokens
+			e.maxTokensOverride = escalatedMaxTokens
 			response, _, err = e.streamResponse(ctx, req)
 			if err != nil {
 				if response != nil && len(response.Content) > 0 {
@@ -399,6 +405,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			// Reset continuation tracking on clean completion
 			e.continuationCount = 0
 			e.lastOutputTokens = 0
+			e.maxTokensOverride = 0
 
 			// Fire Stop hook
 			e.fireHook(ctx, hooks.Stop, "", "")
@@ -437,41 +444,34 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			continue
 		}
 
-		// When max_tokens hits mid-tool_use, the tool input JSON is likely
-		// truncated/invalid. Detect these and return synthetic error results
-		// so the model knows to retry, rather than executing with bad input.
-		var truncatedResults []toolResultBlock
+		// When max_tokens hits mid-tool_use, the output was truncated.
+		// Tool input JSON may be syntactically valid (e.g. "{}") but
+		// semantically incomplete (missing required fields like file_path).
+		// Return synthetic error results for ALL tool_uses so the model
+		// retries with the escalated token budget.
 		if response.StopReason == "max_tokens" && len(response.ToolUses) > 0 {
-			var validTools []tools.ToolUse
+			var truncatedResults []toolResultBlock
 			for _, tu := range response.ToolUses {
-				if len(tu.Input) == 0 || !json.Valid(tu.Input) {
-					truncatedResults = append(truncatedResults, toolResultBlock{
-						Type:      "tool_result",
-						ToolUseID: tu.ID,
-						Content:   "Tool input was truncated because the response hit the max output token limit. Please retry this tool call with complete input, or break the task into smaller steps.",
-						IsError:   true,
-					})
-				} else {
-					validTools = append(validTools, tu)
-				}
+				truncatedResults = append(truncatedResults, toolResultBlock{
+					Type:      "tool_result",
+					ToolUseID: tu.ID,
+					Content:   "Your response was cut off due to the output token limit. The tool input was incomplete and was NOT executed. Please retry with complete input. If the content is too large for a single call, break it into smaller steps (e.g. write the file in parts using Edit or multiple smaller Write calls).",
+					IsError:   true,
+				})
 			}
+			// Escalate max_tokens so the model has room on the next attempt
+			e.maxTokensOverride = escalatedMaxTokens
 
-			if len(truncatedResults) > 0 {
-				// Escalate max_tokens for the next attempt so the model has
-				// room to complete the tool call.
-				if req.MaxTokens < escalatedMaxTokens {
-					req.MaxTokens = escalatedMaxTokens
-				}
-			}
-
-			response.ToolUses = validTools
+			resultContent, _ := json.Marshal(truncatedResults)
+			e.messages = append(e.messages, api.Message{
+				Role:    "user",
+				Content: resultContent,
+			})
+			continue
 		}
 
 		// Execute tools and build result message
 		toolResults := e.executeTools(ctx, response.ToolUses)
-
-		// Merge synthetic error results for truncated tool calls
-		toolResults = append(toolResults, truncatedResults...)
 
 		// Append tool results as a user message — must be immediately after the
 		// assistant message so tool_result blocks have a matching tool_use in the
