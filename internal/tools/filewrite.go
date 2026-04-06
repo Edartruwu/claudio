@@ -84,11 +84,16 @@ func (t *FileWriteTool) Validate(input json.RawMessage) *Result {
 			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}
 		}
 	}
-	// Staleness check: if the file exists and has content, it must have been read first.
-	// Empty files are skipped — there is nothing to review before overwriting.
+	// Staleness check: if the file exists and has content, it must have been read
+	// (or written) in this session. Empty files are skipped — there is nothing to
+	// review before overwriting. Files written earlier in the session are also
+	// skipped because the model already knows what it just wrote.
 	if !isPlanFilePath(in.FilePath) {
 		if info, err := os.Stat(in.FilePath); err == nil && info.Size() > 0 {
 			if t.ReadCache != nil {
+				if t.ReadCache.WrittenSince(in.FilePath) {
+					return nil
+				}
 				key := readcache.Key{FilePath: in.FilePath, Offset: 1, Limit: 2000}
 				if _, ok := t.ReadCache.Get(key); !ok {
 					return &Result{
@@ -138,9 +143,15 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 		return &Result{Content: fmt.Sprintf("Failed to write file: %v", err), IsError: true}, nil
 	}
 
-	// Invalidate the read cache so the next Read re-reads from disk.
+	// Invalidate any cached Read results so the next Read re-reads from disk,
+	// then mark the file as written so a follow-up Write to the same path
+	// doesn't require a fresh Read first (the model just wrote it — it knows
+	// what's in it).
 	if t.ReadCache != nil {
 		t.ReadCache.Invalidate(in.FilePath)
+		if info, err := os.Stat(in.FilePath); err == nil {
+			t.ReadCache.MarkWritten(in.FilePath, info.ModTime())
+		}
 	}
 
 	lines := countLines(in.Content)
