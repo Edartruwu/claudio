@@ -46,6 +46,7 @@
 - [Snippet Expansion (Experimental)](#snippet-expansion-experimental)
 - [Keybinding Customization](#keybinding-customization)
 - [Per-Turn Diff Tracking](#per-turn-diff-tracking)
+- [Web UI](#web-ui)
 - [Headless / API Mode](#headless--api-mode)
 - [Filesystem Layout](#filesystem-layout)
 - [Architecture](#architecture)
@@ -69,6 +70,7 @@
 | **Permission rules** | Content-pattern rules (`allow: Bash(git *)`, `deny: Write(*.env)`) + mode-based | Mode-based with pattern matching |
 | **Hooks** | 19 lifecycle events (PreToolUse, PostCompact, SubagentStart, FileChanged, etc.) | 26 events |
 | **Cron tasks** | Schedule recurring agent tasks (`@every 1h`, `@daily`, `HH:MM`) | Feature-gated |
+| **Web UI** | Full browser chat UI (`claudio web`) with streaming, tool approval, plan mode, AskUser, model selector | Not supported |
 | **Headless mode** | HTTP API server (`--headless`) for IDE integration and remote access | Not supported |
 | **Cross-session comms** | Bridge via Unix sockets for parallel agents in worktrees | Not supported |
 | **Vim mode** | Full state machine (normal, insert, visual, operator-pending, registers) | Basic vi-mode |
@@ -1626,6 +1628,122 @@ Claudio tracks file changes per conversation turn:
 # Show current git diff (unchanged)
 /diff
 ```
+
+---
+
+## Web UI
+
+Claudio ships a full browser-based chat interface — useful when you're on a remote machine, want to share access with a teammate, or just prefer a GUI over the terminal.
+
+```bash
+claudio web --port 3000 --password mysecret
+# → http://127.0.0.1:3000
+```
+
+### Starting the server
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | `3000` | Port to listen on |
+| `--host` | `127.0.0.1` | Bind address (`0.0.0.0` to expose on LAN) |
+| `--password` | _(required)_ | Password for the login page |
+
+The server uses a session cookie (24 h expiry) — no API key is ever sent to the browser.
+
+### Features
+
+#### Multi-session workspace
+- Open multiple independent sessions per project from the sidebar
+- Create, rename, and delete sessions without losing conversation history
+- Switch between sessions instantly; each keeps its own context and token counters
+
+#### Full chat streaming
+- AI responses stream token-by-token in real time via SSE
+- Thinking blocks (extended reasoning) rendered inline with a collapsible header
+- Tool calls shown with name + input as they execute, result shown when done
+- Markdown rendered with syntax-highlighted code blocks
+
+#### Tool approval (interactive)
+When the AI calls a tool that requires permission, an overlay appears mid-stream:
+
+```
+┌─────────────────────────────────────┐
+│ ⚠ Tool Requires Approval            │
+│  Bash                               │
+│  ┌───────────────────────────────┐  │
+│  │ rm -rf ./build                │  │
+│  └───────────────────────────────┘  │
+│                  [Deny]  [Approve]  │
+└─────────────────────────────────────┘
+```
+
+Approving or denying resumes the stream immediately.
+
+#### Plan mode approval (inline card)
+When the AI finishes planning (`ExitPlanMode`), an inline card appears in the chat:
+
+```
+┌─────────────────────────────────────┐  ← yellow border
+│ 📄 Plan Ready for Review            │
+│ The AI has finished planning.       │
+├─────────────────────────────────────┤
+│ [✓ Approve (auto-accept)]  [✓ Approve│
+│ [✗ Reject]  [✎ Feedback]            │
+└─────────────────────────────────────┘
+```
+
+- **Approve (auto-accept)** — proceed with implementation, auto-accept all file edits
+- **Approve** — proceed, manually approve each edit
+- **Reject** — ask the AI to revise the plan
+- **Feedback** — opens a text input; your note is sent as the next message
+
+#### AskUser (inline card)
+When the AI needs clarification (`AskUser`), an inline card appears:
+
+```
+┌─────────────────────────────────────┐  ← blue border
+│ ❓ Question from AI                  │
+│ Which database should I use?        │
+│ [PostgreSQL]  [SQLite]  [MongoDB]   │
+└─────────────────────────────────────┘
+```
+
+If the AI provides options, they appear as buttons. Otherwise a free-text input is shown. Your choice is sent as the next message.
+
+#### Model selector
+Click the **MODEL** badge in the status bar (or the model row in the Config panel) to open the model picker:
+
+- Lists all supported models (Opus 4.6, Sonnet 4.6, Haiku 4.5, and any configured external providers)
+- Highlights the currently active model
+- Takes effect immediately for the current session
+
+#### Config panel
+The right-side Config panel shows:
+- Current model (clickable — opens model selector)
+- Permission mode
+- Project path
+
+#### Analytics panel
+Live token counters per session:
+- Input / output tokens
+- Cache read / cache create tokens
+- Total token count
+
+#### Tasks panel
+Displays tasks created by the AI via the `TaskCreate` tool, with status badges (`pending`, `in_progress`, `done`).
+
+#### Autocomplete
+- `@filename` — file path autocomplete from the project tree
+- `/command` — slash command list
+- `@agent` — agent name list
+
+### Architecture notes
+
+- The server is a single Go binary — no Node.js, no build step
+- HTML is rendered server-side with [templ](https://templ.guide); no SPA framework
+- Streaming uses Server-Sent Events (SSE) with a replay buffer for reconnects
+- Each browser session maps 1:1 to a `query.Engine` instance, preserving full conversation context across messages
+- Auth uses a secure random token in an `HttpOnly` cookie — the Anthropic API key never leaves the server
 
 ---
 
