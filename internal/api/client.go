@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/auth"
+	"github.com/Abraxas-365/claudio/internal/auth/refresh"
+	"github.com/Abraxas-365/claudio/internal/auth/storage"
 	"github.com/Abraxas-365/claudio/internal/ratelimit"
 )
 
@@ -26,6 +28,7 @@ const (
 type Client struct {
 	httpClient   *http.Client
 	authResolver *auth.Resolver
+	storage      storage.SecureStorage // optional: enables 401 force-refresh
 	baseURL      string
 	apiVersion   string
 	model        string
@@ -82,6 +85,12 @@ func WithModel(model string) ClientOption {
 // WithPromptCaching enables or disables prompt caching (default: true).
 func WithPromptCaching(enabled bool) ClientOption {
 	return func(c *Client) { c.promptCaching = enabled }
+}
+
+// WithStorage provides a SecureStorage so the client can force-refresh the
+// OAuth token and retry when the API returns HTTP 401.
+func WithStorage(store storage.SecureStorage) ClientOption {
+	return func(c *Client) { c.storage = store }
 }
 
 // RegisterProvider adds a provider that can be used for model routing.
@@ -793,6 +802,26 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 			errCh <- fmt.Errorf("API request failed: %w", err)
 			return
 		}
+
+		if resp.StatusCode == http.StatusUnauthorized && c.storage != nil {
+			resp.Body.Close()
+			// Attempt a force-refresh (best-effort; ignore whether tokens were
+			// actually rotated — the server told us 401 so we retry regardless).
+			refresh.CheckAndRefreshIfNeeded(c.storage, true) //nolint:errcheck
+			httpReq2, err2 := http.NewRequestWithContext(ctx, "POST",
+				c.baseURL+"/v1/messages?beta=true", bytes.NewReader(body))
+			if err2 != nil {
+				errCh <- err2
+				return
+			}
+			c.setHeaders(httpReq2)
+			resp2, err2 := c.httpClient.Do(httpReq2)
+			if err2 != nil {
+				errCh <- fmt.Errorf("API request failed: %w", err2)
+				return
+			}
+			resp = resp2
+		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
@@ -883,6 +912,24 @@ func (c *Client) SendMessage(ctx context.Context, req *MessagesRequest) (*Messag
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized && c.storage != nil {
+		resp.Body.Close()
+		// Attempt a force-refresh (best-effort; ignore whether tokens were
+		// actually rotated — the server told us 401 so we retry regardless).
+		refresh.CheckAndRefreshIfNeeded(c.storage, true) //nolint:errcheck
+		httpReq2, err2 := http.NewRequestWithContext(ctx, "POST",
+			c.baseURL+"/v1/messages?beta=true", bytes.NewReader(body))
+		if err2 != nil {
+			return nil, err2
+		}
+		c.setHeaders(httpReq2)
+		resp2, err2 := c.httpClient.Do(httpReq2)
+		if err2 != nil {
+			return nil, fmt.Errorf("API request failed: %w", err2)
+		}
+		resp = resp2
 	}
 	defer resp.Body.Close()
 

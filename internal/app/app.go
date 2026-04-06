@@ -92,6 +92,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	}
 
 	var apiOpts []api.ClientOption
+	apiOpts = append(apiOpts, api.WithStorage(store))
 	if settings.APIBaseURL != "" {
 		apiOpts = append(apiOpts, api.WithBaseURL(settings.APIBaseURL))
 	}

@@ -6,10 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/auth"
+	"github.com/Abraxas-365/claudio/internal/auth/oauth"
 	"github.com/Abraxas-365/claudio/internal/auth/storage"
 )
 
@@ -899,6 +903,254 @@ func TestApplyContextManagement_AddsForAnthropicModels(t *testing.T) {
 	}
 	if edit.Keep == nil || edit.Keep.Value != 10 {
 		t.Fatalf("expected keep.value=10, got %+v", edit.Keep)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// WithStorage / 401 force-refresh retry
+// ---------------------------------------------------------------------------
+
+// streamingSSEBody returns a minimal valid SSE stream for the Anthropic API.
+func streamingSSEBody() string {
+	return strings.Join([]string{
+		`data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`,
+		`data: {"type":"content_block_stop","index":0}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")
+}
+
+// newClientWithHTTP creates a Client that uses a custom *http.Client (for httptest servers).
+func newClientWithHTTP(t *testing.T, baseURL string, store storage.SecureStorage) *Client {
+	t.Helper()
+	resolver := auth.NewResolver(store)
+	opts := []ClientOption{
+		WithBaseURL(baseURL),
+		WithPromptCaching(false),
+		WithStorage(store),
+	}
+	c := NewClient(resolver, opts...)
+	// Replace the internal httpClient to point at our test server.
+	c.httpClient = &http.Client{Timeout: 5 * time.Second}
+	return c
+}
+
+func freshOAuthTokens() *oauth.Tokens {
+	return &oauth.Tokens{
+		AccessToken:  "access-valid",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Now().Add(2 * time.Hour),
+		Scopes:       []string{"user:inference"},
+	}
+}
+
+// TestWithStorage_OptionSetsField verifies that WithStorage stores the
+// SecureStorage on the Client.
+func TestWithStorage_OptionSetsField(t *testing.T) {
+	store := storage.NewPlaintextStorage(t.TempDir() + "/creds.json")
+	resolver := auth.NewResolver(store)
+	c := NewClient(resolver, WithStorage(store))
+	if c.storage == nil {
+		t.Error("expected c.storage to be set after WithStorage option")
+	}
+	if c.storage != store {
+		t.Error("c.storage is not the store passed to WithStorage")
+	}
+}
+
+// TestStreamMessages_401_NoStorage verifies that a 401 without a storage
+// configured propagates as an error (no retry attempt).
+func TestStreamMessages_401_NoStorage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	store := storage.NewPlaintextStorage(t.TempDir() + "/creds.json")
+	resolver := auth.NewResolver(store)
+	c := NewClient(resolver, WithBaseURL(srv.URL), WithPromptCaching(false))
+	c.httpClient = &http.Client{Timeout: 5 * time.Second}
+
+	req := &MessagesRequest{
+		Model:     "claude-sonnet-4-6",
+		MaxTokens: 100,
+		Messages:  []Message{makeMsg("user", "hello")},
+	}
+	events, errs := c.StreamMessages(context.Background(), req)
+	// drain
+	for range events {
+	}
+	err := <-errs
+	if err == nil {
+		t.Fatal("expected an error for 401 without storage")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Errorf("expected 401 in error, got: %v", err)
+	}
+}
+
+// TestStreamMessages_401_WithStorage_RefreshSucceeds verifies that when the
+// API returns 401 and we have storage with valid tokens, the client refreshes
+// and retries. We simulate the refresh by having the test server return 401
+// on the first request and 200 on the second (the retry), and we pre-populate
+// the store with tokens that won't actually need refreshing (the test OAuth
+// server is not real) — in practice the retry works because after the 401 the
+// client calls CheckAndRefreshIfNeeded(force=true); here we test the retry
+// mechanism by having a server that returns 200 on the second attempt and
+// verifying the stream completes successfully.
+func TestStreamMessages_401_WithStorage_RetryReceives200(t *testing.T) {
+	var requestCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := requestCount.Add(1)
+		if n == 1 {
+			// First request → 401
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		// Second request (retry) → success
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, streamingSSEBody())
+	}))
+	defer srv.Close()
+
+	// Pre-populate the store with a valid access token so the resolver can
+	// provide auth and CheckAndRefreshIfNeeded finds a token to work with.
+	store := storage.NewPlaintextStorage(t.TempDir() + "/creds.json")
+	if err := store.SaveTokens(freshOAuthTokens()); err != nil {
+		t.Fatalf("SaveTokens: %v", err)
+	}
+
+	c := newClientWithHTTP(t, srv.URL, store)
+
+	req := &MessagesRequest{
+		Model:     "claude-sonnet-4-6",
+		MaxTokens: 100,
+		Messages:  []Message{makeMsg("user", "hello")},
+	}
+	events, errs := c.StreamMessages(context.Background(), req)
+	for range events {
+	}
+	err := <-errs
+	if err != nil {
+		t.Fatalf("expected no error after retry, got: %v", err)
+	}
+	if got := int(requestCount.Load()); got != 2 {
+		t.Errorf("expected 2 HTTP requests (original + retry), got %d", got)
+	}
+}
+
+// TestStreamMessages_401_WithStorage_RefreshFails verifies that when the
+// server always returns 401 (even on retry), an error is propagated.
+func TestStreamMessages_401_WithStorage_RefreshFails(t *testing.T) {
+	var requestCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	store := storage.NewPlaintextStorage(t.TempDir() + "/creds.json")
+	if err := store.SaveTokens(freshOAuthTokens()); err != nil {
+		t.Fatalf("SaveTokens: %v", err)
+	}
+
+	c := newClientWithHTTP(t, srv.URL, store)
+
+	req := &MessagesRequest{
+		Model:     "claude-sonnet-4-6",
+		MaxTokens: 100,
+		Messages:  []Message{makeMsg("user", "hello")},
+	}
+	events, errs := c.StreamMessages(context.Background(), req)
+	for range events {
+	}
+	err := <-errs
+	if err == nil {
+		t.Fatal("expected an error when all requests return 401")
+	}
+}
+
+// TestSendMessage_401_WithStorage_RetryReceives200 mirrors the streaming test
+// but for SendMessage (non-streaming path).
+func TestSendMessage_401_WithStorage_RetryReceives200(t *testing.T) {
+	var requestCount atomic.Int32
+
+	successBody := `{
+		"id": "msg_1",
+		"type": "message",
+		"role": "assistant",
+		"content": [{"type":"text","text":"hello"}],
+		"model": "claude-sonnet-4-6",
+		"stop_reason": "end_turn",
+		"stop_sequence": null,
+		"usage": {"input_tokens": 10, "output_tokens": 5}
+	}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := requestCount.Add(1)
+		if n == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, successBody)
+	}))
+	defer srv.Close()
+
+	store := storage.NewPlaintextStorage(t.TempDir() + "/creds.json")
+	if err := store.SaveTokens(freshOAuthTokens()); err != nil {
+		t.Fatalf("SaveTokens: %v", err)
+	}
+
+	c := newClientWithHTTP(t, srv.URL, store)
+
+	req := &MessagesRequest{
+		Model:     "claude-sonnet-4-6",
+		MaxTokens: 100,
+		Messages:  []Message{makeMsg("user", "hello")},
+	}
+	resp, err := c.SendMessage(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected no error after retry, got: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if got := int(requestCount.Load()); got != 2 {
+		t.Errorf("expected 2 HTTP requests (original + retry), got %d", got)
+	}
+}
+
+// TestSendMessage_401_NoStorage verifies 401 without storage is a hard error.
+func TestSendMessage_401_NoStorage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	store := storage.NewPlaintextStorage(t.TempDir() + "/creds.json")
+	resolver := auth.NewResolver(store)
+	c := NewClient(resolver, WithBaseURL(srv.URL), WithPromptCaching(false))
+	c.httpClient = &http.Client{Timeout: 5 * time.Second}
+
+	req := &MessagesRequest{
+		Model:     "claude-sonnet-4-6",
+		MaxTokens: 100,
+		Messages:  []Message{makeMsg("user", "hello")},
+	}
+	_, err := c.SendMessage(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for 401 without storage")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Errorf("expected 401 in error, got: %v", err)
 	}
 }
 

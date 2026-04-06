@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/auth/oauth"
@@ -13,15 +14,56 @@ import (
 )
 
 const (
-	refreshBuffer  = 5 * time.Minute
-	maxRetries     = 5
-	lockRetryBase  = 1000 // ms
+	refreshBuffer   = 5 * time.Minute
+	maxRetries      = 5
+	lockRetryBase   = 1000 // ms
 	lockRetryJitter = 1000 // ms
 )
 
+// in-process deduplication: only one goroutine runs a refresh at a time;
+// others wait and share the result.
+var (
+	refreshMu       sync.Mutex
+	refreshInFlight bool
+	refreshCond     = sync.NewCond(&refreshMu)
+	lastResult      bool
+	lastErr         error
+)
+
 // CheckAndRefreshIfNeeded checks if the OAuth token needs refreshing and refreshes it.
-// Uses file locking for multi-process safety.
-func CheckAndRefreshIfNeeded(store storage.SecureStorage, force bool) (refreshed bool, err error) {
+// Uses in-process deduplication (only one goroutine refreshes at a time) and
+// file locking for multi-process safety.
+func CheckAndRefreshIfNeeded(store storage.SecureStorage, force bool) (bool, error) {
+	refreshMu.Lock()
+	// If a refresh is already in flight and this is not a forced call, wait for it.
+	if refreshInFlight && !force {
+		for refreshInFlight {
+			refreshCond.Wait()
+		}
+		result, err := lastResult, lastErr
+		refreshMu.Unlock()
+		return result, err
+	}
+	refreshInFlight = true
+	refreshMu.Unlock()
+
+	defer func() {
+		refreshMu.Lock()
+		refreshInFlight = false
+		refreshCond.Broadcast()
+		refreshMu.Unlock()
+	}()
+
+	result, err := checkAndRefreshImpl(store, force)
+
+	refreshMu.Lock()
+	lastResult, lastErr = result, err
+	refreshMu.Unlock()
+
+	return result, err
+}
+
+func checkAndRefreshImpl(store storage.SecureStorage, force bool) (bool, error) {
 	tokens, err := store.ReadTokens()
 	if err != nil || tokens == nil || tokens.RefreshToken == "" {
 		return false, nil

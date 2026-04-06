@@ -315,6 +315,7 @@ func (sm *SessionManager) loadDBSession(dbSess *storage.Session) (*ProjectSessio
 	}
 
 	var apiOpts []api.ClientOption
+	apiOpts = append(apiOpts, api.WithStorage(store))
 	if model != "" {
 		apiOpts = append(apiOpts, api.WithModel(model))
 	}
@@ -436,6 +437,7 @@ func (sm *SessionManager) newSession(projectPath, title string) (*ProjectSession
 	resolver := authpkg.NewResolver(store)
 
 	var apiOpts []api.ClientOption
+	apiOpts = append(apiOpts, api.WithStorage(store))
 	if settings.Model != "" {
 		apiOpts = append(apiOpts, api.WithModel(settings.Model))
 	}
