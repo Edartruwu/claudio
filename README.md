@@ -966,7 +966,7 @@ Claudio supports spawning parallel worker agents ("teammates") coordinated by a 
 | Tool | Description |
 |------|-------------|
 | `TeamCreate` | Create a new team (caller becomes lead) |
-| `TeamDelete` | Delete a team (fails if members still active) |
+| `TeamDelete` | Delete a team — cancels running members, drains them, cleans up config and in-memory state |
 | `SendMessage` | Send direct or broadcast messages between agents |
 
 The `Agent` tool handles spawning — when a team exists, the LLM can spawn teammates as background agents that join the team.
@@ -1028,6 +1028,48 @@ Messages are stored as JSON arrays in per-agent inbox files:
 ```
 
 All inbox reads/writes are protected by file locks (`flock`) to prevent corruption from concurrent access. Messages support both plain text and structured payloads (shutdown requests, approval responses).
+
+### Team lifecycle and cleanup
+
+Teams are **ephemeral by design** — created for a task, deleted when done. The durable, reusable parts (agent personas, learned memory, orchestration logic) live in dedicated locations that outlive any single run:
+
+| What | Where | Survives team deletion? |
+|------|-------|------------------------|
+| Agent persona | `.claudio/agents/<name>.md` | ✅ Yes |
+| Agent memory | `.claudio/memory/agents/<name>/` | ✅ Yes |
+| Orchestration logic | `.claudio/skills/<harness-name>/skill.md` | ✅ Yes |
+| Team config + inboxes | `~/.claudio/teams/<team>/` | ❌ Deleted |
+| In-memory runner state | Process memory | ❌ Cleared |
+
+`TeamDelete` handles the full cleanup sequence automatically:
+
+1. **Cancels** any still-running members (`KillTeam`)
+2. **Drains** them — waits up to 5 seconds for goroutines to exit (`WaitForTeam`)
+3. **Deletes** the team config and inboxes from disk (`Manager.DeleteTeam`)
+4. **Clears** all in-memory state from the runner — teammate states, mailbox map entries, active team pointer (`CleanupTeam`)
+
+This means you can invoke the same harness repeatedly without state accumulating across runs. Each invocation gets a fresh team with clean inboxes.
+
+### Using crystallized agents as teammates
+
+Any agent you've [crystallized](#agent-crystallization) can be used directly as a team member. When a harness (or the LLM) spawns an agent via `subagent_type: "<agent-name>"`, Claudio:
+
+1. Loads the agent's persona prompt from `.claudio/agents/<name>.md`
+2. **Injects the agent's accumulated memory** — everything it learned across prior sessions carries into the team run
+3. Assigns the agent a team identity (name, color, mailbox) for this run
+
+This is the right way to get "warm" agents in a team. Instead of wasting time rebuilding context from scratch on every invocation, the agent picks up where its memory left off.
+
+```
+# Agent "security-auditor" was crystallized from a prior session.
+# When a harness spawns it as a teammate, its memory is automatically loaded.
+
+/security-harness audit the payments module
+# → Spawns security-auditor teammate WITH prior memory about your codebase conventions,
+#   known false-positive patterns, and project-specific security rules
+```
+
+The `/harness` skill accounts for this: Phase 0 now inventories all existing crystallized agents, and Phase 4 explicitly checks whether any existing agent matches each role before creating a new one. Reusing an existing agent is preferred — it brings accumulated memory and avoids fragmenting learnings across duplicate personas.
 
 ---
 
@@ -1201,11 +1243,11 @@ The `/harness` built-in skill guides you through designing and generating a comp
 
 **What it does:**
 
-0. **Audits** — checks for existing harnesses in `.claudio/agents/`, `.claudio/skills/`, and CLAUDIO.md; decides whether to create, extend, repair, or replace
+0. **Audits** — inventories existing harnesses AND crystallized agents in `.claudio/agents/`, `~/.claudio/agents/`, `.claudio/skills/`, and CLAUDIO.md; decides whether to create, extend, repair, or replace
 1. **Clarifies** — asks what task the harness covers, what it should output, and who will use it
 2. **Explores** — scans your project to understand languages, frameworks, existing agents/skills, and coding conventions
 3. **Selects execution mode and pattern** — chooses Agent Teams vs Sub-agents based on whether inter-agent communication is needed, then picks the best-fit architecture pattern with an ASCII diagram; asks for your approval
-4. **Designs roster** — defines each specialist role, its type (`Explore`, `Plan`, `general-purpose`, or a custom persona), communication protocol, and QA responsibilities
+4. **Designs roster** — for each role, first checks whether an existing crystallized agent matches (reuse brings accumulated memory); only creates new agents for gaps; reports "reusing X" or "creating Y" for every role
 5. **Writes agent files** — generates `.claudio/agents/<name>.md` with trigger-rich descriptions, QA protocols, and team communication specs
 6. **Writes orchestrator** — generates `.claudio/skills/<harness-name>/skill.md` using the appropriate template (Agent Team mode or Sub-agent mode) with QA cross-validation built in
 7. **Registers in CLAUDIO.md** — adds an entry documenting how to invoke the harness

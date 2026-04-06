@@ -251,6 +251,13 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		return runSubAgent(ctx, apiClient, registry, system, prompt)
 	})
 
+	// Memory-aware runner: used when a teammate is backed by a crystallized
+	// agent with its own memory directory. Lets reusable agents carry their
+	// accumulated memory into team work.
+	teamRunner.SetRunAgentWithMemory(func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
+	})
+
 	// Wire per-teammate context decorator: injects a SubAgentObserver that
 	// populates TeammateState.Conversation and Progress in real time.
 	teamRunner.SetContextDecorator(func(ctx context.Context, state *teams.TeammateState) context.Context {

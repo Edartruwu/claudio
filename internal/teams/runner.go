@@ -65,6 +65,7 @@ type TeammateState struct {
 	Conversation   []ConversationEntry
 	WorktreePath   string // path to git worktree (empty if no isolation)
 	WorktreeBranch string // branch name used for the worktree
+	MemoryDir      string // agent-scoped memory directory (empty for ephemeral teammates)
 
 	cancel context.CancelFunc
 	mu     sync.Mutex
@@ -130,6 +131,11 @@ func (s *TeammateState) GetProgress() TeammateProgress {
 // Receives (ctx, systemPrompt, userPrompt) and returns text output.
 type RunAgentFunc func(ctx context.Context, system, prompt string) (string, error)
 
+// RunAgentWithMemoryFunc is the callback to execute an agent with agent-scoped
+// memory injection. Used when a teammate is backed by a crystallized agent that
+// has its own memory directory.
+type RunAgentWithMemoryFunc func(ctx context.Context, system, prompt, memoryDir string) (string, error)
+
 // ContextDecorator allows the app layer to inject per-teammate context values
 // (e.g., SubAgentObserver, SubAgentDB) without the teams package importing tools.
 type ContextDecorator func(ctx context.Context, state *TeammateState) context.Context
@@ -144,17 +150,18 @@ type TaskCompleter func(agentName, status string)
 
 // TeammateRunner manages in-process teammate goroutines.
 type TeammateRunner struct {
-	mu               sync.RWMutex
-	teammates        map[string]*TeammateState // keyed by agent ID
-	manager          *Manager
-	mailboxes        map[string]*Mailbox
-	runAgent         RunAgentFunc
-	eventHandler     TeammateEventHandler
-	parentCtx        context.Context // parent context with observer/DB from TUI
-	contextDecorator ContextDecorator
-	cwdInjector      CwdInjector
-	taskCompleter    TaskCompleter
-	activeTeam       string // explicitly set active team name
+	mu                 sync.RWMutex
+	teammates          map[string]*TeammateState // keyed by agent ID
+	manager            *Manager
+	mailboxes          map[string]*Mailbox
+	runAgent           RunAgentFunc
+	runAgentWithMemory RunAgentWithMemoryFunc
+	eventHandler       TeammateEventHandler
+	parentCtx          context.Context // parent context with observer/DB from TUI
+	contextDecorator   ContextDecorator
+	cwdInjector        CwdInjector
+	taskCompleter      TaskCompleter
+	activeTeam         string // explicitly set active team name
 }
 
 // NewTeammateRunner creates a runner for spawning in-process teammates.
@@ -171,6 +178,14 @@ func NewTeammateRunner(manager *Manager, runAgent RunAgentFunc) *TeammateRunner 
 // SetEventHandler sets the handler that receives teammate lifecycle events.
 func (r *TeammateRunner) SetEventHandler(h TeammateEventHandler) {
 	r.eventHandler = h
+}
+
+// SetRunAgentWithMemory sets the callback used when spawning teammates that
+// are backed by a crystallized agent (i.e., one with a MemoryDir). When set,
+// teammates with a non-empty SpawnConfig.MemoryDir will use this runner so
+// the agent's accumulated memory is loaded.
+func (r *TeammateRunner) SetRunAgentWithMemory(fn RunAgentWithMemoryFunc) {
+	r.runAgentWithMemory = fn
 }
 
 // SetParentContext sets the parent context used for spawning teammates.
@@ -210,6 +225,7 @@ type SpawnConfig struct {
 	Model       string // model override
 	MaxTurns    int    // optional max agentic turns (0 = unlimited)
 	Isolation   string // "worktree" for git worktree isolation
+	MemoryDir   string // optional agent-scoped memory directory (for crystallized agents)
 }
 
 // Spawn starts a new teammate goroutine.
@@ -244,6 +260,7 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		Prompt:       cfg.Prompt,
 		Model:        cfg.Model,
 		MaxTurns:     cfg.MaxTurns,
+		MemoryDir:    cfg.MemoryDir,
 		Status:       StatusWorking,
 		StartedAt:    time.Now(),
 		cancel:       cancel,
@@ -346,7 +363,13 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			"Your changes stay in this worktree and will not affect the parent's files.", state.WorktreePath, cwd)
 	}
 
-	result, err := r.runAgent(ctx, system, cfg.Prompt)
+	var result string
+	var err error
+	if state.MemoryDir != "" && r.runAgentWithMemory != nil {
+		result, err = r.runAgentWithMemory(ctx, system, cfg.Prompt, state.MemoryDir)
+	} else {
+		result, err = r.runAgent(ctx, system, cfg.Prompt)
+	}
 
 	state.mu.Lock()
 	state.FinishedAt = time.Now()
@@ -579,6 +602,80 @@ func (r *TeammateRunner) KillAll() {
 		if s.cancel != nil {
 			s.cancel()
 		}
+	}
+}
+
+// KillTeam cancels all running teammates belonging to the given team.
+// Members of other teams are unaffected.
+func (r *TeammateRunner) KillTeam(teamName string) {
+	r.mu.RLock()
+	states := make([]*TeammateState, 0)
+	for _, s := range r.teammates {
+		if s.TeamName == teamName {
+			states = append(states, s)
+		}
+	}
+	r.mu.RUnlock()
+
+	for _, s := range states {
+		if s.cancel != nil {
+			s.cancel()
+		}
+	}
+}
+
+// WaitForTeam blocks until every teammate of the given team is idle, or timeout.
+// Returns true if all became idle within the timeout.
+func (r *TeammateRunner) WaitForTeam(teamName string, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		allIdle := true
+		r.mu.RLock()
+		for _, s := range r.teammates {
+			if s.TeamName != teamName {
+				continue
+			}
+			s.mu.Lock()
+			if !s.IsIdle {
+				allIdle = false
+			}
+			s.mu.Unlock()
+			if !allIdle {
+				break
+			}
+		}
+		r.mu.RUnlock()
+
+		if allIdle {
+			return true
+		}
+
+		select {
+		case <-deadline:
+			return false
+		case <-time.After(100 * time.Millisecond):
+			continue
+		}
+	}
+}
+
+// CleanupTeam removes all in-memory state for a team: teammate states and the
+// mailbox entry. Callers must ensure members are idle (use KillTeam +
+// WaitForTeam) before calling, otherwise running goroutines will continue but
+// be invisible to the runner.
+func (r *TeammateRunner) CleanupTeam(teamName string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, s := range r.teammates {
+		if s.TeamName == teamName {
+			delete(r.teammates, id)
+		}
+	}
+	delete(r.mailboxes, teamName)
+
+	if r.activeTeam == teamName {
+		r.activeTeam = ""
 	}
 }
 

@@ -999,3 +999,315 @@ func TestTeammateRunner_GetMailbox_NoActiveTeam(t *testing.T) {
 		t.Error("expected nil mailbox when no active team")
 	}
 }
+
+// --- Team cleanup tests ---
+
+func TestTeammateRunner_KillTeam_OnlyAffectsTargetTeam(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	if _, err := mgr.CreateTeam("team-a", "", "sess-a", ""); err != nil {
+		t.Fatalf("CreateTeam team-a: %v", err)
+	}
+	if _, err := mgr.CreateTeam("team-b", "", "sess-b", ""); err != nil {
+		t.Fatalf("CreateTeam team-b: %v", err)
+	}
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+
+	a1, _ := runner.Spawn(SpawnConfig{TeamName: "team-a", AgentName: "a1", Prompt: "t"})
+	a2, _ := runner.Spawn(SpawnConfig{TeamName: "team-a", AgentName: "a2", Prompt: "t"})
+	b1, _ := runner.Spawn(SpawnConfig{TeamName: "team-b", AgentName: "b1", Prompt: "t"})
+	defer runner.KillAll()
+
+	time.Sleep(50 * time.Millisecond)
+	if c := runner.WorkingCount(); c != 3 {
+		t.Fatalf("expected 3 working before KillTeam, got %d", c)
+	}
+
+	runner.KillTeam("team-a")
+	if !runner.WaitForTeam("team-a", 5*time.Second) {
+		t.Fatal("WaitForTeam timed out for team-a")
+	}
+
+	// team-a members should be idle
+	if !a1.IsIdle || !a2.IsIdle {
+		t.Error("expected team-a members to be idle after KillTeam")
+	}
+	// team-b member should still be running
+	if b1.IsIdle {
+		t.Error("team-b member should not have been killed")
+	}
+	if c := runner.WorkingCount(); c != 1 {
+		t.Errorf("expected 1 still working (team-b), got %d", c)
+	}
+}
+
+func TestTeammateRunner_CleanupTeam_RemovesStateAndMailbox(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "worker",
+		Prompt:    "t",
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	// Mailbox is created lazily in Spawn — confirm it exists.
+	if runner.getMailbox("test-team") == nil {
+		t.Fatal("expected mailbox to exist after Spawn")
+	}
+	runner.SetActiveTeam("test-team")
+
+	runner.KillTeam("test-team")
+	if !runner.WaitForTeam("test-team", 5*time.Second) {
+		t.Fatal("WaitForTeam timed out")
+	}
+
+	runner.CleanupTeam("test-team")
+
+	// Teammate state should be gone
+	if _, ok := runner.GetState(state.Identity.AgentID); ok {
+		t.Error("expected teammate state to be removed after CleanupTeam")
+	}
+	if len(runner.AllStates()) != 0 {
+		t.Errorf("expected 0 states after cleanup, got %d", len(runner.AllStates()))
+	}
+	// Mailbox should be gone
+	if runner.getMailbox("test-team") != nil {
+		t.Error("expected mailbox to be removed after CleanupTeam")
+	}
+	// Active team pointer should be cleared
+	if runner.ActiveTeamName() != "" {
+		t.Errorf("expected activeTeam cleared, got %q", runner.ActiveTeamName())
+	}
+}
+
+func TestTeammateRunner_CleanupTeam_DoesNotTouchOtherTeams(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	if _, err := mgr.CreateTeam("team-a", "", "sess-a", ""); err != nil {
+		t.Fatalf("CreateTeam team-a: %v", err)
+	}
+	if _, err := mgr.CreateTeam("team-b", "", "sess-b", ""); err != nil {
+		t.Fatalf("CreateTeam team-b: %v", err)
+	}
+
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+
+	runner.Spawn(SpawnConfig{TeamName: "team-a", AgentName: "a1", Prompt: "t"})
+	bState, _ := runner.Spawn(SpawnConfig{TeamName: "team-b", AgentName: "b1", Prompt: "t"})
+	defer runner.KillAll()
+
+	runner.KillTeam("team-a")
+	runner.WaitForTeam("team-a", 5*time.Second)
+	runner.CleanupTeam("team-a")
+
+	// team-b state must remain
+	if _, ok := runner.GetState(bState.Identity.AgentID); !ok {
+		t.Error("team-b state should still exist after CleanupTeam(team-a)")
+	}
+	if runner.getMailbox("team-b") == nil {
+		t.Error("team-b mailbox should still exist after CleanupTeam(team-a)")
+	}
+}
+
+func TestTeammateRunner_CreateDeleteCycles_NoLeak(t *testing.T) {
+	// Verify that repeatedly creating and tearing down teams doesn't grow
+	// the runner's internal maps.
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("cycle-team-%d", i)
+		if _, err := mgr.CreateTeam(name, "", "sess", ""); err != nil {
+			t.Fatalf("CreateTeam %s: %v", name, err)
+		}
+		runner.Spawn(SpawnConfig{TeamName: name, AgentName: "w1", Prompt: "t"})
+		runner.Spawn(SpawnConfig{TeamName: name, AgentName: "w2", Prompt: "t"})
+
+		runner.KillTeam(name)
+		if !runner.WaitForTeam(name, 5*time.Second) {
+			t.Fatalf("WaitForTeam %s timed out", name)
+		}
+		if err := mgr.DeleteTeam(name); err != nil {
+			t.Fatalf("DeleteTeam %s: %v", name, err)
+		}
+		runner.CleanupTeam(name)
+	}
+
+	if n := len(runner.AllStates()); n != 0 {
+		t.Errorf("expected 0 teammate states after cycles, got %d", n)
+	}
+	// mailboxes map should also be empty — peek under the lock.
+	runner.mu.RLock()
+	mbCount := len(runner.mailboxes)
+	runner.mu.RUnlock()
+	if mbCount != 0 {
+		t.Errorf("expected 0 mailboxes after cycles, got %d", mbCount)
+	}
+}
+
+func TestTeammateRunner_WaitForTeam_TimeoutOnUnknownTeam(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	// Unknown team has no members → considered all-idle immediately, returns true.
+	if !runner.WaitForTeam("nonexistent", 1*time.Second) {
+		t.Error("expected WaitForTeam to return true for a team with no members")
+	}
+}
+
+// --- Memory-aware spawn tests ---
+
+func TestTeammateRunner_Spawn_UsesMemoryAwareRunner(t *testing.T) {
+	var plainCalled, memCalled int32
+	var capturedMemDir string
+	var memMu sync.Mutex
+
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		memMu.Lock()
+		plainCalled++
+		memMu.Unlock()
+		return "plain", nil
+	})
+
+	runner.SetRunAgentWithMemory(func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
+		memMu.Lock()
+		memCalled++
+		capturedMemDir = memoryDir
+		memMu.Unlock()
+		return "with-memory: " + memoryDir, nil
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "crystallized-worker",
+		Prompt:    "do work",
+		MemoryDir: "/tmp/agents/crystal/memory",
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	if !runner.WaitForOne(state.Identity.AgentID, 5*time.Second) {
+		t.Fatal("timeout waiting for teammate")
+	}
+
+	memMu.Lock()
+	defer memMu.Unlock()
+
+	if memCalled != 1 {
+		t.Errorf("expected memory-aware runner called once, got %d", memCalled)
+	}
+	if plainCalled != 0 {
+		t.Errorf("expected plain runner NOT called, got %d", plainCalled)
+	}
+	if capturedMemDir != "/tmp/agents/crystal/memory" {
+		t.Errorf("expected memory dir propagated, got %q", capturedMemDir)
+	}
+	if state.Result != "with-memory: /tmp/agents/crystal/memory" {
+		t.Errorf("expected result from memory-aware runner, got %q", state.Result)
+	}
+	if state.MemoryDir != "/tmp/agents/crystal/memory" {
+		t.Errorf("expected state.MemoryDir to be set, got %q", state.MemoryDir)
+	}
+}
+
+func TestTeammateRunner_Spawn_FallsBackToPlainRunner_NoMemoryDir(t *testing.T) {
+	var plainCalled, memCalled int32
+	var mu sync.Mutex
+
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		mu.Lock()
+		plainCalled++
+		mu.Unlock()
+		return "plain-result", nil
+	})
+
+	runner.SetRunAgentWithMemory(func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
+		mu.Lock()
+		memCalled++
+		mu.Unlock()
+		return "should-not-be-called", nil
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "plain-worker",
+		Prompt:    "do work",
+		// MemoryDir intentionally empty
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	if !runner.WaitForOne(state.Identity.AgentID, 5*time.Second) {
+		t.Fatal("timeout waiting for teammate")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if plainCalled != 1 {
+		t.Errorf("expected plain runner called once, got %d", plainCalled)
+	}
+	if memCalled != 0 {
+		t.Errorf("expected memory-aware runner NOT called, got %d", memCalled)
+	}
+	if state.Result != "plain-result" {
+		t.Errorf("expected plain result, got %q", state.Result)
+	}
+}
+
+func TestTeammateRunner_Spawn_FallsBackToPlainRunner_NoMemoryRunnerSet(t *testing.T) {
+	var plainCalled int32
+	var mu sync.Mutex
+
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		mu.Lock()
+		plainCalled++
+		mu.Unlock()
+		return "plain-only", nil
+	})
+	// Intentionally do NOT call SetRunAgentWithMemory.
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "worker",
+		Prompt:    "do work",
+		MemoryDir: "/some/memory/dir", // set, but no memory runner wired
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	if !runner.WaitForOne(state.Identity.AgentID, 5*time.Second) {
+		t.Fatal("timeout waiting for teammate")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if plainCalled != 1 {
+		t.Errorf("expected plain runner called once as fallback, got %d", plainCalled)
+	}
+	if state.Result != "plain-only" {
+		t.Errorf("expected plain result, got %q", state.Result)
+	}
+}

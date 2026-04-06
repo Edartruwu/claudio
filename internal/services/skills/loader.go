@@ -1027,19 +1027,26 @@ A harness is a reusable multi-agent architecture that decomposes complex, recurr
 
 ---
 
-## Phase 0: Audit existing harnesses
+## Phase 0: Audit existing harnesses AND existing agents
 
 Before designing anything, check for prior work:
 
 1. Read CLAUDIO.md — look for an "## Agent Harnesses" section
-2. List ` + "`.claudio/agents/`" + ` and ` + "`.claudio/skills/`" + ` directories
-3. If a harness already exists for this domain or a closely related one, decide:
+2. List ` + "`.claudio/agents/`" + ` and ` + "`.claudio/skills/`" + ` directories (project-local)
+3. List ` + "`~/.claudio/agents/`" + ` (global) — crystallized agents available across projects
+4. For each existing agent file, read its frontmatter ` + "`description`" + ` and note:
+   - Agent name
+   - Domain / specialization
+   - Whether it has accumulated memory (presence of a memory dir alongside its definition)
+5. If a harness already exists for this domain or a closely related one, decide:
    - **Extend** — add agents/phases to the existing harness
    - **Repair** — fix broken references, stale agent files, placeholder text
    - **Replace** — start fresh (only if the old harness is fundamentally wrong)
    - **Create** — no prior harness exists
 
-Tell the user what you found and which path you're taking. If extending or repairing, skip to the relevant phase.
+Tell the user what you found — both prior harnesses AND the inventory of existing agents that could be reused. This inventory directly feeds Phase 4's reuse-vs-create decisions.
+
+If extending or repairing, skip to the relevant phase.
 
 ---
 
@@ -1158,13 +1165,18 @@ Present your pattern choice, execution mode, and rationale to the user using Ask
 For each agent in the chosen pattern:
 
 1. **Define the role** — one clear specialization per agent. If two roles can be combined without loss of focus, combine them.
-2. **Assign a type**:
+2. **Reuse-vs-create check (REQUIRED)** — before assigning a type, scan the inventory you built in Phase 0:
+   - **REUSE** an existing crystallized agent if its description clearly matches this role's domain and responsibilities. Reusing brings the agent's accumulated memory into the team — that memory IS preserved when teammates spawn (memory dirs are plumbed through the runner).
+   - **CREATE NEW** if no existing agent matches, OR if the closest match is too generic for a specialist role, OR if reusing would dilute an existing agent's persona.
+   - **Decision rule**: prefer reuse when in doubt. Memory is valuable; duplicating personas fragments learnings.
+   - Tell the user explicitly: "Role X → reusing existing agent ` + "`<name>`" + `" or "Role X → creating new agent ` + "`<name>`" + ` (no suitable existing agent)".
+3. **Assign a type** (only for newly-created agents):
    - ` + "`general-purpose`" + ` — needs web access, broad tools, or can't be constrained
    - ` + "`Explore`" + ` — read-only analysis, codebase investigation, no writes
    - ` + "`Plan`" + ` — architecture and planning, no writes
    - Custom (defined in ` + "`.claudio/agents/<name>.md`" + `) — complex persona with specific tooling, reusable across sessions
-3. **Decide communication protocol** — what messages this agent sends/receives via SendMessage
-4. **Decide task protocol** — what task types this agent creates or claims via TaskCreate/TaskUpdate
+4. **Decide communication protocol** — what messages this agent sends/receives via SendMessage
+5. **Decide task protocol** — what task types this agent creates or claims via TaskCreate/TaskUpdate
 
 ### Agent separation criteria
 
@@ -1297,7 +1309,10 @@ Typical invocations:
 TeamCreate({
   name: "<harness-name>-team",
   members: [
-    { name: "<agent-a>", agent: "<agent-a>", task: "<initial instruction with FULL context — agent has no prior knowledge>" },
+    // For roles backed by an existing crystallized agent, use that agent's
+    // exact name in the "agent" field — its persona AND accumulated memory
+    // will be loaded into the teammate session.
+    { name: "<display-name>", agent: "<existing-or-new-agent>", task: "<initial instruction with FULL context — agent has no prior knowledge of THIS conversation, even if it has memory from prior sessions>" },
     { name: "<agent-b>", agent: "<agent-b>", task: "<initial instruction>" }
   ]
 })

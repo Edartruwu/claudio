@@ -243,6 +243,7 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 			System:    agentDef.SystemPrompt,
 			Model:     modelOverride,
 			MaxTurns:  maxTurns,
+			MemoryDir: agentDef.MemoryDir,
 		})
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Failed to spawn teammate: %v", err), IsError: true}, nil
