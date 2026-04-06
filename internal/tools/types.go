@@ -65,6 +65,16 @@ type DeferrableTool interface {
 	SearchHint() string
 }
 
+// AutoActivatable is an optional interface for deferrable tools that should
+// auto-activate (skip deferral) when their backing service is available.
+// For example, the LSP tool auto-activates when an LSP server is configured
+// for the project's language.
+type AutoActivatable interface {
+	// AutoActivate returns true if this tool should be sent with full schema
+	// even though it is normally deferred.
+	AutoActivate() bool
+}
+
 // APIToolDef is the format the Anthropic API expects for tool definitions.
 type APIToolDef struct {
 	Name         string          `json:"name"`

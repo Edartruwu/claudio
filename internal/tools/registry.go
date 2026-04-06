@@ -75,6 +75,12 @@ func (r *Registry) APIDefinitionsWithDeferral(discoveredTools map[string]bool) j
 			if discoveredTools == nil || !discoveredTools[name] {
 				shouldDefer = true
 			}
+			// Auto-activate if the tool's backing service is available
+			if shouldDefer {
+				if aa, ok := t.(AutoActivatable); ok && aa.AutoActivate() {
+					shouldDefer = false
+				}
+			}
 		}
 
 		if shouldDefer {

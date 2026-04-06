@@ -68,6 +68,12 @@ func (t *LSPTool) IsEnabled() bool {
 	return t.manager != nil && t.manager.HasServers()
 }
 
+// AutoActivate returns true when LSP servers are configured, causing the tool
+// to skip deferral so the AI knows code intelligence is available immediately.
+func (t *LSPTool) AutoActivate() bool {
+	return t.IsEnabled()
+}
+
 // SetLSPManager injects the LSP server manager.
 func (t *LSPTool) SetLSPManager(m *lsp.ServerManager) {
 	t.manager = m
