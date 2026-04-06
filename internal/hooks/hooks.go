@@ -329,12 +329,25 @@ func (m *Manager) matchersForEvent(event Event) []HookMatcher {
 }
 
 // matchTool checks if a tool name matches a matcher pattern.
+// Patterns may use "|" to specify alternatives (e.g. "Write|Edit|NotebookEdit"),
+// and each alternative supports filepath.Match glob syntax.
 func matchTool(pattern, toolName string) bool {
 	if pattern == "*" || pattern == "" {
 		return true
 	}
-	matched, _ := filepath.Match(pattern, toolName)
-	return matched || pattern == toolName
+	for _, alt := range strings.Split(pattern, "|") {
+		alt = strings.TrimSpace(alt)
+		if alt == "" {
+			continue
+		}
+		if alt == "*" || alt == toolName {
+			return true
+		}
+		if matched, _ := filepath.Match(alt, toolName); matched {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeConfigs(base, overlay HooksConfig) HooksConfig {

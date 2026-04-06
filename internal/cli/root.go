@@ -20,22 +20,22 @@ import (
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/rules"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
-	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/session"
+	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/tui"
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
 
 var (
-	flagModel              string
-	flagVerbose            bool
-	flagHeadless           bool
-	flagContext            string
-	flagBudget             float64
-	flagResume             string
+	flagModel               string
+	flagVerbose             bool
+	flagHeadless            bool
+	flagContext             string
+	flagBudget              float64
+	flagResume              string
 	flagDangerouslySkipPerm bool
-	flagPrint              bool
+	flagPrint               bool
 )
 
 // appInstance is initialized before command execution.
@@ -43,9 +43,12 @@ var appInstance *app.App
 
 var rootCmd = &cobra.Command{
 	Use:   "claudio [prompt]",
-	Short: "AI-powered coding assistant for the terminal",
-	Long: `Claudio is an open-source terminal AI assistant that helps with software engineering tasks.
-Built in Go with a focus on performance, security, and extensibility.`,
+	Short: "Claudio your AI pair programmer in the terminal",
+	Long: `Claudio is an open-source AI coding assistant that lives in your terminal.
+
+It understands your codebase, executes tools, manages sessions, and helps you
+ship faster — all without leaving the command line. Built in pure Go for speed,
+security, and hackability.`,
 	Args: cobra.ArbitraryArgs,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip app init for commands that don't need it
@@ -273,6 +276,21 @@ func buildFullSystemPrompt() string {
 	// 7. Snippet documentation
 	if snippetSection := snippets.ForSystemPrompt(appInstance.Config.Snippets); snippetSection != "" {
 		sections = append(sections, snippetSection)
+	}
+
+	// 8. Installed plugins
+	if appInstance.Plugins != nil && len(appInstance.Plugins.All()) > 0 {
+		var pluginInfos []prompts.PluginInfo
+		for _, p := range appInstance.Plugins.All() {
+			pluginInfos = append(pluginInfos, prompts.PluginInfo{
+				Name:         p.Name,
+				Description:  p.Description,
+				Instructions: p.Instructions,
+			})
+		}
+		if pluginSection := prompts.PluginsSection(pluginInfos); pluginSection != "" {
+			sections = append(sections, pluginSection)
+		}
 	}
 
 	// Combine all additional context

@@ -102,6 +102,10 @@ type Engine struct {
 	userContextInjected bool
 	systemContext       string // git status appended to system (dynamic)
 
+	// lifecycle hook tracking
+	sessionStartFired bool
+	lastCwd           string
+
 	// maxTurns limits the number of agentic API calls (0 = unlimited).
 	maxTurns  int
 	turnCount int
@@ -150,6 +154,9 @@ func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandle
 
 // Close releases resources held by the engine (cleans up persisted tool result files).
 func (e *Engine) Close() {
+	if e.sessionStartFired {
+		e.fireHook(context.Background(), hooks.SessionEnd, "", "")
+	}
 	if e.toolCache != nil {
 		e.toolCache.Cleanup()
 	}
@@ -249,6 +256,19 @@ func (e *Engine) RunWithImages(ctx context.Context, userMessage string, images [
 
 // RunWithBlocks executes a user turn with pre-built content blocks.
 func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBlock) error {
+	// Fire SessionStart on the first turn of the session.
+	if !e.sessionStartFired {
+		e.sessionStartFired = true
+		e.lastCwd, _ = os.Getwd()
+		e.fireHook(ctx, hooks.SessionStart, "", "")
+	} else {
+		// Detect cwd changes between turns and fire CwdChanged.
+		if cwd, err := os.Getwd(); err == nil && cwd != e.lastCwd {
+			e.lastCwd = cwd
+			e.fireHook(ctx, hooks.CwdChanged, "", "")
+		}
+	}
+
 	// Inject user context (CLAUDE.md) as the very first user message, once per session.
 	if !e.userContextInjected && e.userContextMsg != "" && len(e.messages) == 0 {
 		ctxContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.userContextMsg)})
@@ -856,6 +876,12 @@ func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools
 		e.fireHook(ctx, hooks.PostToolUseFailure, tu.Name, result.Content)
 	} else {
 		e.fireHook(ctx, hooks.PostToolUse, tu.Name, result.Content)
+	}
+
+	// Detect cwd changes caused by the tool (e.g. EnterWorktree/ExitWorktree).
+	if cwd, err := os.Getwd(); err == nil && cwd != e.lastCwd {
+		e.lastCwd = cwd
+		e.fireHook(ctx, hooks.CwdChanged, "", "")
 	}
 
 	if secrets := security.ScanForSecrets(result.Content); len(secrets) > 0 {

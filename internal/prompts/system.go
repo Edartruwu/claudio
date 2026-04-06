@@ -181,6 +181,42 @@ You have been invoked in the following environment:
 		cwd, gitInfo, runtime.GOOS, shell, uname, currentDate, modelName, knowledgeCutoff)
 }
 
+// PluginInfo holds the metadata a plugin provides for system prompt injection.
+type PluginInfo struct {
+	Name         string
+	Description  string
+	Instructions string
+}
+
+// PluginsSection returns a system prompt section for installed plugins.
+// If a plugin provides --instructions, that markdown is injected verbatim.
+// Otherwise a generic entry is generated from --describe.
+func PluginsSection(plugins []PluginInfo) string {
+	if len(plugins) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("# Installed Plugins\n")
+	sb.WriteString("The following plugins are installed as deferred tools. ")
+	sb.WriteString("To use a plugin, call ToolSearch with the plugin name to fetch its schema, then call it.\n")
+
+	for _, p := range plugins {
+		fmt.Fprintf(&sb, "\n## plugin_%s\n", p.Name)
+		if p.Instructions != "" {
+			sb.WriteString(p.Instructions)
+			sb.WriteString("\n")
+		} else {
+			desc := p.Description
+			if desc == "" {
+				desc = "(no description)"
+			}
+			sb.WriteString(desc)
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
 // ScratchpadSection returns instructions for using the session scratchpad directory.
 func ScratchpadSection(scratchpadDir string) string {
 	if scratchpadDir == "" {

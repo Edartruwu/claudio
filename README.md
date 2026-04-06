@@ -1,7 +1,4 @@
-# Claudio
-
-> **An open-source AI coding assistant for the terminal, built in Go.**
-> Multi-agent orchestration · persistent memory · team coordination · full vim mode · zero runtime dependencies.
+<div align="center">
 
 ```
   ██████╗██╗      █████╗ ██╗   ██╗██████╗ ██╗ ██████╗
@@ -11,6 +8,108 @@
  ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝██║╚██████╔╝
   ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝ ╚═════╝
 ```
+
+### The open-source AI coding agent for your terminal
+
+**Multi-agent teams · Persistent memory · Vim-grade TUI · Single Go binary**
+
+[![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](#requirements)
+[![Pure Go](https://img.shields.io/badge/CGO-free-success)](#key-constraints)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
+
+[**Quick Start**](#-quick-start) · [**Install**](#-installation) · [**Features**](#-features) · [**Docs**](#table-of-contents) · [**Why Claudio?**](#-why-claudio)
+
+</div>
+
+---
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 🤖 Multi-Agent Teams
+Built-in orchestration with mailbox messaging, parallel execution, and hierarchical delegation patterns via `/harness`.
+
+</td>
+<td width="33%" valign="top">
+
+### 🧠 Persistent Memory
+Project, agent, and global scopes. AI-powered selection, background extraction, learned instincts, and dream consolidation.
+
+</td>
+<td width="33%" valign="top">
+
+### ⚡ Token Efficient
+11-layer optimization: prompt caching, RTK output filtering, snippet expansion, microcompaction, dedup, image compression.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### ⌨️ Vim-Grade TUI
+Full state machine — normal, insert, visual, operator-pending modes with registers. Built on Bubbletea.
+
+</td>
+<td valign="top">
+
+### 💎 Session Crystallization
+Promote any session into a reusable agent persona — with its own memory, tools, and instructions.
+
+</td>
+<td valign="top">
+
+### 🔌 Pluggable
+MCP servers, LSP integration, hooks, custom skills, plugins, and multi-provider model support.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### ⏰ Scheduled Tasks
+Cron-style recurring agent jobs: `@every 1h`, `@daily`, or `HH:MM`.
+
+</td>
+<td valign="top">
+
+### 🌐 Web UI
+`claudio web` launches a full browser chat with streaming, tool approval, plan mode, and AskUser.
+
+</td>
+<td valign="top">
+
+### 📦 Single Binary
+Pure Go, zero runtime, no Node.js. `modernc.org/sqlite` keeps it CGO-free.
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# 1. Install
+go install github.com/Abraxas-365/claudio/cmd/claudio@latest
+
+# 2. Authenticate
+claudio auth login
+
+# 3. Bootstrap your project
+cd your-project
+claudio          # launches the TUI
+/init            # AI-guided project setup
+
+# 4. Start coding
+```
+
+> 💡 **Tip:** `claudio --resume` picks up your last session. `claudio "fix the failing test"` runs a one-shot prompt without the TUI.
 
 ---
 
@@ -60,109 +159,77 @@
 
 ---
 
-## Why Claudio?
+## 🆚 Why Claudio?
 
-| | Claudio | Claude Code |
+Claudio is built ground-up in Go for engineers who want **more control, more agents, and fewer dependencies**.
+
+|  | **Claudio** | Claude Code |
 |---|---|---|
-| **Language** | Go (single binary, no runtime) | Node.js/TypeScript |
-| **Multi-agent teams** | Built-in orchestration, mailbox messaging, team management | Not supported |
-| **Session-as-agent** | Crystallize sessions into reusable agent personas with their own memory | Not supported |
-| **Memory** | Scoped (project/agent/global), AI-powered selection, background extraction, dream consolidation | Single project directory |
-| **Context management** | Tiered compaction (partial + full), message pinning, `/` search in viewport, memory tool | Basic |
-| **Token efficiency** | 11-layer optimization: prompt caching, RTK-style output filtering, snippet expansion, microcompaction, tool result offload, read dedup, image compression, deferred tool schemas | Basic prompt caching |
-| **Snippet expansion** | `~name(args)` shorthand expands to full code via templates — saves output tokens on repetitive boilerplate | Not supported |
-| **Learned instincts** | Patterns extracted from sessions, confidence-scored, replayed in future sessions to avoid repeated mistakes | Not supported |
-| **Cron tasks** | Schedule recurring agent tasks (`@every 1h`, `@daily`, `HH:MM`) | Feature-gated |
-| **Web UI** | Full browser chat UI (`claudio web`) with streaming, tool approval, plan mode, AskUser, model selector | Not supported |
-| **Cross-session comms** | Bridge via Unix sockets for parallel agents in worktrees | Not supported |
-| **Vim mode** | Full state machine (normal, insert, visual, operator-pending, registers) | Basic vi-mode |
-| **Persistence** | SQLite + file-based | File-based only |
+| 🏗️ **Runtime** | Single Go binary, no runtime | Node.js / TypeScript |
+| 🤝 **Multi-agent teams** | Built-in orchestration, mailbox messaging | ❌ |
+| 💎 **Session-as-agent** | Crystallize sessions into reusable personas | ❌ |
+| 🧠 **Memory** | Scoped (project/agent/global), AI-selected, dream consolidation | Single directory |
+| 🗜️ **Token efficiency** | 11-layer optimization stack | Basic prompt caching |
+| ✂️ **Snippet expansion** | `~name(args)` shorthand → full code templates | ❌ |
+| 🎯 **Learned instincts** | Confidence-scored patterns replayed across sessions | ❌ |
+| ⏰ **Cron tasks** | `@every 1h`, `@daily`, `HH:MM` | Feature-gated |
+| 🌐 **Web UI** | `claudio web` — full browser experience | ❌ |
+| 🌉 **Cross-session comms** | Unix-socket bridge for parallel worktrees | ❌ |
+| ⌨️ **Vim mode** | Full state machine + registers | Basic vi-mode |
+| 💾 **Persistence** | SQLite + file-based | File-based only |
 
 ---
 
-## Requirements
+## 📋 Requirements
 
-- **Go 1.26+** (for building from source)
-- **Anthropic API key** or OAuth login (additional providers like Groq, OpenAI, Ollama also supported)
-- **Git** (for project root detection, worktrees)
-- **OS:** macOS, Linux (Windows: experimental)
+| | |
+|---|---|
+| **Go** | 1.26+ (for building from source) |
+| **OS** | macOS, Linux (Windows experimental) |
+| **Auth** | Anthropic API key or OAuth — Groq, OpenAI, Ollama also supported |
+| **Git** | Required for project root detection and worktrees |
 
-### Optional
-
-- `$EDITOR` (vim, nvim, etc.) for external editing features
-- Language servers for LSP integration (gopls, pyright, etc.)
-- MCP servers for extended tool capabilities
+**Optional:** `$EDITOR` for external editing · Language servers (gopls, pyright, …) for LSP · MCP servers for extended tools.
 
 ---
 
-## Installation
+## 📦 Installation
 
-### From source (recommended)
-
-```bash
-git clone https://github.com/Abraxas-365/claudio
-cd claudio
-go build -o claudio ./cmd/claudio
-```
-
-Move the binary to your PATH:
-
-```bash
-# macOS / Linux
-sudo mv claudio /usr/local/bin/
-
-# Or add to your local bin
-mv claudio ~/.local/bin/
-```
-
-### With `go install`
+### Option 1 — `go install` (fastest)
 
 ```bash
 go install github.com/Abraxas-365/claudio/cmd/claudio@latest
 ```
 
-This places the binary in `$GOPATH/bin` (or `$HOME/go/bin` by default). Make sure that directory is in your `$PATH`.
+Make sure `$GOPATH/bin` (or `$HOME/go/bin`) is on your `$PATH`.
 
-### Verify installation
+### Option 2 — From source (recommended for contributors)
+
+```bash
+git clone https://github.com/Abraxas-365/claudio
+cd claudio
+make build              # injects version via ldflags
+sudo mv claudio /usr/local/bin/
+```
+
+### Verify
 
 ```bash
 claudio --help
+claudio --version
 ```
 
 ---
 
-## Quick Start
+## 🎮 Usage Modes
 
 ```bash
-# 1. Authenticate with Anthropic
-claudio auth login
-
-# 2. Start the TUI in your project and run /init
-cd your-project
-claudio
-# then type: /init
-
-# 3. Start coding
-claudio
-```
-
-### Usage modes
-
-```bash
-# Interactive TUI (default)
-claudio
-
-# Single prompt (no TUI)
-claudio "explain this codebase"
-
-# Pipe mode
-echo "fix the bug in main.go" | claudio
-
-# Resume last session
-claudio --resume
-
-# Headless API server
-claudio --headless
+claudio                                  # interactive TUI (default)
+claudio "explain this codebase"          # one-shot prompt
+echo "fix the bug in main.go" | claudio  # pipe mode
+claudio --resume                         # resume last session
+claudio --headless                       # API server mode
+claudio web                              # browser UI
 ```
 
 ---
@@ -2163,6 +2230,29 @@ Built with:
 
 ---
 
-## License
+## 🤝 Contributing
 
-MIT
+Contributions are welcome! Claudio is built with strict architectural conventions — please review [`.claudio/rules/project.md`](.claudio/rules/project.md) and [`CLAUDIO.md`](CLAUDIO.md) before opening a PR.
+
+```bash
+make build      # build with version injection
+make test       # run all tests
+make lint       # golangci-lint
+```
+
+**Key constraints:**
+- Pure Go — no CGO (we use `modernc.org/sqlite`)
+- Never alter existing migration files — only add new ones
+- Business logic lives under `internal/`
+
+---
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
+
+<div align="center">
+
+**Built with ❤️ in Go** · [Report a bug](https://github.com/Abraxas-365/claudio/issues) · [Star on GitHub](https://github.com/Abraxas-365/claudio)
+
+</div>
