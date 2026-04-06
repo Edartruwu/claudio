@@ -437,8 +437,41 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			continue
 		}
 
+		// When max_tokens hits mid-tool_use, the tool input JSON is likely
+		// truncated/invalid. Detect these and return synthetic error results
+		// so the model knows to retry, rather than executing with bad input.
+		var truncatedResults []toolResultBlock
+		if response.StopReason == "max_tokens" && len(response.ToolUses) > 0 {
+			var validTools []tools.ToolUse
+			for _, tu := range response.ToolUses {
+				if len(tu.Input) == 0 || !json.Valid(tu.Input) {
+					truncatedResults = append(truncatedResults, toolResultBlock{
+						Type:      "tool_result",
+						ToolUseID: tu.ID,
+						Content:   "Tool input was truncated because the response hit the max output token limit. Please retry this tool call with complete input, or break the task into smaller steps.",
+						IsError:   true,
+					})
+				} else {
+					validTools = append(validTools, tu)
+				}
+			}
+
+			if len(truncatedResults) > 0 {
+				// Escalate max_tokens for the next attempt so the model has
+				// room to complete the tool call.
+				if req.MaxTokens < escalatedMaxTokens {
+					req.MaxTokens = escalatedMaxTokens
+				}
+			}
+
+			response.ToolUses = validTools
+		}
+
 		// Execute tools and build result message
 		toolResults := e.executeTools(ctx, response.ToolUses)
+
+		// Merge synthetic error results for truncated tool calls
+		toolResults = append(toolResults, truncatedResults...)
 
 		// Append tool results as a user message — must be immediately after the
 		// assistant message so tool_result blocks have a matching tool_use in the
