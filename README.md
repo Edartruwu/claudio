@@ -1315,6 +1315,38 @@ chmod +x ~/.claudio/plugins/greet.sh
 
 Plugins receive env vars: `CLAUDIO_SESSION_ID`, `CLAUDIO_MODEL`, `CLAUDIO_CWD`. Use `--describe` flag to provide a description.
 
+### claudio-codex — Pre-built Code Index Plugin
+
+[**claudio-codex**](https://github.com/Abraxas-365/claudio-codex) is a first-party plugin that builds a structural index of your codebase and exposes it as a deferred tool. Instead of burning thousands of tokens on repeated Grep/Read sweeps, the AI can answer "where is X defined?", "what calls Y?", or "what's the impact of changing Z?" in ~50 tokens.
+
+**Install:**
+
+```bash
+# Build and install the plugin binary
+git clone https://github.com/Abraxas-365/claudio-codex
+cd claudio-codex
+npm install && npm run build
+cp dist/claudio-codex ~/.claudio/plugins/
+chmod +x ~/.claudio/plugins/claudio-codex
+
+# Index your project (run once, re-run after large changes)
+claudio-codex index
+```
+
+**Supported commands** (invoked by the AI via the deferred tool):
+
+| Command | Description |
+|---------|-------------|
+| `search <symbol>` | Find where a symbol is defined |
+| `refs <symbol>` | Find all references to a symbol |
+| `context <symbol\|file:line>` | Full context: source + callers + callees |
+| `impact <symbol>` | Analyze blast radius of changing a symbol |
+| `outline <file>` | List all symbols in a file |
+| `structure` | High-level codebase overview |
+| `hotspots` | Most-referenced symbols |
+
+Once installed and indexed, Claudio automatically prefers `claudio-codex` over raw file searches for symbol lookups — dramatically reducing token usage on large codebases.
+
 ---
 
 ## Model Configuration
