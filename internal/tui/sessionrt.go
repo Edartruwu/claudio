@@ -37,6 +37,9 @@ type SessionRuntime struct {
 	MessageQueue   []string
 	ToolStartTimes map[string]time.Time
 
+	// Buffered teammate events received while backgrounded
+	TeammateEvents []tuiEvent
+
 	// Background drain
 	draining   bool
 	drainStop  chan struct{}
@@ -167,6 +170,10 @@ func (sr *SessionRuntime) processEvent(event tuiEvent) {
 
 	case "error":
 		sr.Messages = append(sr.Messages, ChatMessage{Type: MsgError, Content: event.err.Error()})
+
+	case "teammate_event":
+		// Buffer teammate events so they can be replayed when foregrounded
+		sr.TeammateEvents = append(sr.TeammateEvents, event)
 	}
 }
 

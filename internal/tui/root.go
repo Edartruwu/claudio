@@ -518,6 +518,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cancelFunc != nil {
 				m.cancelFunc()
 			}
+			// Kill running teammates before exiting
+			if m.appCtx != nil && m.appCtx.TeamRunner != nil {
+				m.appCtx.TeamRunner.KillAll()
+				m.appCtx.TeamRunner.WaitForAll(3 * time.Second)
+			}
 			return m, tea.Quit
 		case "ctrl+o":
 			// In viewport mode, let the viewport handler deal with cursor-aware expansion
@@ -966,7 +971,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modelselector.ModelSelectedMsg:
 		m.focus = FocusPrompt
 		m.prompt.Focus()
-		m.model = msg.Label
+		m.model = msg.ModelID
 		m.apiClient.SetModel(msg.ModelID)
 		m.apiClient.SetThinkingMode(msg.ThinkingMode)
 		if msg.BudgetTokens > 0 {
@@ -1843,6 +1848,11 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 	output, err := cmd.Execute(args)
 	if err != nil {
 		if err.Error() == "__exit__" {
+			// Kill running teammates before exiting
+			if m.appCtx != nil && m.appCtx.TeamRunner != nil {
+				m.appCtx.TeamRunner.KillAll()
+				m.appCtx.TeamRunner.WaitForAll(3 * time.Second)
+			}
 			return m, tea.Quit
 		}
 		m.addMessage(ChatMessage{Type: MsgError, Content: err.Error()})
@@ -3111,6 +3121,12 @@ func (m *Model) saveSessionRuntime(sessionID string) {
 	m.cancelFunc = nil
 	m.eventCh = make(chan tuiEvent, 64)
 	m.approvalCh = nil
+
+	// Re-wire teammate event handler to the new event channel so team
+	// events are not lost when the user switches sessions.
+	if m.appCtx != nil && m.appCtx.TeamRunner != nil {
+		m.appCtx.TeamRunner.SetEventHandler(&tuiTeammateEventHandler{ch: m.eventCh})
+	}
 	m.messages = nil
 	m.streamText = &strings.Builder{}
 	m.streaming = false
@@ -3152,6 +3168,46 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 	} else {
 		m.toolStartTimes = make(map[string]time.Time)
 	}
+
+	// Re-wire teammate event handler to the restored event channel
+	if m.appCtx != nil && m.appCtx.TeamRunner != nil {
+		m.appCtx.TeamRunner.SetEventHandler(&tuiTeammateEventHandler{ch: m.eventCh})
+	}
+
+	// Replay any teammate events that arrived while backgrounded —
+	// convert them to task-notification messages so the lead can act on them.
+	for _, ev := range rt.TeammateEvents {
+		if ev.teammateEvent != nil {
+			m.handleTeammateEvent(*ev.teammateEvent)
+
+			if ev.teammateEvent.Type == "complete" || ev.teammateEvent.Type == "error" {
+				taskInfo := ""
+				if agentTasks := tools.GlobalTaskStore.ByAssignee(ev.teammateEvent.AgentName); len(agentTasks) > 0 {
+					taskInfo = "\nAssigned tasks:\n"
+					for _, t := range agentTasks {
+						taskInfo += fmt.Sprintf("  #%s [%s] %s\n", t.ID, t.Status, t.Subject)
+					}
+				}
+				worktreeInfo := ""
+				if ev.teammateEvent.WorktreePath != "" {
+					worktreeInfo = fmt.Sprintf("\nWorktree with changes: %s (branch: %s)\nTo use these files, copy them from the worktree to the main repo, or run: git merge %s", ev.teammateEvent.WorktreePath, ev.teammateEvent.WorktreeBranch, ev.teammateEvent.WorktreeBranch)
+				}
+				var notification string
+				if ev.teammateEvent.Type == "complete" {
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, ev.teammateEvent.Text, taskInfo, worktreeInfo)
+				} else {
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, ev.teammateEvent.Text, taskInfo, worktreeInfo)
+				}
+				m.messageQueue = append(m.messageQueue, notification)
+			}
+
+			// Mark team-lead's inbox as read
+			if mb := m.appCtx.TeamRunner.GetMailbox(); mb != nil {
+				mb.ReadUnread("team-lead")
+			}
+		}
+	}
+	rt.TeammateEvents = nil
 
 	if m.streaming {
 		m.spinner.Start(m.spinText)
