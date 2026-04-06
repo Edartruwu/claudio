@@ -9,11 +9,13 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/snippets"
+	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
 // FileEditTool performs exact string replacement in files.
 type FileEditTool struct {
 	Security      SecurityChecker
+	ReadCache     *readcache.Cache
 	SnippetConfig *snippets.Config
 }
 
@@ -133,6 +135,13 @@ func (t *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 
 	if err := os.WriteFile(in.FilePath, []byte(text), 0644); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to write file: %v", err), IsError: true}, nil
+	}
+
+	// Invalidate the read cache so the next Read re-reads from disk.
+	// This matches claude-code's pattern: Edit updates readFileState with
+	// offset=undefined, which prevents the dedup check from matching.
+	if t.ReadCache != nil {
+		t.ReadCache.Invalidate(in.FilePath)
 	}
 
 	return &Result{Content: fmt.Sprintf("Successfully edited %s", in.FilePath)}, nil

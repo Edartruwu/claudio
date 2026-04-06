@@ -100,10 +100,7 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	if t.ReadCache != nil {
 		key := readcache.Key{FilePath: in.FilePath, Offset: in.Offset, Limit: in.Limit}
 		if _, ok := t.ReadCache.Get(key); ok {
-			return &Result{Content: fmt.Sprintf(
-				"File unchanged since last read (%s). You already have this file's content from an earlier Read result in this session — refer back to it rather than re-reading or re-fetching via Grep.",
-				in.FilePath,
-			)}, nil
+			return &Result{Content: "File unchanged since last read. The content from the earlier Read tool_result in this conversation is still current — refer to that instead of re-reading."}, nil
 		}
 	}
 

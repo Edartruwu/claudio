@@ -381,8 +381,8 @@ func TestFileReadTool_ReadCache_HitReturnsDedupMessage(t *testing.T) {
 	if strings.Contains(second.Content, "package query") {
 		t.Fatal("second read: should NOT return full file content on cache hit")
 	}
-	if !strings.Contains(second.Content, path) {
-		t.Fatalf("second read: dedup stub should include file path %q; got: %s", path, second.Content)
+	if !strings.Contains(second.Content, "File unchanged since last read") {
+		t.Fatalf("second read: dedup stub should contain 'File unchanged since last read'; got: %s", second.Content)
 	}
 }
 

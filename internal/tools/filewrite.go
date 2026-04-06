@@ -138,6 +138,11 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 		return &Result{Content: fmt.Sprintf("Failed to write file: %v", err), IsError: true}, nil
 	}
 
+	// Invalidate the read cache so the next Read re-reads from disk.
+	if t.ReadCache != nil {
+		t.ReadCache.Invalidate(in.FilePath)
+	}
+
 	lines := countLines(in.Content)
 	return &Result{Content: fmt.Sprintf("Successfully wrote %d lines to %s", lines, in.FilePath)}, nil
 }

@@ -236,7 +236,7 @@ func DefaultRegistry() *Registry {
 	r.Register(&BashTool{})
 	r.Register(&FileReadTool{ReadCache: rc})
 	r.Register(&FileWriteTool{ReadCache: rc})
-	r.Register(&FileEditTool{})
+	r.Register(&FileEditTool{ReadCache: rc})
 	r.Register(&GlobTool{})
 	r.Register(&GrepTool{Cache: gc})
 

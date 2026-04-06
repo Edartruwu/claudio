@@ -39,7 +39,8 @@ func (t *EnterPlanModeTool) Execute(ctx context.Context, input json.RawMessage) 
 	instructions := fmt.Sprintf(`Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.
 
 ## Plan File
-No plan file exists yet. You should create your plan at %s using the Write tool.
+Plan file: %s
+No plan file exists yet. You should create your plan at the path above using the Write tool.
 You should build your plan incrementally by writing to or editing this file. NOTE that this is the ONLY file you are allowed to edit — other than this you are only allowed to take READ-ONLY actions.
 
 ## Plan Workflow
