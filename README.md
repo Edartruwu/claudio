@@ -36,6 +36,12 @@
 - [Tools](#tools)
 - [Agents](#agents)
 - [Orchestrator & Multi-Agent Teams](#orchestrator--multi-agent-teams)
+- [Harness — Agent Team Architecture](#harness--agent-team-architecture)
+  - [The 6 patterns](#the-6-patterns)
+  - [Building a harness with /harness](#building-a-harness-with-harness)
+  - [Using a generated harness](#using-a-generated-harness)
+  - [Agent definition files](#agent-definition-files)
+  - [Orchestrator skill](#orchestrator-skill)
 - [Security](#security)
 - [Hooks](#hooks)
 - [Scheduled Tasks (Cron)](#scheduled-tasks-cron)
@@ -917,7 +923,300 @@ All inbox reads/writes are protected by file locks (`flock`) to prevent corrupti
 
 ---
 
-## Security
+## Harness — Agent Team Architecture
+
+A **harness** is a reusable multi-agent architecture for a specific domain or recurring task. Instead of assembling an ad-hoc team each time, you build the harness once — it defines which specialist agents exist, how they communicate, and what pattern they follow — and then invoke it with a single command whenever you need it.
+
+Harnesses live entirely in your project:
+
+```
+.claudio/
+  agents/
+    analyst.md          ← specialist role definitions
+    implementer.md
+    reviewer.md
+  skills/
+    feature-harness/
+      skill.md          ← orchestrator that assembles & runs the team
+CLAUDIO.md              ← documents how to invoke each harness
+```
+
+### The 6 patterns
+
+Every harness is built around one of six architectural patterns (or a justified composite of them).
+
+---
+
+#### 1. Pipeline
+
+Sequential stages where each stage's output feeds directly into the next.
+
+```
+[Analyze] → [Design] → [Implement] → [Verify]
+```
+
+**Use when** each stage depends strongly on the prior stage's output and cannot start before it finishes.
+
+**Example**: feature spec → architecture plan → code → test suite.
+
+**Strength**: clear handoff points, easy to reason about.
+**Watch out for**: a slow stage blocks everything downstream. Keep each stage as independent as possible.
+
+---
+
+#### 2. Fan-out / Fan-in
+
+Parallel specialists each work the same input from a different angle, then an integrator merges all results.
+
+```
+              ┌→ [Specialist A] ─┐
+[Dispatcher] →├→ [Specialist B] ─┼→ [Integrator]
+              └→ [Specialist C] ─┘
+```
+
+**Use when** the task benefits from multiple independent perspectives simultaneously.
+
+**Example**: research task — one agent checks official docs, one scans community forums, one reads source code, one evaluates security implications → integrator writes the final report.
+
+**Strength**: the most natural fit for agent teams. Specialists can share discoveries in real time via `SendMessage`, so one agent's finding can redirect another's search mid-flight — a compounding quality gain impossible with a single agent.
+
+**Watch out for**: the integrator becoming a bottleneck. Give it a clear merge protocol.
+
+---
+
+#### 3. Expert Pool
+
+A router inspects each task and calls only the expert(s) relevant to it.
+
+```
+[Router] → { Security Expert | Performance Expert | Architecture Expert }
+```
+
+**Use when** input type varies and each type needs fundamentally different handling.
+
+**Example**: code review router — security changes go to the security expert, hot-path changes to the performance expert, structural changes to the architecture expert.
+
+**Strength**: efficient — only the relevant specialist runs.
+**Watch out for**: router classification accuracy. A misclassification wastes a specialist call and may miss issues.
+
+> Sub-agents are usually better than a full team here — you only need one expert at a time, so a persistent team adds overhead with no benefit.
+
+---
+
+#### 4. Producer-Reviewer
+
+A producer creates output; a reviewer validates it against objective criteria and triggers a rework loop if issues are found.
+
+```
+[Producer] → [Reviewer] → (issues found) → [Producer] retry
+                        → (approved)     → done
+```
+
+**Use when** output quality must be verifiable and clear acceptance criteria exist.
+
+**Example**: code generation → test runner + lint checker → revise until passing.
+
+**Strength**: enforces a quality gate without human review on every iteration.
+**Watch out for**: infinite loops. Always cap retries at 2–3 rounds. After the cap, surface the unresolved issues to the user rather than silently failing.
+
+---
+
+#### 5. Supervisor
+
+A central coordinator tracks progress and dynamically assigns work to workers based on current state.
+
+```
+              ┌→ [Worker A]
+[Supervisor] ─┼→ [Worker B]   ← supervisor reassigns based on who finishes first
+              └→ [Worker C]
+```
+
+**Use when** the total workload is unknown upfront or the optimal assignment can only be decided at runtime.
+
+**Example**: large-scale migration — supervisor reads the full file list, creates a task per file, assigns batches to workers, and rebalances as workers finish at different speeds.
+
+**Difference from Fan-out**: Fan-out assigns work upfront and it stays fixed. Supervisor assigns work dynamically as capacity becomes available.
+
+**Strength**: handles variable workloads gracefully. Shared task list (`TaskCreate`/`TaskUpdate`) makes the supervisor pattern a natural fit for Claudio's team tools.
+**Watch out for**: the supervisor becoming a bottleneck. Delegate in large enough chunks that the coordination overhead is negligible.
+
+---
+
+#### 6. Hierarchical Delegation
+
+Lead agents decompose the problem and delegate sub-problems to their own specialists.
+
+```
+[Director] → [Lead A] → [Worker A1]
+                      → [Worker A2]
+           → [Lead B] → [Worker B1]
+```
+
+**Use when** the problem decomposes naturally into distinct sub-domains, each large enough to warrant its own team.
+
+**Example**: full-stack feature — director → frontend lead (UI + state + tests) + backend lead (API + DB + tests).
+
+**Claudio constraint**: agent teams cannot be nested — a team member cannot create its own team. Implement level-1 as a team and level-2 as sub-agents, or flatten the hierarchy into a single team.
+
+**Watch out for**: depth beyond 2 levels. Context gets lossy and latency compounds. If you feel you need 3 levels, flatten the bottom two.
+
+---
+
+#### Composite patterns
+
+Real harnesses often combine two patterns:
+
+| Composite | Structure | Example |
+|-----------|-----------|---------|
+| Fan-out + Producer-Reviewer | Each specialist has a paired reviewer | Multi-language translation — 4 specialists translate in parallel, each feeds their own native-speaker reviewer |
+| Pipeline + Fan-out | Sequential phases with a parallel stage in the middle | Analysis (sequential) → parallel implementation by subsystem → integration test (sequential) |
+| Supervisor + Expert Pool | Supervisor routes tasks to experts dynamically | Support queue — supervisor reads tickets, routes each to the domain expert with spare capacity |
+
+---
+
+### Building a harness with `/harness`
+
+The `/harness` built-in skill guides you through designing and generating a complete harness for your project. It runs 8 phases automatically:
+
+```
+/harness <domain description>
+```
+
+**Examples:**
+
+```
+/harness full-stack feature implementation
+/harness security audit pipeline
+/harness research and report generation
+/harness large-scale code migration
+```
+
+**What it does:**
+
+1. **Clarifies** — asks what task the harness covers, what it should output, and who will use it
+2. **Explores** — scans your project to understand languages, frameworks, existing agents/skills, and coding conventions
+3. **Selects pattern** — proposes the best-fit architecture with an ASCII diagram and explains the trade-offs; asks for your approval before proceeding
+4. **Designs roster** — defines each specialist role, its type (`Explore`, `Plan`, `general-purpose`, or a custom persona), and its communication protocol
+5. **Writes agent files** — generates `.claudio/agents/<name>.md` for each specialist that warrants a dedicated persona
+6. **Writes orchestrator** — generates `.claudio/skills/<harness-name>/skill.md` with `TeamCreate`, `SendMessage`, and `TaskCreate` calls wired up
+7. **Registers in CLAUDIO.md** — adds an entry documenting how to invoke the harness
+8. **Validates** — checks for leftover placeholder text, verifies agent name consistency, and reports what was created
+
+---
+
+### Using a generated harness
+
+Once `/harness` has run, invoking your harness is a single command:
+
+```
+/<harness-name> <input>
+```
+
+For example, if you built a `feature-harness`:
+
+```
+/feature-harness add user notification preferences
+```
+
+The orchestrator skill takes over: it creates a `_workspace/feature-harness/` directory, builds the task backlog, spawns the team via `TeamCreate`, coordinates agent communication, and synthesizes the final output.
+
+You can also invoke it conversationally:
+
+```
+Run the feature harness on the payments refactor
+```
+
+Claudio will recognize the harness from CLAUDIO.md and trigger the orchestrator skill.
+
+**Workspace layout** (created automatically by the orchestrator):
+
+```
+_workspace/
+  <harness-name>/
+    <agent-a>-output.md    ← each agent writes here
+    <agent-b>-output.md
+    errors.md              ← failed steps logged here
+    final.md               ← synthesized output (or actual files for code harnesses)
+```
+
+---
+
+### Agent definition files
+
+Each specialist is defined in `.claudio/agents/<name>.md`. This is a markdown file with a YAML front-matter header:
+
+```markdown
+---
+name: analyst
+description: "Codebase analyst. Triggered when exploration, mapping, or dependency analysis is needed."
+---
+
+# Analyst — Codebase exploration specialist
+
+You are a codebase analyst responsible for understanding structure, dependencies, and patterns.
+
+## Core responsibilities
+1. Map the relevant subsystems for the task at hand
+2. Identify dependencies and potential impact areas
+3. Surface conventions and patterns the implementer must follow
+
+## Input / output protocol
+- **Input**: Receives task description from the orchestrator via TaskCreate
+- **Output**: Writes findings to `_workspace/<harness>/analyst-output.md`
+- **Format**: Structured markdown — summary, subsystems map, key files, conventions
+
+## Team communication protocol
+- **Receives from**: orchestrator — initial task + scope
+- **Sends to**: implementer — relevant file paths and conventions
+- **Task claims**: claims tasks of type `analysis` from the shared task list
+
+## Error handling
+- If a subsystem is too large to fully map: document what was covered and flag the gap
+- On timeout: write partial findings and notify the orchestrator
+```
+
+Agents in `.claudio/agents/` are automatically available to Claudio across all sessions in that project. The `description` field is used to match the agent to tasks — write it with trigger keywords in mind.
+
+---
+
+### Orchestrator skill
+
+The orchestrator lives in `.claudio/skills/<harness-name>/skill.md`. It is the harness entry point — it sets up the workspace, spawns the team, monitors progress, and synthesizes output.
+
+Key sections of an orchestrator:
+
+```markdown
+## Phase 2: Launch the team
+
+TeamCreate({
+  name: "feature-team",
+  members: [
+    { name: "analyst",     agent: "analyst",     task: "Map the codebase for: <input>" },
+    { name: "implementer", agent: "implementer", task: "Implement once analyst reports" },
+    { name: "reviewer",    agent: "reviewer",    task: "Review implementer output" }
+  ]
+})
+```
+
+```markdown
+## Phase 3: Coordinate
+
+- Use SendMessage({to: "implementer", message: "..."}) to relay analyst findings
+- Use TaskList to monitor progress
+- Cap Producer-Reviewer loops at 3 rounds
+```
+
+```markdown
+## Phase 4: Synthesize
+
+- Read all _workspace/<harness>/*-output.md files
+- Resolve conflicts between agent outputs
+- Write final.md or apply code changes directly
+```
+
+The orchestrator is just a skill file — it runs in the main Claudio session as the team lead, with full access to all tools including `TeamCreate` and `SendMessage`.
+
+---
 
 | Feature | Description |
 |---------|-------------|
