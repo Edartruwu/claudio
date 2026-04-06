@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Abraxas-365/claudio/internal/auth"
@@ -742,8 +743,8 @@ func TestNormalizeMessages_EmptyContentHasNonEmptyText(t *testing.T) {
 		}
 		if blocks[0].Text == nil {
 			t.Errorf("content=%v: text field is nil (missing from JSON)", c)
-		} else if *blocks[0].Text == "" {
-			t.Errorf("content=%v: text field is empty — API rejects empty text blocks", c)
+		} else if strings.TrimSpace(*blocks[0].Text) == "" {
+			t.Errorf("content=%v: text field is whitespace-only — API rejects this", c)
 		}
 	}
 }
@@ -760,13 +761,22 @@ func TestSanitizeContentBlocks_RemovesEmptyText(t *testing.T) {
 		t.Fatalf("expected 1 block after sanitize, got %d: %s", len(blocks), got)
 	}
 
-	// Also test {"type":"text","text":""}
+	// Also test {"type":"text","text":""} and whitespace-only
 	input2 := json.RawMessage(`[{"type":"text","text":""},{"type":"text","text":"hello"}]`)
 	got2 := sanitizeContentBlocks(input2)
 	var blocks2 []map[string]json.RawMessage
 	json.Unmarshal(got2, &blocks2)
 	if len(blocks2) != 1 {
 		t.Fatalf("expected 1 block, got %d: %s", len(blocks2), got2)
+	}
+
+	// Whitespace-only text blocks should also be stripped
+	input3 := json.RawMessage(`[{"type":"text","text":" \t\n"},{"type":"text","text":"real content"}]`)
+	got3 := sanitizeContentBlocks(input3)
+	var blocks3 []map[string]json.RawMessage
+	json.Unmarshal(got3, &blocks3)
+	if len(blocks3) != 1 {
+		t.Fatalf("expected 1 block after stripping whitespace-only, got %d: %s", len(blocks3), got3)
 	}
 }
 

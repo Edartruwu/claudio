@@ -617,7 +617,7 @@ func normalizeMessages(msgs []Message) {
 		if len(c) == 0 {
 			// null / empty → the API rejects empty text blocks entirely,
 			// so use a single-space placeholder instead.
-			msgs[i].Content = json.RawMessage(`[{"type":"text","text":" "}]`)
+			msgs[i].Content = json.RawMessage(`[{"type":"text","text":"(empty)"}]`)
 			continue
 		}
 		// Fast check: valid content starts with '['
@@ -659,7 +659,7 @@ func sanitizeContentBlocks(raw json.RawMessage) json.RawMessage {
 			kept = append(kept, b)
 			continue
 		}
-		if peek.Type == "text" && (peek.Text == nil || *peek.Text == "") {
+		if peek.Type == "text" && (peek.Text == nil || strings.TrimSpace(*peek.Text) == "") {
 			modified = true
 			continue // drop empty text block
 		}
@@ -671,7 +671,7 @@ func sanitizeContentBlocks(raw json.RawMessage) json.RawMessage {
 	// If all blocks were empty text, keep a single-space placeholder
 	// so the message is not entirely contentless.
 	if len(kept) == 0 {
-		return json.RawMessage(`[{"type":"text","text":" "}]`)
+		return json.RawMessage(`[{"type":"text","text":"(empty)"}]`)
 	}
 	out, err := json.Marshal(kept)
 	if err != nil {
