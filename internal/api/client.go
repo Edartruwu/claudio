@@ -887,7 +887,23 @@ func (c *Client) applyMessageCacheBreakpoints(req *MessagesRequest) {
 		if json.Unmarshal(msg.Content, &blocks) != nil || len(blocks) == 0 {
 			return
 		}
-		lastBlockIdx := len(blocks) - 1
+		// Walk backwards to find the last non-empty-text block.
+		// The API rejects cache_control on empty text blocks.
+		lastBlockIdx := -1
+		for j := len(blocks) - 1; j >= 0; j-- {
+			var peek struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			if json.Unmarshal(blocks[j], &peek) == nil && peek.Type == "text" && peek.Text == "" {
+				continue
+			}
+			lastBlockIdx = j
+			break
+		}
+		if lastBlockIdx < 0 {
+			return
+		}
 		var block map[string]json.RawMessage
 		if json.Unmarshal(blocks[lastBlockIdx], &block) != nil {
 			return
