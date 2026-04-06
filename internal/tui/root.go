@@ -533,7 +533,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+g":
 			// Let the plan approval dialog handle ctrl+g itself.
 			if m.focus == FocusPlanApproval {
-				break
+				return m.handlePlanApprovalKey(msg)
 			}
 			// Open external editor with current prompt content
 			if m.focus == FocusPrompt && !m.streaming {
