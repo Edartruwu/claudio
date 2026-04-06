@@ -615,8 +615,10 @@ func normalizeMessages(msgs []Message) {
 	for i := range msgs {
 		c := msgs[i].Content
 		if len(c) == 0 {
-			// null / empty → wrap as empty text block
-			msgs[i].Content, _ = json.Marshal([]UserContentBlock{NewTextBlock("")})
+			// null / empty → wrap as empty text block.
+			// Use a raw literal so the "text" field is always present
+			// (NewTextBlock("") + omitempty would drop it, causing API 400s).
+			msgs[i].Content = json.RawMessage(`[{"type":"text","text":""}]`)
 			continue
 		}
 		// Fast check: valid content starts with '['

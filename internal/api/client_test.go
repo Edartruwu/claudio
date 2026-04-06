@@ -723,6 +723,29 @@ func TestNormalizeMessages_EmptyContent(t *testing.T) {
 	}
 }
 
+func TestNormalizeMessages_EmptyContentHasTextField(t *testing.T) {
+	// Regression: empty content must produce {"type":"text","text":""} —
+	// not {"type":"text"} (missing text field causes API 400).
+	for _, c := range []json.RawMessage{nil, {}} {
+		msgs := []Message{{Role: "user", Content: c}}
+		normalizeMessages(msgs)
+
+		var blocks []struct {
+			Type string  `json:"type"`
+			Text *string `json:"text"`
+		}
+		if err := json.Unmarshal(msgs[0].Content, &blocks); err != nil {
+			t.Fatalf("content=%v: unmarshal failed: %v", c, err)
+		}
+		if len(blocks) != 1 {
+			t.Fatalf("content=%v: expected 1 block, got %d", c, len(blocks))
+		}
+		if blocks[0].Text == nil {
+			t.Errorf("content=%v: text field is nil (missing from JSON) — API would reject this", c)
+		}
+	}
+}
+
 func TestNormalizeMessages_MixedMessages(t *testing.T) {
 	// Simulate a realistic conversation with a mix of valid and invalid content
 	validContent, _ := json.Marshal([]UserContentBlock{NewTextBlock("valid")})
