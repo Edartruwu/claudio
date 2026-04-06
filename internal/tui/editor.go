@@ -19,6 +19,8 @@ type planEditorFinishedMsg struct {
 	err error
 }
 
+
+
 // getEditor returns the user's preferred editor from $VISUAL or $EDITOR,
 // falling back to "vi".
 func getEditor() string {
@@ -67,6 +69,44 @@ func openExternalEditor(content string) tea.Cmd {
 			return editorFinishedMsg{err: readErr}
 		}
 		return editorFinishedMsg{content: strings.TrimRight(string(data), "\n")}
+	})
+}
+
+// askUserEditorFinishedMsg is sent when the external editor exits from the AskUser "Other" input.
+type askUserEditorFinishedMsg struct {
+	content string
+	err     error
+}
+
+// openAskUserEditor writes content to a temp file, opens the user's editor,
+// and returns the edited content via askUserEditorFinishedMsg.
+func openAskUserEditor(content string) tea.Cmd {
+	tmpFile, err := os.CreateTemp("", "claudio-askuser-*.md")
+	if err != nil {
+		return func() tea.Msg { return askUserEditorFinishedMsg{err: err} }
+	}
+	tmpPath := tmpFile.Name()
+	if _, err := tmpFile.WriteString(content); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return func() tea.Msg { return askUserEditorFinishedMsg{err: err} }
+	}
+	tmpFile.Close()
+	editor := getEditor()
+	parts := strings.Fields(editor)
+	name := parts[0]
+	args := append(parts[1:], tmpPath)
+	c := exec.Command(name, args...)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		defer os.Remove(tmpPath)
+		if err != nil {
+			return askUserEditorFinishedMsg{err: err}
+		}
+		data, readErr := os.ReadFile(tmpPath)
+		if readErr != nil {
+			return askUserEditorFinishedMsg{err: readErr}
+		}
+		return askUserEditorFinishedMsg{content: strings.TrimRight(string(data), "\n")}
 	})
 }
 

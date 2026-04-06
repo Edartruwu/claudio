@@ -116,7 +116,7 @@ type Model struct {
 	planModeActive      bool   // true while the AI is in plan mode (EnterPlanMode called)
 	planFilePath        string // path of the current plan file (set by EnterPlanMode)
 	planApprovalCursor  int    // selected option in the plan approval dialog (0-3)
-	planApprovalFeedback string // typed feedback when option 3 is selected
+
 
 	// Rate limit state
 	rateLimitWarning string
@@ -148,9 +148,9 @@ type askUserDialogState struct {
 	qIdx       int               // current question index
 	optCursor  int               // cursor within current question's options
 	answers    map[string]string // question label → selected answer
-	responseCh chan<- tools.AskUserResponse
-	freeText   string // typed text when "Other" option is selected
-	typingOther bool  // true when user is typing a custom answer
+	responseCh  chan<- tools.AskUserResponse
+	freeText    string // typed text when "Other" option is selected
+	typingOther bool   // true when user is typing a custom answer
 }
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
@@ -1081,6 +1081,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case askUserEditorFinishedMsg:
+		m.focus = FocusAskUser
+		if msg.err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Editor: " + msg.err.Error()})
+			m.refreshViewport()
+		} else if m.askUserDialog != nil {
+			m.askUserDialog.freeText = msg.content
+			m.askUserDialog.typingOther = true
+			m.refreshViewport()
+		}
+		return m, nil
+
 	case planEditorFinishedMsg:
 		// Restore the plan approval dialog after the editor exits.
 		m.focus = FocusPlanApproval
@@ -1089,6 +1101,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshViewport()
 		}
 		return m, m.waitForEvent()
+
+
 
 	case timerTickMsg:
 		if m.streaming {
@@ -1519,7 +1533,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		case "ExitPlanMode":
 			// Don't flip planModeActive yet — show approval dialog first.
 			m.planApprovalCursor = 0
-			m.planApprovalFeedback = ""
+
 		}
 
 		// Compute execution duration.
@@ -1593,7 +1607,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			}
 			m.focus = FocusPlanApproval
 			m.planApprovalCursor = 0
-			m.planApprovalFeedback = ""
+
 			m.refreshViewport()
 			return m, m.waitForEvent()
 		}
@@ -1942,11 +1956,14 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	q := d.questions[d.qIdx]
-	// otherIdx is the virtual index for the "Other" option (after all real options).
-	otherIdx := len(q.Options)
+	otherIdx := len(q.Options)   // "Other (type your own...)"
+	chatIdx := otherIdx + 1      // "Chat about this"
 
 	// If user is currently typing a free-text answer, handle that first.
 	if d.typingOther {
+		if msg.String() == "ctrl+g" {
+			return m, openAskUserEditor(d.freeText)
+		}
 		switch msg.Type {
 		case tea.KeyEnter:
 			answer := strings.TrimSpace(d.freeText)
@@ -1987,7 +2004,7 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "j", "down":
-		if d.optCursor < otherIdx {
+		if d.optCursor < chatIdx {
 			d.optCursor++
 		}
 	case "k", "up":
@@ -1995,28 +2012,39 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			d.optCursor--
 		}
 	case "enter", " ":
-		if d.optCursor == otherIdx {
-			// User selected "Other" — switch to free-text input mode.
+		switch d.optCursor {
+		case otherIdx:
+			// Enter inline typing mode.
 			d.typingOther = true
 			d.freeText = ""
 			m.refreshViewport()
 			return m, nil
-		}
-		// Record the selected option for the current question.
-		d.answers[q.Label] = q.Options[d.optCursor]
-		if d.qIdx < len(d.questions)-1 {
-			// Move to next question.
-			d.qIdx++
-			d.optCursor = 0
-		} else {
-			// All questions answered — send response and clear dialog.
+		case chatIdx:
+			// "Chat about this" — dismiss dialog, send a sentinel response,
+			// and return focus to the prompt so the user can type freely.
 			if d.responseCh != nil {
+				d.answers[q.Label] = "[user chose to chat about this instead of selecting an option]"
 				d.responseCh <- tools.AskUserResponse{Answers: d.answers}
 			}
 			m.askUserDialog = nil
 			m.focus = FocusPrompt
 			m.refreshViewport()
 			return m, m.waitForEvent()
+		default:
+			// Record the selected predefined option.
+			d.answers[q.Label] = q.Options[d.optCursor]
+			if d.qIdx < len(d.questions)-1 {
+				d.qIdx++
+				d.optCursor = 0
+			} else {
+				if d.responseCh != nil {
+					d.responseCh <- tools.AskUserResponse{Answers: d.answers}
+				}
+				m.askUserDialog = nil
+				m.focus = FocusPrompt
+				m.refreshViewport()
+				return m, m.waitForEvent()
+			}
 		}
 	case "esc":
 		// Cancel: send empty response.
@@ -2065,39 +2093,9 @@ func (m Model) planApprovalOffset() int {
 // handlePlanApprovalKey handles key events in the plan approval dialog shown after ExitPlanMode.
 func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	numOptions := m.planApprovalOptionCount() - 1 // max cursor index
-	feedbackIdx := m.planApprovalOptionCount() - 1 // last option is always feedback
-
-	// If we're in feedback input mode (last option selected and confirmed once), collect text.
-	if m.planApprovalCursor == feedbackIdx && m.planApprovalFeedback != "" {
-		switch msg.Type {
-		case tea.KeyEnter:
-			// Send feedback to engine and exit plan mode.
-			feedback := m.planApprovalFeedback
-			m.planModeActive = false
-			m.focus = FocusPrompt
-			m.prompt.Focus()
-			m.planApprovalFeedback = ""
-			m.refreshViewport()
-			return m.handleSubmit(feedback)
-		case tea.KeyBackspace, tea.KeyDelete:
-			if len(m.planApprovalFeedback) > 0 {
-				m.planApprovalFeedback = m.planApprovalFeedback[:len(m.planApprovalFeedback)-1]
-			}
-			return m, m.waitForEvent()
-		case tea.KeyEsc:
-			m.planApprovalFeedback = ""
-			m.planApprovalCursor = 0
-			return m, m.waitForEvent()
-		default:
-			if msg.Type == tea.KeyRunes {
-				m.planApprovalFeedback += string(msg.Runes)
-			}
-			return m, m.waitForEvent()
-		}
-	}
 
 	// Map cursor position to logical action using offset.
-	// With clear-context: 0=clear+auto, 1=auto, 2=manual, 3=revise, 4=feedback
+	// With clear-context: 0=clear+auto, 1=auto, 2=manual, 3=revise, 4=chat
 	// Without:            0=auto,        1=manual, 2=revise, 3=feedback
 	logicalIdx := func() int {
 		off := m.planApprovalOffset()
@@ -2166,12 +2164,15 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.planModeActive = false
 			m.focus = FocusPrompt
 			m.prompt.Focus()
-			m.planApprovalFeedback = ""
+
 			m.refreshViewport()
 			return m, nil
-		case 4: // Type feedback
-			// Switch to feedback input mode — wait for more typing.
-			m.planApprovalFeedback = " " // sentinel so we enter feedback mode on next key
+		case 4: // Chat about the plan — dismiss dialog and return to prompt.
+			m.planModeActive = false
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+			m.refreshViewport()
+			return m, nil
 		}
 	case "esc":
 		// Dismiss — return to prompt without sending anything.
@@ -2208,8 +2209,6 @@ func (m Model) renderAskUserDialog(width int) string {
 	selectedStyle := lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
 	progressStyle := lipgloss.NewStyle().Foreground(styles.Muted)
 
-	otherIdx := len(q.Options)
-
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("? Question"))
 	progress := fmt.Sprintf(" (%d/%d)", d.qIdx+1, len(d.questions))
@@ -2222,6 +2221,8 @@ func (m Model) renderAskUserDialog(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
+	otherIdx := len(q.Options)
+	chatIdx := otherIdx + 1
 	for i, opt := range q.Options {
 		if i == d.optCursor && !d.typingOther {
 			b.WriteString(selectedStyle.Render("▸ " + opt))
@@ -2230,9 +2231,9 @@ func (m Model) renderAskUserDialog(width int) string {
 		}
 		b.WriteString("\n")
 	}
-	// "Other" option — always shown as the last entry.
+	// "Other" inline-typing option.
 	if d.typingOther {
-		inputText := d.freeText + "█" // block cursor
+		inputText := d.freeText + "█"
 		b.WriteString(selectedStyle.Render("▸ Other: " + inputText))
 	} else if d.optCursor == otherIdx {
 		b.WriteString(selectedStyle.Render("▸ Other (type your own...)"))
@@ -2240,10 +2241,20 @@ func (m Model) renderAskUserDialog(width int) string {
 		b.WriteString(dimStyle.Render("  Other (type your own...)"))
 	}
 	b.WriteString("\n")
+	// Divider before footer option.
+	b.WriteString(dimStyle.Render("─────────────────────────"))
+	b.WriteString("\n")
+	// "Chat about this" footer option.
+	if !d.typingOther && d.optCursor == chatIdx {
+		b.WriteString(selectedStyle.Render("▸ Chat about this"))
+	} else {
+		b.WriteString(dimStyle.Render("  Chat about this"))
+	}
+	b.WriteString("\n")
 	b.WriteString("\n")
 	var hint string
 	if d.typingOther {
-		hint = "type answer · enter confirm · esc back"
+		hint = "type answer · enter confirm · ctrl+g $EDITOR · esc back"
 	} else {
 		hint = "j/k navigate · enter select"
 		if d.qIdx < len(d.questions)-1 {
@@ -2293,7 +2304,7 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 		"Yes, auto-accept edits",
 		"Yes, manually approve edits",
 		"No, let me revise",
-		"Type feedback for Claude",
+		"Chat about the plan",
 	)
 
 	var rows []string
@@ -2319,7 +2330,6 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 			rows = append(rows, "")
 		}
 	}
-	feedbackIdx := len(options) - 1
 	for i, opt := range options {
 		cursor := "  "
 		style := lipgloss.NewStyle()
@@ -2328,10 +2338,6 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 			style = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
 		}
 		label := cursor + style.Render(opt)
-		if i == feedbackIdx && m.planApprovalCursor == feedbackIdx && len(m.planApprovalFeedback) > 1 {
-			// Show typed feedback inline
-			label += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render(m.planApprovalFeedback)
-		}
 		rows = append(rows, label)
 	}
 
