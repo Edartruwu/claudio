@@ -1317,33 +1317,41 @@ Plugins receive env vars: `CLAUDIO_SESSION_ID`, `CLAUDIO_MODEL`, `CLAUDIO_CWD`. 
 
 ### claudio-codex — Pre-built Code Index Plugin
 
-[**claudio-codex**](https://github.com/Abraxas-365/claudio-codex) is a first-party plugin that builds a structural index of your codebase and exposes it as a deferred tool. Instead of burning thousands of tokens on repeated Grep/Read sweeps, the AI can answer "where is X defined?", "what calls Y?", or "what's the impact of changing Z?" in ~50 tokens.
+[**claudio-codex**](https://github.com/Abraxas-365/claudio-codex) is a first-party plugin (written in Go, using tree-sitter) that builds a structural index of your codebase and exposes it as a deferred tool. Instead of burning thousands of tokens on repeated Grep/Read sweeps, the AI can answer "where is X defined?", "what calls Y?", or "what's the impact of changing Z?" in ~50 tokens.
 
-**Install:**
+**Install (one-liner):**
 
 ```bash
-# Build and install the plugin binary
+curl -fsSL https://raw.githubusercontent.com/Abraxas-365/claudio-codex/main/install.sh | sh
+```
+
+**Or build from source:**
+
+```bash
 git clone https://github.com/Abraxas-365/claudio-codex
 cd claudio-codex
-npm install && npm run build
-cp dist/claudio-codex ~/.claudio/plugins/
-chmod +x ~/.claudio/plugins/claudio-codex
+make install-plugin   # builds and copies binary into ~/.claudio/plugins/
+```
 
-# Index your project (run once, re-run after large changes)
-claudio-codex index
+**Index your project:**
+
+```bash
+cd your-project
+claudio-codex index   # run once; queries auto-refresh on subsequent calls
 ```
 
 **Supported commands** (invoked by the AI via the deferred tool):
 
 | Command | Description |
 |---------|-------------|
-| `search <symbol>` | Find where a symbol is defined |
-| `refs <symbol>` | Find all references to a symbol |
-| `context <symbol\|file:line>` | Full context: source + callers + callees |
-| `impact <symbol>` | Analyze blast radius of changing a symbol |
+| `search <query>` | Search for symbols by name |
+| `refs <symbol>` | Find all call sites referencing a symbol |
+| `context <symbol>` | Full context: definition + source + callers + callees |
+| `impact <symbol> [depth]` | Show transitive callers (blast radius of a change) |
+| `trace <symbol> [depth]` | Show outgoing calls from a symbol |
 | `outline <file>` | List all symbols in a file |
 | `structure` | High-level codebase overview |
-| `hotspots` | Most-referenced symbols |
+| `hotspots [limit]` | Most-referenced symbols |
 
 Once installed and indexed, Claudio automatically prefers `claudio-codex` over raw file searches for symbol lookups — dramatically reducing token usage on large codebases.
 
