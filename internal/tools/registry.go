@@ -100,13 +100,21 @@ func (r *Registry) APIDefinitionsWithDeferral(discoveredTools map[string]bool) j
 	return data
 }
 
-// DeferredToolNames returns the names of tools that support deferred loading.
+// DeferredToolNames returns the names of tools that support deferred loading
+// and are not auto-activated (i.e. their backing service is unavailable).
 func (r *Registry) DeferredToolNames() []string {
 	var names []string
 	for _, name := range r.order {
-		if dt, ok := r.tools[name].(DeferrableTool); ok && dt.ShouldDefer() {
-			names = append(names, name)
+		t := r.tools[name]
+		dt, ok := t.(DeferrableTool)
+		if !ok || !dt.ShouldDefer() {
+			continue
 		}
+		// Skip tools that auto-activate — they are sent with full schema already.
+		if aa, ok := t.(AutoActivatable); ok && aa.AutoActivate() {
+			continue
+		}
+		names = append(names, name)
 	}
 	return names
 }
