@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -59,6 +60,11 @@ func runShellTask(ctx context.Context, rt *Runtime, state *TaskState, output *Ta
 	defer output.Close()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Stdout = output
 	cmd.Stderr = output
 	cmd.Env = os.Environ()

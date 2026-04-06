@@ -101,6 +101,12 @@ func (s *Server) registerRoutes() {
 
 	// Panels
 	s.mux.HandleFunc("GET /api/panel/", s.requireAuth(s.handlePanel))
+	s.mux.HandleFunc("POST /api/panel/config/update", s.requireAuth(s.handleConfigUpdate))
+
+	// Model selector
+	s.mux.HandleFunc("GET /api/sessions/model", s.requireAuth(s.handleGetModel))
+	s.mux.HandleFunc("POST /api/sessions/model", s.requireAuth(s.handleSetModel))
+	s.mux.HandleFunc("GET /api/sessions/models", s.requireAuth(s.handleListModels))
 }
 
 // requireAuth wraps a handler with authentication check.

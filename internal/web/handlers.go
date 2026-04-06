@@ -528,6 +528,7 @@ func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 
 	if sess != nil {
 		data.ProjectPath = sess.ProjectPath
+		data.Model = sess.Client.GetModel()
 		sess.mu.Lock()
 		data.InputTokens = sess.TotalInputTokens
 		data.OutputTokens = sess.TotalOutputTokens
@@ -896,4 +897,80 @@ func (s *Server) handleCommandExecute(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// ── Model API ──
+
+// handleGetModel returns the current model for a session.
+func (s *Server) handleGetModel(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session")
+	sess := s.sessions.Get(sessionID)
+	model := "claude-sonnet-4-6"
+	if sess != nil {
+		model = sess.Client.GetModel()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"model": model})
+}
+
+// handleSetModel changes the model for a session.
+func (s *Server) handleSetModel(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.FormValue("session")
+	model := r.FormValue("model")
+	if sessionID == "" || model == "" {
+		http.Error(w, "missing session or model", http.StatusBadRequest)
+		return
+	}
+	sess := s.sessions.Get(sessionID)
+	if sess == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	sess.mu.Lock()
+	sess.Client.SetModel(model)
+	sess.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"model": model, "status": "ok"})
+}
+
+// handleListModels returns the list of available models.
+func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
+	models := []map[string]string{
+		{"id": "claude-opus-4-6", "label": "Claude Opus 4.6", "description": "Most capable, best for complex tasks"},
+		{"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "description": "Fast and intelligent, great balance"},
+		{"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5", "description": "Fastest, most compact"},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
+}
+
+// ── Config update API ──
+
+// handleConfigUpdate updates a setting for a session.
+func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.FormValue("session")
+	key := r.FormValue("key")
+	value := r.FormValue("value")
+	if sessionID == "" || key == "" {
+		http.Error(w, "missing session or key", http.StatusBadRequest)
+		return
+	}
+	sess := s.sessions.Get(sessionID)
+	if sess == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	switch key {
+	case "model":
+		sess.mu.Lock()
+		sess.Client.SetModel(value)
+		sess.mu.Unlock()
+	default:
+		http.Error(w, "unknown key: "+key, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

@@ -25,9 +25,9 @@ templ AnalyticsPanel(data PanelData) {
 templ ConfigPanel(data PanelData) {
 	<div class="panel-section">
 		<div class="panel-section-title">Session</div>
-		<div class="config-item">
+		<div class="config-item config-item-action" onclick="openModelSelector()">
 			<div class="config-key">Model</div>
-			<div class="config-val">{ data.Model }</div>
+			<div class="config-val config-clickable">{ data.Model } <span class="config-edit-icon">&#9660;</span></div>
 		</div>
 		<div class="config-item">
 			<div class="config-key">Permission Mode</div>
@@ -35,7 +35,7 @@ templ ConfigPanel(data PanelData) {
 		</div>
 		<div class="config-item">
 			<div class="config-key">Project Path</div>
-			<div class="config-val">{ data.ProjectPath }</div>
+			<div class="config-val config-path">{ data.ProjectPath }</div>
 		</div>
 	</div>
 }

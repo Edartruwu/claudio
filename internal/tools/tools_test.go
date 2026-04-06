@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tools/grepcache"
@@ -204,6 +205,92 @@ func TestBashTool(t *testing.T) {
 
 	if strings.TrimSpace(result.Content) != "hello" {
 		t.Errorf("expected 'hello', got: %q", result.Content)
+	}
+}
+
+func TestBashToolTimeout(t *testing.T) {
+	tool := &tools.BashTool{}
+	// Use a short timeout (500ms) with a command that sleeps forever.
+	input, _ := json.Marshal(map[string]any{
+		"command": "sleep 3600",
+		"timeout": 500,
+	})
+
+	start := time.Now()
+	result, err := tool.Execute(context.Background(), input)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(result.Content, "timed out") {
+		t.Errorf("expected timeout message, got: %s", result.Content)
+	}
+	// Must return well before the sleep duration. Allow generous margin
+	// for CI, but it must not hang for minutes.
+	if elapsed > 10*time.Second {
+		t.Errorf("timeout took too long: %v (expected <10s)", elapsed)
+	}
+}
+
+func TestBashToolTimeoutKillsChildProcesses(t *testing.T) {
+	// This is the actual bug scenario: bash spawns a child process that
+	// inherits stdout/stderr pipes. Without process-group killing,
+	// cmd.Run() blocks forever even after bash is killed because the
+	// child keeps the pipes open.
+	tool := &tools.BashTool{}
+	// bash -c spawns a subshell; the subshell spawns "sleep 3600" as a child.
+	// The nested bash ensures there's a child process that outlives the parent.
+	input, _ := json.Marshal(map[string]any{
+		"command": "bash -c 'echo started; sleep 3600'",
+		"timeout": 500,
+	})
+
+	start := time.Now()
+	result, err := tool.Execute(context.Background(), input)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(result.Content, "timed out") {
+		t.Errorf("expected timeout message, got: %s", result.Content)
+	}
+	// The key assertion: must not hang. The old code would block here
+	// because the child "sleep 3600" kept the pipes open.
+	if elapsed > 10*time.Second {
+		t.Errorf("process group kill failed — hung for %v (expected <10s)", elapsed)
+	}
+}
+
+func TestBashToolContextCancellation(t *testing.T) {
+	tool := &tools.BashTool{}
+	input, _ := json.Marshal(map[string]any{
+		"command": "sleep 3600",
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel after 300ms
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := tool.Execute(ctx, input)
+	elapsed := time.Since(start)
+
+	// Context cancellation may surface as an error return or a result error
+	_ = err
+
+	if elapsed > 10*time.Second {
+		t.Errorf("context cancellation took too long: %v", elapsed)
 	}
 }
 

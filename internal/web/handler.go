@@ -91,6 +91,7 @@ func (h *WebHandler) Approve(approved bool) {
 	}
 }
 
+
 // PendingTool returns the name of the tool awaiting approval, or empty string.
 func (h *WebHandler) PendingTool() string {
 	h.mu.Lock()
@@ -162,6 +163,23 @@ func (h *WebHandler) OnToolUseEnd(toolUse tools.ToolUse, result *tools.Result) {
 		"content":  content,
 		"is_error": isErr,
 	})
+
+	// ExitPlanMode: emit event so browser can show plan approval UI.
+	// The user's choice will be sent as a new chat message.
+	if toolUse.Name == "ExitPlanMode" {
+		h.sendJSON("plan_approval", map[string]interface{}{
+			"id": toolUse.ID,
+		})
+	}
+
+	// AskUser: emit event so browser can show question UI.
+	// The user's answer will be sent as a new chat message.
+	if toolUse.Name == "AskUser" {
+		h.sendJSON("askuser_request", map[string]interface{}{
+			"id":    toolUse.ID,
+			"input": string(toolUse.Input),
+		})
+	}
 }
 
 func (h *WebHandler) OnTurnComplete(usage api.Usage) {

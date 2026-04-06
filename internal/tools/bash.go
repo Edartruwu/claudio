@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
@@ -122,6 +123,17 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", in.Command)
+
+	// Kill the entire process group on timeout, not just bash.
+	// Without this, child processes keep stdout/stderr pipes open
+	// and cmd.Run() blocks indefinitely even after bash is killed.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	// WaitDelay: after Cancel fires, wait up to 5s for pipes to drain,
+	// then forcibly close them so cmd.Run() returns.
+	cmd.WaitDelay = 5 * time.Second
 
 	// Use context CWD override for worktree-isolated agents
 	if cwd := CwdFromContext(ctx); cwd != "" {

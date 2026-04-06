@@ -372,6 +372,109 @@ a:hover { text-decoration: underline; }
 .config-item:last-child { border-bottom: none; }
 .config-key { color: var(--aqua); font-size: 0.75rem; }
 .config-val { color: var(--fg); margin-top: 2px; }
+.config-item-action { cursor: pointer; }
+.config-item-action:hover { background: rgba(255,255,255,0.04); border-radius: var(--radius); }
+.config-clickable { display: flex; align-items: center; gap: 6px; }
+.config-edit-icon { color: var(--dim); font-size: 0.7rem; }
+.config-path { font-size: 0.72rem; color: var(--fg2); word-break: break-all; }
+
+/* ── Model selector modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 200;
+  animation: fadeIn 150ms ease;
+}
+.modal-box {
+  width: 480px; max-width: 92vw; max-height: 80vh;
+  border-radius: var(--radius-lg); background: var(--bg0);
+  border: 1px solid var(--purple); box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; background: rgba(211,134,155,0.08);
+  border-bottom: 1px solid var(--bg2);
+}
+.modal-title { font-weight: 700; color: var(--purple); font-size: 0.9rem; }
+.modal-close {
+  background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 1.2rem; font-family: var(--font-mono); padding: 0 4px; line-height: 1;
+}
+.modal-close:hover { color: var(--fg); }
+.model-list { overflow-y: auto; padding: 8px; }
+.model-option {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 14px; border-radius: var(--radius); cursor: pointer;
+  border: 1px solid transparent; margin-bottom: 4px;
+  transition: background var(--transition), border-color var(--transition);
+}
+.model-option:hover { background: var(--bg1); border-color: var(--bg2); }
+.model-option.active { background: rgba(211,134,155,0.1); border-color: var(--purple); }
+.model-option-label { font-weight: 600; color: var(--fg); font-size: 0.85rem; }
+.model-option-id { color: var(--dim); font-size: 0.72rem; }
+.model-option-desc { color: var(--fg2); font-size: 0.75rem; margin-top: 2px; }
+
+/* ── Plan approval card (inline in chat) ── */
+.plan-approval-card {
+  margin: 12px 0; padding: 0;
+  border-radius: var(--radius-lg); background: var(--bg0);
+  border: 1px solid var(--yellow); overflow: hidden;
+}
+.plan-approval-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; background: rgba(250,189,47,0.08);
+  border-bottom: 1px solid var(--bg2);
+}
+.plan-approval-header .icon { color: var(--yellow); font-size: 1rem; }
+.plan-approval-header .title { font-weight: 700; color: var(--yellow); font-size: 0.85rem; }
+.plan-approval-body { padding: 12px 16px; font-size: 0.82rem; color: var(--fg2); }
+.plan-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--bg2); }
+.plan-feedback-input {
+  width: 100%; padding: 8px 10px; border-radius: var(--radius);
+  border: 1px solid var(--bg2); background: var(--bg); color: var(--fg);
+  font-family: var(--font-mono); font-size: 0.82rem; outline: none;
+  transition: border-color var(--transition); display: none; margin-top: 8px;
+}
+.plan-feedback-input:focus { border-color: var(--purple); }
+.plan-feedback-input.visible { display: block; }
+
+/* ── AskUser card (inline in chat) ── */
+.askuser-card {
+  margin: 12px 0; padding: 0;
+  border-radius: var(--radius-lg); background: var(--bg0);
+  border: 1px solid var(--blue); overflow: hidden;
+}
+.askuser-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; background: rgba(131,165,152,0.08);
+  border-bottom: 1px solid var(--bg2);
+}
+.askuser-header .icon { color: var(--blue); font-size: 1rem; }
+.askuser-header .title { font-weight: 700; color: var(--blue); font-size: 0.85rem; }
+.askuser-question { padding: 12px 16px; font-size: 0.85rem; color: var(--fg); font-weight: 600; }
+.askuser-options { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; }
+.askuser-option {
+  padding: 6px 14px; border-radius: var(--radius); cursor: pointer;
+  border: 1px solid var(--bg2); background: var(--bg); color: var(--fg2);
+  font-family: var(--font-mono); font-size: 0.8rem;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.askuser-option:hover { background: var(--bg1); border-color: var(--blue); color: var(--fg); }
+.askuser-free-input {
+  margin: 0 16px 12px; display: flex; gap: 6px;
+}
+.askuser-free-input input {
+  flex: 1; padding: 8px 10px; border-radius: var(--radius);
+  border: 1px solid var(--bg2); background: var(--bg); color: var(--fg);
+  font-family: var(--font-mono); font-size: 0.8rem; outline: none;
+  transition: border-color var(--transition);
+}
+.askuser-free-input input:focus { border-color: var(--blue); }
+
+/* ── Status bar model clickable ── */
+.status-model-item { cursor: pointer; user-select: none; }
+.status-model-item:hover .status-model { color: var(--fg); }
+.status-edit-icon { color: var(--bg3); font-size: 0.6rem; }
 
 .memory-entry {
   padding: 8px 10px; border-radius: var(--radius); background: var(--bg);
@@ -891,6 +994,44 @@ const appJSContent = `
       }catch(x){}
     }
     else if(evtName==='approval_result'){$('approval-area').innerHTML='';updateSidebarState(SESSION,'streaming');}
+    else if(evtName==='plan_approval'){
+      try{
+        var card=mk('div','plan-approval-card');
+        card.innerHTML='<div class="plan-approval-header"><span class="icon">&#128196;</span><span class="title">Plan Ready for Review</span></div>'+
+          '<div class="plan-approval-body">The AI has finished planning. Review the plan and choose how to proceed.</div>'+
+          '<div class="plan-approval-actions">'+
+          '<button class="btn btn-approve" onclick="planRespond(\'Yes, proceed with implementation. Auto-accept all file edits.\',this)">&#10003; Approve (auto-accept)</button>'+
+          '<button class="btn btn-primary" onclick="planRespond(\'Yes, proceed with implementation.\',this)">&#10003; Approve</button>'+
+          '<button class="btn btn-deny" onclick="planRespond(\'Please revise the plan.\',this)">&#10007; Reject</button>'+
+          '<button class="btn" style="border:1px solid var(--bg2)" onclick="showPlanFeedback(this)">&#9998; Feedback</button>'+
+          '</div>'+
+          '<div style="padding:0 16px 12px"><input id="plan-feedback-input" class="plan-feedback-input" placeholder="Type feedback and press Enter..." onkeydown="if(event.key===\'Enter\'){planRespond(this.value,this);}" /></div>';
+        $('stream-area').appendChild(card);sb();
+      }catch(x){}
+    }
+    else if(evtName==='askuser_request'){
+      try{
+        var d=JSON.parse(evtData);
+        var inp=JSON.parse(d.input||'{}');
+        var questions=inp.questions||[];
+        var card=mk('div','askuser-card');
+        var body='<div class="askuser-header"><span class="icon">&#10067;</span><span class="title">Question from AI</span></div>';
+        questions.forEach(function(q,qi){
+          body+='<div class="askuser-question">'+esc(q.question||q.text||'')+'</div>';
+          if(q.options&&q.options.length){
+            body+='<div class="askuser-options">';
+            q.options.forEach(function(opt){
+              body+='<button class="askuser-option" onclick="askUserRespond(\''+esc(opt)+'\',this)">'+esc(opt)+'</button>';
+            });
+            body+='</div>';
+          }else{
+            body+='<div class="askuser-free-input"><input type="text" placeholder="Type your answer..." onkeydown="if(event.key===\'Enter\'){askUserRespond(this.value,this);}"><button class="btn btn-primary" onclick="askUserRespond(this.previousSibling.value,this)">Send</button></div>';
+          }
+        });
+        card.innerHTML=body;
+        $('stream-area').appendChild(card);sb();
+      }catch(x){}
+    }
     else if(evtName==='done'){
       try{var d=JSON.parse(evtData);tIn+=(d.input_tokens||0);tOut+=(d.output_tokens||0);$('status-in').textContent=fn(tIn);$('status-out').textContent=fn(tOut);$('status-total').textContent=fn(tIn+tOut);}catch(x){}
       fin();return true;
@@ -917,7 +1058,7 @@ const appJSContent = `
     if(lastSeq>0)url+='&since='+lastSeq;
     es=new EventSource(url);
     setConn('ok');
-    ['text','thinking','tool_start','tool_end','approval_needed','approval_result','done','error'].forEach(function(evt){
+    ['text','thinking','tool_start','tool_end','approval_needed','approval_result','plan_approval','askuser_request','done','error'].forEach(function(evt){
       es.addEventListener(evt,function(e){
         ensureStreamDiv();
         var seq=e.lastEventId?parseInt(e.lastEventId,10):0;
@@ -1350,6 +1491,75 @@ const appJSContent = `
     $('approval-area').innerHTML='';
   };
 
+  /* ── Plan approval ── */
+  window.planRespond=function(message,btn){
+    if(!message||!message.trim())return;
+    // Disable all buttons in the card
+    var card=btn.closest('.plan-approval-card');
+    if(card){card.querySelectorAll('button,input').forEach(function(el){el.disabled=true;});
+      card.style.opacity='0.6';}
+    sendChatMessage(message);
+  };
+  window.showPlanFeedback=function(btn){
+    var inp=document.getElementById('plan-feedback-input');
+    if(inp){inp.classList.add('visible');inp.focus();}
+    btn.style.display='none';
+  };
+
+  /* ── AskUser response ── */
+  window.askUserRespond=function(answer,btn){
+    if(!answer||!answer.trim())return;
+    var card=btn.closest('.askuser-card');
+    if(card){card.querySelectorAll('button,input').forEach(function(el){el.disabled=true;});
+      card.style.opacity='0.6';}
+    sendChatMessage(answer);
+  };
+
+  /* ── Model selector ── */
+  var currentModelInModal=null;
+  window.openModelSelector=function(){
+    var modal=$('model-modal');
+    if(!modal)return;
+    modal.style.display='flex';
+    var list=$('model-list');
+    list.innerHTML='<div style="color:var(--dim);padding:12px">Loading...</div>';
+    // Fetch current model and list
+    Promise.all([
+      fetch('/api/sessions/model?session='+encodeURIComponent(SESSION)).then(checkAuth).then(function(r){return r.json();}),
+      fetch('/api/sessions/models').then(checkAuth).then(function(r){return r.json();})
+    ]).then(function(results){
+      var cur=results[0].model||'';
+      var models=results[1]||[];
+      currentModelInModal=cur;
+      list.innerHTML='';
+      models.forEach(function(m){
+        var opt=mk('div','model-option'+(m.id===cur?' active':''));
+        opt.innerHTML='<div class="model-option-label">'+esc(m.label)+'</div>'+
+          '<div class="model-option-id">'+esc(m.id)+'</div>'+
+          '<div class="model-option-desc">'+esc(m.description||'')+'</div>';
+        opt.onclick=function(){selectModel(m.id);};
+        list.appendChild(opt);
+      });
+    }).catch(function(){list.innerHTML='<div style="color:var(--red);padding:12px">Failed to load models</div>';});
+  };
+  window.closeModelSelector=function(){
+    var modal=$('model-modal');
+    if(modal)modal.style.display='none';
+  };
+  window.selectModel=function(modelId){
+    var fd=new FormData();
+    fd.append('session',SESSION);
+    fd.append('model',modelId);
+    fetch('/api/sessions/model',{method:'POST',body:fd})
+    .then(checkAuth).then(function(r){return r.json();})
+    .then(function(data){
+      if(data.model){$('status-model').textContent=data.model;}
+      closeModelSelector();
+      // Refresh config panel if open
+      if(currentPanel==='config'){togglePanel('config');togglePanel('config');}
+    });
+  };
+
   /* ── Tool card expand/collapse ── */
   window.toggleToolBody=function(hdr){
     var body=hdr.nextElementSibling;
@@ -1499,8 +1709,11 @@ const appJSContent = `
     setTimeout(function(){if(t.parentNode)t.remove();},5000);
   };
 
-  /* ── Model display ── */
-  $('status-model').textContent='claude-sonnet-4-6';
+  /* ── Model display: fetch from server ── */
+  fetch('/api/sessions/model?session='+encodeURIComponent(SESSION))
+  .then(checkAuth).then(function(r){return r.json();})
+  .then(function(d){if(d.model)$('status-model').textContent=d.model;})
+  .catch(function(){$('status-model').textContent='claude-sonnet-4-6';});
 
   /* ── iOS keyboard: adjust layout when visualViewport changes ── */
   if(window.visualViewport){
