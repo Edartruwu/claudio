@@ -31,8 +31,10 @@ func (t *EnterPlanModeTool) Execute(ctx context.Context, input json.RawMessage) 
 	os.MkdirAll(planDir, 0700)
 
 	planFile := filepath.Join(planDir, fmt.Sprintf("plan-%d.md", time.Now().Unix()))
-	initial := "# Plan\n\n## Context\n\n## Steps\n\n## Verification\n"
-	os.WriteFile(planFile, []byte(initial), 0644)
+
+	// Do NOT pre-create the file with blank content — the AI will create it
+	// with the real plan via the Write tool. Pre-creating causes ctrl+g to
+	// show a blank template instead of the actual plan.
 
 	// Return workflow instructions in the tool result, matching Claude Code's
 	// mapToolResultToToolResultBlockParam behavior.
@@ -40,7 +42,7 @@ func (t *EnterPlanModeTool) Execute(ctx context.Context, input json.RawMessage) 
 
 ## Plan File
 Plan file: %s
-No plan file exists yet. You should create your plan at the path above using the Write tool.
+You MUST write your plan to the file above using the Write tool. Do NOT write the plan anywhere else.
 You should build your plan incrementally by writing to or editing this file. NOTE that this is the ONLY file you are allowed to edit — other than this you are only allowed to take READ-ONLY actions.
 
 ## Plan Workflow
