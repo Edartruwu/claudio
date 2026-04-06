@@ -249,6 +249,12 @@ func bundledSkills() []*Skill {
 			Content:     initSkillContent,
 			Source:      "bundled",
 		},
+		{
+			Name:        "harness",
+			Description: "Design and build a domain-specific agent team harness for this project. Use when asked to 'build a harness', 'design an agent team', 'set up a harness', or 'create specialist agents'. Generates .claudio/agents/ definitions, .claudio/skills/ orchestrators, and registers the harness in CLAUDIO.md. Also handles harness audits, extensions, and maintenance.",
+			Content:     harnessSkillContent,
+			Source:      "bundled",
+		},
 	}
 }
 
@@ -1011,3 +1017,310 @@ Then present a well-formatted to-do list of additional suggestions relevant to t
 - If you found gaps in Phase 7 (missing GitHub CLI, missing linting) and the user said no: list them with a one-line reason.
 - If tests are missing or sparse: suggest setting up a test framework so Claudio can verify its own changes.
 - Always suggest: browse and customize ` + "`.claudio/skills/`" + ` to add project-specific workflows.`
+
+var harnessSkillContent = `You are building a domain-specific agent team harness for this project.
+
+A harness is a reusable multi-agent architecture that decomposes complex, recurring tasks into coordinated specialist agents. It produces:
+- ` + "`.claudio/agents/<name>.md`" + ` — one file per specialist role
+- ` + "`.claudio/skills/<harness-name>/skill.md`" + ` — an orchestrator skill that assembles and runs the team
+- An entry in CLAUDIO.md documenting when and how to invoke it
+
+## Phase 1: Understand the request
+
+Use AskUserQuestion to clarify what the user wants:
+
+- What recurring task or domain should the harness cover? (e.g., "full-stack feature implementation", "security audit pipeline", "research and report generation", "code migration at scale")
+- What is the desired output? (e.g., "working code + tests + docs", "structured report", "migrated files + PR")
+- Who are the likely consumers? (e.g., the team daily, on-demand by the user, CI-triggered)
+- Should the harness write files, or just produce analysis/reports?
+
+Skip questions where the task description already answers them clearly.
+
+## Phase 2: Explore the project
+
+Launch an Explore subagent to survey the codebase. It should identify:
+- Languages, frameworks, and build tools
+- Project structure (monorepo, multi-module, single package)
+- Existing ` + "`.claudio/agents/`" + ` definitions (avoid duplicating roles that exist)
+- Existing ` + "`.claudio/skills/`" + ` (avoid overwriting)
+- Testing conventions and CI setup
+- Coding patterns and style conventions
+- Key subsystems or domains (e.g., auth, payments, data layer)
+
+Return a structured summary: languages, key patterns, existing agents, existing skills.
+
+## Phase 3: Select the architecture pattern
+
+Based on the task and project, choose ONE primary pattern (or a justified composite):
+
+### 1. Pipeline
+Sequential stages where each stage's output feeds the next.
+` + "```" + `
+[Analyze] → [Design] → [Implement] → [Verify]
+` + "```" + `
+**Use when**: each stage strongly depends on the prior stage's output.
+**Example**: feature spec → implementation plan → code → tests.
+**Team mode**: limited benefit unless pipeline has parallel sub-stages.
+
+### 2. Fan-out / Fan-in
+Parallel specialists work the same input from different angles, then an integrator merges results.
+` + "```" + `
+              ┌→ [Specialist A] ─┐
+[Dispatcher] →├→ [Specialist B] ─┼→ [Integrator]
+              └→ [Specialist C] ─┘
+` + "```" + `
+**Use when**: multiple independent perspectives improve output quality.
+**Example**: research (official docs + community + code examples + security) → synthesis.
+**Team mode**: always use agent teams — cross-specialist communication dramatically improves quality.
+
+### 3. Expert Pool
+A router selects the right expert(s) for each input type.
+` + "```" + `
+[Router] → { Security Expert | Performance Expert | Architecture Expert }
+` + "```" + `
+**Use when**: input type varies and each type needs different handling.
+**Example**: code review — route to security/perf/arch expert based on change type.
+**Team mode**: sub-agents preferred — only call the relevant expert.
+
+### 4. Producer-Reviewer
+A producer creates output; a reviewer validates it and triggers rework if needed.
+` + "```" + `
+[Producer] → [Reviewer] → (issues found) → [Producer] retry
+` + "```" + `
+**Use when**: output quality must be verifiable and objective criteria exist.
+**Example**: code generation → test runner + style checker → revise.
+**Team mode**: useful — real-time feedback between producer and reviewer reduces rework.
+**Always set a retry cap** (2–3 rounds maximum).
+
+### 5. Supervisor
+A central coordinator monitors state and dynamically assigns work to workers.
+` + "```" + `
+              ┌→ [Worker A]
+[Supervisor] ─┼→ [Worker B]  ← supervisor adjusts assignments based on progress
+              └→ [Worker C]
+` + "```" + `
+**Use when**: workload is variable or task distribution must be decided at runtime.
+**Example**: large-scale migration — supervisor partitions file list and assigns batches.
+**Team mode**: natural fit — shared task list (TaskCreate/TaskUpdate) handles dynamic assignment.
+
+### 6. Hierarchical Delegation
+Lead agents decompose work and delegate to sub-specialists.
+` + "```" + `
+[Director] → [Lead A] → [Worker A1]
+                      → [Worker A2]
+           → [Lead B] → [Worker B1]
+` + "```" + `
+**Use when**: problem has natural hierarchical decomposition.
+**Example**: full-stack feature — director → frontend-lead (UI + logic + tests) + backend-lead (API + DB + tests).
+**Team mode**: teams cannot nest (members cannot create teams). Use team for level-1, sub-agents for level-2.
+**Keep depth ≤ 2 levels** — deeper hierarchies lose too much context.
+
+### Composite patterns
+
+| Composite | Structure | Example |
+|-----------|-----------|---------|
+| Fan-out + Producer-Reviewer | Each specialist has its own reviewer | Multi-language translation with per-language review |
+| Pipeline + Fan-out | Sequential phases with a parallel stage in the middle | Analysis → parallel implementation → integration test |
+| Supervisor + Expert Pool | Supervisor routes dynamically to experts | Support ticket routing — supervisor assigns tickets to domain experts |
+
+**Selection rule**: default to agent teams. Only use sub-agents when inter-agent communication is genuinely unnecessary.
+
+Present your pattern choice and rationale to the user using AskUserQuestion before proceeding. Include a simple ASCII diagram of the proposed team structure.
+
+## Phase 4: Design the agent roster
+
+For each agent in the chosen pattern:
+
+1. **Define the role** — one clear specialization per agent. If two roles can be combined without loss of focus, combine them.
+2. **Assign a type**:
+   - ` + "`general-purpose`" + ` — needs web access, broad tools, or can't be constrained
+   - ` + "`Explore`" + ` — read-only analysis, codebase investigation, no writes
+   - ` + "`Plan`" + ` — architecture and planning, no writes
+   - Custom (defined in ` + "`.claudio/agents/<name>.md`" + `) — complex persona with specific tooling, reusable across sessions
+3. **Decide communication protocol** — what messages this agent sends/receives via SendMessage
+4. **Decide task protocol** — what task types this agent creates or claims via TaskCreate/TaskUpdate
+
+**Agent separation criteria**:
+
+| Factor | Split | Merge |
+|--------|-------|-------|
+| Expertise domain | Different domains → split | Overlapping → merge |
+| Parallelism | Can run independently → split | Sequential dependency → consider merge |
+| Context load | Heavy context → split (protect window) | Light → merge |
+| Reusability | Useful across harnesses → split into own file | One-off → inline prompt |
+
+Present the roster to the user for approval before writing any files.
+
+## Phase 5: Write agent definition files
+
+For each agent that warrants a dedicated file (complex persona, reusable, or needs specific tooling), write ` + "`.claudio/agents/<name>.md`" + `:
+
+` + "```markdown" + `
+---
+name: agent-name
+description: "1-2 sentence role summary. Include trigger keywords so Claudio knows when to spawn this agent."
+---
+
+# Agent Name — One-line role summary
+
+You are a [domain] specialist responsible for [core function].
+
+## Core responsibilities
+1. Responsibility one
+2. Responsibility two
+3. Responsibility three
+
+## Working principles
+- Principle 1 (specific to this role)
+- Principle 2
+- Always validate your output against [specific criterion]
+
+## Input / output protocol
+- **Input**: Receives [what] from [whom] via [mechanism: TaskCreate / SendMessage / file]
+- **Output**: Writes [what] to [where] or sends [what] to [whom]
+- **Format**: [file format, schema, or message structure]
+
+## Team communication protocol
+- **Receives from**: [agent name] — [message type and content]
+- **Sends to**: [agent name] — [message type and content]
+- **Broadcasts**: Only when [specific condition] (` + "`SendMessage({to: \"all\"})`" + ` is expensive — use sparingly)
+- **Task claims**: Claims tasks of type [task type] from the shared task list
+
+## Error handling
+- If [failure condition]: [recovery action]
+- Maximum retries: [N] — after that, report failure to [coordinator] and halt
+- On timeout: write partial results to ` + "`_workspace/<name>-partial.md`" + ` then notify coordinator
+
+## Collaboration
+- Works with: [list of peer agents and relationship]
+- Depends on: [upstream agents or artifacts]
+- Produces for: [downstream agents or final output]
+` + "```" + `
+
+**Important**: Do not write a file for agents whose entire behavior can be expressed in a short inline prompt within the orchestrator skill. Reserve agent files for personas that are reused across harnesses or are complex enough to need their own specification.
+
+## Phase 6: Write the orchestrator skill
+
+Write ` + "`.claudio/skills/<harness-name>/skill.md`" + `:
+
+` + "```markdown" + `
+---
+name: <harness-name>
+description: "<What this harness does and when to invoke it. Include trigger keywords.>"
+---
+
+# <Harness Name> Orchestrator
+
+You are the lead orchestrator for the <domain> harness. Your job is to coordinate the agent team, track progress, and synthesize the final output.
+
+## When invoked
+
+This skill is triggered when the user wants to [task description]. Typical invocations:
+- "/<harness-name> [input]"
+- "Run the <harness-name> harness on [subject]"
+
+## Architecture
+
+<Pattern name>: <one-sentence description of the flow>
+
+` + "```" + `ascii
+<ASCII diagram of the agent team>
+` + "```" + `
+
+## Phase 1: Setup
+
+1. Create a ` + "`_workspace/<harness-name>/`" + ` directory for shared artifacts
+2. Create the initial task backlog using TaskCreate:
+   - Each task has a clear owner (agent name), input, expected output, and acceptance criteria
+3. Announce the plan to the user: what agents will run, what they'll produce
+
+## Phase 2: Launch the team
+
+Use TeamCreate to spawn the team:
+
+` + "```" + `
+TeamCreate({
+  name: "<harness-name>-team",
+  members: [
+    { name: "<agent-a>", agent: "<agent-a>", task: "<initial instruction>" },
+    { name: "<agent-b>", agent: "<agent-b>", task: "<initial instruction>" },
+    ...
+  ]
+})
+` + "```" + `
+
+Then send each member their specific context via SendMessage({to: "<name>", message: "..."}).
+
+Prefer targeted messages (` + "`{to: \"name\"}`" + `) over broadcasts (` + "`{to: \"all\"}`" + `). Only broadcast when all agents genuinely need the same update.
+
+## Phase 3: Monitor and coordinate
+
+- Check TaskList periodically to track progress
+- When an agent signals completion (via TaskUpdate or SendMessage), relay relevant output to dependent agents
+- If a Producer-Reviewer loop is active, cap retries at [N] rounds
+- If an agent reports a blocker, reassign or unblock it via SendMessage
+
+## Phase 4: Synthesize output
+
+Once all agents complete:
+1. Read all artifacts from ` + "`_workspace/<harness-name>/`" + `
+2. Resolve any conflicts or inconsistencies between agent outputs
+3. Produce the final output: [format and location]
+4. Report to the user: what was produced, where it is, any issues encountered
+
+## Workspace conventions
+
+- ` + "`_workspace/<harness-name>/`" + ` — shared artifact directory
+- ` + "`_workspace/<harness-name>/<agent>-output.md`" + ` — each agent's primary output
+- ` + "`_workspace/<harness-name>/final.md`" + ` — synthesized final output (or the actual files if output is code)
+
+## Error handling
+
+- Agent timeout (no update in [N] minutes): send a check-in message; if no response, reassign the task
+- Repeated failures: log to ` + "`_workspace/<harness-name>/errors.md`" + ` and continue with partial results
+- Critical blocker: pause the harness, report to user, wait for instruction
+` + "```" + `
+
+**Adapt all placeholders** to the specific domain, agents, and pattern chosen. Do not leave generic placeholder text in the final file.
+
+## Phase 7: Register in CLAUDIO.md
+
+Add a harness entry to CLAUDIO.md (or create it if absent):
+
+` + "```markdown" + `
+## Agent Harnesses
+
+### <harness-name>
+**Invoke**: ` + "`/<harness-name> <input>`" + `
+**Pattern**: <pattern name>
+**Agents**: <comma-separated list>
+**Output**: <what it produces and where>
+**Use when**: <specific trigger conditions>
+` + "```" + `
+
+Read CLAUDIO.md first. If a harness section already exists, append to it. Never overwrite unrelated content.
+
+## Phase 8: Validate and summarize
+
+Before finishing:
+1. Read each written file and verify it has no placeholder text remaining
+2. Verify agent names are consistent across all files (orchestrator references match agent file names)
+3. Check that every agent in the orchestrator has a corresponding file (if it needed one)
+4. Verify ` + "`.claudio/agents/`" + ` and ` + "`.claudio/skills/`" + ` directories exist (create them if not)
+
+Report to the user:
+- Files created (with paths)
+- Agent roster with one-line role summaries
+- How to invoke the harness
+- Any design decisions made and why
+- Suggested next steps (e.g., run the harness on a real task, extend with additional specialists)
+
+## Design principles
+
+**One role per agent** — if an agent has two unrelated responsibilities, split it.
+**Communication is value** — agent teams are more powerful than the sum of their parts because agents can challenge, extend, and correct each other in real time. Design communication protocols deliberately.
+**Workspace discipline** — all inter-agent artifacts go to ` + "`_workspace/`" + `. Never scatter outputs across the project.
+**Fail gracefully** — every agent must have an error path. Harnesses that can't handle failure are brittle.
+**Reuse over duplication** — if a specialist role exists in another harness, reference the same ` + "`.claudio/agents/<name>.md`" + ` file.
+**Calibrate depth** — for Hierarchical Delegation, stay at ≤ 2 levels. Agent teams cannot be nested.
+**Minimal agents** — start with the smallest roster that covers the domain. You can always add specialists later.`

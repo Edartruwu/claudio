@@ -2856,7 +2856,7 @@ func (m *Model) saveSessionRuntime(sessionID string) {
 	rt.EventCh = m.eventCh
 	rt.ApprovalCh = m.approvalCh
 	rt.Messages = m.messages
-	rt.StreamText = *m.streamText
+	rt.StreamText = m.streamText
 	rt.Streaming = m.streaming
 	rt.TotalTokens = m.totalTokens
 	rt.TotalCost = m.totalCost
@@ -2908,7 +2908,7 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 	m.eventCh = rt.EventCh
 	m.approvalCh = rt.ApprovalCh
 	m.messages = rt.Messages
-	m.streamText = &rt.StreamText
+	m.streamText = rt.StreamText
 	m.streaming = rt.Streaming
 	m.totalTokens = rt.TotalTokens
 	m.totalCost = rt.TotalCost
@@ -2975,17 +2975,35 @@ func (m *Model) createNewSession() (bool, tea.Cmd) {
 	// Save prev for alternate switching
 	if cur := m.session.Current(); cur != nil {
 		m.prevSessionID = cur.ID
+		// If current session is streaming, save its runtime so it keeps running
+		if m.streaming {
+			m.saveSessionRuntime(cur.ID)
+		}
 	}
 	if _, err := m.session.Start(m.model); err != nil {
 		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("New session failed: %v", err)})
 		m.refreshViewport()
 		return true, nil
 	}
+	// Fully reset state for the new session
+	m.engine = nil
+	m.cancelFunc = nil
+	m.eventCh = make(chan tuiEvent, 64)
+	m.approvalCh = nil
 	m.messages = nil
-	m.streamText.Reset()
+	m.streamText = &strings.Builder{}
+	m.streaming = false
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	m.expandedGroups = make(map[int]bool)
+	m.lastToolGroup = -1
+	m.toolStartTimes = make(map[string]time.Time)
+	m.spinText = ""
+	m.spinner.Stop()
+	m.messageQueue = nil
+	m.pendingEngineMessages = nil
+	m.resumeSummarySet = false
 	m.refreshViewport()
 	return true, nil
 }
@@ -3003,17 +3021,44 @@ func (m *Model) deleteCurrentSession() (bool, tea.Cmd) {
 	if oldTitle == "" {
 		oldTitle = cur.ID[:8]
 	}
+	oldID := cur.ID
+	// Cancel any streaming on the current session
+	if m.streaming && m.cancelFunc != nil {
+		m.cancelFunc()
+	}
+	// Remove background runtime if it exists
+	if rt, ok := m.sessionRuntimes[oldID]; ok {
+		rt.StopBackgroundDrain()
+		if rt.CancelFunc != nil {
+			rt.CancelFunc()
+		}
+		delete(m.sessionRuntimes, oldID)
+	}
 	// Create a new session first
 	if _, err := m.session.Start(m.model); err != nil {
 		return true, nil
 	}
 	// Delete the old one
-	_ = m.session.Delete(cur.ID)
+	_ = m.session.Delete(oldID)
+	// Fully reset state
+	m.engine = nil
+	m.cancelFunc = nil
+	m.eventCh = make(chan tuiEvent, 64)
+	m.approvalCh = nil
 	m.messages = nil
-	m.streamText.Reset()
+	m.streamText = &strings.Builder{}
+	m.streaming = false
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	m.expandedGroups = make(map[int]bool)
+	m.lastToolGroup = -1
+	m.toolStartTimes = make(map[string]time.Time)
+	m.spinText = ""
+	m.spinner.Stop()
+	m.messageQueue = nil
+	m.pendingEngineMessages = nil
+	m.resumeSummarySet = false
 	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Deleted session: %s", oldTitle)})
 	m.refreshViewport()
 	return true, nil

@@ -26,7 +26,7 @@ type SessionRuntime struct {
 
 	// Conversation state
 	Messages       []ChatMessage
-	StreamText     strings.Builder
+	StreamText     *strings.Builder
 	Streaming      bool
 	TotalTokens    int
 	TotalCost      float64
@@ -50,6 +50,7 @@ func NewSessionRuntime(sessionID string) *SessionRuntime {
 	return &SessionRuntime{
 		SessionID:      sessionID,
 		EventCh:        make(chan tuiEvent, 64),
+		StreamText:     &strings.Builder{},
 		ExpandedGroups: make(map[int]bool),
 		LastToolGroup:  -1,
 	}
