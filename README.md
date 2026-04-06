@@ -98,7 +98,7 @@ Pure Go, zero runtime, no Node.js. `modernc.org/sqlite` keeps it CGO-free.
 # 1. Install
 go install github.com/Abraxas-365/claudio/cmd/claudio@latest
 
-# 2. Authenticate
+# 2. Authenticate with Anthropic (Claude)
 claudio auth login
 
 # 3. Bootstrap your project
@@ -110,6 +110,47 @@ claudio          # launches the TUI
 ```
 
 > 💡 **Tip:** `claudio --resume` picks up your last session. `claudio "fix the failing test"` runs a one-shot prompt without the TUI.
+
+#### Using a different provider
+
+`claudio auth login` is the quickest path — it authenticates with Anthropic so you can use Claude models out of the box. But Claudio is **model-agnostic**: you can route any model to Groq, OpenAI, Ollama, Together, vLLM, or any OpenAI-compatible endpoint by editing `~/.claudio/settings.json`:
+
+```json
+{
+  "model": "llama-3.3-70b-versatile",
+  "providers": {
+    "groq": {
+      "apiBase": "https://api.groq.com/openai/v1",
+      "apiKey": "$GROQ_API_KEY",
+      "type": "openai"
+    },
+    "openai": {
+      "apiBase": "https://api.openai.com/v1",
+      "apiKey": "$OPENAI_API_KEY",
+      "type": "openai"
+    },
+    "ollama": {
+      "apiBase": "http://localhost:11434/v1",
+      "type": "openai"
+    }
+  },
+  "modelRouting": {
+    "llama-*": "groq",
+    "gpt-*": "openai",
+    "qwen*": "ollama"
+  }
+}
+```
+
+Then launch with any routed model:
+
+```bash
+claudio --model gpt-4o            # OpenAI
+claudio --model llama-3.3-70b-versatile   # Groq
+claudio --model qwen2.5-coder     # Local Ollama
+```
+
+See [Model Configuration](#model-configuration) for the full reference.
 
 ---
 
