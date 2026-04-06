@@ -697,25 +697,58 @@ Markdown files with YAML frontmatter across three scopes:
 
 | Scope | Path | Purpose |
 |-------|------|---------|
-| **Project** | `.claudio/memory/` | Project-specific knowledge |
+| **Project** | `~/.claudio/projects/<project-slug>/memory/` | Project-specific knowledge |
 | **Global** | `~/.claudio/memory/` | Cross-project user preferences |
-| **Agent** | `~/.claudio/agents/<name>/memory/` | Agent-specific knowledge |
+| **Agent** | `~/.claudio/agents/<name>/memory/` | Per-crystallized-agent knowledge |
 
-Resolution priority: **Agent > Project > Global**. Higher-priority scopes win on name conflicts.
+Resolution priority: **Agent > Project > Global** — on name conflicts, the higher-priority scope wins. All three are merged and injected into the system prompt at session start.
+
+Default write target follows the same priority: project if you're in a project dir, otherwise global.
 
 Memory types: `user`, `feedback`, `project`, `reference`.
 
 ```markdown
 ---
-name: user prefers terse output
-description: skip trailing summaries
+name: prefers-table-driven-tests
+description: User prefers Go table-driven test pattern
 type: feedback
 ---
 
-Don't summarize at the end of responses.
-**Why:** user explicitly asked.
-**How to apply:** skip trailing summaries.
+User pushed back twice when I wrote function-per-case tests.
+Always use t.Run with a slice of test cases for Go tests in this project.
 ```
+
+### Proactive memory writing (agent-driven)
+
+Every session gets a `# Auto Memory` block injected into the system prompt that instructs the agent to actively save, update, and delete memories using its normal tools — matching Anthropic's own Claude Code memory pattern.
+
+**The agent writes memories in two steps:**
+
+1. Write a markdown file with YAML frontmatter to the memory directory using the `Write` tool:
+   ```
+   ~/.claudio/projects/<slug>/memory/prefers-table-driven-tests.md
+   ```
+2. Update `MEMORY.md` (the index) in the same directory by reading it and adding a one-line pointer. If `MEMORY.md` doesn't exist, create it.
+
+**When the agent saves a memory:**
+- User explicitly asks to remember or forget something — done immediately
+- User corrects the agent or rejects an approach
+- Non-obvious project fact discovered (architecture, conventions, constraints)
+- Recurring pattern, false positive, or trap worth avoiding next run
+
+**What the agent does NOT save:**
+- Things obvious from reading the codebase
+- Standard best practices already known
+- Ephemeral task state (plans/todos are for that)
+- Secrets or sensitive data
+
+**Editing and deleting memories:**
+
+Memories are plain markdown files — the agent can maintain them over time:
+- **Update** with the `Edit` tool when a fact changes or a preference is refined. Prefer updating over creating near-duplicates (check first with `Memory` tool's `search`).
+- **Delete** with `rm` (Bash tool) when a memory becomes wrong, obsolete, or the user asks to forget it. Also remove its line from `MEMORY.md`.
+
+This loop makes the agent meaningfully smarter per session without any manual curation. It is particularly valuable for [crystallized agents](#agent-crystallization) that are reused across many sessions or inside teams.
 
 ### Memory selection strategies
 
@@ -730,6 +763,20 @@ Don't summarize at the end of responses.
 After 4+ turns, a background agent (Haiku) reviews the conversation and automatically extracts memories. Disable with `"autoMemoryExtract": false`.
 
 Manual extraction: `/memory extract`
+
+### Memory in teams
+
+Memory access differs by teammate type when a team is running:
+
+| Role | Scopes visible | Can write? |
+|------|---------------|------------|
+| **Orchestrator** (harness / parent session) | Global + Project + own Agent (if crystallized) | ✅ To project or global |
+| **Ephemeral teammate** (no `MemoryDir`) | None — blank slate every run | ❌ |
+| **Crystallized teammate** (has `MemoryDir`) | Own agent memory only | ✅ To their agent dir |
+
+Crystallized teammates do **not** inherit project or global memory — they operate from their own private accumulated knowledge. If a teammate needs project-level context, the harness should include it explicitly in the spawn prompt.
+
+Because agent memory lives at `~/.claudio/agents/<name>/memory/` and survives `TeamDelete`, a crystallized agent that learns something during a team run will carry that knowledge into every future session — solo or team.
 
 ### Memory panel (`<Space>im`)
 
