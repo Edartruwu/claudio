@@ -444,30 +444,13 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			continue
 		}
 
-		// When max_tokens hits mid-tool_use, the output was truncated.
-		// Tool input JSON may be syntactically valid (e.g. "{}") but
-		// semantically incomplete (missing required fields like file_path).
-		// Return synthetic error results for ALL tool_uses so the model
-		// retries with the escalated token budget.
+		// When max_tokens hits mid-tool_use, escalate the token budget for
+		// the next turn. Individual tools validate their own input, so
+		// truncated tool inputs (e.g. "{}") will naturally return errors.
+		// Like Claude Code, we execute tools normally and let the model
+		// see the tool errors alongside the escalated budget.
 		if response.StopReason == "max_tokens" && len(response.ToolUses) > 0 {
-			var truncatedResults []toolResultBlock
-			for _, tu := range response.ToolUses {
-				truncatedResults = append(truncatedResults, toolResultBlock{
-					Type:      "tool_result",
-					ToolUseID: tu.ID,
-					Content:   "Your response was cut off due to the output token limit. The tool input was incomplete and was NOT executed. Please retry with complete input. If the content is too large for a single call, break it into smaller steps (e.g. write the file in parts using Edit or multiple smaller Write calls).",
-					IsError:   true,
-				})
-			}
-			// Escalate max_tokens so the model has room on the next attempt
 			e.maxTokensOverride = escalatedMaxTokens
-
-			resultContent, _ := json.Marshal(truncatedResults)
-			e.messages = append(e.messages, api.Message{
-				Role:    "user",
-				Content: resultContent,
-			})
-			continue
 		}
 
 		// Execute tools and build result message
@@ -482,6 +465,20 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			Role:    "user",
 			Content: resultContent,
 		})
+
+		// If max_tokens was hit, inject a recovery message so the model
+		// knows to break up large outputs on the next turn.
+		if response.StopReason == "max_tokens" {
+			recoveryContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(
+				"Output token limit hit. Resume directly — no apology, no recap. " +
+					"Pick up mid-thought if that is where the cut happened. " +
+					"Break remaining work into smaller pieces.",
+			)})
+			e.messages = append(e.messages, api.Message{
+				Role:    "user",
+				Content: recoveryContent,
+			})
+		}
 
 		// Microcompact: proactively clear large old tool results on every tool turn.
 		// Keeps the last 10 results intact, clears anything larger than 2KB beyond that.
