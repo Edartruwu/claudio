@@ -7,19 +7,20 @@ import (
 
 // ModelPricing holds cost per million tokens for a model.
 type ModelPricing struct {
-	InputPerMillion  float64
-	OutputPerMillion float64
-	CacheReadPerMillion float64
+	InputPerMillion      float64
+	OutputPerMillion     float64
+	CacheReadPerMillion  float64
+	CacheWritePerMillion float64
 }
 
 // Known model pricing (USD per million tokens).
 // Source: https://platform.claude.com/docs/en/about-claude/pricing
 var modelPricing = map[string]ModelPricing{
-	"claude-opus-4-6":            {InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5},
-	"claude-opus-4-5":            {InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5},
-	"claude-sonnet-4-6":          {InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3},
-	"claude-sonnet-4-5":          {InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3},
-	"claude-haiku-4-5":           {InputPerMillion: 0.25, OutputPerMillion: 1.25, CacheReadPerMillion: 0.025},
+	"claude-opus-4-6":   {InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5, CacheWritePerMillion: 18.75},
+	"claude-opus-4-5":   {InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5, CacheWritePerMillion: 18.75},
+	"claude-sonnet-4-6": {InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3, CacheWritePerMillion: 3.75},
+	"claude-sonnet-4-5": {InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3, CacheWritePerMillion: 3.75},
+	"claude-haiku-4-5":  {InputPerMillion: 0.25, OutputPerMillion: 1.25, CacheReadPerMillion: 0.025, CacheWritePerMillion: 0.3125},
 }
 
 // UsageTracker accumulates token usage and cost across a session.
@@ -85,10 +86,14 @@ func (t *UsageTracker) Summary() string {
 }
 
 // Snapshot returns current values for display.
+// totalTokens includes input, output, and both cache read/write tokens, since
+// Anthropic's API splits prompt content across input_tokens, cache_read_input_tokens,
+// and cache_creation_input_tokens — summing only input+output severely underreports
+// the real context size once prompt caching is active.
 func (t *UsageTracker) Snapshot() (totalTokens int, cost float64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.InputTokens + t.OutputTokens, t.TotalCost
+	return t.InputTokens + t.OutputTokens + t.CacheRead + t.CacheCreate, t.TotalCost
 }
 
 func (t *UsageTracker) calculateCost() float64 {
@@ -96,9 +101,10 @@ func (t *UsageTracker) calculateCost() float64 {
 
 	inputCost := float64(t.InputTokens) * pricing.InputPerMillion / 1_000_000
 	outputCost := float64(t.OutputTokens) * pricing.OutputPerMillion / 1_000_000
-	cacheCost := float64(t.CacheRead) * pricing.CacheReadPerMillion / 1_000_000
+	cacheReadCost := float64(t.CacheRead) * pricing.CacheReadPerMillion / 1_000_000
+	cacheWriteCost := float64(t.CacheCreate) * pricing.CacheWritePerMillion / 1_000_000
 
-	return inputCost + outputCost + cacheCost
+	return inputCost + outputCost + cacheReadCost + cacheWriteCost
 }
 
 // lookupPricing finds pricing by exact match or prefix match.
@@ -123,12 +129,12 @@ func lookupPricing(model string) ModelPricing {
 	// Keyword fallback
 	switch {
 	case contains(model, "opus"):
-		return ModelPricing{InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5}
+		return ModelPricing{InputPerMillion: 15.0, OutputPerMillion: 75.0, CacheReadPerMillion: 1.5, CacheWritePerMillion: 18.75}
 	case contains(model, "haiku"):
-		return ModelPricing{InputPerMillion: 0.25, OutputPerMillion: 1.25, CacheReadPerMillion: 0.025}
+		return ModelPricing{InputPerMillion: 0.25, OutputPerMillion: 1.25, CacheReadPerMillion: 0.025, CacheWritePerMillion: 0.3125}
 	default:
 		// Default to Sonnet pricing
-		return ModelPricing{InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3}
+		return ModelPricing{InputPerMillion: 3.0, OutputPerMillion: 15.0, CacheReadPerMillion: 0.3, CacheWritePerMillion: 3.75}
 	}
 }
 

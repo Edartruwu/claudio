@@ -379,8 +379,12 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 	}
 
 	icon := statusIcon(a.status, p.tick)
-	color := lipgloss.Color(a.color)
-	nameStyle := lipgloss.NewStyle().Foreground(color).Bold(true)
+	var nameStyle lipgloss.Style
+	if a.color != "" {
+		nameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(a.color)).Bold(true)
+	} else {
+		nameStyle = styles.AgentStyle(a.name)
+	}
 	if selected {
 		nameStyle = nameStyle.Underline(true)
 	}

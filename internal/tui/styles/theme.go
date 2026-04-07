@@ -135,8 +135,7 @@ var (
 
 var (
 	StatusBar = lipgloss.NewStyle().
-			Background(SurfaceAlt).
-			Foreground(Dim).
+			Foreground(Muted).
 			Padding(0, 1)
 
 	StatusModel = lipgloss.NewStyle().
@@ -235,14 +234,13 @@ var (
 
 var (
 	FooterPill = lipgloss.NewStyle().
-			Background(SurfaceAlt).
-			Foreground(Dim).
+			Foreground(Muted).
 			Padding(0, 1).
 			Margin(0, 1)
 
 	FooterPillActive = lipgloss.NewStyle().
-				Background(Primary).
-				Foreground(Text).
+				Foreground(Primary).
+				Bold(true).
 				Padding(0, 1).
 				Margin(0, 1)
 )
@@ -295,7 +293,7 @@ var (
 				Background(Aqua)
 
 	PanelHint = lipgloss.NewStyle().
-			Foreground(Subtle).
+			Foreground(Muted).
 			Italic(true).
 			PaddingLeft(2)
 

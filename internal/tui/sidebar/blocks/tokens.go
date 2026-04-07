@@ -11,12 +11,13 @@ import (
 
 // TokensBlock shows token usage and estimated cost.
 type TokensBlock struct {
-	GetTokens func() int
-	GetCost   func() float64
+	GetTokens      func() int
+	GetCost        func() float64
+	GetMaxContext  func() int
 }
 
-func NewTokensBlock(getTokens func() int, getCost func() float64) *TokensBlock {
-	return &TokensBlock{GetTokens: getTokens, GetCost: getCost}
+func NewTokensBlock(getTokens func() int, getCost func() float64, getMaxContext func() int) *TokensBlock {
+	return &TokensBlock{GetTokens: getTokens, GetCost: getCost, GetMaxContext: getMaxContext}
 }
 
 func (b *TokensBlock) Title() string  { return "Usage" }
@@ -33,8 +34,12 @@ func (b *TokensBlock) Render(width, maxHeight int) string {
 		cost = b.GetCost()
 	}
 
-	// Context limit bar (200k for Claude Sonnet as baseline)
-	const contextLimit = 200_000
+	contextLimit := 200_000
+	if b.GetMaxContext != nil {
+		if v := b.GetMaxContext(); v > 0 {
+			contextLimit = v
+		}
+	}
 	pct := float64(tokens) / float64(contextLimit)
 	if pct > 1 {
 		pct = 1
@@ -60,7 +65,7 @@ func (b *TokensBlock) Render(width, maxHeight int) string {
 		lipgloss.NewStyle().Foreground(styles.Muted).Render(emptyStr)
 
 	tokenStr := lipgloss.NewStyle().Foreground(styles.Text).Render(
-		fmt.Sprintf(" %s / 200k", formatTokens(tokens)),
+		fmt.Sprintf(" %s / %s", formatTokens(tokens), formatTokens(contextLimit)),
 	)
 	costStr := lipgloss.NewStyle().Foreground(styles.Muted).Render(
 		fmt.Sprintf(" $%.4f", cost),

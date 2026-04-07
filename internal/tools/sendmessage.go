@@ -111,5 +111,17 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 		return &Result{Content: fmt.Sprintf("Send failed: %v", err), IsError: true}, nil
 	}
 
-	return &Result{Content: fmt.Sprintf("Message sent to %s from %s", in.To, from)}, nil
+	// If the recipient agent is idle (completed/failed), revive it so it can
+	// read the new message and continue the conversation. Revive itself is
+	// a no-op if the agent is still working or was explicitly shutdown.
+	revived := ""
+	if t.Runner != nil {
+		if err := t.Runner.Revive(in.To, in.Message); err == nil {
+			if state, ok := t.Runner.GetStateByName(in.To); ok && state.Status == teams.StatusWorking {
+				revived = " (revived)"
+			}
+		}
+	}
+
+	return &Result{Content: fmt.Sprintf("Message sent to %s from %s%s", in.To, from, revived)}, nil
 }

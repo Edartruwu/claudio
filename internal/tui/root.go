@@ -20,6 +20,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
+	"github.com/Abraxas-365/claudio/internal/services/naming"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/storage"
@@ -37,6 +38,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
+	"github.com/Abraxas-365/claudio/internal/utils"
 	"github.com/Abraxas-365/claudio/internal/tui/docks"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
 	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
@@ -80,11 +82,14 @@ type Model struct {
 	model          string
 	totalTokens    int
 	totalCost      float64
+	usageTracker   *api.UsageTracker
 	turns          int
 	spinText       string // current spinner status text
 	toolSpinFrame  int    // braille spinner frame counter for in-progress tool status
 	expandedGroups  map[int]bool          // tool group msg indices that are expanded
 	thinkingExpanded map[int]bool         // message index → thinking block expanded state
+	thinkingHidden   bool                 // /thinking toggle: hide all MsgThinking blocks
+	undoStash        []ChatMessage        // last user+assistant exchange popped by /undo, restored by /redo
 	lastToolGroup   int                   // msg index of the last tool group start (-1 = none)
 	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
 	panelSplitRatio float64      // fraction of width for main area (default 0.65)
@@ -281,6 +286,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		SetModel: func(model string) {
 			m.model = model
 			apiClient.SetModel(model)
+			m.usageTracker = api.NewUsageTracker(model, 0)
 		},
 		GetThinkingLabel: func() string { return apiClient.ThinkingLabel() },
 		Compact: func(keepLast int) (string, error) {
@@ -326,6 +332,30 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			}
 			return sess.SetTitle(title)
 		},
+		AutoNameSession: func() (string, error) {
+			if sess == nil {
+				return "", fmt.Errorf("no active session")
+			}
+			if m.engine == nil {
+				return "", fmt.Errorf("no active conversation")
+			}
+			msgs := m.engine.Messages()
+			if len(msgs) == 0 {
+				return "", fmt.Errorf("no messages to name from")
+			}
+			smallModel := "claude-haiku-4-5-20251001"
+			if m.appCtx != nil && m.appCtx.Config != nil && m.appCtx.Config.SmallModel != "" {
+				smallModel = m.appCtx.Config.SmallModel
+			}
+			name, err := naming.GenerateSessionName(context.Background(), apiClient, smallModel, msgs)
+			if err != nil {
+				return "", err
+			}
+			if err := sess.SetTitle(name); err != nil {
+				return "", err
+			}
+			return name, nil
+		},
 		ToggleVim: func() bool {
 			m.prompt.ToggleVim()
 			return m.prompt.IsVimEnabled()
@@ -345,6 +375,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			m.turns = 0
 			m.totalTokens = 0
 			m.totalCost = 0
+			m.usageTracker = api.NewUsageTracker(m.model, 0)
 			m.refreshViewport()
 			return nil
 		},
@@ -895,8 +926,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Welcome screen number keys: 1-3 to resume recent sessions
-		if m.focus == FocusPrompt && m.isWelcomeScreen() {
+		// Welcome screen number keys: 1-3 to resume recent sessions (only when prompt is empty)
+		if m.focus == FocusPrompt && m.isWelcomeScreen() && m.prompt.Value() == "" {
 			switch msg.String() {
 			case "1", "2", "3":
 				idx := int(msg.String()[0] - '1') // 0, 1, or 2
@@ -1044,11 +1075,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		// Regular file: insert path as text
+		// Regular file: insert path as @mention
 		val := m.prompt.Value()
 		atIdx := strings.LastIndex(val, "@")
 		if atIdx >= 0 {
-			m.prompt.SetValue(val[:atIdx] + msg.Path + " ")
+			m.prompt.SetValue(val[:atIdx] + "@" + msg.Path + " ")
 		}
 		return m, nil
 
@@ -1457,17 +1488,7 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	// Lazy session creation: create session BEFORE persisting the first message
 	if m.session != nil && m.session.Current() == nil {
 		m.session.Start(m.model)
-		// Auto-title from first message
-		title := cleanedText
-		if len(title) > 50 {
-			// Truncate at word boundary
-			if idx := strings.LastIndex(title[:50], " "); idx > 10 {
-				title = title[:idx] + "..."
-			} else {
-				title = title[:47] + "..."
-			}
-		}
-		m.session.SetTitle(title)
+		// No auto-title: session label shows the short hash until the user runs /set-name
 	}
 
 	m.addMessage(ChatMessage{Type: MsgUser, Content: displayText})
@@ -1695,9 +1716,11 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 
 	case "turn_complete":
 		m.finalizeStreamingMessage()
-		m.totalTokens += event.usage.OutputTokens
-		m.totalCost += float64(event.usage.InputTokens) * 3.0 / 1_000_000
-		m.totalCost += float64(event.usage.OutputTokens) * 15.0 / 1_000_000
+		if m.usageTracker == nil {
+			m.usageTracker = api.NewUsageTracker(m.model, 0)
+		}
+		m.usageTracker.Add(event.usage)
+		m.totalTokens, m.totalCost = m.usageTracker.Snapshot()
 		m.turns++
 
 	case "done":
@@ -2024,8 +2047,88 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 			m.turns = 0
 			m.totalTokens = 0
 			m.totalCost = 0
+			m.undoStash = nil
+			m.usageTracker = api.NewUsageTracker(m.model, 0)
 			if m.engine != nil {
 				m.engine.SetMessages(nil)
+			}
+			m.refreshViewport()
+			return m, nil
+		}
+		if output == "[action:details]" {
+			// Toggle expand/collapse for every tool group currently rendered.
+			// If any group is collapsed, expand all; otherwise collapse all.
+			anyCollapsed := false
+			for i, msg := range m.messages {
+				if msg.Type == MsgToolUse && !m.expandedGroups[i] {
+					anyCollapsed = true
+					break
+				}
+			}
+			for i, msg := range m.messages {
+				if msg.Type == MsgToolUse {
+					m.expandedGroups[i] = anyCollapsed
+				}
+			}
+			label := "collapsed"
+			if anyCollapsed {
+				label = "expanded"
+			}
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Tool details: " + label})
+			m.refreshViewport()
+			return m, nil
+		}
+		if output == "[action:thinking]" {
+			m.thinkingHidden = !m.thinkingHidden
+			label := "visible"
+			if m.thinkingHidden {
+				label = "hidden"
+			}
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Thinking blocks: " + label})
+			m.refreshViewport()
+			return m, nil
+		}
+		if output == "[action:editor]" {
+			content := m.prompt.ExpandedValue()
+			m.prompt.Blur()
+			return m, openExternalEditor(content)
+		}
+		if output == "[action:undo]" {
+			// Pop the trailing exchange (everything from the last user message to end)
+			// into the undo stash so /redo can restore it.
+			lastUser := -1
+			for i := len(m.messages) - 1; i >= 0; i-- {
+				if m.messages[i].Type == MsgUser {
+					lastUser = i
+					break
+				}
+			}
+			if lastUser < 0 {
+				m.addMessage(ChatMessage{Type: MsgSystem, Content: "Nothing to undo"})
+				m.refreshViewport()
+				return m, nil
+			}
+			stash := make([]ChatMessage, len(m.messages)-lastUser)
+			copy(stash, m.messages[lastUser:])
+			m.undoStash = stash
+			m.messages = m.messages[:lastUser]
+			if m.engine != nil {
+				m.engine.SetMessages(engineMessagesFromChat(m.messages))
+			}
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Undid last exchange (use /redo to restore)"})
+			m.refreshViewport()
+			return m, nil
+		}
+		if output == "[action:redo]" {
+			if len(m.undoStash) == 0 {
+				m.addMessage(ChatMessage{Type: MsgSystem, Content: "Nothing to redo"})
+				m.refreshViewport()
+				return m, nil
+			}
+			m.messages = append(m.messages, m.undoStash...)
+			m.undoStash = nil
+			if m.engine != nil {
+				m.engine.SetMessages(engineMessagesFromChat(m.messages))
 			}
 			m.refreshViewport()
 			return m, nil
@@ -2955,6 +3058,7 @@ func (m *Model) doSwitchSession(id string) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.pendingEngineMessages = nil
 
 	title := resumed.Title
@@ -3111,6 +3215,7 @@ func (m *Model) saveSessionRuntime(sessionID string) {
 	m.streaming = false
 	m.totalTokens = 0
 	m.totalCost = 0
+	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.turns = 0
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
@@ -3221,6 +3326,7 @@ func (m *Model) createNewSession() (bool, tea.Cmd) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
 	m.toolStartTimes = make(map[string]time.Time)
@@ -3276,6 +3382,7 @@ func (m *Model) deleteCurrentSession() (bool, tea.Cmd) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
 	m.toolStartTimes = make(map[string]time.Time)
@@ -4057,7 +4164,18 @@ func (m *Model) refreshViewport() {
 		if m.focus == FocusViewport {
 			cursorIdx = m.vpCursor
 		}
-		result := renderMessages(m.messages, m.viewport.Width, m.expandedGroups, cursorIdx, m.toolSpinFrame, m.thinkingExpanded)
+		msgs := m.messages
+		if m.thinkingHidden {
+			filtered := make([]ChatMessage, 0, len(msgs))
+			for _, msg := range msgs {
+				if msg.Type == MsgThinking {
+					continue
+				}
+				filtered = append(filtered, msg)
+			}
+			msgs = filtered
+		}
+		result := renderMessages(msgs, m.viewport.Width, m.expandedGroups, cursorIdx, m.toolSpinFrame, m.thinkingExpanded)
 		content = result.Content
 		m.vpSections = result.Sections
 
@@ -4266,6 +4384,7 @@ func (m *Model) buildSidebar() *sidebar.Sidebar {
 			blks = append(blks, sidebarblocks.NewTokensBlock(
 				func() int     { return m.totalTokens },
 				func() float64 { return m.totalCost },
+				func() int     { return utils.MaxContextForModel(m.model) },
 			))
 		}
 	}
@@ -4432,6 +4551,11 @@ func (m Model) View() string {
 		m.filesPanel.SetSize(filesW, m.viewport.Height)
 		topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, m.filesPanel.View())
 	} else if m.sidebar != nil && m.focus != FocusAgentDetail {
+		// Rebuild sidebar each frame so token/cost closures capture
+		// the current (value-receiver) Model copy. Otherwise the
+		// closures formed in New() reference a stale stack-local m
+		// and the Usage panel always renders zeros.
+		m.sidebar = m.buildSidebar()
 		sw := m.sidebarWidth()
 		if sw > 0 {
 			m.sidebar.SetSize(sw, m.viewport.Height)

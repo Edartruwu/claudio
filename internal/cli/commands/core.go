@@ -359,15 +359,23 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 
 	r.Register(&Command{
 		Name:        "rename",
-		Description: "Rename the current session",
+		Aliases:     []string{"rn"},
+		Description: "Rename this session: no args = AI auto-name, with args = rename to that",
 		Execute: func(args string) (string, error) {
-			if args == "" {
-				return "Usage: /rename <name>", nil
+			if args != "" {
+				if err := deps.RenameSession(args); err != nil {
+					return fmt.Sprintf("Failed to rename session: %v", err), nil
+				}
+				return fmt.Sprintf("Session renamed to: %s", args), nil
 			}
-			if err := deps.RenameSession(args); err != nil {
-				return fmt.Sprintf("Failed to rename session: %v", err), nil
+			if deps.AutoNameSession == nil {
+				return "Auto-naming not available.", nil
 			}
-			return fmt.Sprintf("Session renamed to: %s", args), nil
+			name, err := deps.AutoNameSession()
+			if err != nil {
+				return fmt.Sprintf("Auto-naming failed: %v", err), nil
+			}
+			return fmt.Sprintf("Session named: %s", name), nil
 		},
 	})
 
@@ -467,6 +475,55 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		Description: "Undo the last exchange (removes last user + assistant message)",
 		Execute: func(args string) (string, error) {
 			return "[action:undo]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "redo",
+		Description: "Redo the last undone exchange",
+		Execute: func(args string) (string, error) {
+			return "[action:redo]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "themes",
+		Description: "List available themes",
+		Execute: func(args string) (string, error) {
+			return "Available themes:\n  • gruvbox (active)\n\nTheme switching is not yet implemented — only gruvbox is bundled. To request more themes, file an issue.", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "details",
+		Description: "Toggle expand/collapse all tool execution details",
+		Execute: func(args string) (string, error) {
+			return "[action:details]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "thinking",
+		Description: "Toggle visibility of model thinking/reasoning blocks",
+		Execute: func(args string) (string, error) {
+			return "[action:thinking]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "editor",
+		Aliases:     []string{"e"},
+		Description: "Compose a message in your $EDITOR",
+		Execute: func(args string) (string, error) {
+			return "[action:editor]", nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "connect",
+		Description: "Configure AI providers and API keys",
+		Execute: func(args string) (string, error) {
+			return "Provider configuration:\n  Edit ~/.claudio/config.toml or use environment variables:\n    ANTHROPIC_API_KEY=...\n    OPENAI_API_KEY=...\n  Then run /model <model-name> to switch.\n\nA full provider wizard is planned for a future release.", nil
 		},
 	})
 

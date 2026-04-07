@@ -260,6 +260,14 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
 	})
 
+	// Revive callback: continues an existing agent conversation by restoring
+	// engine history via context and running the new message as the next user
+	// turn. Memory dir is honored if the state was backed by a crystallized agent.
+	teamRunner.SetRunAgentResume(func(ctx context.Context, system, memoryDir string, history []api.Message, newMessage string) (string, error) {
+		ctx = teams.WithResumeHistory(ctx, history)
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, newMessage, memoryDir)
+	})
+
 	// Wire per-teammate context decorator: injects a SubAgentObserver that
 	// populates TeammateState.Conversation and Progress in real time.
 	teamRunner.SetContextDecorator(func(ctx context.Context, state *teams.TeammateState) context.Context {
@@ -280,9 +288,14 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		return ctx
 	})
 
-	// Wire CWD injector for worktree isolation
-	teamRunner.SetCwdInjector(func(ctx context.Context, cwd string) context.Context {
-		return tools.WithCwd(ctx, cwd)
+	// Wire CWD injector for worktree isolation.
+	// Both the worktree path and the main repo root are stored in context so
+	// file tools (Read, Edit, Write) can remap absolute main-repo paths into
+	// the equivalent paths inside the agent's worktree.
+	teamRunner.SetCwdInjector(func(ctx context.Context, worktreePath, mainRoot string) context.Context {
+		ctx = tools.WithCwd(ctx, worktreePath)
+		ctx = tools.WithMainRoot(ctx, mainRoot)
+		return ctx
 	})
 
 	// Wire task completer for auto-updating tasks when agents finish
@@ -559,12 +572,26 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		})
 	}
 
-	if err := engine.Run(ctx, prompt); err != nil {
+	// If resume history was injected via context, restore it before running.
+	// Used by team agent revival to continue the existing conversation.
+	if h := teams.GetResumeHistory(ctx); len(h) > 0 {
+		engine.SetMessages(h)
+	}
+
+	runErr := engine.Run(ctx, prompt)
+
+	// If a messages sink was installed, hand it the final engine messages
+	// regardless of whether Run succeeded — revival needs the history even
+	// on partial completions.
+	if sink := teams.GetMessagesSink(ctx); sink != nil {
+		sink(engine.Messages())
+	}
+
+	if runErr != nil {
 		if forwarder.text.Len() > 0 {
-			// Return partial output even on error
-			return forwarder.text.String() + fmt.Sprintf("\n\n[Agent error: %v]", err), nil
+			return forwarder.text.String() + fmt.Sprintf("\n\n[Agent error: %v]", runErr), nil
 		}
-		return "", fmt.Errorf("sub-agent failed: %w", err)
+		return "", fmt.Errorf("sub-agent failed: %w", runErr)
 	}
 
 	result := strings.TrimSpace(forwarder.text.String())

@@ -640,7 +640,7 @@ func TestExtractTextContent_InvalidJSON(t *testing.T) {
 // saveAssistantMessage
 // ---------------------------------------------------------------------------
 
-func TestSaveAssistantMessage_FilterThinkingBlocks(t *testing.T) {
+func TestSaveAssistantMessage_PreservesThinkingBlocks(t *testing.T) {
 	e := newTestEngine()
 	content := []api.ContentBlock{
 		{Type: "thinking", Thinking: "internal thoughts"},
@@ -658,30 +658,25 @@ func TestSaveAssistantMessage_FilterThinkingBlocks(t *testing.T) {
 		t.Fatalf("failed to unmarshal saved content: %v", err)
 	}
 
-	if len(blocks) != 2 {
-		t.Fatalf("expected 2 blocks (thinking filtered), got %d", len(blocks))
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks (thinking preserved), got %d", len(blocks))
 	}
-	for _, b := range blocks {
-		if b.Type == "thinking" {
-			t.Error("thinking block should have been filtered out")
-		}
+	if blocks[0].Type != "thinking" {
+		t.Errorf("blocks[0].Type = %q, want %q", blocks[0].Type, "thinking")
 	}
-	if blocks[0].Type != "text" {
-		t.Errorf("blocks[0].Type = %q, want %q", blocks[0].Type, "text")
-	}
-	if blocks[1].Type != "tool_use" {
-		t.Errorf("blocks[1].Type = %q, want %q", blocks[1].Type, "tool_use")
+	if blocks[0].Thinking != "internal thoughts" {
+		t.Errorf("blocks[0].Thinking = %q", blocks[0].Thinking)
 	}
 }
 
-func TestSaveAssistantMessage_EmptyAfterFiltering(t *testing.T) {
+func TestSaveAssistantMessage_DropsEmptyThinkingBlocks(t *testing.T) {
 	e := newTestEngine()
 	content := []api.ContentBlock{
-		{Type: "thinking", Thinking: "only thinking here"},
+		{Type: "thinking", Thinking: "", Signature: ""},
 	}
 	e.saveAssistantMessage(content)
 	if len(e.messages) != 0 {
-		t.Errorf("expected 0 messages when all blocks are filtered, got %d", len(e.messages))
+		t.Errorf("expected 0 messages when only empty thinking block present, got %d", len(e.messages))
 	}
 }
 

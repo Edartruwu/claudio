@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/git"
 )
 
@@ -66,6 +67,11 @@ type TeammateState struct {
 	WorktreePath   string // path to git worktree (empty if no isolation)
 	WorktreeBranch string // branch name used for the worktree
 	MemoryDir      string // agent-scoped memory directory (empty for ephemeral teammates)
+	SystemPrompt   string // resolved system prompt used for the run (for revival)
+
+	// EngineMessages holds the full API-level conversation after the agent
+	// completes. Used to resume the conversation when a new message arrives.
+	EngineMessages []api.Message
 
 	cancel context.CancelFunc
 	mu     sync.Mutex
@@ -127,6 +133,44 @@ func (s *TeammateState) GetProgress() TeammateProgress {
 	return p
 }
 
+// messagesSinkKey carries a callback that receives the engine's final
+// message history after a sub-agent run completes. Used by the runner so
+// revival can continue the same conversation.
+type messagesSinkKey struct{}
+
+// resumeHistoryKey carries pre-existing engine messages to be restored
+// before the next engine.Run call (used for agent revival).
+type resumeHistoryKey struct{}
+
+// MessagesSink receives the engine's final messages after a run.
+type MessagesSink func(messages []api.Message)
+
+// WithMessagesSink installs a MessagesSink into the context.
+func WithMessagesSink(ctx context.Context, sink MessagesSink) context.Context {
+	return context.WithValue(ctx, messagesSinkKey{}, sink)
+}
+
+// GetMessagesSink retrieves the MessagesSink from context, or nil.
+func GetMessagesSink(ctx context.Context) MessagesSink {
+	if s, ok := ctx.Value(messagesSinkKey{}).(MessagesSink); ok {
+		return s
+	}
+	return nil
+}
+
+// WithResumeHistory installs pre-existing engine messages into the context.
+func WithResumeHistory(ctx context.Context, history []api.Message) context.Context {
+	return context.WithValue(ctx, resumeHistoryKey{}, history)
+}
+
+// GetResumeHistory retrieves the pre-existing engine messages from context.
+func GetResumeHistory(ctx context.Context) []api.Message {
+	if h, ok := ctx.Value(resumeHistoryKey{}).([]api.Message); ok {
+		return h
+	}
+	return nil
+}
+
 // RunAgentFunc is the callback to execute an agent.
 // Receives (ctx, systemPrompt, userPrompt) and returns text output.
 type RunAgentFunc func(ctx context.Context, system, prompt string) (string, error)
@@ -136,13 +180,20 @@ type RunAgentFunc func(ctx context.Context, system, prompt string) (string, erro
 // has its own memory directory.
 type RunAgentWithMemoryFunc func(ctx context.Context, system, prompt, memoryDir string) (string, error)
 
+// RunAgentResumeFunc resumes an existing agent conversation. It receives the
+// system prompt, optional memory directory, the full prior message history,
+// and the new user message to append. Returns the agent's new response text.
+type RunAgentResumeFunc func(ctx context.Context, system, memoryDir string, history []api.Message, newMessage string) (string, error)
+
 // ContextDecorator allows the app layer to inject per-teammate context values
 // (e.g., SubAgentObserver, SubAgentDB) without the teams package importing tools.
 type ContextDecorator func(ctx context.Context, state *TeammateState) context.Context
 
 // CwdInjector injects a CWD override into context. Set by the app layer so
 // the teams package doesn't need to import the tools package.
-type CwdInjector func(ctx context.Context, cwd string) context.Context
+// mainRoot is the main repo root from which the worktree was forked; it is
+// used by file tools to remap absolute main-repo paths into worktree paths.
+type CwdInjector func(ctx context.Context, worktreePath, mainRoot string) context.Context
 
 // TaskCompleter is called when an agent finishes to update assigned tasks.
 // Set by the app layer to bridge teams → tasks without circular imports.
@@ -155,6 +206,7 @@ type TeammateRunner struct {
 	manager            *Manager
 	mailboxes          map[string]*Mailbox
 	runAgent           RunAgentFunc
+	runAgentResume     RunAgentResumeFunc
 	runAgentWithMemory RunAgentWithMemoryFunc
 	eventHandler       TeammateEventHandler
 	parentCtx          context.Context // parent context with observer/DB from TUI
@@ -304,14 +356,21 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 
 	// Set up worktree isolation if requested
 	var worktreeRepo *git.Repo
+	var worktreeHeadCommit string // SHA captured before agent runs, used to detect new commits
 	if cfg.Isolation == "worktree" {
 		cwd, _ := os.Getwd()
 		repo := git.NewRepo(cwd)
 		if repo.IsRepo() {
-			branch := fmt.Sprintf("claudio/%s/%s", cfg.TeamName, cfg.AgentName)
+			// Use a timestamp suffix so concurrent/repeated runs don't collide.
+			runID := fmt.Sprintf("%d", time.Now().UnixMilli()%1000000)
+			branch := fmt.Sprintf("claudio/%s/%s-%s", cfg.TeamName, cfg.AgentName, runID)
 			root, _ := repo.Root()
 			wtPath := filepath.Join(root, ".claudio-worktrees", branch)
-			wtErr := repo.WorktreeAdd(wtPath, branch)
+			// Capture HEAD SHA before creating worktree — used to detect new commits later
+			if sha, err := repo.HeadCommit(); err == nil {
+				worktreeHeadCommit = sha
+			}
+			wtErr := repo.WorktreeAddOrReuse(wtPath, branch)
 			if wtErr == nil {
 				worktreeRepo = git.NewRepo(wtPath)
 
@@ -320,9 +379,10 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 				state.WorktreeBranch = branch
 				state.mu.Unlock()
 
-				// Inject CWD override into context
+				// Inject CWD override + main root into context so file tools
+				// can remap absolute main-repo paths into worktree paths.
 				if r.cwdInjector != nil {
-					ctx = r.cwdInjector(ctx, wtPath)
+					ctx = r.cwdInjector(ctx, wtPath, root)
 				}
 			}
 		}
@@ -360,8 +420,24 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		system += fmt.Sprintf("\n\nYou are operating in an isolated git worktree at %s — same repository, same relative file structure, separate working copy. "+
 			"Paths in conversation context from the parent agent refer to %s; translate them to your worktree root. "+
 			"Re-read files before editing if the parent may have modified them. "+
-			"Your changes stay in this worktree and will not affect the parent's files.", state.WorktreePath, cwd)
+			"Your changes stay in this worktree and will not affect the parent's files.\n\n"+
+			"IMPORTANT: When you have finished making changes, you MUST commit them with git before returning your final response. "+
+			"Stage all modified files and create a descriptive commit. This is required so your work can be reviewed and merged — "+
+			"uncommitted changes in a worktree cannot be diffed or merged by the team lead.", state.WorktreePath, cwd)
 	}
+
+	// Persist the resolved system prompt so revival can reuse it verbatim.
+	state.mu.Lock()
+	state.SystemPrompt = system
+	state.mu.Unlock()
+
+	// Install a messages sink so we capture the engine's final history for
+	// potential revival. The sink is honored by runSubAgentWithMemory.
+	ctx = WithMessagesSink(ctx, func(msgs []api.Message) {
+		state.mu.Lock()
+		state.EngineMessages = msgs
+		state.mu.Unlock()
+	})
 
 	var result string
 	var err error
@@ -387,9 +463,10 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	}
 	state.mu.Unlock()
 
-	// Worktree cleanup: remove if no changes, keep if there are changes
+	// Worktree cleanup: remove if no changes, keep if there are changes (committed or not).
+	// Uses the pre-fork HEAD SHA to detect both uncommitted files and new commits.
 	if worktreeRepo != nil && state.WorktreePath != "" {
-		hasChanges, chkErr := worktreeRepo.HasChanges()
+		hasChanges, chkErr := worktreeRepo.HasAnyWork(worktreeHeadCommit)
 		if chkErr != nil || !hasChanges {
 			// No changes — clean up worktree and branch
 			cwd, _ := os.Getwd()
@@ -727,6 +804,114 @@ func (r *TeammateRunner) WaitForOne(agentID string, timeout time.Duration) bool 
 	case <-time.After(timeout):
 		return false
 	}
+}
+
+// SetRunAgentResume wires the resume callback used by Revive.
+func (r *TeammateRunner) SetRunAgentResume(fn RunAgentResumeFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.runAgentResume = fn
+}
+
+// Revive resumes a completed or failed agent with a new message, continuing
+// the existing conversation (full API-level history is preserved). If the
+// agent is still working, the message will be picked up via pollMailbox
+// naturally and Revive is a no-op.
+func (r *TeammateRunner) Revive(agentName, newMessage string) error {
+	state, ok := r.GetStateByName(agentName)
+	if !ok {
+		return fmt.Errorf("agent %q not found", agentName)
+	}
+
+	state.mu.Lock()
+	if !state.IsIdle || state.Status == StatusShutdown {
+		state.mu.Unlock()
+		return nil // still working or explicitly killed — nothing to do
+	}
+	if r.runAgentResume == nil {
+		state.mu.Unlock()
+		return fmt.Errorf("resume callback not wired")
+	}
+
+	// Reset state for another run
+	history := state.EngineMessages
+	state.IsIdle = false
+	state.Status = StatusWorking
+	state.Error = ""
+	state.idleCh = make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	state.cancel = cancel
+	state.mu.Unlock()
+
+	cfg := SpawnConfig{
+		TeamName:  state.TeamName,
+		AgentName: state.Identity.AgentName,
+		MaxTurns:  state.MaxTurns,
+	}
+
+	r.manager.UpdateMemberStatus(cfg.TeamName, state.Identity.AgentID, StatusWorking)
+
+	go func() {
+		defer func() {
+			state.mu.Lock()
+			state.IsIdle = true
+			close(state.idleCh)
+			state.mu.Unlock()
+		}()
+
+		resumeCtx := ctx
+		if r.contextDecorator != nil {
+			resumeCtx = r.contextDecorator(ctx, state)
+		}
+
+		result, err := r.runAgentResume(resumeCtx, state.SystemPrompt, state.MemoryDir, history, newMessage)
+
+		state.mu.Lock()
+		if err != nil {
+			if ctx.Err() == context.Canceled {
+				state.Status = StatusShutdown
+				state.Error = "shutdown requested"
+			} else {
+				state.Status = StatusFailed
+				state.Error = err.Error()
+			}
+		} else {
+			state.Status = StatusComplete
+			state.Result = result
+		}
+		state.mu.Unlock()
+
+		r.manager.UpdateMemberStatus(cfg.TeamName, state.Identity.AgentID, state.Status)
+
+		if mb := r.getMailbox(cfg.TeamName); mb != nil {
+			summary := truncateForSummary(result, 200)
+			if err != nil {
+				summary = fmt.Sprintf("FAILED: %s", state.Error)
+			}
+			completionText := fmt.Sprintf("[%s] Task complete: %s\n\nResult:\n%s", state.Status, state.Prompt, summary)
+			mb.Send(state.Identity.AgentName, "team-lead", Message{
+				Text:    completionText,
+				Summary: fmt.Sprintf("%s: %s", state.Identity.AgentName, state.Status),
+				Color:   state.Identity.Color,
+			})
+		}
+
+		r.EmitEvent(TeammateEvent{
+			TeamName:  cfg.TeamName,
+			AgentID:   state.Identity.AgentID,
+			AgentName: cfg.AgentName,
+			Type:      func() string {
+				if err != nil {
+					return "error"
+				}
+				return "complete"
+			}(),
+			Text:  truncateForSummary(result, 200),
+			Color: state.Identity.Color,
+		})
+	}()
+
+	return nil
 }
 
 // FormatStatus returns a summary of all teammates.

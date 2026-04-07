@@ -12,6 +12,7 @@ const (
 	FocusPlanApproval                // plan approval dialog after ExitPlanMode
 	FocusAskUser                     // AskUser question dialog
 	FocusAgentDetail                 // full-screen agent conversation overlay
+	FocusFiles                       // file changes panel has focus
 )
 
 // PanelID identifies which panel is currently active.

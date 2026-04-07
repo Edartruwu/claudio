@@ -71,6 +71,8 @@ func (t *FileWriteTool) RequiresApproval(input json.RawMessage) bool {
 }
 
 // Validate runs pre-approval checks so errors surface before the user types "allow".
+// Note: Validate is called before Execute and does not have a context, so path
+// remapping cannot be applied here. The actual remapping happens in Execute.
 func (t *FileWriteTool) Validate(input json.RawMessage) *Result {
 	var in fileWriteInput
 	if err := json.Unmarshal(input, &in); err != nil {
@@ -120,6 +122,9 @@ func (t *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (*Re
 	if in.FilePath == "" {
 		return &Result{Content: "No file path provided", IsError: true}, nil
 	}
+
+	// Remap path into worktree when running with worktree isolation.
+	in.FilePath = RemapPathForWorktree(ctx, in.FilePath)
 
 	// Security check
 	if t.Security != nil {

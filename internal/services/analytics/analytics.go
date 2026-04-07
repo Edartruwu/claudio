@@ -71,11 +71,14 @@ func (t *Tracker) RecordToolCall() {
 	t.toolCalls++
 }
 
-// TotalTokens returns total tokens used.
+// TotalTokens returns total tokens used, including cache read/write tokens.
+// Anthropic splits prompt content across input_tokens, cache_read_input_tokens,
+// and cache_creation_input_tokens — summing only input+output severely
+// underreports the real context size once prompt caching is active.
 func (t *Tracker) TotalTokens() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.inputTokens + t.outputTokens
+	return t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheCreateTokens
 }
 
 // InputTokens returns input tokens used.
@@ -177,7 +180,7 @@ func (t *Tracker) Report() string {
 	sb.WriteString(fmt.Sprintf("Output Tokens: %d\n", t.outputTokens))
 	sb.WriteString(fmt.Sprintf("Cache Read:    %d\n", t.cacheReadTokens))
 	sb.WriteString(fmt.Sprintf("Cache Create:  %d\n", t.cacheCreateTokens))
-	sb.WriteString(fmt.Sprintf("Total Tokens:  %d\n", t.inputTokens+t.outputTokens))
+	sb.WriteString(fmt.Sprintf("Total Tokens:  %d\n", t.inputTokens+t.outputTokens+t.cacheReadTokens+t.cacheCreateTokens))
 	sb.WriteString(fmt.Sprintf("Estimated Cost: $%.4f\n", cost))
 	totalInput := t.inputTokens + t.cacheReadTokens
 	if totalInput > 0 {
@@ -215,7 +218,7 @@ func (t *Tracker) SaveReport(sessionID string) error {
 		"output_tokens":       t.outputTokens,
 		"cache_read_tokens":   t.cacheReadTokens,
 		"cache_create_tokens": t.cacheCreateTokens,
-		"total_tokens":        t.inputTokens + t.outputTokens,
+		"total_tokens":        t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheCreateTokens,
 		"api_calls":           t.apiCalls,
 		"tool_calls":          t.toolCalls,
 		"cost_usd":            t.computeCost(),

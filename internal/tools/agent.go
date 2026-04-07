@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -17,17 +18,65 @@ import (
 
 // CWD context key — allows goroutine-scoped CWD override for worktree isolation.
 type ctxKeyCwd struct{}
+type ctxKeyMainRoot struct{}
 
-// WithCwd stores a working directory override in the context.
-// Tools that respect CWD (Bash, Glob, Grep) will use this instead of os.Getwd().
+// WithCwd stores a working directory override in the context together with the
+// main repo root from which the worktree was forked.  Tools that respect CWD
+// (Bash, Glob, Grep) use the worktree path; file tools (Read, Edit, Write) use
+// both to remap absolute paths from the main repo into the worktree.
 func WithCwd(ctx context.Context, cwd string) context.Context {
 	return context.WithValue(ctx, ctxKeyCwd{}, cwd)
+}
+
+// WithMainRoot stores the main repo root alongside the worktree CWD so that
+// RemapPathForWorktree can translate absolute main-repo paths into worktree paths.
+func WithMainRoot(ctx context.Context, mainRoot string) context.Context {
+	return context.WithValue(ctx, ctxKeyMainRoot{}, mainRoot)
 }
 
 // CwdFromContext returns the CWD override, or "" if none is set.
 func CwdFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(ctxKeyCwd{}).(string)
 	return v
+}
+
+// mainRootFromContext returns the stored main repo root, or "".
+func mainRootFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyMainRoot{}).(string)
+	return v
+}
+
+// RemapPathForWorktree rewrites a path so file tools operate inside the
+// agent's worktree instead of the main repo. It handles two cases:
+//
+//  1. Relative paths (e.g. "internal/tui/theme.go") — resolved against the
+//     worktree root rather than the process CWD. Without this, Read/Edit/Write
+//     would silently operate on the main tree because os.Open() uses os.Getwd().
+//  2. Absolute paths under the main repo root — rewritten to the equivalent
+//     path under the worktree root.
+//
+// Paths outside the main repo (e.g. /etc/hosts, $HOME) are returned unchanged.
+// When no CWD override is set the original path is returned unchanged.
+func RemapPathForWorktree(ctx context.Context, path string) string {
+	worktreeRoot := CwdFromContext(ctx)
+	if worktreeRoot == "" {
+		return path
+	}
+	if !filepath.IsAbs(path) {
+		// Relative path — resolve against the worktree root, not the
+		// process CWD (which is still the main repo root).
+		return filepath.Join(worktreeRoot, path)
+	}
+	mainRoot := mainRootFromContext(ctx)
+	if mainRoot == "" {
+		return path
+	}
+	rel, err := filepath.Rel(mainRoot, path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		// path is outside the main repo — do not remap
+		return path
+	}
+	return filepath.Join(worktreeRoot, rel)
 }
 
 // SubAgentDBContext carries DB access for sub-agent session persistence.

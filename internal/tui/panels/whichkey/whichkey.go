@@ -25,12 +25,12 @@ type Binding struct {
 // DefaultBindings returns the standard leader key bindings.
 func DefaultBindings() []Binding {
 	return []Binding{
-		{Key: ".", Desc: "sessions"},
-		{Key: ";", Desc: "recent sessions"},
-		{Key: ",", Desc: "alternate session"},
-		{Key: "/", Desc: "search sessions"},
+		{Key: "p", Desc: "palette"},
+		{Key: "f", Desc: "file changes"},
+		{Key: "t", Desc: "todo dock"},
 		{Key: "a", Desc: "agents"},
-		{Key: "b", Desc: "buffer/session..."},
+		{Key: ".", Desc: "sessions"},
+		{Key: "b", Desc: "buffer..."},
 		{Key: "i", Desc: "info panels..."},
 		{Key: "w", Desc: "window..."},
 	}

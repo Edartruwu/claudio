@@ -616,6 +616,10 @@ func (e *Engine) streamOnce(ctx context.Context, req *api.MessagesRequest) (*str
 		select {
 		case event, ok := <-eventCh:
 			if !ok {
+				// Channel closed — stream ended via [DONE] without a message_stop event
+				// (common for OpenAI-compatible providers like MiniMax via OpenRouter).
+				// Finalize content so saveAssistantMessage persists the tool_use blocks.
+				response.Content = currentBlocks
 				return response, forwarded, nil
 			}
 
@@ -683,14 +687,14 @@ func (e *Engine) streamOnce(ctx context.Context, req *api.MessagesRequest) (*str
 
 				case "thinking_delta":
 					e.handler.OnThinkingDelta(delta.Thinking)
+					if currentBlockIdx >= 0 && currentBlockIdx < len(currentBlocks) {
+						currentBlocks[currentBlockIdx].Thinking += delta.Thinking
+					}
 
 				case "signature_delta":
 					// Capture the thinking block's signature for API roundtrip compliance
 					if currentBlockIdx >= 0 && currentBlockIdx < len(currentBlocks) {
 						currentBlocks[currentBlockIdx].Signature += delta.Signature
-					}
-					if currentBlockIdx >= 0 && currentBlockIdx < len(currentBlocks) {
-						currentBlocks[currentBlockIdx].Thinking += delta.Thinking
 					}
 
 				case "input_json_delta":
@@ -1113,13 +1117,17 @@ func (e *Engine) trackDiscoveredTools(input json.RawMessage) {
 	}
 }
 
-// saveAssistantMessage filters thinking blocks and appends the assistant turn
-// to the conversation history. Ensures tool_use blocks always carry a valid
-// JSON input object (the API rejects null/missing input).
+// saveAssistantMessage appends the assistant turn to the conversation history.
+// Thinking blocks are preserved so they can be round-tripped on the next turn:
+// Anthropic requires the original signature; interleaved-thinking OpenAI-compat
+// providers (MiniMax M2, etc.) require the prior reasoning_content to keep
+// tool_call/tool_result IDs in sync. Empty thinking blocks (no text and no
+// signature) are dropped as they carry no useful state. Ensures tool_use blocks
+// always carry a valid JSON input object (the API rejects null/missing input).
 func (e *Engine) saveAssistantMessage(content []api.ContentBlock) {
 	var filtered []api.ContentBlock
 	for _, block := range content {
-		if block.Type == "thinking" {
+		if block.Type == "thinking" && block.Thinking == "" && block.Signature == "" {
 			continue
 		}
 		// Drop empty text blocks — they serialize without the required "text" field

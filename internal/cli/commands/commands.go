@@ -43,6 +43,8 @@ type CommandDeps struct {
 	TeleportSession func(path string) (string, error)
 	// Teams
 	ListTeams func() string // returns formatted team/agent listing
+	// AutoNameSession generates a name for the current session via AI
+	AutoNameSession func() (string, error)
 }
 
 // SkillInfo holds skill data for command registration.

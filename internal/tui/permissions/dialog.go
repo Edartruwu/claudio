@@ -163,6 +163,97 @@ func (m Model) View() string {
 		Render(box)
 }
 
+// InlineHeight returns the number of lines InlineView renders.
+func (m Model) InlineHeight() int {
+	return 4 // title + input + buttons + border
+}
+
+// InlineView renders the permission request as an inline dock (full-width, no centering).
+// Line 1: warning icon + tool name + brief input summary (1 line)
+// Line 2: buttons row
+// Wrapped in a PermissionBox border applied at full width.
+func (m Model) InlineView() string {
+	if !m.active {
+		return ""
+	}
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+
+	// Line 1: ⚠  <ToolName> wants to run:  <input summary>
+	iconPart := styles.PermissionTitle.Render("⚠  " + m.toolUse.Name + " wants to run:")
+	inputOneLine := formatToolInputOneLine(m.toolUse)
+	summaryPart := styles.ToolSummary.Render("  " + inputOneLine)
+	titleLine := iconPart + summaryPart
+
+	// Line 2: buttons + hint
+	var buttons []string
+	for i, opt := range m.options {
+		var s lipgloss.Style
+		if i == m.selected {
+			switch opt.decision {
+			case DecisionDeny:
+				s = styles.ButtonDeny
+			case DecisionAllowAlways, DecisionAllowAllTool:
+				s = styles.ButtonAllowAlways
+			default:
+				s = styles.ButtonAllow
+			}
+		} else {
+			s = styles.ButtonInactive
+		}
+		buttons = append(buttons, s.Render(opt.label))
+	}
+
+	hint := styles.StatusHint.Render("  y/n · ←→ · enter")
+	buttonRow := lipgloss.JoinHorizontal(lipgloss.Center, buttons...) + hint
+
+	content := titleLine + "\n" + buttonRow
+
+	// Apply box at full width (account for border padding: 2 sides * (1 border + 2 padding) = 6)
+	boxW := w - 6
+	if boxW < 10 {
+		boxW = 10
+	}
+	return styles.PermissionBox.Width(boxW).Render(content)
+}
+
+// formatToolInputOneLine returns a single-line summary of the tool input.
+func formatToolInputOneLine(tu tools.ToolUse) string {
+	switch tu.Name {
+	case "Bash":
+		var in struct {
+			Command string `json:"command"`
+		}
+		json.Unmarshal(tu.Input, &in)
+		cmd := in.Command
+		if len(cmd) > 60 {
+			cmd = cmd[:59] + "…"
+		}
+		return fmt.Sprintf("$ %s", cmd)
+	case "Write":
+		var in struct {
+			FilePath string `json:"file_path"`
+		}
+		json.Unmarshal(tu.Input, &in)
+		return fmt.Sprintf("→ %s", in.FilePath)
+	case "Edit":
+		var in struct {
+			FilePath string `json:"file_path"`
+		}
+		json.Unmarshal(tu.Input, &in)
+		return fmt.Sprintf("✎ %s", in.FilePath)
+	default:
+		raw := string(tu.Input)
+		if len(raw) > 60 {
+			raw = raw[:59] + "…"
+		}
+		return raw
+	}
+}
+
 func formatToolInput(tu tools.ToolUse) string {
 	s := styles.ToolSummary
 	switch tu.Name {

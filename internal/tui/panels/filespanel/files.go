@@ -120,7 +120,9 @@ func (p *Panel) Refresh(ops []FileOp) {
 
 	p.entries = nil
 	for _, e := range byPath {
-		p.entries = append(p.entries, *e)
+		if e.Status > FileRead {
+			p.entries = append(p.entries, *e)
+		}
 	}
 	sort.Slice(p.entries, func(i, j int) bool {
 		// Sort by status desc (Added > Modified > Read), then path
@@ -147,7 +149,7 @@ func (p *Panel) View() string {
 	addStyle := lipgloss.NewStyle().Foreground(styles.Success)
 	modStyle := lipgloss.NewStyle().Foreground(styles.Warning)
 	readStyle := lipgloss.NewStyle().Foreground(styles.Text)
-	selectedStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	selectedStyle := lipgloss.NewStyle().Background(styles.Primary).Foreground(styles.Surface).Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(styles.Muted)
 
 	maxPathW := p.width - 8
@@ -183,13 +185,13 @@ func (p *Panel) View() string {
 		var iconSt lipgloss.Style
 		switch e.Status {
 		case FileAdded:
-			icon = "+"
+			icon = "✚"
 			iconSt = addStyle
 		case FileModified:
-			icon = "~"
+			icon = "✎"
 			iconSt = modStyle
 		default:
-			icon = "r"
+			icon = "○"
 			iconSt = readStyle
 		}
 
@@ -199,15 +201,20 @@ func (p *Panel) View() string {
 			path = "…" + path[len(path)-maxPathW+1:]
 		}
 
+		if i == p.cursor {
+			renderedIcon := iconSt.Render(icon)
+			row := " " + renderedIcon + " " + path
+			if e.Count > 1 {
+				row += fmt.Sprintf(" (%d)", e.Count)
+			}
+			lines = append(lines, selectedStyle.Width(p.width).Render(row))
+			continue
+		}
 		count := ""
 		if e.Count > 1 {
 			count = dimStyle.Render(fmt.Sprintf(" (%d)", e.Count))
 		}
-
 		row := " " + iconSt.Render(icon) + " " + path + count
-		if i == p.cursor {
-			row = selectedStyle.Width(p.width).Render(row)
-		}
 		lines = append(lines, row)
 	}
 

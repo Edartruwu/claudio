@@ -65,6 +65,9 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		return &Result{Content: "No file path provided", IsError: true}, nil
 	}
 
+	// Remap path into worktree when running with worktree isolation.
+	in.FilePath = RemapPathForWorktree(ctx, in.FilePath)
+
 	// Security check
 	if t.Security != nil {
 		if err := t.Security.CheckPath(in.FilePath); err != nil {

@@ -9,22 +9,19 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
-// panelSplitRatio is the fraction of terminal width given to the main area
-// when a side panel is active. The panel gets (1 - ratio).
-const panelSplitRatio = 0.65
-
 // panelMinWidth is the minimum width for a side panel to be shown.
 // Below this threshold the panel is hidden to avoid cramped rendering.
 const panelMinWidth = 30
 
 // splitLayout renders the main content and an optional side panel side-by-side.
 // mainView is typically the viewport; totalHeight should be the viewport height.
-func splitLayout(mainView string, panel panels.Panel, totalWidth, totalHeight int) string {
+// splitRatio is the fraction of totalWidth given to the main area.
+func splitLayout(mainView string, panel panels.Panel, totalWidth, totalHeight int, splitRatio float64) string {
 	if panel == nil || !panel.IsActive() {
 		return mainView
 	}
 
-	mainW := int(float64(totalWidth) * panelSplitRatio)
+	mainW := int(float64(totalWidth) * splitRatio)
 	panelW := totalWidth - mainW - 1 // 1 for the separator
 
 	if panelW < panelMinWidth {
@@ -52,15 +49,16 @@ func splitLayout(mainView string, panel panels.Panel, totalWidth, totalHeight in
 
 // mainWidth returns the width available for the main chat area,
 // accounting for an active side panel.
-func mainWidth(totalWidth int, panel panels.Panel) int {
+// splitRatio is the fraction of totalWidth given to the main area.
+func mainWidth(totalWidth int, panel panels.Panel, splitRatio float64) int {
 	if panel == nil || !panel.IsActive() {
 		return totalWidth
 	}
-	panelW := totalWidth - int(float64(totalWidth)*panelSplitRatio) - 1
+	panelW := totalWidth - int(float64(totalWidth)*splitRatio) - 1
 	if panelW < panelMinWidth {
 		return totalWidth
 	}
-	return int(float64(totalWidth) * panelSplitRatio)
+	return int(float64(totalWidth) * splitRatio)
 }
 
 // buildSeparator creates a thin vertical line of the given height.

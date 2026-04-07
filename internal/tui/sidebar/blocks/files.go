@@ -42,7 +42,9 @@ func (b *FilesBlock) Refresh(ops []filespanel.FileOp) {
 	}
 	b.entries = b.entries[:0]
 	for _, e := range byPath {
-		b.entries = append(b.entries, *e)
+		if e.Status > filespanel.FileRead {
+			b.entries = append(b.entries, *e)
+		}
 	}
 }
 
@@ -75,13 +77,13 @@ func (b *FilesBlock) Render(width, maxHeight int) string {
 		var iconSt lipgloss.Style
 		switch e.Status {
 		case filespanel.FileAdded:
-			icon = "+"
+			icon = "✚"
 			iconSt = addStyle
 		case filespanel.FileModified:
-			icon = "~"
+			icon = "✎"
 			iconSt = modStyle
 		default:
-			icon = "r"
+			icon = "○"
 			iconSt = readStyle
 		}
 		path := e.Path

@@ -151,6 +151,13 @@ func (m *Model) IsVimNormal() bool {
 	return m.vimEnabled && m.vimState.Mode == vim.ModeNormal
 }
 
+// EnterVimInsert forces vim mode into Insert (no-op when vim is disabled).
+func (m *Model) EnterVimInsert() {
+	if m.vimEnabled {
+		m.vimState.Mode = vim.ModeInsert
+	}
+}
+
 // CursorLine returns the current cursor line (0-based) in the textarea.
 func (m *Model) CursorLine() int {
 	return m.textarea.Line()
@@ -257,6 +264,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.textarea, cmd = m.textarea.Update(msg)
+	m.syncImagesFromText()
 	return m, cmd
 }
 
@@ -649,6 +657,23 @@ func (m *Model) ClearImages() {
 	m.images = nil
 }
 
+// syncImagesFromText removes image attachments whose references no longer
+// appear in the textarea text (e.g. user deleted the [Image #N: ...] token).
+func (m *Model) syncImagesFromText() {
+	if len(m.images) == 0 {
+		return
+	}
+	text := m.textarea.Value()
+	kept := m.images[:0]
+	for _, img := range m.images {
+		ref := fmt.Sprintf("[Image #%d:", img.ID)
+		if strings.Contains(text, ref) {
+			kept = append(kept, img)
+		}
+	}
+	m.images = kept
+}
+
 // ImageCount returns the number of attached images.
 func (m *Model) ImageCount() int {
 	return len(m.images)
@@ -668,17 +693,13 @@ func (m Model) View() string {
 
 	content := bar.Width(m.width - 2).Render(m.textarea.View())
 
-	// Show image attachment indicator
-	if len(m.images) > 0 {
-		var imgNames []string
-		for _, img := range m.images {
-			imgNames = append(imgNames, img.FileName)
-		}
-		indicator := styles.ToolIcon.Render("📎 ") +
-			styles.ToolSummary.Render(fmt.Sprintf("%d image(s): %s", len(m.images), strings.Join(imgNames, ", ")))
-		content += "\n" + indicator
+	// Build and render context pills (images, pastes, @mentions)
+	pills := BuildPills(m.images, m.pastedContents, m.textarea.Value())
+	pillsRow := RenderPills(pills, m.width)
+	if pillsRow != "" {
+		divider := lipgloss.NewStyle().Foreground(styles.Subtle).Render(strings.Repeat("─", m.width-3))
+		content = pillsRow + "\n" + divider + "\n" + content
 	}
-
 
 	return content
 }

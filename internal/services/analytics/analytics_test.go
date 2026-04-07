@@ -338,7 +338,7 @@ func TestSaveReport_WritesValidJSON(t *testing.T) {
 		"output_tokens":       float64(200),
 		"cache_read_tokens":   float64(50),
 		"cache_create_tokens": float64(30),
-		"total_tokens":        float64(300),
+		"total_tokens":        float64(380),
 		"api_calls":           float64(1),
 		"tool_calls":          float64(1),
 		"max_budget":          float64(10.0),

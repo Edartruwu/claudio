@@ -25,11 +25,37 @@ type openAIStreamOpts struct {
 }
 
 type openAIMessage struct {
-	Role       string               `json:"role"`
-	Content    any                  `json:"content,omitempty"`    // string or []openAIContentPart
-	ToolCalls  []openAIToolCall     `json:"tool_calls,omitempty"`
-	ToolCallID string               `json:"tool_call_id,omitempty"`
-	Name       string               `json:"name,omitempty"`
+	Role string `json:"role"`
+	// Content is serialized unconditionally. When nil, it is emitted as
+	// `"content": null`, which strict OpenAI-compatible providers (notably
+	// MiniMax) require on assistant messages that carry only tool_calls.
+	// Omitting the field entirely causes those providers to reject the
+	// subsequent tool_result with "tool id ... not found".
+	Content any `json:"content"`
+	// ReasoningContent carries the model's prior thinking/<think> output back
+	// to interleaved-thinking providers (notably MiniMax M2 via OpenRouter or
+	// the official MiniMax API). When the previous turn produced a thinking
+	// block, the next request must echo it back here, otherwise providers
+	// like MiniMax fail to associate subsequent tool_result IDs with the
+	// assistant's tool_calls and return "tool id ... not found" errors.
+	// Sent on assistant messages only; ignored by providers that don't use it.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	// ReasoningDetails is the OpenRouter-style structured equivalent of
+	// ReasoningContent. Some providers prefer this richer form. We emit both
+	// when available; harmless when ignored.
+	ReasoningDetails []reasoningDetail `json:"reasoning_details,omitempty"`
+	ToolCalls        []openAIToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID       string            `json:"tool_call_id,omitempty"`
+	Name             string            `json:"name,omitempty"`
+}
+
+// reasoningDetail mirrors OpenRouter's reasoning_details schema. The signature
+// is included when present (Anthropic provides one via signature_delta); for
+// pure OpenAI-compatible providers it's empty and ignored.
+type reasoningDetail struct {
+	Type      string `json:"type"` // "reasoning.text"
+	Text      string `json:"text"`
+	Signature string `json:"signature,omitempty"`
 }
 
 type openAIContentPart struct {
@@ -75,9 +101,14 @@ type openAIChoice struct {
 }
 
 type openAIDelta struct {
-	Role      string           `json:"role,omitempty"`
-	Content   *string          `json:"content,omitempty"`
-	ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
+	Role string  `json:"role,omitempty"`
+	Content *string `json:"content,omitempty"`
+	// Reasoning streams: different providers use different field names.
+	// MiniMax / DeepSeek / Qwen use "reasoning_content"; OpenRouter exposes
+	// "reasoning". Capture both and treat them as thinking deltas.
+	ReasoningContent *string          `json:"reasoning_content,omitempty"`
+	Reasoning        *string          `json:"reasoning,omitempty"`
+	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
 }
 
 type openAIUsage struct {
@@ -102,9 +133,11 @@ type openAINSChoice struct {
 }
 
 type openAINSMessage struct {
-	Role      string           `json:"role"`
-	Content   *string          `json:"content,omitempty"`
-	ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
+	Role             string           `json:"role"`
+	Content          *string          `json:"content,omitempty"`
+	ReasoningContent *string          `json:"reasoning_content,omitempty"`
+	Reasoning        *string          `json:"reasoning,omitempty"`
+	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
 }
 
 // --- Translation functions ---
@@ -202,6 +235,8 @@ func translateMessage(msg api.Message) ([]openAIMessage, error) {
 func translateAssistantBlocks(blocks []api.ContentBlock) ([]openAIMessage, error) {
 	var result []openAIMessage
 	var textParts []string
+	var thinkingParts []string
+	var thinkingDetails []reasoningDetail
 	var toolCalls []openAIToolCall
 	toolIdx := 0
 
@@ -210,7 +245,18 @@ func translateAssistantBlocks(blocks []api.ContentBlock) ([]openAIMessage, error
 		case "text":
 			textParts = append(textParts, block.Text)
 		case "thinking":
-			// OpenAI doesn't have thinking blocks — skip or include as text prefix
+			// Round-trip thinking content as reasoning_content for
+			// interleaved-thinking providers (MiniMax M2, etc). Without
+			// this, providers fail to associate subsequent tool_results
+			// with the assistant's tool_calls.
+			if block.Thinking != "" {
+				thinkingParts = append(thinkingParts, block.Thinking)
+				thinkingDetails = append(thinkingDetails, reasoningDetail{
+					Type:      "reasoning.text",
+					Text:      block.Thinking,
+					Signature: block.Signature,
+				})
+			}
 			continue
 		case "tool_use":
 			inputStr, _ := json.Marshal(block.Input)
@@ -243,7 +289,11 @@ func translateAssistantBlocks(blocks []api.ContentBlock) ([]openAIMessage, error
 	if len(toolCalls) > 0 {
 		assistMsg.ToolCalls = toolCalls
 	}
-	if len(textParts) > 0 || len(toolCalls) > 0 {
+	if len(thinkingParts) > 0 {
+		assistMsg.ReasoningContent = strings.Join(thinkingParts, "\n")
+		assistMsg.ReasoningDetails = thinkingDetails
+	}
+	if len(textParts) > 0 || len(toolCalls) > 0 || len(thinkingParts) > 0 {
 		result = append(result, assistMsg)
 	}
 
@@ -329,8 +379,59 @@ func translateStreamChunk(chunk openAIStreamChunk, state *streamState) []api.Str
 	var events []api.StreamEvent
 
 	for _, choice := range chunk.Choices {
+		// Reasoning/thinking delta — emitted by interleaved-thinking providers
+		// (MiniMax M2, DeepSeek, Qwen, OpenRouter) under either "reasoning_content"
+		// or "reasoning". Translated into Anthropic-style thinking block events
+		// so the engine accumulates the thinking text and can round-trip it back
+		// on the next turn (required by MiniMax M2 to keep tool_call IDs valid).
+		var reasoningText string
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+			reasoningText = *choice.Delta.ReasoningContent
+		} else if choice.Delta.Reasoning != nil && *choice.Delta.Reasoning != "" {
+			reasoningText = *choice.Delta.Reasoning
+		}
+		if reasoningText != "" {
+			if !state.thinkingStarted {
+				// Close any open text block — thinking should come first
+				if state.textStarted {
+					events = append(events, api.StreamEvent{
+						Type:  "content_block_stop",
+						Index: state.currentBlockIndex,
+					})
+					state.textStarted = false
+				}
+				blockJSON, _ := json.Marshal(api.ContentBlock{Type: "thinking", Thinking: ""})
+				events = append(events, api.StreamEvent{
+					Type:         "content_block_start",
+					Index:        state.blockIndex,
+					ContentBlock: blockJSON,
+				})
+				state.thinkingStarted = true
+				state.thinkingBlockIndex = state.blockIndex
+				state.currentBlockIndex = state.blockIndex
+				state.blockIndex++
+			}
+			deltaJSON, _ := json.Marshal(map[string]string{
+				"type":     "thinking_delta",
+				"thinking": reasoningText,
+			})
+			events = append(events, api.StreamEvent{
+				Type:  "content_block_delta",
+				Index: state.thinkingBlockIndex,
+				Delta: deltaJSON,
+			})
+		}
+
 		// Text content delta
 		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
+			// Close any open thinking block when transitioning to text
+			if state.thinkingStarted {
+				events = append(events, api.StreamEvent{
+					Type:  "content_block_stop",
+					Index: state.thinkingBlockIndex,
+				})
+				state.thinkingStarted = false
+			}
 			if !state.textStarted {
 				// Emit content_block_start for text
 				blockJSON, _ := json.Marshal(api.ContentBlock{Type: "text", Text: ""})
@@ -372,6 +473,14 @@ func translateStreamChunk(chunk openAIStreamChunk, state *streamState) []api.Str
 						Index: state.currentBlockIndex,
 					})
 					state.textStarted = false
+				}
+				// Close any open thinking block before starting a tool call
+				if state.thinkingStarted {
+					events = append(events, api.StreamEvent{
+						Type:  "content_block_stop",
+						Index: state.thinkingBlockIndex,
+					})
+					state.thinkingStarted = false
 				}
 
 				state.toolCalls[tc.Index] = &toolCallState{
@@ -438,6 +547,13 @@ func translateStreamChunk(chunk openAIStreamChunk, state *streamState) []api.Str
 				})
 				state.textStarted = false
 			}
+			if state.thinkingStarted {
+				events = append(events, api.StreamEvent{
+					Type:  "content_block_stop",
+					Index: state.thinkingBlockIndex,
+				})
+				state.thinkingStarted = false
+			}
 			// Close any open tool blocks
 			for _, tcs := range state.toolCalls {
 				events = append(events, api.StreamEvent{
@@ -484,6 +600,20 @@ func translateNonStreamingResponse(resp openAIResponse) *api.MessageResp {
 
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
+
+		// Reasoning content first (so it's saved and round-tripped on next turn).
+		var reasoningText string
+		if choice.Message.ReasoningContent != nil && *choice.Message.ReasoningContent != "" {
+			reasoningText = *choice.Message.ReasoningContent
+		} else if choice.Message.Reasoning != nil && *choice.Message.Reasoning != "" {
+			reasoningText = *choice.Message.Reasoning
+		}
+		if reasoningText != "" {
+			content = append(content, api.ContentBlock{
+				Type:     "thinking",
+				Thinking: reasoningText,
+			})
+		}
 
 		if choice.Message.Content != nil && *choice.Message.Content != "" {
 			content = append(content, api.ContentBlock{
@@ -536,10 +666,12 @@ func translateFinishReason(reason string) string {
 
 // streamState tracks state across streaming chunks for proper event translation.
 type streamState struct {
-	blockIndex        int
-	currentBlockIndex int
-	textStarted       bool
-	toolCalls         map[int]*toolCallState
+	blockIndex         int
+	currentBlockIndex  int
+	textStarted        bool
+	thinkingStarted    bool
+	thinkingBlockIndex int
+	toolCalls          map[int]*toolCallState
 }
 
 type toolCallState struct {

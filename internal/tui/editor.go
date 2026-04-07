@@ -125,7 +125,7 @@ func openFileInEditor(path, editorCmd string) tea.Cmd {
 
 	if editorCmd != "" {
 		expanded := strings.ReplaceAll(editorCmd, "{file}", path)
-		parts := strings.Fields(expanded)
+		parts := shellSplit(expanded)
 		name = parts[0]
 		args = parts[1:]
 	} else {
@@ -139,6 +139,46 @@ func openFileInEditor(path, editorCmd string) tea.Cmd {
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return fileEditorFinishedMsg{path: path, err: err}
 	})
+}
+
+// shellSplit splits s into tokens respecting single and double quoted strings.
+func shellSplit(s string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			} else {
+				cur.WriteByte(c)
+			}
+		case inDouble:
+			if c == '"' {
+				inDouble = false
+			} else {
+				cur.WriteByte(c)
+			}
+		case c == '\'':
+			inSingle = true
+		case c == '"':
+			inDouble = true
+		case c == ' ' || c == '\t':
+			if cur.Len() > 0 {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	if cur.Len() > 0 {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens
 }
 
 // openPlanEditor opens the plan file directly in the user's editor.

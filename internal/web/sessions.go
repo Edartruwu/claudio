@@ -218,7 +218,7 @@ func (sm *SessionManager) ListByProject(projectPath string) []SessionInfo {
 				}
 				title := ds.Title
 				if title == "" {
-					title = "Untitled Session"
+					title = ds.ID
 				}
 				// Count messages from DB
 				msgCount := 0
@@ -337,7 +337,7 @@ func (sm *SessionManager) loadDBSession(dbSess *storage.Session) (*ProjectSessio
 
 	title := dbSess.Title
 	if title == "" {
-		title = "Untitled Session"
+		title = dbSess.ID
 	}
 
 	ps := &ProjectSession{

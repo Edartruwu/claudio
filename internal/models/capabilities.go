@@ -142,9 +142,9 @@ func (c *Cache) findBestMatch(model string) *ModelCapability {
 func DefaultCapabilities() []ModelCapability {
 	return []ModelCapability{
 		// Anthropic
-		{ID: "claude-opus-4-6", MaxInputTokens: 200_000, MaxOutputTokens: 32_000, SupportsThinking: true, SupportsEffort: true},
+		{ID: "claude-opus-4-6", MaxInputTokens: 1_000_000, MaxOutputTokens: 32_000, SupportsThinking: true, SupportsEffort: true},
 		{ID: "claude-opus-4-5", MaxInputTokens: 200_000, MaxOutputTokens: 32_000, SupportsThinking: true, SupportsEffort: true},
-		{ID: "claude-sonnet-4-6", MaxInputTokens: 200_000, MaxOutputTokens: 16_000, SupportsThinking: true, SupportsEffort: true},
+		{ID: "claude-sonnet-4-6", MaxInputTokens: 1_000_000, MaxOutputTokens: 16_000, SupportsThinking: true, SupportsEffort: true},
 		{ID: "claude-sonnet-4-5", MaxInputTokens: 200_000, MaxOutputTokens: 16_000, SupportsThinking: true, SupportsEffort: true},
 		{ID: "claude-haiku-4-5", MaxInputTokens: 200_000, MaxOutputTokens: 8_192, SupportsThinking: false, SupportsEffort: false},
 		// Groq (Llama)

@@ -134,6 +134,20 @@ func (r *Repo) WorktreeAdd(path, branch string) error {
 	return err
 }
 
+// WorktreeAddOrReuse creates a new git worktree, or reuses an existing one if
+// the path or branch already exists from a previous stale run. Returns the
+// actual branch name used (may differ if the branch already existed).
+func (r *Repo) WorktreeAddOrReuse(path, branch string) error {
+	err := r.WorktreeAdd(path, branch)
+	if err == nil {
+		return nil
+	}
+	// Branch or path may already exist from a stale run. Try to remove and recreate.
+	_ = r.WorktreeRemove(path, true)
+	_, _ = r.run("branch", "-D", branch)
+	return r.WorktreeAdd(path, branch)
+}
+
 // WorktreeRemove removes a git worktree.
 func (r *Repo) WorktreeRemove(path string, force bool) error {
 	args := []string{"worktree", "remove"}
@@ -157,6 +171,33 @@ func (r *Repo) HasChanges() (bool, error) {
 		return false, err
 	}
 	return strings.TrimSpace(out) != "", nil
+}
+
+// HasCommitsAheadOf returns true if HEAD has commits not reachable from the
+// given SHA (typically the HEAD captured before the agent started).
+func (r *Repo) HasCommitsAheadOf(baseSHA string) (bool, error) {
+	out, err := r.run("rev-list", "--count", baseSHA+"..HEAD")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "0", nil
+}
+
+// HasAnyWork returns true if the worktree has either uncommitted changes or
+// new commits since baseSHA. Fail-closed: returns true on detection errors so
+// the worktree is kept rather than silently discarded.
+func (r *Repo) HasAnyWork(baseSHA string) (bool, error) {
+	if dirty, err := r.HasChanges(); err != nil || dirty {
+		return dirty, err
+	}
+	if baseSHA == "" {
+		return false, nil
+	}
+	hasNew, err := r.HasCommitsAheadOf(baseSHA)
+	if err != nil {
+		return true, nil // fail-closed: keep worktree if we can't check
+	}
+	return hasNew, nil
 }
 
 // DeleteBranch deletes a local branch.

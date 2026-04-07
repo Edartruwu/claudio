@@ -259,7 +259,7 @@ func TestTranslateAssistantBlocks_WithToolUse(t *testing.T) {
 	}
 }
 
-func TestTranslateAssistantBlocks_SkipsThinkingBlocks(t *testing.T) {
+func TestTranslateAssistantBlocks_RoundTripsThinkingAsReasoningContent(t *testing.T) {
 	blocks := []api.ContentBlock{
 		{Type: "thinking", Thinking: "Let me think about this..."},
 		{Type: "text", Text: "The answer is 42."},
@@ -270,10 +270,38 @@ func TestTranslateAssistantBlocks_SkipsThinkingBlocks(t *testing.T) {
 		t.Fatalf("error: %v", err)
 	}
 	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message (thinking block skipped), got %d", len(msgs))
+		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
 	if msgs[0].Content != "The answer is 42." {
 		t.Errorf("content = %v", msgs[0].Content)
+	}
+	if msgs[0].ReasoningContent != "Let me think about this..." {
+		t.Errorf("reasoning_content = %q", msgs[0].ReasoningContent)
+	}
+	if len(msgs[0].ReasoningDetails) != 1 {
+		t.Fatalf("reasoning_details len = %d", len(msgs[0].ReasoningDetails))
+	}
+	if msgs[0].ReasoningDetails[0].Type != "reasoning.text" {
+		t.Errorf("reasoning_details[0].type = %q", msgs[0].ReasoningDetails[0].Type)
+	}
+}
+
+func TestTranslateAssistantBlocks_ThinkingOnlyMessage(t *testing.T) {
+	blocks := []api.ContentBlock{
+		{Type: "thinking", Thinking: "pondering..."},
+	}
+	msgs, err := translateAssistantBlocks(blocks)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message (thinking-only), got %d", len(msgs))
+	}
+	if msgs[0].ReasoningContent != "pondering..." {
+		t.Errorf("reasoning_content = %q", msgs[0].ReasoningContent)
+	}
+	if msgs[0].Content != nil {
+		t.Errorf("content should be nil, got %v", msgs[0].Content)
 	}
 }
 
