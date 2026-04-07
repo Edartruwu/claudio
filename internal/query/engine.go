@@ -621,12 +621,18 @@ func (e *Engine) streamOnce(ctx context.Context, req *api.MessagesRequest) (*str
 
 			switch event.Type {
 			case "message_start":
-				// Parse initial message data including usage (input_tokens)
+				// Parse initial message data including usage (input_tokens, cache tokens)
 				if event.MessageField != nil {
 					var msg api.MessageResp
 					json.Unmarshal(event.MessageField, &msg)
 					if msg.Usage.InputTokens > 0 {
 						response.Usage.InputTokens = msg.Usage.InputTokens
+					}
+					if msg.Usage.CacheRead > 0 {
+						response.Usage.CacheRead = msg.Usage.CacheRead
+					}
+					if msg.Usage.CacheCreate > 0 {
+						response.Usage.CacheCreate = msg.Usage.CacheCreate
 					}
 				}
 
