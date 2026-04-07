@@ -39,6 +39,10 @@ type Settings struct {
 	// Permission pattern rules (content-based allow/deny per tool)
 	PermissionRules []PermissionRule `json:"permissionRules,omitempty"`
 
+	// Editor command template for opening files (e.g. "nvim -c 'Gvdiffsplit ORIG_HEAD' {file}")
+	// {file} is replaced with the file path. Falls back to $VISUAL/$EDITOR if empty.
+	EditorCmd string `json:"editorCmd,omitempty"`
+
 	// Output style
 	OutputStyle string `json:"outputStyle,omitempty"` // "normal", "concise", "verbose", "markdown"
 

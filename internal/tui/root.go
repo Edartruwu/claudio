@@ -1166,7 +1166,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focus = FocusPrompt
 		m.prompt.Blur()
 		m.refreshViewport()
-		return m, openFileInEditor(msg.Path)
+		var editorCmd string
+		if m.appCtx != nil && m.appCtx.Config != nil {
+			editorCmd = m.appCtx.Config.EditorCmd
+		}
+		return m, openFileInEditor(msg.Path, editorCmd)
 
 	case fileEditorFinishedMsg:
 		m.focus = FocusPrompt

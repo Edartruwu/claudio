@@ -117,12 +117,23 @@ type fileEditorFinishedMsg struct {
 }
 
 // openFileInEditor opens an existing file in the user's editor.
-// Used by the files panel when the user presses enter on a row.
-func openFileInEditor(path string) tea.Cmd {
-	editor := getEditor()
-	parts := strings.Fields(editor)
-	name := parts[0]
-	args := append(parts[1:], path)
+// editorCmd may be a template like "nvim -c 'Gvdiffsplit ORIG_HEAD' {file}";
+// {file} is replaced with path. If empty, falls back to $VISUAL/$EDITOR.
+func openFileInEditor(path, editorCmd string) tea.Cmd {
+	var name string
+	var args []string
+
+	if editorCmd != "" {
+		expanded := strings.ReplaceAll(editorCmd, "{file}", path)
+		parts := strings.Fields(expanded)
+		name = parts[0]
+		args = parts[1:]
+	} else {
+		editor := getEditor()
+		parts := strings.Fields(editor)
+		name = parts[0]
+		args = append(parts[1:], path)
+	}
 
 	c := exec.Command(name, args...)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
