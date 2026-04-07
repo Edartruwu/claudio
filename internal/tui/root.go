@@ -1925,7 +1925,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			m.messageQueue = m.messageQueue[1:]
 			return m.handleSubmit(next)
 		}
-		return m, nil
+		return m, m.waitForEvent()
 
 	case "retry":
 		// The engine is silently retrying at escalated max_tokens. Tombstone
