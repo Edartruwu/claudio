@@ -39,6 +39,8 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
 	"github.com/Abraxas-365/claudio/internal/tui/docks"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
+	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
+	sidebarblocks "github.com/Abraxas-365/claudio/internal/tui/sidebar/blocks"
 	"github.com/Abraxas-365/claudio/internal/tui/teampanel"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
@@ -62,6 +64,8 @@ type Model struct {
 	todoDock       *docks.TodoDock
 	filesPanel     *filespanel.Panel
 	fileOps        []filespanel.FileOp
+	sidebar        *sidebar.Sidebar
+	sidebarFiles   *sidebarblocks.FilesBlock
 
 	// Panels
 	activePanel   panels.Panel
@@ -266,6 +270,10 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		m.todoDock = docks.NewTodoDock(nil)
 	}
 	m.filesPanel = filespanel.New()
+
+	// Initialize sidebar
+	m.sidebarFiles = sidebarblocks.NewFilesBlock()
+	m.sidebar = m.buildSidebar()
 
 	cmdRegistry := commands.NewRegistry()
 	commands.RegisterCoreCommands(cmdRegistry, &commands.CommandDeps{
@@ -1664,10 +1672,13 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			})
 			m.refreshViewport()
 		}
-		// Track file operations for the files panel.
+		// Track file operations for the files panel and sidebar.
 		if ops := filespanel.ExtractFileOps(event.toolUse.Name, event.toolUse.Input); len(ops) > 0 {
 			m.fileOps = append(m.fileOps, ops...)
 			m.filesPanel.Refresh(m.fileOps)
+			if m.sidebarFiles != nil {
+				m.sidebarFiles.Refresh(m.fileOps)
+			}
 		}
 
 	case "ratelimit_changed":
@@ -4232,6 +4243,72 @@ func (m *Model) isWelcomeScreen() bool {
 	return len(m.messages) == 0 && !m.streaming
 }
 
+// buildSidebar constructs the sidebar from config (or defaults).
+func (m *Model) buildSidebar() *sidebar.Sidebar {
+	cfg := m.sidebarConfig()
+	if !cfg.Enabled {
+		return nil
+	}
+
+	blockNames := cfg.Blocks
+	if len(blockNames) == 0 {
+		blockNames = []string{"files", "todos", "tokens"}
+	}
+
+	var blks []sidebar.Block
+	for _, name := range blockNames {
+		switch name {
+		case "files":
+			blks = append(blks, m.sidebarFiles)
+		case "todos":
+			blks = append(blks, sidebarblocks.NewTodosBlock())
+		case "tokens":
+			blks = append(blks, sidebarblocks.NewTokensBlock(
+				func() int     { return m.totalTokens },
+				func() float64 { return m.totalCost },
+			))
+		}
+	}
+	if len(blks) == 0 {
+		return nil
+	}
+	return sidebar.New(blks...)
+}
+
+// sidebarConfig returns the effective sidebar config (from settings or defaults).
+func (m *Model) sidebarConfig() config.SidebarConfig {
+	if m.appCtx != nil && m.appCtx.Config != nil && m.appCtx.Config.Sidebar != nil {
+		c := *m.appCtx.Config.Sidebar
+		if c.Width == 0 {
+			c.Width = 32
+		}
+		return c
+	}
+	// Default: enabled with standard blocks
+	return config.SidebarConfig{
+		Enabled: true,
+		Width:   32,
+		Blocks:  []string{"files", "todos", "tokens"},
+	}
+}
+
+// sidebarWidth returns the pixel width the sidebar occupies (0 if disabled).
+func (m *Model) sidebarWidth() int {
+	if m.sidebar == nil {
+		return 0
+	}
+	cfg := m.sidebarConfig()
+	w := cfg.Width
+	if w == 0 {
+		w = 32
+	}
+	// Don't show sidebar if terminal is too narrow
+	if m.width-w-1 < 40 {
+		return 0
+	}
+	return w
+}
+
 // ── Layout & View ────────────────────────────────────────
 
 func (m *Model) layout() {
@@ -4263,6 +4340,16 @@ func (m *Model) layout() {
 			mw = 10
 		}
 	}
+	// Persistent sidebar shrinks main area when no other panel is active
+	if (m.activePanel == nil || !m.activePanel.IsActive()) &&
+		(m.filesPanel == nil || !m.filesPanel.IsActive()) {
+		if sw := m.sidebarWidth(); sw > 0 {
+			mw = m.width - sw - 1
+			if mw < 20 {
+				mw = 20
+			}
+		}
+	}
 	m.viewport.Width = mw
 	m.viewport.Height = vpHeight
 	m.prompt.SetWidth(m.width) // prompt always full width
@@ -4275,10 +4362,7 @@ func (m Model) View() string {
 	mw := mainWidth(m.width, m.activePanel, m.panelSplitRatio)
 	hasPanel := m.activePanel != nil && m.activePanel.IsActive()
 
-	// Mirror layout()'s files-panel adjustment so vpView, overlays, and the
-	// files panel itself all agree on widths. Without this, mw stays at full
-	// width and filesW = m.width - mw - 1 collapses to a 10-col strip,
-	// squishing file names.
+	// Mirror layout()'s width adjustments so overlays agree with viewport.
 	if !hasPanel && m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
 		filesW := int(float64(m.width) * 0.35)
 		if filesW < 20 {
@@ -4290,6 +4374,13 @@ func (m Model) View() string {
 		mw = m.width - filesW - 1
 		if mw < 10 {
 			mw = 10
+		}
+	} else if !hasPanel && (m.filesPanel == nil || !m.filesPanel.IsActive()) && m.focus != FocusAgentDetail {
+		if sw := m.sidebarWidth(); sw > 0 {
+			mw = m.width - sw - 1
+			if mw < 20 {
+				mw = 20
+			}
 		}
 	}
 
@@ -4340,6 +4431,14 @@ func (m Model) View() string {
 		}
 		m.filesPanel.SetSize(filesW, m.viewport.Height)
 		topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, m.filesPanel.View())
+	} else if m.sidebar != nil && m.focus != FocusAgentDetail {
+		sw := m.sidebarWidth()
+		if sw > 0 {
+			m.sidebar.SetSize(sw, m.viewport.Height)
+			sep := buildSeparator(m.viewport.Height)
+			sidebarView := lipgloss.NewStyle().Width(sw).Height(m.viewport.Height).Render(m.sidebar.View())
+			topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, sep, sidebarView)
+		}
 	}
 
 	var sections []string

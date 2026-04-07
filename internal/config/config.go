@@ -74,6 +74,16 @@ type Settings struct {
 
 	// LSP servers (config-driven, no hardcoded defaults)
 	LspServers map[string]LspServerConfig `json:"lspServers,omitempty"`
+
+	// Sidebar configuration
+	Sidebar *SidebarConfig `json:"sidebar,omitempty"`
+}
+
+// SidebarConfig controls the persistent right-side panel.
+type SidebarConfig struct {
+	Enabled bool     `json:"enabled"`
+	Width   int      `json:"width,omitempty"` // default 32
+	Blocks  []string `json:"blocks,omitempty"` // e.g. ["files","todos","tokens"]
 }
 
 // LspServerConfig defines an LSP server connection.
@@ -297,6 +307,9 @@ func mergeFromFile(settings *Settings, path string) {
 	if overlay.OutputStyle != "" {
 		settings.OutputStyle = overlay.OutputStyle
 	}
+	if overlay.EditorCmd != "" {
+		settings.EditorCmd = overlay.EditorCmd
+	}
 	if overlay.CostConfirmThreshold > 0 {
 		settings.CostConfirmThreshold = overlay.CostConfirmThreshold
 	}
@@ -339,6 +352,9 @@ func mergeFromFile(settings *Settings, path string) {
 		for k, v := range overlay.LspServers {
 			settings.LspServers[k] = v
 		}
+	}
+	if overlay.Sidebar != nil {
+		settings.Sidebar = overlay.Sidebar
 	}
 	if overlay.Snippets != nil {
 		if settings.Snippets == nil {

@@ -81,7 +81,8 @@ type RenderResult struct {
 
 // renderMessages renders all messages, grouping consecutive tool pairs.
 // cursorSection is the section index to highlight (-1 = none).
-func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, cursorSection int, spinFrame int) RenderResult {
+// thinkingExpanded maps message index → whether thinking block is expanded.
+func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, cursorSection int, spinFrame int, thinkingExpanded map[int]bool) RenderResult {
 	maxW := width - 4
 	if maxW > 110 {
 		maxW = 110
@@ -125,7 +126,8 @@ func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, 
 			if msg.Type == MsgAssistant && lastWasToolGroup {
 				block = renderAssistantContinuation(msg, maxW)
 			} else {
-				block = renderMessage(msg, maxW)
+				expanded := thinkingExpanded != nil && thinkingExpanded[i]
+				block = renderMessage(msg, maxW, expanded)
 			}
 			sec = Section{MsgIndex: i}
 			i++
@@ -313,7 +315,12 @@ func renderToolGroup(group []toolPair, maxW int, expanded bool, spinFrame int) s
 		icon := styles.ToolIcon.Render("⚡ ")
 		name := styles.ToolName.Width(nameW).Render(p.use.ToolName)
 		summaryText := formatRichSummary(p.use)
-		summary := styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-25))
+		var summary string
+		if p.use.ToolName == "Task" && summaryText != "" {
+			summary = "  " + styles.AgentStyle(summaryText).Render(summaryText)
+		} else {
+			summary = styles.ToolSummary.Render(truncate(summaryText, maxW-nameW-25))
+		}
 		left := connector + icon + name + summary
 
 		var status string
@@ -683,6 +690,22 @@ func formatRichSummary(msg ChatMessage) string {
 			}
 			return s
 		}
+
+	case "Task":
+		var in struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Prompt      string `json:"prompt"`
+		}
+		if json.Unmarshal(msg.ToolInputRaw, &in) == nil {
+			agentName := in.Name
+			if agentName == "" {
+				agentName = in.Description
+			}
+			if agentName != "" {
+				return agentName
+			}
+		}
 	}
 
 	// Fallback to the pre-computed summary
@@ -824,7 +847,8 @@ func humanSize(bytes int) string {
 }
 
 // renderMessage renders a single ChatMessage.
-func renderMessage(msg ChatMessage, maxW int) string {
+// thinkingExpanded controls whether MsgThinking blocks show their full body.
+func renderMessage(msg ChatMessage, maxW int, thinkingExpanded bool) string {
 	pinPrefix := ""
 	if msg.Pinned {
 		pinPrefix = styles.PinIcon.Render("📌 ")
@@ -833,7 +857,9 @@ func renderMessage(msg ChatMessage, maxW int) string {
 	switch msg.Type {
 	case MsgUser:
 		content := styles.UserContent.Width(maxW - 4).Render(msg.Content)
-		block := styles.UserBlock.Width(maxW).Render(content)
+		block := styles.UserBlock.
+			Width(maxW).
+			Render(content)
 		return pinPrefix + block
 
 	case MsgAssistant:
@@ -859,7 +885,28 @@ func renderMessage(msg ChatMessage, maxW int) string {
 		return indent + styles.ToolSuccess.Render("✓ ") + styles.ToolSummary.Render(brief)
 
 	case MsgThinking:
-		return styles.ThinkingStyle.Width(maxW).Render("💭 " + truncate(msg.Content, 200))
+		headerStyle := lipgloss.NewStyle().Foreground(styles.Orange).Italic(true).Bold(true)
+		if !thinkingExpanded {
+			header := headerStyle.Render("Thinking: ") +
+				lipgloss.NewStyle().Foreground(styles.Orange).Italic(true).Render(truncate(firstLine(msg.Content), maxW-14))
+			hint := lipgloss.NewStyle().Foreground(styles.Subtle).Render("  ▶ ctrl+o expand")
+			return lipgloss.NewStyle().
+				BorderStyle(lipgloss.Border{Left: "▌"}).
+				BorderLeft(true).
+				BorderForeground(styles.Orange).
+				PaddingLeft(1).
+				Width(maxW).
+				Render(header + hint)
+		}
+		header := headerStyle.Render("Thinking:")
+		body := lipgloss.NewStyle().Foreground(styles.Muted).Width(maxW - 4).Render(msg.Content)
+		return lipgloss.NewStyle().
+			BorderStyle(lipgloss.Border{Left: "▌"}).
+			BorderLeft(true).
+			BorderForeground(styles.Orange).
+			PaddingLeft(1).
+			Width(maxW).
+			Render(header + "\n\n" + body)
 
 	case MsgError:
 		return styles.ErrorStyle.Width(maxW).Render("✗ " + msg.Content)
