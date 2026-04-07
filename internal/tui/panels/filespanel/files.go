@@ -147,7 +147,7 @@ func (p *Panel) View() string {
 	addStyle := lipgloss.NewStyle().Foreground(styles.Success)
 	modStyle := lipgloss.NewStyle().Foreground(styles.Warning)
 	readStyle := lipgloss.NewStyle().Foreground(styles.Text)
-	selectedStyle := lipgloss.NewStyle().Reverse(true).Bold(true)
+	selectedStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(styles.Muted)
 
 	maxPathW := p.width - 8

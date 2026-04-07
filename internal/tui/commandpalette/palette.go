@@ -42,7 +42,7 @@ func New(items []Item) Model {
 	return Model{
 		items:    items,
 		filtered: items,
-		maxItems: 8,
+		maxItems: 10,
 	}
 }
 
@@ -209,20 +209,16 @@ func (m Model) View() string {
 		name := "/" + item.Name
 		desc := item.Description
 
-		maxDesc := m.width - nameW - 6
-		if maxDesc < 10 {
-			maxDesc = 10
-		}
-		if len(desc) > maxDesc {
-			desc = desc[:maxDesc-1] + "\u2026"
-		}
-
 		var line string
 		if i == m.selected {
+			rowStyle := lipgloss.NewStyle().
+				Foreground(styles.Primary).
+				Bold(true).
+				Width(m.width - 2)
 			prefix := styles.PalettePrefix.Render("\u203A ")
 			n := styles.PaletteItemSelected.Width(nameW).Render(name)
 			d := styles.PaletteDescSelected.Render(desc)
-			line = prefix + n + d
+			line = rowStyle.Render(prefix + n + d)
 		} else {
 			n := styles.PaletteItem.Width(nameW + 2).Render("  " + name)
 			d := styles.PaletteDesc.Render(desc)
@@ -234,6 +230,6 @@ func (m Model) View() string {
 	content := strings.Join(lines, "\n")
 
 	return lipgloss.NewStyle().
-		Padding(0, 2).
+		Padding(0, 1).
 		Render(content)
 }
