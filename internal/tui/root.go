@@ -37,6 +37,8 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
+	"github.com/Abraxas-365/claudio/internal/tui/docks"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
 	"github.com/Abraxas-365/claudio/internal/tui/teampanel"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
@@ -57,6 +59,9 @@ type Model struct {
 	whichKey       whichkey.Model
 	sessionPicker  *panelsessions.Panel
 	toast          Toast
+	todoDock       *docks.TodoDock
+	filesPanel     *filespanel.Panel
+	fileOps        []filespanel.FileOp
 
 	// Panels
 	activePanel   panels.Panel
@@ -75,8 +80,10 @@ type Model struct {
 	spinText       string // current spinner status text
 	toolSpinFrame  int    // braille spinner frame counter for in-progress tool status
 	expandedGroups  map[int]bool          // tool group msg indices that are expanded
+	thinkingExpanded map[int]bool         // message index → thinking block expanded state
 	lastToolGroup   int                   // msg index of the last tool group start (-1 = none)
 	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
+	panelSplitRatio float64      // fraction of width for main area (default 0.65)
 	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
 	prevSessionID   string       // for alternate session switching
 	vpCursor        int          // viewport section cursor (-1 = none)
@@ -145,13 +152,14 @@ type agentDetailOverlay struct {
 
 // askUserDialogState holds the state for an interactive AskUser question dialog.
 type askUserDialogState struct {
-	questions  []tools.AskQuestion
-	qIdx       int               // current question index
-	optCursor  int               // cursor within current question's options
-	answers    map[string]string // question label → selected answer
-	responseCh  chan<- tools.AskUserResponse
-	freeText    string // typed text when "Other" option is selected
-	typingOther bool   // true when user is typing a custom answer
+	questions    []tools.AskQuestion
+	qIdx         int               // current question index
+	optCursor    int               // cursor within current question's options
+	answers      map[string]string // question label → selected answer
+	multiSelected map[int]bool     // for multi_select: which option indices are selected
+	responseCh   chan<- tools.AskUserResponse
+	freeText     string // typed text when "Other" option is selected
+	typingOther  bool   // true when user is typing a custom answer
 }
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
@@ -236,8 +244,10 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		systemPrompt:   systemPrompt,
 		streamText:     &strings.Builder{},
 		session:        sess,
-		expandedGroups:  make(map[int]bool),
-		lastToolGroup:   -1,
+		expandedGroups:   make(map[int]bool),
+		thinkingExpanded: make(map[int]bool),
+		lastToolGroup:    -1,
+		panelSplitRatio:  0.65,
 		toolStartTimes:  make(map[string]time.Time),
 		vpCursor:        -1,
 		whichKey:        whichkey.New(),
@@ -248,6 +258,14 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	for _, opt := range opts {
 		opt(&m)
 	}
+
+	// Initialize docks (requires appCtx which is set by WithAppContext option above)
+	if m.appCtx != nil {
+		m.todoDock = docks.NewTodoDock(m.appCtx.TaskRuntime)
+	} else {
+		m.todoDock = docks.NewTodoDock(nil)
+	}
+	m.filesPanel = filespanel.New()
 
 	cmdRegistry := commands.NewRegistry()
 	commands.RegisterCoreCommands(cmdRegistry, &commands.CommandDeps{
@@ -454,7 +472,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.palette.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
-		m.modelSelector.SetWidth(mainWidth(m.width, m.activePanel))
+		m.modelSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
 		m.layout()
 		m.refreshViewport()
 		return m, nil
@@ -537,6 +555,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.refreshViewport()
 			}
 			return m, nil
+		case "ctrl+p":
+			// Toggle command palette — inject "/" so updatePaletteState keeps it open
+			if m.streaming {
+				return m, nil
+			}
+			if m.palette.IsActive() {
+				m.palette.Deactivate()
+				m.prompt.SetValue("")
+			} else {
+				m.filePicker.Deactivate()
+				m.prompt.SetValue("/")
+				m.prompt.EnterVimInsert()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+				m.updatePaletteState()
+			}
+			return m, nil
+
 		case "ctrl+g":
 			// Let the plan approval dialog handle ctrl+g itself.
 			if m.focus == FocusPlanApproval {
@@ -591,6 +627,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sessionPicker = nil
 				m.focus = FocusPrompt
 				m.prompt.Focus()
+			}
+			return m, cmd
+		}
+
+		// Files panel focus mode
+		if m.focus == FocusFiles && m.filesPanel != nil {
+			cmd, consumed := m.filesPanel.Update(msg)
+			if !consumed || !m.filesPanel.IsActive() {
+				m.filesPanel.SetFocused(false)
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+				m.refreshViewport()
 			}
 			return m, cmd
 		}
@@ -737,6 +785,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.expandedGroups[tgIdx] = !m.expandedGroups[tgIdx]
 					m.refreshViewport()
 					m.scrollToSection(m.vpCursor)
+				} else if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
+					// Toggle thinking block if this section is a MsgThinking message
+					msgIdx := m.vpSections[m.vpCursor].MsgIndex
+					if msgIdx >= 0 && msgIdx < len(m.messages) && m.messages[msgIdx].Type == MsgThinking {
+						m.thinkingExpanded[msgIdx] = !m.thinkingExpanded[msgIdx]
+						m.refreshViewport()
+						m.scrollToSection(m.vpCursor)
+					}
 				}
 				return m, nil
 			case "p":
@@ -810,6 +866,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == " " {
 				m.leaderSeq = "pending"
 				return m, whichkey.ScheduleTimeout()
+			}
+		}
+
+		// Panel resize: < shrinks main area, > expands it (not in prompt insert mode)
+		if m.focus != FocusPrompt || m.prompt.IsVimNormal() {
+			switch msg.String() {
+			case "<":
+				if m.panelSplitRatio > 0.3 {
+					m.panelSplitRatio -= 0.05
+				}
+				m.refreshViewport()
+				return m, nil
+			case ">":
+				if m.panelSplitRatio < 0.85 {
+					m.panelSplitRatio += 0.05
+				}
+				m.refreshViewport()
+				return m, nil
 			}
 		}
 
@@ -1080,6 +1154,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshViewport()
 		} else {
 			m.prompt.SetValueWithCollapse(msg.content)
+		}
+		return m, nil
+
+	case filespanel.OpenFileMsg:
+		// Close the panel and hand the terminal to the editor.
+		if m.filesPanel != nil {
+			m.filesPanel.Deactivate()
+			m.filesPanel.SetFocused(false)
+		}
+		m.focus = FocusPrompt
+		m.prompt.Blur()
+		m.refreshViewport()
+		return m, openFileInEditor(msg.Path)
+
+	case fileEditorFinishedMsg:
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		if msg.err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Editor: " + msg.err.Error()})
+			m.refreshViewport()
 		}
 		return m, nil
 
@@ -1480,11 +1574,12 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.askUserDialog = &askUserDialogState{
-			questions:  event.askUserReq.Questions,
-			qIdx:       0,
-			optCursor:  0,
-			answers:    make(map[string]string),
-			responseCh: respCh,
+			questions:     event.askUserReq.Questions,
+			qIdx:          0,
+			optCursor:     0,
+			answers:       make(map[string]string),
+			multiSelected: make(map[int]bool),
+			responseCh:    respCh,
 		}
 		m.focus = FocusAskUser
 		m.refreshViewport()
@@ -1564,6 +1659,11 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 				ToolUseID: event.toolUse.ID,
 			})
 			m.refreshViewport()
+		}
+		// Track file operations for the files panel.
+		if ops := filespanel.ExtractFileOps(event.toolUse.Name, event.toolUse.Input); len(ops) > 0 {
+			m.fileOps = append(m.fileOps, ops...)
+			m.filesPanel.Refresh(m.fileOps)
 		}
 
 	case "ratelimit_changed":
@@ -2054,8 +2154,28 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.refreshViewport()
 			return m, m.waitForEvent()
 		default:
-			// Record the selected predefined option.
-			d.answers[q.Label] = q.Options[d.optCursor]
+			if q.MultiSelect {
+				// Toggle selection; submit only on explicit enter with selections made.
+				if msg.String() == " " {
+					d.multiSelected[d.optCursor] = !d.multiSelected[d.optCursor]
+					m.refreshViewport()
+					return m, nil
+				}
+				// Enter = confirm selections (or pick current if none selected).
+				var selected []string
+				for i, opt := range q.Options {
+					if d.multiSelected[i] {
+						selected = append(selected, opt)
+					}
+				}
+				if len(selected) == 0 {
+					selected = []string{q.Options[d.optCursor]}
+				}
+				d.answers[q.Label] = strings.Join(selected, ", ")
+				d.multiSelected = make(map[int]bool)
+			} else {
+				d.answers[q.Label] = q.Options[d.optCursor]
+			}
 			if d.qIdx < len(d.questions)-1 {
 				d.qIdx++
 				d.optCursor = 0
@@ -2247,10 +2367,27 @@ func (m Model) renderAskUserDialog(width int) string {
 	otherIdx := len(q.Options)
 	chatIdx := otherIdx + 1
 	for i, opt := range q.Options {
+		prefix := "  "
 		if i == d.optCursor && !d.typingOther {
-			b.WriteString(selectedStyle.Render("▸ " + opt))
+			prefix = "▸ "
+		}
+		if q.MultiSelect {
+			check := "[ ]"
+			if d.multiSelected[i] {
+				check = "[x]"
+			}
+			line := prefix + check + " " + opt
+			if i == d.optCursor && !d.typingOther {
+				b.WriteString(selectedStyle.Render(line))
+			} else {
+				b.WriteString(dimStyle.Render(line))
+			}
 		} else {
-			b.WriteString(dimStyle.Render("  " + opt))
+			if i == d.optCursor && !d.typingOther {
+				b.WriteString(selectedStyle.Render(prefix + opt))
+			} else {
+				b.WriteString(dimStyle.Render(prefix + opt))
+			}
 		}
 		b.WriteString("\n")
 	}
@@ -2278,6 +2415,13 @@ func (m Model) renderAskUserDialog(width int) string {
 	var hint string
 	if d.typingOther {
 		hint = "type answer · enter confirm · ctrl+g $EDITOR · esc back"
+	} else if q.MultiSelect {
+		hint = "j/k navigate · space toggle · enter confirm"
+		if d.qIdx < len(d.questions)-1 {
+			hint += " · esc cancel"
+		} else {
+			hint += " (submit) · esc cancel"
+		}
 	} else {
 		hint = "j/k navigate · enter select"
 		if d.qIdx < len(d.questions)-1 {
@@ -2569,6 +2713,43 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 			m.openPanel(PanelAgents)
 			if _, ok := m.activePanel.(*teampanel.Panel); ok {
 				return true, teampanel.ScheduleRefresh()
+			}
+			return true, nil
+		case "p":
+			// Command palette — enter insert mode so the user can type
+			if !m.streaming {
+				m.filePicker.Deactivate()
+				m.prompt.SetValue("/")
+				m.prompt.EnterVimInsert()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+				m.updatePaletteState()
+			}
+			return true, nil
+		case "t":
+			// Todo dock — toggle expanded state
+			if m.todoDock != nil {
+				m.todoDock.ToggleExpanded()
+				m.refreshViewport()
+			}
+			return true, nil
+		case "f":
+			// File changes panel — toggle; if opening, enter FocusFiles
+			if m.filesPanel != nil {
+				if m.filesPanel.IsActive() {
+					m.filesPanel.Deactivate()
+					m.filesPanel.SetFocused(false)
+					if m.focus == FocusFiles {
+						m.focus = FocusPrompt
+						m.prompt.Focus()
+					}
+				} else {
+					m.filesPanel.Activate()
+					m.filesPanel.SetFocused(true)
+					m.focus = FocusFiles
+					m.prompt.Blur()
+				}
+				m.refreshViewport()
 			}
 			return true, nil
 		}
@@ -3128,7 +3309,7 @@ func (m *Model) openPanel(id PanelID) {
 	m.activePanel = panel
 	m.activePanelID = id
 	m.activePanel.Activate()
-	m.viewport.Width = mainWidth(m.width, m.activePanel)
+	m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
 	m.focus = FocusPanel
 	m.prompt.Blur()
 	m.refreshViewport()
@@ -3260,9 +3441,18 @@ func (m Model) handleAgentMessage(text string) (tea.Model, tea.Cmd) {
 		Content: message,
 	})
 
+	// If the agent has already completed, revive it so it picks up the new
+	// message and continues the conversation.
+	revivedNote := ""
+	if err := m.appCtx.TeamRunner.Revive(agentName, message); err == nil {
+		if st, ok := m.appCtx.TeamRunner.GetStateByName(agentName); ok && st.Status == teams.StatusWorking && st.IsIdle == false {
+			revivedNote = " (revived)"
+		}
+	}
+
 	m.addMessage(ChatMessage{
 		Type:    MsgSystem,
-		Content: fmt.Sprintf("✉ you → %s: %s", agentName, message),
+		Content: fmt.Sprintf("✉ you → %s: %s%s", agentName, message, revivedNote),
 	})
 	m.refreshViewport()
 	return m, nil
@@ -3852,7 +4042,7 @@ func (m *Model) refreshViewport() {
 		if m.focus == FocusViewport {
 			cursorIdx = m.vpCursor
 		}
-		result := renderMessages(m.messages, m.viewport.Width, m.expandedGroups, cursorIdx, m.toolSpinFrame)
+		result := renderMessages(m.messages, m.viewport.Width, m.expandedGroups, cursorIdx, m.toolSpinFrame, m.thinkingExpanded)
 		content = result.Content
 		m.vpSections = result.Sections
 
@@ -3956,39 +4146,7 @@ func animatedLogo(frame int) string {
 }
 
 func (m *Model) welcomeScreen() string {
-	title := animatedLogo(m.logoFrame)
-
-	subtitle := lipgloss.NewStyle().
-		Foreground(styles.Muted).
-		Render("AI coding assistant")
-
-	hints := lipgloss.NewStyle().
-		Foreground(styles.Dim).
-		Render("/help · @file · /vim · /model · <Space>. sessions")
-
-	var parts []string
-	parts = append(parts, "", title, subtitle, "", hints, "")
-
-	// Recent sessions box — try project-scoped first, fall back to all
-	if m.session != nil {
-		recent, _ := m.session.RecentForProject(3)
-		if len(recent) == 0 {
-			// No sessions for this project — show any recent sessions
-			recent, _ = m.session.Search("", 3)
-		}
-		if len(recent) > 0 {
-			recentBox := m.renderRecentSessions(recent)
-			parts = append(parts, recentBox, "")
-		}
-	}
-
-	block := lipgloss.JoinVertical(lipgloss.Center, parts...)
-
-	return lipgloss.Place(
-		m.viewport.Width, m.viewport.Height,
-		lipgloss.Center, lipgloss.Center,
-		block,
-	)
+	return m.renderWelcomeScreen()
 }
 
 // renderRecentSessions builds the bordered recent sessions box for the welcome screen.
@@ -4086,7 +4244,21 @@ func (m *Model) layout() {
 		vpHeight = 5
 	}
 
-	mw := mainWidth(m.width, m.activePanel)
+	mw := mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+	// If files panel is active (and no other side panel), shrink the main viewport to leave room
+	if (m.activePanel == nil || !m.activePanel.IsActive()) && m.filesPanel != nil && m.filesPanel.IsActive() {
+		filesW := int(float64(m.width) * 0.35)
+		if filesW < 20 {
+			filesW = 20
+		}
+		if filesW > m.width-20 {
+			filesW = m.width - 20
+		}
+		mw = m.width - filesW - 1
+		if mw < 10 {
+			mw = 10
+		}
+	}
 	m.viewport.Width = mw
 	m.viewport.Height = vpHeight
 	m.prompt.SetWidth(m.width) // prompt always full width
@@ -4096,17 +4268,31 @@ func (m *Model) layout() {
 func (m Model) View() string {
 	m.layout()
 
-	mw := mainWidth(m.width, m.activePanel)
+	mw := mainWidth(m.width, m.activePanel, m.panelSplitRatio)
 	hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+
+	// Mirror layout()'s files-panel adjustment so vpView, overlays, and the
+	// files panel itself all agree on widths. Without this, mw stays at full
+	// width and filesW = m.width - mw - 1 collapses to a 10-col strip,
+	// squishing file names.
+	if !hasPanel && m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
+		filesW := int(float64(m.width) * 0.35)
+		if filesW < 20 {
+			filesW = 20
+		}
+		if filesW > m.width-20 {
+			filesW = m.width - 20
+		}
+		mw = m.width - filesW - 1
+		if mw < 10 {
+			mw = 10
+		}
+	}
 
 	// 1. Viewport (messages + inline spinner)
 	vpView := m.viewport.View()
 
-	// Overlay permission dialog or model selector on top of viewport
-	if m.permission.IsActive() {
-		overlay := m.permission.View()
-		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
-	}
+	// Overlay model selector and other dialogs on top of viewport
 	if m.focus == FocusPlanApproval {
 		overlay := m.renderPlanApprovalDialog(mw)
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
@@ -4141,7 +4327,15 @@ func (m Model) View() string {
 	// 2. If panel is active, join viewport + panel side-by-side
 	topArea := vpView
 	if hasPanel && m.focus != FocusAgentDetail {
-		topArea = splitLayout(vpView, m.activePanel, m.width, m.viewport.Height)
+		topArea = splitLayout(vpView, m.activePanel, m.width, m.viewport.Height, m.panelSplitRatio)
+	} else if m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
+		// layout() already sized the viewport; files panel takes the remainder
+		filesW := m.width - mw - 1
+		if filesW < 10 {
+			filesW = 10
+		}
+		m.filesPanel.SetSize(filesW, m.viewport.Height)
+		topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, m.filesPanel.View())
 	}
 
 	var sections []string
@@ -4155,7 +4349,20 @@ func (m Model) View() string {
 		sections = append(sections, pickerView)
 	}
 
-	// 4. Divider + Prompt (full width)
+	// 4. Dock slot — permission dock (highest priority) or todo dock
+	if m.permission.IsActive() {
+		m.permission.SetWidth(mw)
+		if dockView := m.permission.InlineView(); dockView != "" {
+			sections = append(sections, dockView)
+		}
+	} else if m.todoDock != nil {
+		m.todoDock.SetWidth(mw)
+		if dockView := m.todoDock.View(); dockView != "" {
+			sections = append(sections, dockView)
+		}
+	}
+
+	// 5. Divider + Prompt (full width)
 	sections = append(sections, styles.SeparatorLine(mw))
 	sections = append(sections, m.prompt.View())
 
@@ -4210,7 +4417,7 @@ func (m Model) teamStatus() (string, int) {
 
 	unread := 0
 	if mb := m.appCtx.TeamRunner.GetMailbox(); mb != nil {
-		unread = mb.TotalUnreadCount()
+		unread = mb.UnreadCount("team-lead")
 	}
 	return summary, unread
 }

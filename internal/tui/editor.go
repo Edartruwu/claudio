@@ -110,6 +110,26 @@ func openAskUserEditor(content string) tea.Cmd {
 	})
 }
 
+// fileEditorFinishedMsg is sent after openFileInEditor returns.
+type fileEditorFinishedMsg struct {
+	path string
+	err  error
+}
+
+// openFileInEditor opens an existing file in the user's editor.
+// Used by the files panel when the user presses enter on a row.
+func openFileInEditor(path string) tea.Cmd {
+	editor := getEditor()
+	parts := strings.Fields(editor)
+	name := parts[0]
+	args := append(parts[1:], path)
+
+	c := exec.Command(name, args...)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return fileEditorFinishedMsg{path: path, err: err}
+	})
+}
+
 // openPlanEditor opens the plan file directly in the user's editor.
 // When the editor exits, it sends planEditorFinishedMsg so the caller
 // can restore the plan approval dialog.
