@@ -59,7 +59,7 @@ func (p *Panel) View() string {
 	outputTok := p.tracker.OutputTokens()
 	cacheRead := p.tracker.CacheReadTokens()
 	cacheCreate := p.tracker.CacheCreateTokens()
-	totalTok := p.tracker.TotalTokens()
+	totalTok := p.tracker.CumulativeTokens()
 	cost := p.tracker.Cost()
 	cacheHitRate := p.tracker.CacheHitRate()
 

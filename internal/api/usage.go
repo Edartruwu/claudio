@@ -25,15 +25,16 @@ var modelPricing = map[string]ModelPricing{
 
 // UsageTracker accumulates token usage and cost across a session.
 type UsageTracker struct {
-	mu           sync.Mutex
-	model        string
-	InputTokens  int
-	OutputTokens int
-	CacheRead    int
-	CacheCreate  int
-	TurnCount    int
-	TotalCost    float64
-	Budget       float64 // 0 = unlimited
+	mu               sync.Mutex
+	model            string
+	InputTokens      int
+	OutputTokens     int
+	CacheRead        int
+	CacheCreate      int
+	TurnCount        int
+	TotalCost        float64
+	Budget           float64 // 0 = unlimited
+	LastContextTokens int    // input+cacheRead+cacheCreate from the most recent turn (current context window size)
 }
 
 // NewUsageTracker creates a tracker for the given model.
@@ -54,6 +55,9 @@ func (t *UsageTracker) Add(usage Usage) {
 	t.CacheRead += usage.CacheRead
 	t.CacheCreate += usage.CacheCreate
 	t.TurnCount++
+	// Track current context window size: the API echoes back how much of the
+	// context window this turn consumed. This is what the progress bar shows.
+	t.LastContextTokens = usage.InputTokens + usage.CacheRead + usage.CacheCreate
 
 	t.TotalCost = t.calculateCost()
 }
@@ -86,14 +90,13 @@ func (t *UsageTracker) Summary() string {
 }
 
 // Snapshot returns current values for display.
-// totalTokens includes input, output, and both cache read/write tokens, since
-// Anthropic's API splits prompt content across input_tokens, cache_read_input_tokens,
-// and cache_creation_input_tokens — summing only input+output severely underreports
-// the real context size once prompt caching is active.
-func (t *UsageTracker) Snapshot() (totalTokens int, cost float64) {
+// contextTokens is the last turn's input+cacheRead+cacheCreate — this is the
+// actual current context window usage as reported by the API, not a cumulative sum.
+// Using the cumulative sum would overcount by N× after N turns.
+func (t *UsageTracker) Snapshot() (contextTokens int, cost float64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.InputTokens + t.OutputTokens + t.CacheRead + t.CacheCreate, t.TotalCost
+	return t.LastContextTokens, t.TotalCost
 }
 
 func (t *UsageTracker) calculateCost() float64 {

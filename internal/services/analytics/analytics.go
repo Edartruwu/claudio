@@ -30,17 +30,18 @@ var KnownPricing = map[string]ModelPricing{
 
 // Tracker accumulates token usage and cost for a session.
 type Tracker struct {
-	mu              sync.Mutex
-	model           string
-	inputTokens     int
-	outputTokens    int
-	cacheReadTokens int
+	mu                sync.Mutex
+	model             string
+	inputTokens       int
+	outputTokens      int
+	cacheReadTokens   int
 	cacheCreateTokens int
-	toolCalls       int
-	apiCalls        int
-	startTime       time.Time
-	maxBudget       float64 // 0 = unlimited
-	saveDir         string
+	lastContextTokens int // input+cacheRead+cacheCreate from the most recent API call
+	toolCalls         int
+	apiCalls          int
+	startTime         time.Time
+	maxBudget         float64 // 0 = unlimited
+	saveDir           string
 }
 
 // NewTracker creates a new analytics tracker.
@@ -61,6 +62,9 @@ func (t *Tracker) RecordUsage(inputTokens, outputTokens, cacheReadTokens, cacheC
 	t.outputTokens += outputTokens
 	t.cacheReadTokens += cacheReadTokens
 	t.cacheCreateTokens += cacheCreateTokens
+	// Track current context window usage: the API echoes how much of the context
+	// window this call consumed. Not a cumulative sum — that would overcount.
+	t.lastContextTokens = inputTokens + cacheReadTokens + cacheCreateTokens
 	t.apiCalls++
 }
 
@@ -71,11 +75,18 @@ func (t *Tracker) RecordToolCall() {
 	t.toolCalls++
 }
 
-// TotalTokens returns total tokens used, including cache read/write tokens.
-// Anthropic splits prompt content across input_tokens, cache_read_input_tokens,
-// and cache_creation_input_tokens — summing only input+output severely
-// underreports the real context size once prompt caching is active.
+// TotalTokens returns the current context window usage from the last API call
+// (input + cacheRead + cacheCreate). This is the correct value to compare against
+// the model's context window limit — not a cumulative sum across turns.
 func (t *Tracker) TotalTokens() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.lastContextTokens
+}
+
+// CumulativeTokens returns the sum of all tokens across every turn of the session.
+// Useful for cost/analytics breakdowns but NOT for context window percentage.
+func (t *Tracker) CumulativeTokens() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheCreateTokens
