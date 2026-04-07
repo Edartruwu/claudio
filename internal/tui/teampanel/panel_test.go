@@ -15,7 +15,7 @@ import (
 func setupPanel(t *testing.T) (*Panel, *teams.TeammateRunner) {
 	t.Helper()
 	dir := t.TempDir()
-	mgr := teams.NewManager(dir)
+	mgr := teams.NewManager(dir, "")
 	mgr.CreateTeam("test-team", "test", "sess-1", "")
 
 	runner := teams.NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
@@ -246,7 +246,7 @@ func TestPanel_HandleRefreshNoWorking(t *testing.T) {
 	immediateRunner := teams.NewTeammateRunner(
 		func() *teams.Manager {
 			dir := t.TempDir()
-			mgr := teams.NewManager(dir)
+			mgr := teams.NewManager(dir, "")
 			mgr.CreateTeam("done-team", "", "s", "")
 			return mgr
 		}(),

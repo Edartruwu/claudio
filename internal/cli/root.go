@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/app"
 	"github.com/Abraxas-365/claudio/internal/auth/refresh"
 	"github.com/Abraxas-365/claudio/internal/config"
@@ -23,12 +24,14 @@ import (
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui"
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
 
 var (
 	flagModel               string
+	flagAgent               string
 	flagVerbose             bool
 	flagHeadless            bool
 	flagContext             string
@@ -83,6 +86,10 @@ security, and hackability.`,
 		settings, err := config.Load(projectRoot)
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "[PERM-DEBUG] projectRoot=%q permissionRules=%d\n", projectRoot, len(settings.PermissionRules))
+		for i, r := range settings.PermissionRules {
+			fmt.Fprintf(os.Stderr, "[PERM-DEBUG]   rule[%d] tool=%q pattern=%q behavior=%q\n", i, r.Tool, r.Pattern, r.Behavior)
 		}
 
 		// Apply CLI flag overrides
@@ -143,6 +150,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagDangerouslySkipPerm, "dangerously-skip-permissions", false, "Skip all permission prompts (use with caution)")
 	rootCmd.PersistentFlags().BoolVar(&flagDangerouslySkipPerm, "yolo", false, "Alias for --dangerously-skip-permissions")
 	rootCmd.PersistentFlags().BoolVar(&flagPrint, "print", false, "Print-only mode (no TUI, clean stdout for piping)")
+	rootCmd.PersistentFlags().StringVar(&flagAgent, "agent", "", "Run as a specific agent persona (e.g., prab, backend-senior)")
 }
 
 func Execute() error {
@@ -165,8 +173,13 @@ func runSinglePrompt(prompt string) error {
 	defer cancel()
 	defer appInstance.Close()
 
+	reg, modelOverride := applyAgentOverrides(appInstance.Tools)
+	if modelOverride != "" {
+		appInstance.Config.Model = modelOverride
+		appInstance.API.SetModel(modelOverride)
+	}
 	handler := &query.StdoutHandler{Verbose: flagVerbose}
-	engine := query.NewEngineWithConfig(appInstance.API, appInstance.Tools, handler, query.EngineConfig{
+	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,
 		TaskRuntime:     appInstance.TaskRuntime,
@@ -203,6 +216,24 @@ func loadContextProfile(name string) (string, error) {
 		return "", fmt.Errorf("could not load context profile %q: %w", name, err)
 	}
 	return string(data), nil
+}
+
+// applyAgentOverrides clones the registry filtered by the --agent flag's DisallowedTools,
+// and returns the model override string ("" if no agent or no model override).
+func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string) {
+	if flagAgent == "" {
+		return registry, ""
+	}
+	agentDef := agents.GetAgent(flagAgent)
+	filtered := registry.Clone()
+	for _, name := range agentDef.DisallowedTools {
+		filtered.Remove(name)
+	}
+	model := agentDef.Model
+	if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
+		model = resolved
+	}
+	return filtered, model
 }
 
 // buildFullSystemPrompt gathers all context (rules, context profiles, memory, output style)
@@ -299,6 +330,14 @@ func buildFullSystemPrompt() string {
 		}
 		if pluginSection := prompts.PluginsSection(pluginInfos); pluginSection != "" {
 			sections = append(sections, pluginSection)
+		}
+	}
+
+	// Agent persona override (appended last so it has highest precedence over style/snippets)
+	if flagAgent != "" {
+		agentDef := agents.GetAgent(flagAgent)
+		if agentDef.SystemPrompt != "" {
+			sections = append(sections, agentDef.SystemPrompt)
 		}
 	}
 
@@ -476,6 +515,11 @@ func runInteractive() error {
 		// This avoids polluting the session list with empty sessions.
 	}
 
+	reg, modelOverride := applyAgentOverrides(appInstance.Tools)
+	if modelOverride != "" {
+		appInstance.Config.Model = modelOverride
+		appInstance.API.SetModel(modelOverride)
+	}
 	engineCfg := &query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,
@@ -499,13 +543,14 @@ func runInteractive() error {
 		TeamManager: appInstance.Teams,
 		TeamRunner:  appInstance.TeamRunner,
 	}
-	model := tui.New(appInstance.API, appInstance.Tools, systemPrompt, sess,
+	model := tui.New(appInstance.API, reg, systemPrompt, sess,
 		tui.WithSkills(appInstance.Skills),
 		tui.WithEngineConfig(engineCfg),
 		tui.WithAppContext(appCtx),
 		tui.WithUserContext(prompts.FormatUserContextMessage(buildUserContext(), "")),
 		tui.WithSystemContext(buildSystemContext()),
 		tui.WithDB(appInstance.DB),
+		tui.WithTeamTemplatesDir(config.GetPaths().TeamTemplates),
 	)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 

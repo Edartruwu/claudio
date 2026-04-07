@@ -6,7 +6,7 @@ import (
 
 func TestCreateTeam_WithModel(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 
 	team, err := mgr.CreateTeam("my-team", "desc", "sess-1", "haiku")
 	if err != nil {
@@ -23,7 +23,7 @@ func TestCreateTeam_WithModel(t *testing.T) {
 
 func TestCreateTeam_WithoutModel(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 
 	team, err := mgr.CreateTeam("no-model", "desc", "sess-1", "")
 	if err != nil {
@@ -37,7 +37,7 @@ func TestCreateTeam_WithoutModel(t *testing.T) {
 
 func TestCreateTeam_ModelPersistsInGetTeam(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 
 	_, err := mgr.CreateTeam("persist-team", "desc", "sess-1", "deepseek-r1-70b")
 	if err != nil {
@@ -56,7 +56,7 @@ func TestCreateTeam_ModelPersistsInGetTeam(t *testing.T) {
 
 func TestCreateTeam_ModelInListTeams(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 
 	mgr.CreateTeam("team-a", "desc", "s1", "opus")
 	mgr.CreateTeam("team-b", "desc", "s1", "haiku")
@@ -81,7 +81,7 @@ func TestCreateTeam_ModelInListTeams(t *testing.T) {
 
 func TestCreateTeam_Duplicate(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 
 	_, err := mgr.CreateTeam("dup-team", "desc", "s1", "")
 	if err != nil {

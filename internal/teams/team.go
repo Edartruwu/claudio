@@ -27,12 +27,13 @@ type TeamConfig struct {
 
 // TeamMember describes a teammate.
 type TeamMember struct {
-	Identity  TeammateIdentity `json:"identity"`
-	Status    MemberStatus     `json:"status"`
-	JoinedAt  time.Time        `json:"joined_at"`
-	TaskID    string           `json:"task_id,omitempty"`    // background task ID
-	Model     string           `json:"model,omitempty"`
-	Prompt    string           `json:"prompt,omitempty"`
+	Identity     TeammateIdentity `json:"identity"`
+	Status       MemberStatus     `json:"status"`
+	JoinedAt     time.Time        `json:"joined_at"`
+	TaskID       string           `json:"task_id,omitempty"`       // background task ID
+	Model        string           `json:"model,omitempty"`
+	Prompt       string           `json:"prompt,omitempty"`
+	SubagentType string           `json:"subagent_type,omitempty"` // agent definition used (e.g. "backend-senior")
 }
 
 // TeammateIdentity uniquely identifies an agent within a team.
@@ -74,20 +75,68 @@ func FormatAgentID(name, teamName string) string {
 
 // Manager handles team lifecycle and coordination.
 type Manager struct {
-	mu       sync.RWMutex
-	teamsDir string
-	active   map[string]*TeamConfig // keyed by team name
+	mu           sync.RWMutex
+	teamsDir     string
+	templatesDir string
+	active       map[string]*TeamConfig // keyed by team name
 }
 
 // NewManager creates a team manager.
-func NewManager(teamsDir string) *Manager {
+func NewManager(teamsDir, templatesDir string) *Manager {
 	os.MkdirAll(teamsDir, 0700)
+	if templatesDir != "" {
+		os.MkdirAll(templatesDir, 0700)
+	}
 	m := &Manager{
-		teamsDir: teamsDir,
-		active:   make(map[string]*TeamConfig),
+		teamsDir:     teamsDir,
+		templatesDir: templatesDir,
+		active:       make(map[string]*TeamConfig),
 	}
 	m.loadActive()
 	return m
+}
+
+// SaveAsTemplate saves a team's non-lead members as a reusable template.
+func (m *Manager) SaveAsTemplate(teamName, templateName string) (*TeamTemplate, error) {
+	m.mu.RLock()
+	team, ok := m.active[teamName]
+	m.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("team %q not found", teamName)
+	}
+
+	var members []TeamTemplateMember
+	for _, mem := range team.Members {
+		if mem.Identity.IsLead {
+			continue
+		}
+		members = append(members, TeamTemplateMember{
+			Name:         mem.Identity.AgentName,
+			SubagentType: mem.SubagentType,
+			Model:        mem.Model,
+		})
+	}
+
+	t := TeamTemplate{
+		Name:        templateName,
+		Description: team.Description,
+		Model:       team.Model,
+		Members:     members,
+	}
+	if err := SaveTemplate(m.templatesDir, t); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// ListTemplates returns all saved team templates.
+func (m *Manager) ListTemplates() []TeamTemplate {
+	return LoadTemplates(m.templatesDir)
+}
+
+// GetTemplate returns a single template by name.
+func (m *Manager) GetTemplate(name string) (*TeamTemplate, error) {
+	return GetTemplate(m.templatesDir, name)
 }
 
 // CreateTeam initializes a new team with the calling agent as lead.
@@ -137,7 +186,7 @@ func (m *Manager) CreateTeam(name, description, sessionID, model string) (*TeamC
 }
 
 // AddMember adds a teammate to an existing team.
-func (m *Manager) AddMember(teamName, agentName, model, prompt string) (*TeamMember, error) {
+func (m *Manager) AddMember(teamName, agentName, model, prompt, subagentType string) (*TeamMember, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -146,11 +195,16 @@ func (m *Manager) AddMember(teamName, agentName, model, prompt string) (*TeamMem
 		return nil, fmt.Errorf("team %q not found", teamName)
 	}
 
-	// Check for duplicate
+	// Check for duplicate — allow re-adding if previous member is in a terminal state
 	agentID := FormatAgentID(agentName, teamName)
-	for _, mem := range team.Members {
+	for i, mem := range team.Members {
 		if mem.Identity.AgentID == agentID {
-			return nil, fmt.Errorf("member %q already in team", agentName)
+			if mem.Status == StatusWorking {
+				return nil, fmt.Errorf("member %q is still active in team", agentName)
+			}
+			// Terminal state (complete/failed/shutdown) — replace the old entry
+			team.Members = append(team.Members[:i], team.Members[i+1:]...)
+			break
 		}
 	}
 
@@ -165,8 +219,9 @@ func (m *Manager) AddMember(teamName, agentName, model, prompt string) (*TeamMem
 		},
 		Status:   StatusIdle,
 		JoinedAt: time.Now(),
-		Model:    model,
-		Prompt:   prompt,
+		Model:        model,
+		Prompt:       prompt,
+		SubagentType: subagentType,
 	}
 
 	team.Members = append(team.Members, member)

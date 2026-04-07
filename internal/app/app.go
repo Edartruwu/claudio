@@ -246,7 +246,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	cronStore.Load()
 
 	// Team manager
-	teamMgr := teams.NewManager(paths.Home + "/teams")
+	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
 
 	// Team runner (uses the same runSubAgent callback)
 	teamRunner := teams.NewTeammateRunner(teamMgr, func(ctx context.Context, system, prompt string) (string, error) {
@@ -298,9 +298,12 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		return ctx
 	})
 
+	// Persist tasks to SQLite so they survive restarts
+	tools.GlobalTaskStore.SetDB(db.Conn())
+
 	// Wire task completer for auto-updating tasks when agents finish
-	teamRunner.SetTaskCompleter(func(agentName, status string) {
-		tools.GlobalTaskStore.CompleteByAssignee(agentName, status)
+	teamRunner.SetTaskCompleter(func(taskIDs []string, status string) {
+		tools.GlobalTaskStore.CompleteByIDs(taskIDs, status)
 	})
 
 	// Inject task runtime into tools that support background execution
@@ -376,6 +379,25 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		if tool, ok := sm.(*tools.SendMessageTool); ok {
 			tool.Manager = teamMgr
 			tool.Runner = teamRunner
+		}
+	}
+	if st, err := registry.Get("SpawnTeammate"); err == nil {
+		if tool, ok := st.(*tools.SpawnTeammateTool); ok {
+			tool.Runner = teamRunner
+			tool.Manager = teamMgr
+			tool.AvailableModels = buildAvailableModels(apiClient)
+		}
+	}
+	if stt, err := registry.Get("SaveTeamTemplate"); err == nil {
+		if tool, ok := stt.(*tools.SaveTeamTemplateTool); ok {
+			tool.Runner = teamRunner
+			tool.Manager = teamMgr
+		}
+	}
+	if it, err := registry.Get("InstantiateTeam"); err == nil {
+		if tool, ok := it.(*tools.InstantiateTeamTool); ok {
+			tool.Runner = teamRunner
+			tool.Manager = teamMgr
 		}
 	}
 
@@ -490,8 +512,9 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 	// Clone the registry so sub-agent has its own copy
 	subRegistry := parentRegistry.Clone()
 
-	// Remove the Agent tool from sub-agents to prevent infinite recursion
-	subRegistry.Remove("Agent")
+	// Depth tracking (via context) prevents infinite recursion — no need to
+	// remove the Agent tool entirely. Teammates can still spawn read-only
+	// exploration sub-agents (e.g. Explore) up to maxAgentDepth.
 
 	// Apply model override from context (set by AgentTool from agentDef.Model or caller's model param).
 	if modelOverride := tools.SubAgentModelFromContext(ctx); modelOverride != "" {

@@ -20,7 +20,7 @@ func blockingRunFn() teams.RunAgentFunc {
 
 func TestTeamDeleteTool_DrainsAndCleansUp(t *testing.T) {
 	dir := t.TempDir()
-	mgr := teams.NewManager(dir)
+	mgr := teams.NewManager(dir, "")
 	if _, err := mgr.CreateTeam("doomed", "", "sess-1", ""); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestTeamDeleteTool_NoRunner(t *testing.T) {
 	// TeamDeleteTool should still work when only the manager is wired up
 	// (e.g., a team created with no running members at all).
 	dir := t.TempDir()
-	mgr := teams.NewManager(dir)
+	mgr := teams.NewManager(dir, "")
 	if _, err := mgr.CreateTeam("empty", "", "sess-1", ""); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestTeamDeleteTool_NoRunner(t *testing.T) {
 }
 
 func TestTeamDeleteTool_MissingTeamName(t *testing.T) {
-	tool := &TeamDeleteTool{Manager: teams.NewManager(t.TempDir())}
+	tool := &TeamDeleteTool{Manager: teams.NewManager(t.TempDir(), "")}
 	input, _ := json.Marshal(teamDeleteInput{})
 	result, err := tool.Execute(context.Background(), input)
 	if err != nil {

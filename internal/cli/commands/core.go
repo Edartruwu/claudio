@@ -33,6 +33,14 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	})
 
 	r.Register(&Command{
+		Name:        "agent",
+		Description: "Switch agent persona for this session",
+		Execute: func(args string) (string, error) {
+			return "", nil // handled directly in TUI root
+		},
+	})
+
+	r.Register(&Command{
 		Name:        "model",
 		Aliases:     []string{"m"},
 		Description: "Show or change the AI model",

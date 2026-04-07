@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
 	"github.com/Abraxas-365/claudio/internal/ratelimit"
@@ -25,6 +26,8 @@ import (
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tools"
+	"github.com/Abraxas-365/claudio/internal/tui/agentselector"
+	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
 	"github.com/Abraxas-365/claudio/internal/tui/commandpalette"
 	"github.com/Abraxas-365/claudio/internal/tui/components"
 	"github.com/Abraxas-365/claudio/internal/tui/filepicker"
@@ -60,6 +63,12 @@ type Model struct {
 	palette       commandpalette.Model
 	filePicker    filepicker.Model
 	modelSelector  modelselector.Model
+	agentSelector  agentselector.Model
+	teamSelector   teamselector.Model
+	teamTemplatesDir string // path to ~/.claudio/team-templates
+	currentAgent     string // type of the active persona ("" = default Claudio)
+	baseSystemPrompt string // system prompt before any agent persona is applied
+	baseModel        string // model before any agent override
 	whichKey       whichkey.Model
 	sessionPicker  *panelsessions.Panel
 	toast          Toast
@@ -236,6 +245,11 @@ func WithDB(db *storage.DB) ModelOption {
 	return func(m *Model) { m.db = db }
 }
 
+// WithTeamTemplatesDir sets the directory where team templates are stored.
+func WithTeamTemplatesDir(dir string) ModelOption {
+	return func(m *Model) { m.teamTemplatesDir = dir }
+}
+
 // New creates a new TUI model.
 func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, sess *session.Session, opts ...ModelOption) Model {
 	vp := viewport.New(80, 20)
@@ -250,7 +264,9 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		apiClient:      apiClient,
 		registry:       registry,
 		eventCh:        make(chan tuiEvent, 64),
-		systemPrompt:   systemPrompt,
+		systemPrompt:     systemPrompt,
+		baseSystemPrompt: systemPrompt,
+		baseModel:        apiClient.GetModel(),
 		streamText:     &strings.Builder{},
 		session:        sess,
 		expandedGroups:   make(map[int]bool),
@@ -512,6 +528,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.palette.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
 		m.modelSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
+		m.agentSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
 		m.layout()
 		m.refreshViewport()
 		return m, nil
@@ -985,6 +1002,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+		// Agent selector gets priority when active
+		if m.focus == FocusAgentSelector {
+			var cmd tea.Cmd
+			m.agentSelector, cmd = m.agentSelector.Update(msg)
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
+		// Team selector gets priority when active
+		if m.focus == FocusTeamSelector {
+			var cmd tea.Cmd
+			m.teamSelector, cmd = m.teamSelector.Update(msg)
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
 		// Permission dialog
 		if m.focus == FocusPermission {
 			var cmd tea.Cmd
@@ -1100,6 +1133,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case modelselector.DismissMsg:
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		return m, nil
+
+	case agentselector.AgentSelectedMsg:
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		m.currentAgent = msg.AgentType
+		m = m.applyAgentPersona(msg)
+		return m, nil
+
+	case agentselector.DismissMsg:
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		return m, nil
+
+	case teamselector.TeamSelectedMsg:
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		m = m.applyTeamContext(msg)
+		return m, nil
+
+	case teamselector.DismissMsg:
 		m.focus = FocusPrompt
 		m.prompt.Focus()
 		return m, nil
@@ -1432,6 +1488,110 @@ func (m *Model) updatePaletteState() {
 	m.filePicker.Deactivate()
 }
 
+// applyAgentPersona applies an agent persona to the session:
+// - appends the agent's system prompt to the base system prompt
+// - overrides the model if the agent specifies one
+// - replaces the tool registry filtered by the agent's DisallowedTools
+// If called with an empty AgentType the session is reset to the base Claudio persona.
+func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
+	// Empty AgentType means "remove agent" — restore base state
+	if msg.AgentType == "" {
+		m.systemPrompt = m.baseSystemPrompt
+		m.model = m.baseModel
+		m.apiClient.SetModel(m.baseModel)
+		if m.engine != nil {
+			m.engine.SetSystem(m.baseSystemPrompt)
+		}
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: "Agent persona removed — back to default Claudio"})
+		m.refreshViewport()
+		return m
+	}
+
+	// Append agent system prompt on top of the base (not the already-modified one)
+	base := m.baseSystemPrompt
+	if msg.SystemPrompt != "" {
+		base = m.baseSystemPrompt + "\n\n" + msg.SystemPrompt
+	}
+
+	// Build filtered registry from the original (not previously filtered) registry
+	filtered := m.registry.Clone()
+	for _, name := range msg.DisallowedTools {
+		filtered.Remove(name)
+	}
+
+	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
+	if msg.Model != "" {
+		model := msg.Model
+		if resolved, ok := m.apiClient.ResolveModelShortcut(model); ok {
+			model = resolved
+		}
+		m.model = model
+		m.apiClient.SetModel(model)
+	}
+
+	// Propagate to live engine if it already exists
+	if m.engine != nil {
+		m.engine.SetSystem(base)
+		m.engine.SetRegistry(filtered)
+	}
+
+	// Store so future engine creation picks it up
+	m.systemPrompt = base
+	m.registry = filtered
+
+	label := msg.AgentType
+	if msg.DisplayName != "" {
+		label = msg.DisplayName
+	}
+	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Agent persona: %s", label)})
+	m.refreshViewport()
+	return m
+}
+
+// applyTeamContext appends a team-context block to the system prompt so the
+// active agent always knows which team template to use and what its roster is.
+func (m Model) applyTeamContext(msg teamselector.TeamSelectedMsg) Model {
+	var block string
+	if msg.IsEphemeral {
+		block = `## Active Team
+An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.`
+	} else {
+		var memberLines []string
+		for _, mem := range msg.Members {
+			line := fmt.Sprintf("  - %s (%s)", mem.Name, mem.SubagentType)
+			if mem.Model != "" {
+				line += " model=" + mem.Model
+			}
+			memberLines = append(memberLines, line)
+		}
+		roster := strings.Join(memberLines, "\n")
+		desc := ""
+		if msg.Description != "" {
+			desc = "\nDescription: " + msg.Description
+		}
+		block = fmt.Sprintf(`## Active Team Template: %s%s
+Members:
+%s
+
+Use InstantiateTeam(%q) to create this team, then SpawnTeammate to assign tasks to each member.`,
+			msg.TemplateName, desc, roster, msg.TemplateName)
+	}
+
+	newSystem := m.systemPrompt + "\n\n" + block
+	m.systemPrompt = newSystem
+	if m.engine != nil {
+		m.engine.SetSystem(newSystem)
+	}
+
+	label := msg.TemplateName
+	if msg.IsEphemeral {
+		label = "ephemeral"
+	}
+	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Team context: %s", label)})
+	m.refreshViewport()
+	return m
+}
+
 // ── Handlers ─────────────────────────────────────────────
 
 func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
@@ -1508,6 +1668,9 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	m.approvalCh = make(chan bool, 1)
 	handler := &tuiEventHandler{ch: m.eventCh, approvalCh: m.approvalCh}
 	if m.engineConfig != nil {
+		if m.session != nil && m.session.Current() != nil {
+			m.engineConfig.SessionID = m.session.Current().ID
+		}
 		m.engine = query.NewEngineWithConfig(m.apiClient, m.registry, handler, *m.engineConfig)
 	} else {
 		m.engine = query.NewEngine(m.apiClient, m.registry, handler)
@@ -1853,7 +2016,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 
 	case "teammate_event":
 		if event.teammateEvent != nil {
-			m.handleTeammateEvent(*event.teammateEvent)
+			panelCmd := m.handleTeammateEvent(*event.teammateEvent)
 			m.refreshViewport()
 
 			// Mark team-lead's inbox as read since we consume notifications via the event system
@@ -1894,6 +2057,10 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 					return m.handleSubmit(notification)
 				}
 			}
+
+			if panelCmd != nil {
+				return m, tea.Batch(m.spinner.Tick(), m.waitForEvent(), panelCmd)
+			}
 		}
 	}
 
@@ -1903,16 +2070,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 	// Model shortcut commands: /sonnet, /opus, /haiku, plus any configured provider shortcuts
 	// Temporarily switches the model for just this interaction
-	builtinShortcuts := map[string]string{
-		"sonnet": "claude-sonnet-4-6",
-		"opus":   "claude-opus-4-6",
-		"haiku":  "claude-haiku-4-5-20251001",
-	}
-	// Check built-in shortcuts first, then provider shortcuts
-	modelID, ok := builtinShortcuts[name]
-	if !ok {
-		modelID, ok = m.apiClient.ResolveModelShortcut(name)
-	}
+	modelID, ok := m.apiClient.ResolveModelShortcut(name)
 	if ok {
 		if args == "" {
 			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Usage: /%s <your question>", name)})
@@ -1940,6 +2098,25 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		m.modelSelector = modelselector.NewWithModels(m.apiClient.GetModel(), m.apiClient.GetThinkingMode(), m.apiClient.GetBudgetTokens(), m.apiClient.GetEffortLevel(), extraModels)
 		m.modelSelector.SetWidth(m.width)
 		m.focus = FocusModelSelector
+		m.prompt.Blur()
+		return m, nil
+	}
+
+	// /agent → interactive agent persona picker
+	if name == "agent" {
+		customDirs := agents.GetCustomDirs()
+		m.agentSelector = agentselector.New(m.currentAgent, customDirs...)
+		m.agentSelector.SetWidth(m.width)
+		m.focus = FocusAgentSelector
+		m.prompt.Blur()
+		return m, nil
+	}
+
+	// /team → team template picker
+	if name == "team" {
+		m.teamSelector = teamselector.New(m.teamTemplatesDir)
+		m.teamSelector.SetWidth(m.width)
+		m.focus = FocusTeamSelector
 		m.prompt.Blur()
 		return m, nil
 	}
@@ -2747,6 +2924,19 @@ func (m *Model) persistPermissionRule(rule config.PermissionRule) {
 		return false
 	}
 
+	// Debug logging.
+	if f, err := os.OpenFile("/tmp/claudio-perm-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(f, "[persistPermissionRule] rule tool=%q pattern=%q behavior=%q\n", rule.Tool, rule.Pattern, rule.Behavior)
+		fmt.Fprintf(f, "  appCtx.Config.PermissionRules=%d engineConfig.PermissionRules=%d engine=%v\n",
+			len(m.appCtx.Config.PermissionRules), func() int {
+				if m.engineConfig != nil {
+					return len(m.engineConfig.PermissionRules)
+				}
+				return -1
+			}(), m.engine != nil)
+		f.Close()
+	}
+
 	// Add to live config (skip if already present).
 	if !hasDuplicate(m.appCtx.Config.PermissionRules) {
 		m.appCtx.Config.PermissionRules = append(m.appCtx.Config.PermissionRules, rule)
@@ -3111,6 +3301,9 @@ func (m *Model) doSwitchSession(id string) {
 		if m.engine == nil {
 			handler := &tuiEventHandler{ch: m.eventCh, approvalCh: m.approvalCh}
 			if m.engineConfig != nil {
+				if m.session != nil && m.session.Current() != nil {
+					m.engineConfig.SessionID = m.session.Current().ID
+				}
 				m.engine = query.NewEngineWithConfig(m.apiClient, m.registry, handler, *m.engineConfig)
 			} else {
 				m.engine = query.NewEngine(m.apiClient, m.registry, handler)
@@ -3262,7 +3455,7 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 	// convert them to task-notification messages so the lead can act on them.
 	for _, ev := range rt.TeammateEvents {
 		if ev.teammateEvent != nil {
-			m.handleTeammateEvent(*ev.teammateEvent)
+			_ = m.handleTeammateEvent(*ev.teammateEvent)
 
 			if ev.teammateEvent.Type == "complete" || ev.teammateEvent.Type == "error" {
 				taskInfo := ""
@@ -3457,7 +3650,8 @@ func (m *Model) openAgentDetail(agentID string) (Model, tea.Cmd) {
 }
 
 // handleTeammateEvent renders agent lifecycle events inline in the main chat.
-func (m *Model) handleTeammateEvent(event teams.TeammateEvent) {
+// Returns a tea.Cmd when the agents panel needs to be opened/ticked.
+func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(event.Color))
 	name := nameStyle.Render(event.AgentName)
 
@@ -3471,6 +3665,16 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) {
 			Type:    MsgSystem,
 			Content: fmt.Sprintf("◐ %s started — %s", name, task),
 		})
+		// Auto-open the Agents panel (without stealing focus) when a background agent starts,
+		// and always restart the refresh ticker so a stale/open panel updates too.
+		if event.Background {
+			if m.activePanelID != PanelAgents {
+				prevFocus := m.focus
+				m.openPanel(PanelAgents)
+				m.focus = prevFocus // restore focus so the user stays in the prompt
+			}
+			return teampanel.ScheduleRefresh()
+		}
 	case "complete":
 		result := event.Text
 		if result == "" {
@@ -3486,6 +3690,7 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) {
 			Content: fmt.Sprintf("✗ %s failed — %s", name, event.Text),
 		})
 	}
+	return nil
 }
 
 // handleAgentMessage handles >>agent message syntax.
@@ -4519,6 +4724,14 @@ func (m Model) View() string {
 		overlay := m.modelSelector.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
+	if m.agentSelector.IsActive() {
+		overlay := m.agentSelector.View()
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+	}
+	if m.teamSelector.IsActive() {
+		overlay := m.teamSelector.View()
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+	}
 	if m.whichKey.IsActive() {
 		overlay := m.whichKey.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
@@ -4604,8 +4817,12 @@ func (m Model) View() string {
 	hint := m.statusHint()
 	ctxUsed, ctxMax := m.contextBudget()
 	teamSummary, unreadMail := m.teamStatus()
+	displayModel := m.model
+	if m.currentAgent != "" {
+		displayModel = m.currentAgent
+	}
 	sections = append(sections, renderStatusBar(m.width, StatusBarState{
-		Model:       m.model,
+		Model:       displayModel,
 		Tokens:      m.totalTokens,
 		Cost:        m.totalCost,
 		Turns:       m.turns,
@@ -4903,6 +5120,9 @@ func (m Model) statusHint() string {
 	}
 	if m.focus == FocusModelSelector {
 		return "\u2191\u2193 select · enter confirm · esc cancel"
+	}
+	if m.focus == FocusAgentSelector {
+		return "j/k navigate \u00B7 enter select \u00B7 esc cancel"
 	}
 	if m.palette.IsActive() {
 		return "\u2191\u2193 navigate · tab complete · enter select · esc close"

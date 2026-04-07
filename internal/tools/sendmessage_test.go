@@ -13,7 +13,7 @@ import (
 func setupSendMessageTool(t *testing.T) (*SendMessageTool, *teams.Manager) {
 	t.Helper()
 	dir := t.TempDir()
-	mgr := teams.NewManager(dir)
+	mgr := teams.NewManager(dir, "")
 	if _, err := mgr.CreateTeam("test-team", "A test team", "sess-1", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestSendMessageTool_FallsBackToFields(t *testing.T) {
 }
 
 func TestSendMessageTool_NoTeamContext(t *testing.T) {
-	tool := &SendMessageTool{Manager: teams.NewManager(t.TempDir())}
+	tool := &SendMessageTool{Manager: teams.NewManager(t.TempDir(), "")}
 
 	input, _ := json.Marshal(sendMessageInput{To: "someone", Message: "hi"})
 	result, err := tool.Execute(context.Background(), input)
@@ -260,7 +260,7 @@ func TestSendMessageTool_RunnerNoActiveTeam(t *testing.T) {
 // Context takes priority over Runner's active team.
 func TestSendMessageTool_ContextOverridesRunner(t *testing.T) {
 	dir := t.TempDir()
-	mgr := teams.NewManager(dir)
+	mgr := teams.NewManager(dir, "")
 	// Create two teams
 	if _, err := mgr.CreateTeam("team-alpha", "Alpha", "s1", ""); err != nil {
 		t.Fatal(err)

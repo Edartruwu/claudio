@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,11 +12,13 @@ import (
 	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
-// TaskStore holds in-memory tasks (backed by SQLite in production).
+// TaskStore holds tasks in memory and optionally persists them to SQLite.
 type TaskStore struct {
-	mu     sync.RWMutex
-	tasks  map[string]*Task
-	nextID int
+	mu             sync.RWMutex
+	tasks          map[string]*Task
+	nextID         int
+	db             *sql.DB
+	currentSession string
 }
 
 // Task represents a tracked work item.
@@ -34,6 +37,74 @@ var GlobalTaskStore = &TaskStore{
 	tasks: make(map[string]*Task),
 }
 
+// SetDB wires a SQLite database for persistence, then loads any existing tasks.
+func (s *TaskStore) SetDB(db *sql.DB) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db = db
+	s.initDB()
+}
+
+func (s *TaskStore) initDB() {
+	if s.db == nil {
+		return
+	}
+	s.db.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
+		subject TEXT NOT NULL,
+		description TEXT,
+		status TEXT DEFAULT 'pending',
+		assigned_to TEXT,
+		created_at DATETIME,
+		updated_at DATETIME,
+		PRIMARY KEY (id, session_id)
+	)`)
+}
+
+// LoadForSession clears the in-memory store and loads only tasks belonging to sessionID.
+func (s *TaskStore) LoadForSession(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tasks = make(map[string]*Task)
+	s.nextID = 0
+	s.currentSession = sessionID
+	if s.db == nil || sessionID == "" {
+		return
+	}
+	rows, err := s.db.Query(`SELECT id, subject, description, status, assigned_to, created_at, updated_at FROM team_tasks WHERE session_id = ? AND status != 'deleted' ORDER BY CAST(id AS INTEGER)`, sessionID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	maxID := 0
+	for rows.Next() {
+		var t Task
+		var assignedTo sql.NullString
+		if err := rows.Scan(&t.ID, &t.Subject, &t.Description, &t.Status, &assignedTo, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			continue
+		}
+		if assignedTo.Valid {
+			t.AssignedTo = assignedTo.String
+		}
+		s.tasks[t.ID] = &t
+		var idNum int
+		fmt.Sscanf(t.ID, "%d", &idNum)
+		if idNum > maxID {
+			maxID = idNum
+		}
+	}
+	s.nextID = maxID
+}
+
+func (s *TaskStore) saveToDB(t *Task) {
+	if s.db == nil {
+		return
+	}
+	s.db.Exec(`INSERT OR REPLACE INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, s.currentSession, t.Subject, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt)
+}
+
 // List returns all non-deleted tasks sorted by numeric ID.
 func (s *TaskStore) List() []*Task {
 	s.mu.RLock()
@@ -47,6 +118,26 @@ func (s *TaskStore) List() []*Task {
 	return out
 }
 
+// CompleteByIDs marks all pending/in_progress tasks with matching IDs as the given status.
+func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var affected []*Task
+	idSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		idSet[strings.TrimPrefix(id, "#")] = true
+	}
+	for _, t := range s.tasks {
+		if idSet[t.ID] && (t.Status == "pending" || t.Status == "in_progress") {
+			t.Status = status
+			t.UpdatedAt = time.Now()
+			s.saveToDB(t)
+			affected = append(affected, t)
+		}
+	}
+	return affected
+}
+
 // CompleteByAssignee marks all pending/in_progress tasks assigned to the given agent
 // as the specified status ("completed" or "failed"). Returns the affected tasks.
 func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
@@ -57,6 +148,7 @@ func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
 		if t.AssignedTo == agentName && (t.Status == "pending" || t.Status == "in_progress") {
 			t.Status = status
 			t.UpdatedAt = time.Now()
+			s.saveToDB(t)
 			affected = append(affected, t)
 		}
 	}
@@ -126,6 +218,7 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		UpdatedAt:   time.Now(),
 	}
 	store.tasks[id] = task
+	store.saveToDB(task)
 	store.mu.Unlock()
 
 	return &Result{Content: fmt.Sprintf("Task #%s created: %s", id, in.Subject)}, nil
@@ -245,6 +338,7 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		task.Description = in.Description
 	}
 	task.UpdatedAt = time.Now()
+	store.saveToDB(task)
 
 	return &Result{Content: fmt.Sprintf("Task #%s updated", in.TaskID)}, nil
 }

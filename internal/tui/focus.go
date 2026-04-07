@@ -8,6 +8,8 @@ const (
 	FocusViewport                    // vim-navigable chat viewport
 	FocusPermission                  // tool approval dialog
 	FocusModelSelector               // model picker
+	FocusAgentSelector               // agent persona picker
+	FocusTeamSelector                // team template picker
 	FocusPanel                       // any side panel has focus
 	FocusPlanApproval                // plan approval dialog after ExitPlanMode
 	FocusAskUser                     // AskUser question dialog

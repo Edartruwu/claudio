@@ -354,6 +354,9 @@ func DefaultRegistry() *Registry {
 	r.Register(&TeamCreateTool{deferrable: newDeferrable("create team multi-agent collaboration")})
 	r.Register(&TeamDeleteTool{deferrable: newDeferrable("delete remove team")})
 	r.Register(&SendMessageTool{deferrable: newDeferrable("send message to team agent")})
+	r.Register(&SpawnTeammateTool{deferrable: newDeferrable("spawn teammate agent background parallel named")})
+	r.Register(&SaveTeamTemplateTool{deferrable: newDeferrable("save team template reuse composition")})
+	r.Register(&InstantiateTeamTool{deferrable: newDeferrable("instantiate team template load roster")})
 
 	// Memory access (Store injected later)
 	r.Register(&MemoryTool{deferrable: newDeferrable("memory search read list persistent context")})

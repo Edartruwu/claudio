@@ -167,7 +167,7 @@ func (h *mockEventHandler) getEvents() []TeammateEvent {
 func setupRunner(t *testing.T, runFn RunAgentFunc) (*TeammateRunner, *Manager) {
 	t.Helper()
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	_, err := mgr.CreateTeam("test-team", "test", "sess-1", "")
 	if err != nil {
 		t.Fatalf("CreateTeam: %v", err)
@@ -629,7 +629,7 @@ func TestTeammateRunner_SpawnStoresModelInState(t *testing.T) {
 
 func TestTeammateRunner_SpawnFallsBackToTeamModel(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	// Create team with default model "sonnet"
 	_, err := mgr.CreateTeam("model-team", "test", "sess-1", "sonnet")
 	if err != nil {
@@ -659,7 +659,7 @@ func TestTeammateRunner_SpawnFallsBackToTeamModel(t *testing.T) {
 
 func TestTeammateRunner_PerAgentModelOverridesTeamDefault(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	// Create team with default model "haiku"
 	_, err := mgr.CreateTeam("override-team", "test", "sess-1", "haiku")
 	if err != nil {
@@ -690,7 +690,7 @@ func TestTeammateRunner_PerAgentModelOverridesTeamDefault(t *testing.T) {
 
 func TestTeammateRunner_ModelPassedToContextDecorator(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	_, err := mgr.CreateTeam("ctx-model-team", "test", "sess-1", "")
 	if err != nil {
 		t.Fatal(err)
@@ -726,7 +726,7 @@ func TestTeammateRunner_ModelPassedToContextDecorator(t *testing.T) {
 
 func TestTeammateRunner_MixedModelsInTeam(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	// Team default is "haiku"
 	_, err := mgr.CreateTeam("mixed-team", "test", "sess-1", "haiku")
 	if err != nil {
@@ -799,7 +799,7 @@ func TestTeammateRunner_NoModelNoTeamDefault(t *testing.T) {
 
 func TestTeammateRunner_PerTeamMailboxIsolation(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	mgr.CreateTeam("team-a", "test", "sess-1", "")
 	mgr.CreateTeam("team-b", "test", "sess-2", "")
 
@@ -849,7 +849,7 @@ func TestTeammateRunner_PerTeamMailboxIsolation(t *testing.T) {
 
 func TestTeammateRunner_GetMailbox_ActiveTeam(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	mgr.CreateTeam("team-x", "test", "sess-1", "")
 	mgr.CreateTeam("team-y", "test", "sess-2", "")
 
@@ -891,10 +891,11 @@ func TestTeammateRunner_TaskCompleter_Success(t *testing.T) {
 	})
 
 	var mu sync.Mutex
-	var completedAgent, completedStatus string
-	runner.SetTaskCompleter(func(agentName, status string) {
+	var completedIDs []string
+	var completedStatus string
+	runner.SetTaskCompleter(func(taskIDs []string, status string) {
 		mu.Lock()
-		completedAgent = agentName
+		completedIDs = taskIDs
 		completedStatus = status
 		mu.Unlock()
 	})
@@ -903,14 +904,15 @@ func TestTeammateRunner_TaskCompleter_Success(t *testing.T) {
 		TeamName:  "test-team",
 		AgentName: "task-agent",
 		Prompt:    "do work",
+		TaskIDs:   []string{"42"},
 	})
 
 	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
 
 	mu.Lock()
 	defer mu.Unlock()
-	if completedAgent != "task-agent" {
-		t.Errorf("expected agent name %q, got %q", "task-agent", completedAgent)
+	if len(completedIDs) == 0 || completedIDs[0] != "42" {
+		t.Errorf("expected task IDs [\"42\"], got %v", completedIDs)
 	}
 	if completedStatus != "completed" {
 		t.Errorf("expected status %q, got %q", "completed", completedStatus)
@@ -923,10 +925,11 @@ func TestTeammateRunner_TaskCompleter_Failure(t *testing.T) {
 	})
 
 	var mu sync.Mutex
-	var completedAgent, completedStatus string
-	runner.SetTaskCompleter(func(agentName, status string) {
+	var completedIDs []string
+	var completedStatus string
+	runner.SetTaskCompleter(func(taskIDs []string, status string) {
 		mu.Lock()
-		completedAgent = agentName
+		completedIDs = taskIDs
 		completedStatus = status
 		mu.Unlock()
 	})
@@ -935,14 +938,15 @@ func TestTeammateRunner_TaskCompleter_Failure(t *testing.T) {
 		TeamName:  "test-team",
 		AgentName: "fail-agent",
 		Prompt:    "fail",
+		TaskIDs:   []string{"99"},
 	})
 
 	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
 
 	mu.Lock()
 	defer mu.Unlock()
-	if completedAgent != "fail-agent" {
-		t.Errorf("expected agent name %q, got %q", "fail-agent", completedAgent)
+	if len(completedIDs) == 0 || completedIDs[0] != "99" {
+		t.Errorf("expected task IDs [\"99\"], got %v", completedIDs)
 	}
 	if completedStatus != "failed" {
 		t.Errorf("expected status %q, got %q", "failed", completedStatus)
@@ -989,7 +993,7 @@ func TestTeammateRunner_CompletionMailboxMessage(t *testing.T) {
 
 func TestTeammateRunner_GetMailbox_NoActiveTeam(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
 		return "ok", nil
 	})
@@ -1004,7 +1008,7 @@ func TestTeammateRunner_GetMailbox_NoActiveTeam(t *testing.T) {
 
 func TestTeammateRunner_KillTeam_OnlyAffectsTargetTeam(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	if _, err := mgr.CreateTeam("team-a", "", "sess-a", ""); err != nil {
 		t.Fatalf("CreateTeam team-a: %v", err)
 	}
@@ -1092,7 +1096,7 @@ func TestTeammateRunner_CleanupTeam_RemovesStateAndMailbox(t *testing.T) {
 
 func TestTeammateRunner_CleanupTeam_DoesNotTouchOtherTeams(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	if _, err := mgr.CreateTeam("team-a", "", "sess-a", ""); err != nil {
 		t.Fatalf("CreateTeam team-a: %v", err)
 	}
@@ -1126,7 +1130,7 @@ func TestTeammateRunner_CreateDeleteCycles_NoLeak(t *testing.T) {
 	// Verify that repeatedly creating and tearing down teams doesn't grow
 	// the runner's internal maps.
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, "")
 	runner := NewTeammateRunner(mgr, func(ctx context.Context, system, prompt string) (string, error) {
 		<-ctx.Done()
 		return "", ctx.Err()

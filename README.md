@@ -959,93 +959,122 @@ Claudio supports spawning parallel worker agents ("teammates") coordinated by a 
 ### How it works
 
 ```
-┌─────────────┐  TeamCreate   ┌─────────┐  creates config + inboxes/
-│  Team Lead  │──────────────▶│ Manager │
-│  (you/LLM)  │               └─────────┘
-│             │  Agent tool    ┌──────────────┐
-│             │───────────────▶│TeammateRunner│  Spawn() → goroutines
-│             │               └──────┬───────┘
-│             │               ┌──────▼───────┐
-│             │               │ Teammate 1   │──┐
-│             │               │ Teammate 2   │  │ each runs its own
-│             │               │ Teammate 3   │  │ LLM conversation
-│             │               └──────────────┘  │
-│             │                      │          │
-│             │    on completion:    │          │
-│             │    mailbox → lead    ▼          │
-│             │◀──────────────── Mailbox ◀──────┘
-│             │               (file JSON        
-│             │                + flock)          
+┌─────────────┐  TeamCreate      ┌─────────┐  creates config + inboxes
+│  Team Lead  │─────────────────▶│ Manager │
+│  (you/LLM)  │                  └─────────┘
+│             │  SpawnTeammate    ┌──────────────┐
+│             │─────────────────▶│TeammateRunner│  Spawn() → goroutines
+│             │                  └──────┬───────┘
+│             │           ┌────────────▼────────────┐
+│             │           │ Teammate 1 (backend-mid) │──┐
+│             │           │ Teammate 2 (backend-mid) │  │ each runs its own
+│             │           │ Teammate 3 (backend-sr)  │  │ LLM conversation
+│             │           └─────────────────────────┘  │  + worktree
+│             │                       │                │
+│             │    on completion:     │                │
+│             │    mailbox → lead     ▼                │
+│             │◀──────────────── Mailbox ◀─────────────┘
+│             │               (file JSON + flock)
 └─────────────┘
 ```
 
 1. **Team creation** — creates a team config and inbox directory under `~/.claudio/teams/{name}/`
-2. **Spawning** — each teammate launches as a goroutine running a full `query.Engine` (LLM loop with tool access). Sub-agents get a cloned tool registry with the `Agent` tool **removed** to prevent infinite recursion.
-3. **Messaging** — agents communicate via file-based JSON inboxes with file locking (`flock`). Supports direct messages, broadcasts (`*`), and structured control messages (shutdown requests, plan approvals).
-4. **Completion** — when a teammate finishes, it automatically sends a completion message to the team lead's inbox with its result.
-5. **Cleanup** — the lead can kill individual teammates or the whole team. `DeleteTeam` fails if members are still active.
-
-### Team commands
-
-```bash
-# Create a team (you become the lead)
-/team create my-team "Research and implement auth system"
-
-# Spawn teammates with specific tasks
-/team spawn my-team researcher "Research OAuth libraries for Go"
-/team spawn my-team implementer "Implement the auth middleware"
-
-# Send a direct message to a teammate
-/team message my-team researcher "Focus on JWT-based approaches"
-
-# Broadcast to all teammates
-/team message my-team * "Wrap up, we're merging in 10 minutes"
-
-# Check team status
-/team status my-team
-
-# Delete the team when done
-/team delete my-team
-```
+2. **Spawning** — each teammate launches as a goroutine running a full `query.Engine` with its own worktree (git-isolated branch). Sub-agents use depth tracking (max depth 2) to allow exploration sub-agents while preventing infinite recursion.
+3. **Worktree isolation** — each teammate gets a fresh `git worktree` branch (`claudio/team/<name>-<id>`), so parallel agents never conflict on the filesystem. Lead merges changes when agents complete.
+4. **Messaging** — agents communicate via file-based JSON inboxes with file locking (`flock`). Supports direct messages, broadcasts (`*`), and structured control messages.
+5. **Completion** — when a teammate finishes, it sends a completion message to the team lead's mailbox. The lead's engine picks it up on the next turn and injects it as a `system-reminder`.
+6. **Task tracking** — tasks created with `TaskCreate` can be linked to agents via `task_ids`. They auto-complete when the agent finishes and persist to SQLite across restarts.
 
 ### Team tools (available to the LLM)
 
 | Tool | Description |
 |------|-------------|
 | `TeamCreate` | Create a new team (caller becomes lead) |
-| `TeamDelete` | Delete a team — cancels running members, drains them, cleans up config and in-memory state |
+| `TeamDelete` | Delete a team — cancels running members, drains, cleans up |
+| `SpawnTeammate` | Spawn a named teammate from a crystallized agent persona |
 | `SendMessage` | Send direct or broadcast messages between agents |
+| `SaveTeamTemplate` | Save the current team's roster as a reusable template |
+| `InstantiateTeam` | Re-create a team from a saved template |
+| `TaskCreate` | Create a tracked task, optionally assigned to an agent |
+| `TaskUpdate` | Update task status / description |
 
-The `Agent` tool handles spawning — when a team exists, the LLM can spawn teammates as background agents that join the team.
+### Team templates — reusable team compositions
 
-### Example: parallel research and implementation
+Save a team once, reuse it forever:
+
+```bash
+# After building a team manually, save its composition
+SaveTeamTemplate("backend-team")
+# → writes ~/.claudio/team-templates/backend-team.json
+
+# In any future session, restore the full team in one call
+InstantiateTeam("backend-team")
+# → creates the team + pre-registers all members with their subagent_type
+```
+
+Template JSON format (`~/.claudio/team-templates/backend-team.json`):
+
+```json
+{
+  "name": "backend-team",
+  "description": "Backend feature team — mid for tasks, senior for architecture",
+  "members": [
+    { "name": "implementer", "subagent_type": "backend-mid",    "model": "claude-sonnet-4-6" },
+    { "name": "architect",   "subagent_type": "backend-senior", "model": "claude-opus-4-6"   }
+  ]
+}
+```
+
+Pick a template interactively with `/team` in the TUI — opens a picker showing all saved templates with their member rosters. The selected template is injected into the agent's system prompt so it knows which agents to use and when.
+
+**Dynamic scaling:** templates define *roles*, not headcount. The lead can always spawn additional agents of the same `subagent_type` with different names for parallel tasks:
 
 ```
-You: "Set up a team to add OAuth support to our API"
+InstantiateTeam("backend-team")
+SpawnTeammate(name="implementer-1", subagent_type="backend-mid", prompt="task A", task_ids=["1"])
+SpawnTeammate(name="implementer-2", subagent_type="backend-mid", prompt="task B", task_ids=["2"])
+SpawnTeammate(name="architect",     subagent_type="backend-senior", prompt="task C", task_ids=["3"])
+```
 
-Claudio (as team lead):
-  1. Creates team "oauth-team"
-  2. Spawns "researcher" → "Find the best Go OAuth2 library, compare options"
-  3. Spawns "implementer" → "Implement OAuth2 middleware once researcher reports back"
-  4. Researcher finishes → sends findings to team lead inbox
-  5. Lead forwards relevant info to implementer via SendMessage
-  6. Implementer finishes → sends completion message
-  7. Lead reviews results and reports back to you
+### Example: parallel feature implementation
+
+```
+You: /team  →  pick "backend-team"
+You: "Build the OAuth module — split across agents"
+
+Prab (team lead):
+  1. InstantiateTeam("backend-team")
+  2. TaskCreate × 3 (service layer, migrations, tests)
+  3. SpawnTeammate("impl-1", backend-mid,    "Write OAuth service",   task_ids=["1"])
+  4. SpawnTeammate("impl-2", backend-mid,    "Write migrations",      task_ids=["2"])
+  5. SpawnTeammate("arch",   backend-senior, "Review + write tests",  task_ids=["3"])
+  → All 3 run in parallel in isolated worktrees
+  → Tasks auto-complete when agents finish
+  → Lead merges worktrees + does final build check
 ```
 
 ### Example: code review team
 
 ```
-You: "Create a review team for the changes in this PR"
+You: "Review the changes in this PR"
 
 Claudio:
   1. Creates team "review-team"
-  2. Spawns "security-reviewer" → "Check for security issues in the diff"
-  3. Spawns "style-reviewer" → "Check code style and naming conventions"
-  4. Spawns "test-reviewer" → "Verify test coverage for new code"
-  5. Each reviewer works in parallel, sends findings to lead
-  6. Lead consolidates all feedback into a single review summary
+  2. SpawnTeammate "security" → "Check for security issues"
+  3. SpawnTeammate "style"    → "Check code style and naming"
+  4. SpawnTeammate "tests"    → "Verify test coverage"
+  5. All run in parallel, report back to lead
+  6. Lead consolidates findings into a single review summary
 ```
+
+### Sync vs async spawning
+
+| Mode | Behaviour | Use when |
+|------|-----------|----------|
+| `run_in_background: false` (default) | Lead blocks until agent completes, result returned inline | You need the result before the next step |
+| `run_in_background: true` | Lead continues immediately; completion arrives via mailbox poll | Parallel fire-and-forget tasks |
+
+Background agents auto-open the **Agents panel** (`space a`) in the TUI so you can watch live progress without losing your prompt focus.
 
 ### Teammate identity and status
 

@@ -382,12 +382,22 @@ func (c *Client) GetModelShortcuts() map[string]string {
 	return result
 }
 
+// builtinModelShortcuts maps well-known short names to canonical model IDs.
+var builtinModelShortcuts = map[string]string{
+	"sonnet": "claude-sonnet-4-6",
+	"opus":   "claude-opus-4-6",
+	"haiku":  "claude-haiku-4-5-20251001",
+}
+
 // ResolveModelShortcut returns the model ID for a shortcut, or empty string if not found.
+// Checks user-configured shortcuts first, then built-in shortcuts.
 func (c *Client) ResolveModelShortcut(shortcut string) (string, bool) {
-	if c.modelShortcuts == nil {
-		return "", false
+	if c.modelShortcuts != nil {
+		if id, ok := c.modelShortcuts[shortcut]; ok {
+			return id, true
+		}
 	}
-	id, ok := c.modelShortcuts[shortcut]
+	id, ok := builtinModelShortcuts[shortcut]
 	return id, ok
 }
 

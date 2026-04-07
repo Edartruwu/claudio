@@ -40,6 +40,7 @@ type TeammateEvent struct {
 	Color          string
 	WorktreePath   string // set on complete/error if worktree has changes
 	WorktreeBranch string
+	Background     bool // true when the agent runs in the background (not blocking the lead)
 }
 
 // TeammateEventHandler receives events from teammate execution.
@@ -72,6 +73,11 @@ type TeammateState struct {
 	// EngineMessages holds the full API-level conversation after the agent
 	// completes. Used to resume the conversation when a new message arrives.
 	EngineMessages []api.Message
+
+	// Foreground is true when the lead called WaitForOne on this agent.
+	// In that case the completion event is suppressed — the lead already has
+	// the result directly and a task-notification would be redundant noise.
+	Foreground bool
 
 	cancel context.CancelFunc
 	mu     sync.Mutex
@@ -197,7 +203,8 @@ type CwdInjector func(ctx context.Context, worktreePath, mainRoot string) contex
 
 // TaskCompleter is called when an agent finishes to update assigned tasks.
 // Set by the app layer to bridge teams → tasks without circular imports.
-type TaskCompleter func(agentName, status string)
+// taskIDs are the explicit task IDs to mark; status is "completed" or "failed".
+type TaskCompleter func(taskIDs []string, status string)
 
 // TeammateRunner manages in-process teammate goroutines.
 type TeammateRunner struct {
@@ -270,14 +277,17 @@ func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 
 // SpawnConfig defines how to spawn a teammate.
 type SpawnConfig struct {
-	TeamName    string
-	AgentName   string
-	Prompt      string
-	System      string // system prompt override
-	Model       string // model override
-	MaxTurns    int    // optional max agentic turns (0 = unlimited)
-	Isolation   string // "worktree" for git worktree isolation
-	MemoryDir   string // optional agent-scoped memory directory (for crystallized agents)
+	TeamName     string
+	AgentName    string
+	Prompt       string
+	System       string   // system prompt override
+	Model        string   // model override
+	SubagentType string   // agent definition used (e.g. "backend-senior", "prab")
+	MaxTurns     int      // optional max agentic turns (0 = unlimited)
+	Isolation    string   // "worktree" for git worktree isolation
+	MemoryDir    string   // optional agent-scoped memory directory (for crystallized agents)
+	Foreground   bool     // true when the lead is blocking on WaitForOne — suppresses task-notification
+	TaskIDs      []string // task IDs to auto-complete when agent finishes
 }
 
 // Spawn starts a new teammate goroutine.
@@ -299,7 +309,7 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 	}
 
 	// Add member to team
-	member, err := r.manager.AddMember(cfg.TeamName, cfg.AgentName, cfg.Model, cfg.Prompt)
+	member, err := r.manager.AddMember(cfg.TeamName, cfg.AgentName, cfg.Model, cfg.Prompt, cfg.SubagentType)
 	if err != nil {
 		return nil, err
 	}
@@ -313,6 +323,7 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		Model:        cfg.Model,
 		MaxTurns:     cfg.MaxTurns,
 		MemoryDir:    cfg.MemoryDir,
+		Foreground:   cfg.Foreground,
 		Status:       StatusWorking,
 		StartedAt:    time.Now(),
 		cancel:       cancel,
@@ -390,18 +401,19 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 
 	// Emit started event
 	r.EmitEvent(TeammateEvent{
-		TeamName:  cfg.TeamName,
-		AgentID:   state.Identity.AgentID,
-		AgentName: cfg.AgentName,
-		Type:      "started",
-		Text:      cfg.Prompt,
-		Color:     state.Identity.Color,
+		TeamName:   cfg.TeamName,
+		AgentID:    state.Identity.AgentID,
+		AgentName:  cfg.AgentName,
+		Type:       "started",
+		Text:       cfg.Prompt,
+		Color:      state.Identity.Color,
+		Background: !state.Foreground,
 	})
 
-	// Build system prompt for teammate
-	system := cfg.System
-	if system == "" {
-		system = fmt.Sprintf(`You are %s, a teammate in the "%s" team.
+	// Build system prompt for teammate.
+	// Teammate context is always appended; if the agent has its own persona prompt
+	// (from a crystallized agent or custom agent definition), that comes first.
+	teammateCtx := fmt.Sprintf(`You are %s, a teammate in the "%s" team.
 
 Your role: Complete your assigned task and report results clearly.
 
@@ -412,6 +424,12 @@ Guidelines:
 - When finished, provide a clear summary of what you accomplished
 
 Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
+
+	var system string
+	if cfg.System != "" {
+		system = cfg.System + "\n\n" + teammateCtx
+	} else {
+		system = teammateCtx
 	}
 
 	// Add worktree notice to system prompt
@@ -490,54 +508,21 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		}
 	}
 
-	// Emit completion event (after worktree cleanup so worktree fields reflect final state)
-	if err != nil {
-		state.AddConversation(ConversationEntry{
-			Time:    time.Now(),
-			Type:    "error",
-			Content: state.Error,
-		})
-		r.EmitEvent(TeammateEvent{
-			TeamName:       cfg.TeamName,
-			AgentID:        state.Identity.AgentID,
-			AgentName:      cfg.AgentName,
-			Type:           "error",
-			Text:           state.Error,
-			Color:          state.Identity.Color,
-			WorktreePath:   state.WorktreePath,
-			WorktreeBranch: state.WorktreeBranch,
-		})
-	} else {
-		state.AddConversation(ConversationEntry{
-			Time:    time.Now(),
-			Type:    "complete",
-			Content: truncateForSummary(result, 500),
-		})
-		r.EmitEvent(TeammateEvent{
-			TeamName:       cfg.TeamName,
-			AgentID:        state.Identity.AgentID,
-			AgentName:      cfg.AgentName,
-			Type:           "complete",
-			Text:           truncateForSummary(result, 200),
-			Color:          state.Identity.Color,
-			WorktreePath:   state.WorktreePath,
-			WorktreeBranch: state.WorktreeBranch,
-		})
-	}
-
 	// Auto-complete assigned tasks
-	if r.taskCompleter != nil {
+	if r.taskCompleter != nil && len(cfg.TaskIDs) > 0 {
 		taskStatus := "completed"
 		if state.Status == StatusFailed {
 			taskStatus = "failed"
 		}
-		r.taskCompleter(cfg.AgentName, taskStatus)
+		r.taskCompleter(cfg.TaskIDs, taskStatus)
 	}
 
 	// Update team status
 	r.manager.UpdateMemberStatus(cfg.TeamName, state.Identity.AgentID, state.Status)
 
-	// Send completion notification to leader's inbox
+	// Send completion notification to leader's inbox BEFORE emitting the event,
+	// so the TUI's ReadUnread call (triggered by the event) sees the message and
+	// marks it read — avoiding a race where the inbox write arrives after the read.
 	if mb := r.getMailbox(cfg.TeamName); mb != nil {
 		team, _ := r.manager.GetTeam(cfg.TeamName)
 		if team != nil {
@@ -554,6 +539,47 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				Text:    completionText,
 				Summary: fmt.Sprintf("%s: %s", state.Identity.AgentName, state.Status),
 				Color:   state.Identity.Color,
+			})
+		}
+	}
+
+	// Emit completion event (after worktree cleanup so worktree fields reflect final state).
+	// Suppressed for foreground agents — the lead is blocking on WaitForOne and already
+	// has the result; firing an event would produce a redundant task-notification.
+	if err != nil {
+		state.AddConversation(ConversationEntry{
+			Time:    time.Now(),
+			Type:    "error",
+			Content: state.Error,
+		})
+		if !state.Foreground {
+			r.EmitEvent(TeammateEvent{
+				TeamName:       cfg.TeamName,
+				AgentID:        state.Identity.AgentID,
+				AgentName:      cfg.AgentName,
+				Type:           "error",
+				Text:           state.Error,
+				Color:          state.Identity.Color,
+				WorktreePath:   state.WorktreePath,
+				WorktreeBranch: state.WorktreeBranch,
+			})
+		}
+	} else {
+		state.AddConversation(ConversationEntry{
+			Time:    time.Now(),
+			Type:    "complete",
+			Content: truncateForSummary(result, 500),
+		})
+		if !state.Foreground {
+			r.EmitEvent(TeammateEvent{
+				TeamName:       cfg.TeamName,
+				AgentID:        state.Identity.AgentID,
+				AgentName:      cfg.AgentName,
+				Type:           "complete",
+				Text:           truncateForSummary(result, 200),
+				Color:          state.Identity.Color,
+				WorktreePath:   state.WorktreePath,
+				WorktreeBranch: state.WorktreeBranch,
 			})
 		}
 	}

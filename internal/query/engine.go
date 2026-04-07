@@ -152,6 +152,9 @@ func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandle
 	}
 }
 
+// SetRegistry replaces the tool registry used by the engine (e.g. after an agent persona switch).
+func (e *Engine) SetRegistry(r *tools.Registry) { e.registry = r }
+
 // Close releases resources held by the engine (cleans up persisted tool result files).
 func (e *Engine) Close() {
 	if e.sessionStartFired {
@@ -172,12 +175,20 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	}
 	e.taskRuntime = cfg.TaskRuntime
 	e.sessionID = cfg.SessionID
+	tools.GlobalTaskStore.LoadForSession(cfg.SessionID)
 	e.model = cfg.Model
 	e.permissionMode = cfg.PermissionMode
 	if e.permissionMode == "" {
 		e.permissionMode = "default"
 	}
 	e.permissionRules = cfg.PermissionRules
+	if f, err := os.OpenFile("/tmp/claudio-perm-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(f, "[NewEngineWithConfig] permissionMode=%q permissionRules=%d\n", e.permissionMode, len(e.permissionRules))
+		for i, r := range e.permissionRules {
+			fmt.Fprintf(f, "  rule[%d] tool=%q pattern=%q behavior=%q\n", i, r.Tool, r.Pattern, r.Behavior)
+		}
+		f.Close()
+	}
 	e.costConfirmThresh = cfg.CostConfirmThreshold
 	e.onTurnEnd = cfg.OnTurnEnd
 	return e
@@ -237,6 +248,10 @@ func (e *Engine) SetMailboxPoller(fn func() []string) {
 // SetPermissionRules replaces the engine's permission rules at runtime.
 func (e *Engine) SetPermissionRules(rules []config.PermissionRule) {
 	e.permissionRules = rules
+	if f, err := os.OpenFile("/tmp/claudio-perm-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(f, "[SetPermissionRules] updated to %d rules\n", len(rules))
+		f.Close()
+	}
 }
 
 // Run executes a single user turn: sends the message, processes the AI response,
@@ -1019,6 +1034,10 @@ func (e *Engine) shouldRequireApproval(tool tools.Tool, input json.RawMessage) b
 		return tool.RequiresApproval(input)
 	default: // "default"
 		// Check content-pattern permission rules first (first match wins)
+		if f, err := os.OpenFile("/tmp/claudio-perm-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(f, "[shouldRequireApproval] tool=%q permissionRules=%d\n", tool.Name(), len(e.permissionRules))
+			f.Close()
+		}
 		if behavior, matched := permissions.Match(tool.Name(), input, e.permissionRules); matched {
 			switch behavior {
 			case "allow":

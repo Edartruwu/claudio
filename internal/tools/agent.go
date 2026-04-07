@@ -147,6 +147,21 @@ func MaxTurnsFromContext(ctx context.Context) int {
 	return 0
 }
 
+type ctxKeyAgentDepth struct{}
+
+// WithAgentDepth increments the nesting depth in context.
+func WithAgentDepth(ctx context.Context, d int) context.Context {
+	return context.WithValue(ctx, ctxKeyAgentDepth{}, d)
+}
+
+// AgentDepthFromContext returns the current agent nesting depth (0 = main session).
+func AgentDepthFromContext(ctx context.Context) int {
+	if v, ok := ctx.Value(ctxKeyAgentDepth{}).(int); ok {
+		return v
+	}
+	return 0
+}
+
 type ctxKeySubAgentModel struct{}
 
 // WithSubAgentModel stores a model alias/ID override in context for sub-agent engines.
@@ -179,13 +194,14 @@ type AgentTool struct {
 }
 
 type agentInput struct {
-	Prompt          string `json:"prompt"`
-	Description     string `json:"description,omitempty"`
-	SubagentType    string `json:"subagent_type,omitempty"`
-	Model           string `json:"model,omitempty"`
-	MaxTurns        int    `json:"max_turns,omitempty"`
-	RunInBackground bool   `json:"run_in_background,omitempty"`
-	Isolation       string `json:"isolation,omitempty"` // "worktree"
+	Prompt          string   `json:"prompt"`
+	Description     string   `json:"description,omitempty"`
+	SubagentType    string   `json:"subagent_type,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	MaxTurns        int      `json:"max_turns,omitempty"`
+	RunInBackground bool     `json:"run_in_background,omitempty"`
+	Isolation       string   `json:"isolation,omitempty"` // "worktree"
+	TaskIDs         []string `json:"task_ids,omitempty"`  // task IDs to auto-complete when agent finishes
 }
 
 func (t *AgentTool) Name() string { return "Agent" }
@@ -224,6 +240,11 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 				"type": "boolean",
 				"description": "Set to true to run this agent in the background"
 			},
+			"task_ids": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Task IDs (e.g. [\"1\",\"3\"]) to automatically mark completed when this agent finishes. Use the IDs returned by TaskCreate."
+			},
 			"isolation": {
 				"type": "string",
 				"description": "Isolation mode. \"worktree\" creates a temporary git worktree.",
@@ -246,6 +267,17 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 	if in.Prompt == "" {
 		return &Result{Content: "No prompt provided", IsError: true}, nil
 	}
+
+	// Enforce max nesting depth (main=0, teammate=1, sub-agent=2).
+	// This prevents infinite recursion while still allowing teammates to spawn
+	// read-only exploration sub-agents (e.g. Explore).
+	currentDepth := AgentDepthFromContext(ctx)
+	const maxAgentDepth = 2
+	if currentDepth >= maxAgentDepth {
+		return &Result{Content: fmt.Sprintf("Agent nesting limit reached (depth %d/%d)", currentDepth, maxAgentDepth), IsError: true}, nil
+	}
+	// Pass incremented depth into sub-agent context
+	ctx = WithAgentDepth(ctx, currentDepth+1)
 
 	desc := in.Description
 	if desc == "" {
@@ -286,13 +318,15 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		teamName := t.TeamRunner.ActiveTeamName()
 		shortName := slugifyName(desc)
 		state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
-			TeamName:  teamName,
-			AgentName: shortName,
-			Prompt:    in.Prompt,
-			System:    agentDef.SystemPrompt,
-			Model:     modelOverride,
-			MaxTurns:  maxTurns,
-			MemoryDir: agentDef.MemoryDir,
+			TeamName:   teamName,
+			AgentName:  shortName,
+			Prompt:     in.Prompt,
+			System:     agentDef.SystemPrompt,
+			Model:      modelOverride,
+			MaxTurns:   maxTurns,
+			MemoryDir:  agentDef.MemoryDir,
+			Foreground: !in.RunInBackground,
+			TaskIDs:    in.TaskIDs,
 		})
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Failed to spawn teammate: %v", err), IsError: true}, nil
