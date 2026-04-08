@@ -78,15 +78,35 @@ func (t *SpawnTeammateTool) Description() string {
 Unlike the generic Agent tool, SpawnTeammate:
 - Always routes through the team runner (visible in TUI, cancellable)
 - Auto-creates a default team if none is active
-- Accepts an explicit name so you can reference this agent later via SendMessage
+- Accepts a name so you can reference this agent later via SendMessage
 - Links task IDs that are auto-completed when the agent finishes
 
 Use this whenever you want to delegate work to a named collaborator you can track, message, or wait on. Use Agent for anonymous one-off sub-tasks.
 
+## Naming and parallel instances
+
+The name you provide is a display label. You can spawn multiple agents with the same role
+by using the same base name — if that name is already running, the system auto-suffixes it:
+  maya → already running → new agent spawns as maya-2, maya-3, etc.
+
+The RESOLVED name is always shown in the result. Use that resolved name (not the base name)
+when calling SendMessage to reach a specific instance.
+
+Example — two parallel frontend-mid agents:
+  SpawnTeammate(name="maya", ...) → spawns "maya"
+  SpawnTeammate(name="maya", ...) → spawns "maya-2"  ← use "maya-2" for SendMessage
+
+## Name reuse for finished agents
+
+If the name matches an agent that has already FINISHED (not currently running), SpawnTeammate
+replaces it with a completely fresh agent — clean context, no history. This is the upsert path.
+To continue an idle agent's conversation instead, use SendMessage (which triggers Revive and
+preserves the full history).
+
 ## Workflow
 1. (Optional) TeamCreate to name the team
-2. SpawnTeammate — spawn each worker with a name and task
-3. SendMessage — coordinate (use the name you gave)
+2. SpawnTeammate — spawn each worker; note the resolved name in the result
+3. SendMessage — coordinate using the resolved name
 4. SpawnTeammate with run_in_background:false — wait for a specific agent to finish
 
 ## Handling questions from teammates
@@ -98,7 +118,7 @@ Sub-agents are instructed to stop and ask when they hit decisions they cannot re
 they have gone idle with their full conversation history preserved. To answer:
 
 1. Read the question and decide the answer (consult the user via AskUser if needed)
-2. Call SendMessage(<teammate name>, <your answer>)
+2. Call SendMessage(<resolved name>, <your answer>)
 3. The idle teammate automatically resumes with full history intact and continues from where it left off
 
 Do NOT re-spawn them with SpawnTeammate — that creates a fresh agent with no history. SendMessage is the correct path; it triggers Revive which preserves the conversation.`
@@ -152,6 +172,23 @@ func (t *SpawnTeammateTool) InputSchema() json.RawMessage {
 func (t *SpawnTeammateTool) IsReadOnly() bool                        { return false }
 func (t *SpawnTeammateTool) RequiresApproval(_ json.RawMessage) bool { return false }
 
+// resolveAgentName returns a name that is safe to spawn under.
+// If baseName is free (not found, or found but finished), it is returned as-is.
+// If baseName is already running, we try baseName-2, baseName-3, … up to -99.
+func resolveAgentName(runner *teams.TeammateRunner, baseName string) (string, bool) {
+	existing, ok := runner.GetStateByName(baseName)
+	if !ok || existing.Status != teams.StatusWorking {
+		return baseName, true
+	}
+	for i := 2; i <= 99; i++ {
+		candidate := fmt.Sprintf("%s-%d", baseName, i)
+		if ex, ok2 := runner.GetStateByName(candidate); !ok2 || ex.Status != teams.StatusWorking {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
 func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in spawnTeammateInput
 	if err := json.Unmarshal(input, &in); err != nil {
@@ -195,51 +232,22 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 
 	background := in.backgroundBool()
 
-	// Upsert semantics:
-	//  - alive (StatusWorking)  → don't touch it, report it's already running
-	//  - terminal (complete/failed/shutdown) → revive with new prompt, preserving history
-	//  - not found → fresh spawn
-	if existing, ok := t.Runner.GetStateByName(in.Name); ok {
-		agentID := existing.Identity.AgentID
-
-		if existing.Status == teams.StatusWorking {
-			return &Result{Content: fmt.Sprintf(
-				"Teammate %q is already running in team %q (agent ID: %s). Use SendMessage to communicate with it.",
-				in.Name, teamName, agentID,
-			)}, nil
-		}
-
-		// Terminal agent — revive with the new prompt (history preserved).
-		if err := t.Runner.Revive(in.Name, in.Prompt); err != nil {
-			return &Result{Content: fmt.Sprintf("Failed to revive teammate %q: %v", in.Name, err), IsError: true}, nil
-		}
-
-		if background {
-			return &Result{Content: fmt.Sprintf(
-				"Teammate %q revived in team %q (agent ID: %s)\nRole: %s\nOpen the Agents panel (space a) to monitor progress.",
-				in.Name, teamName, agentID, agentDef.Type,
-			)}, nil
-		}
-
-		done := t.Runner.WaitForOne(agentID, 30*time.Minute)
-		if !done {
-			return &Result{Content: fmt.Sprintf("Teammate %q timed out after 30 minutes", in.Name), IsError: true}, nil
-		}
-		if existing.Error != "" {
-			return &Result{Content: fmt.Sprintf("Teammate %q error: %s", in.Name, existing.Error), IsError: true}, nil
-		}
-		reviveResult := existing.Result
-		const maxBytesRevive = 50_000
-		if len(reviveResult) > maxBytesRevive {
-			reviveResult = reviveResult[:maxBytesRevive] + fmt.Sprintf("\n[Output truncated at %d bytes]", maxBytesRevive)
-		}
-		return &Result{Content: reviveResult}, nil
+	// Resolve the actual name to use.
+	// If the requested name is already running, auto-suffix (maya → maya-2, maya-3, …).
+	resolvedName, ok := resolveAgentName(t.Runner, in.Name)
+	if !ok {
+		return &Result{Content: fmt.Sprintf(
+			"Cannot spawn %q: all 99 parallel slots for this name are already running.",
+			in.Name,
+		), IsError: true}, nil
 	}
 
-	// Agent not found — spawn fresh.
+	// Upsert semantics: whether the name is new or previously finished, always spawn fresh.
+	// Spawn → AddMember removes the old terminal entry and creates a clean one;
+	// r.teammates[agentID] is overwritten with a brand-new state (no history).
 	state, err := t.Runner.Spawn(teams.SpawnConfig{
 		TeamName:     teamName,
-		AgentName:    in.Name,
+		AgentName:    resolvedName,
 		Prompt:       in.Prompt,
 		System:       agentDef.SystemPrompt,
 		Model:        modelOverride,
@@ -251,12 +259,15 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		TaskIDs:      in.taskIDStrings(),
 	})
 	if err != nil {
-		return &Result{Content: fmt.Sprintf("Failed to spawn teammate %q: %v", in.Name, err), IsError: true}, nil
+		return &Result{Content: fmt.Sprintf("Failed to spawn teammate %q: %v", resolvedName, err), IsError: true}, nil
 	}
 
 	if background {
 		msg := fmt.Sprintf("Teammate %q spawned in team %q (agent ID: %s)\nRole: %s\nOpen the Agents panel (space a) to monitor progress.",
-			in.Name, teamName, state.Identity.AgentID, agentDef.Type)
+			resolvedName, teamName, state.Identity.AgentID, agentDef.Type)
+		if resolvedName != in.Name {
+			msg += fmt.Sprintf("\nNote: %q was already running — spawned as %q instead. Use %q for SendMessage.", in.Name, resolvedName, resolvedName)
+		}
 		if state.WorktreePath != "" {
 			msg += fmt.Sprintf("\nWorktree: %s", state.WorktreePath)
 		}
@@ -266,10 +277,10 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 	// Foreground: block until done.
 	done := t.Runner.WaitForOne(state.Identity.AgentID, 30*time.Minute)
 	if !done {
-		return &Result{Content: fmt.Sprintf("Teammate %q timed out after 30 minutes", in.Name), IsError: true}, nil
+		return &Result{Content: fmt.Sprintf("Teammate %q timed out after 30 minutes", resolvedName), IsError: true}, nil
 	}
 	if state.Error != "" {
-		return &Result{Content: fmt.Sprintf("Teammate %q error: %s", in.Name, state.Error), IsError: true}, nil
+		return &Result{Content: fmt.Sprintf("Teammate %q error: %s", resolvedName, state.Error), IsError: true}, nil
 	}
 	result := state.Result
 	const maxBytes = 50_000

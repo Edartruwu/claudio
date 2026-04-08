@@ -351,32 +351,34 @@ func (p *Panel) View() string {
 		mailbox := p.runner.GetMailbox()
 		if mailbox != nil {
 			allMsgs := mailbox.AllMessages()
-			unread := mailbox.TotalUnreadCount()
-			if len(allMsgs) > 0 {
+			var pendingMsgs []teams.Message
+			for _, msg := range allMsgs {
+				if !msg.Read {
+					pendingMsgs = append(pendingMsgs, msg)
+				}
+			}
+			if len(pendingMsgs) > 0 {
 				b.WriteString("\n")
 				b.WriteString(styles.SeparatorLine(p.width))
 				b.WriteString("\n")
-				label := fmt.Sprintf("✉ Mailbox (%d)", len(allMsgs))
-				if unread > 0 {
-					label = fmt.Sprintf("✉ Mailbox (%d unread / %d)", unread, len(allMsgs))
-				}
+				label := fmt.Sprintf("✉ Mailbox (%d)", len(pendingMsgs))
 				mailLabel := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).PaddingLeft(2).
 					Render(label)
 				b.WriteString(mailLabel)
 				b.WriteString("\n")
 
-				// Show last N messages
+				// Show last N pending messages
 				maxShow := 6
 				start := 0
-				if len(allMsgs) > maxShow {
-					start = len(allMsgs) - maxShow
+				if len(pendingMsgs) > maxShow {
+					start = len(pendingMsgs) - maxShow
 				}
-				for _, msg := range allMsgs[start:] {
+				for _, msg := range pendingMsgs[start:] {
 					p.renderMailMessage(&b, msg)
 				}
 				if start > 0 {
 					b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
-						Render(fmt.Sprintf("… %d older messages", start)))
+						Render(fmt.Sprintf("… %d older pending", start)))
 					b.WriteString("\n")
 				}
 			}
@@ -519,11 +521,6 @@ func (p *Panel) renderMailMessage(b *strings.Builder, msg teams.Message) {
 	ago := time.Since(msg.Timestamp).Truncate(time.Second)
 	ts := lipgloss.NewStyle().Foreground(styles.Dim).Render(" " + smartDuration(ago))
 	header += ts
-
-	// Unread indicator
-	if !msg.Read {
-		header += lipgloss.NewStyle().Foreground(styles.Warning).Render(" •")
-	}
 
 	b.WriteString(header + "\n")
 
