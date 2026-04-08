@@ -107,9 +107,10 @@ Your summary MUST cover these sections:
 Be specific: include file paths, function names, variable names, error messages, and code snippets. A vague summary wastes tokens on the next turn when the model has to re-read files to reconstruct context.`
 
 // Compact summarizes old messages using the API.
+// instruction is an optional user-provided focus hint appended to the summary prompt (e.g. "focus on architecture decisions").
 // pinnedIndices is an optional set of message indices that should be preserved
 // verbatim through compaction (not summarized). Pass nil to compact everything.
-func Compact(ctx context.Context, client *api.Client, messages []api.Message, keepLast int, pinnedIndices ...map[int]bool) ([]api.Message, string, error) {
+func Compact(ctx context.Context, client *api.Client, messages []api.Message, keepLast int, instruction string, pinnedIndices ...map[int]bool) ([]api.Message, string, error) {
 	if len(messages) <= keepLast {
 		return messages, "", nil
 	}
@@ -160,7 +161,11 @@ func Compact(ctx context.Context, client *api.Client, messages []api.Message, ke
 		summaryParts = append(summaryParts, fmt.Sprintf("[%s]: %s", msg.Role, preview))
 	}
 
-	summaryPrompt := compactPrompt + "\n\n" + strings.Join(summaryParts, "\n")
+	basePrompt := compactPrompt
+	if instruction != "" {
+		basePrompt += "\n\nAdditional focus instruction from user: " + instruction
+	}
+	summaryPrompt := basePrompt + "\n\n" + strings.Join(summaryParts, "\n")
 
 	contentJSON, _ := json.Marshal(summaryPrompt)
 	summaryReq := &api.MessagesRequest{

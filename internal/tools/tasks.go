@@ -46,20 +46,7 @@ func (s *TaskStore) SetDB(db *sql.DB) {
 }
 
 func (s *TaskStore) initDB() {
-	if s.db == nil {
-		return
-	}
-	s.db.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
-		id TEXT NOT NULL,
-		session_id TEXT NOT NULL DEFAULT '',
-		subject TEXT NOT NULL,
-		description TEXT,
-		status TEXT DEFAULT 'pending',
-		assigned_to TEXT,
-		created_at DATETIME,
-		updated_at DATETIME,
-		PRIMARY KEY (id, session_id)
-	)`)
+	// Table is created and migrated by internal/storage/db.go — nothing to do here.
 }
 
 // LoadForSession clears the in-memory store and loads only tasks belonging to sessionID.
@@ -291,12 +278,13 @@ func (t *TaskUpdateTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"taskId": {"type": "string", "description": "The task ID to update"},
+			"taskId": {"type": "string", "description": "The task ID to update (also accepted as 'id' or 'task_id')"},
+			"id": {"type": "string", "description": "Alias for taskId"},
+			"task_id": {"type": "string", "description": "Alias for taskId"},
 			"status": {"type": "string", "enum": ["pending", "in_progress", "completed", "deleted"]},
 			"subject": {"type": "string"},
 			"description": {"type": "string"}
-		},
-		"required": ["taskId"]
+		}
 	}`)
 }
 func (t *TaskUpdateTool) IsReadOnly() bool                        { return false }
@@ -307,13 +295,18 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
 
-	// Accept both "taskId" and "task_id" (models sometimes use snake_case)
+	// Accept "task_id" or plain "id" (models sometimes use snake_case or shorthand)
 	if in.TaskID == "" {
 		var alt struct {
 			TaskID string `json:"task_id"`
+			ID     string `json:"id"`
 		}
 		_ = json.Unmarshal(input, &alt)
-		in.TaskID = alt.TaskID
+		if alt.TaskID != "" {
+			in.TaskID = alt.TaskID
+		} else {
+			in.TaskID = alt.ID
+		}
 	}
 
 	// Strip leading "#" if present (e.g. "#3" -> "3")
@@ -361,9 +354,10 @@ func (t *TaskGetTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"taskId": {"type": "string", "description": "The task ID"}
-		},
-		"required": ["taskId"]
+			"taskId": {"type": "string", "description": "The task ID (also accepted as 'id' or 'task_id')"},
+			"id": {"type": "string", "description": "Alias for taskId"},
+			"task_id": {"type": "string", "description": "Alias for taskId"}
+		}
 	}`)
 }
 func (t *TaskGetTool) IsReadOnly() bool                        { return true }
@@ -373,6 +367,22 @@ func (t *TaskGetTool) Execute(ctx context.Context, input json.RawMessage) (*Resu
 	if err := json.Unmarshal(input, &in); err != nil {
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
+
+	// Accept "task_id" or plain "id" as fallbacks
+	if in.TaskID == "" {
+		var alt struct {
+			TaskID string `json:"task_id"`
+			ID     string `json:"id"`
+		}
+		_ = json.Unmarshal(input, &alt)
+		if alt.TaskID != "" {
+			in.TaskID = alt.TaskID
+		} else {
+			in.TaskID = alt.ID
+		}
+	}
+	// Strip leading "#" if present
+	in.TaskID = strings.TrimPrefix(in.TaskID, "#")
 
 	store := GlobalTaskStore
 	store.mu.RLock()

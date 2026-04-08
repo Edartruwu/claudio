@@ -144,6 +144,27 @@ func (db *DB) migrate() error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// 14 — recreate team_tasks with session_id so tasks are scoped per session.
+		// SQLite doesn't support ALTER TABLE to change the primary key, so we
+		// create a shadow table, copy data, drop the old one, then rename.
+		`CREATE TABLE IF NOT EXISTS team_tasks_v2 (
+			id TEXT NOT NULL,
+			session_id TEXT NOT NULL DEFAULT '',
+			subject TEXT NOT NULL,
+			description TEXT,
+			status TEXT DEFAULT 'pending',
+			assigned_to TEXT,
+			created_at DATETIME,
+			updated_at DATETIME,
+			PRIMARY KEY (id, session_id)
+		)`,
+		// 15 — copy existing tasks into the new table under the empty-string session
+		`INSERT OR IGNORE INTO team_tasks_v2 (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
+			SELECT id, '', subject, description, status, assigned_to, created_at, updated_at FROM team_tasks`,
+		// 16 — drop the old table
+		`DROP TABLE IF EXISTS team_tasks`,
+		// 17 — rename
+		`ALTER TABLE team_tasks_v2 RENAME TO team_tasks`,
 	}
 
 	for i, m := range migrations {
@@ -165,17 +186,22 @@ func (db *DB) migrate() error {
 	return nil
 }
 
-// isAlreadyExistsErr returns true for SQLite errors that mean the object
-// being created already exists — duplicate column, table already exists, etc.
-// These are safe to ignore during migrations because the desired state is
-// already present.
+// isAlreadyExistsErr returns true for SQLite errors that are safe to ignore
+// during migrations because the desired state is already present:
+//   - "already exists" — table/index/column was already created
+//   - "duplicate column name" — ALTER TABLE column already added
+//   - "no such table" — a migration copies or drops a table that was never
+//     created (e.g. migrating from an old schema that pre-dates the table).
+//     If the source table doesn't exist there is nothing to migrate, so the
+//     migration is effectively a no-op.
 func isAlreadyExistsErr(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "duplicate column name") ||
-		strings.Contains(msg, "already exists")
+		strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "no such table")
 }
 
 // detectExistingSchemaVersion inspects the live schema to determine how far

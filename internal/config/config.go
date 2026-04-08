@@ -24,7 +24,8 @@ type Settings struct {
 
 	// Session settings
 	AutoCompact    bool   `json:"autoCompact,omitempty"`
-	CompactMode    string `json:"compactMode,omitempty"` // "auto", "manual", "strategic"
+	CompactMode    string `json:"compactMode,omitempty"`    // "auto", "manual", "strategic"
+	CompactKeepN   int    `json:"compactKeepN,omitempty"`   // number of recent messages to keep after compaction (default 10)
 	SessionPersist bool   `json:"sessionPersist,omitempty"`
 
 	// Memory settings
@@ -270,6 +271,9 @@ func mergeFromFile(settings *Settings, path string) {
 	if overlay.CompactMode != "" {
 		settings.CompactMode = overlay.CompactMode
 	}
+	if overlay.CompactKeepN > 0 {
+		settings.CompactKeepN = overlay.CompactKeepN
+	}
 	if overlay.HookProfile != "" {
 		settings.HookProfile = overlay.HookProfile
 	}
@@ -401,6 +405,14 @@ func SanitizeProjectPath(path string) string {
 
 // ProjectMemoryDir returns the memory directory for a specific project.
 // Uses the git root (or cwd) to create a stable, project-scoped path.
+// GetCompactKeepN returns the number of recent messages to keep after compaction.
+func (s *Settings) GetCompactKeepN() int {
+	if s.CompactKeepN <= 0 {
+		return 10
+	}
+	return s.CompactKeepN
+}
+
 // IsAutoMemoryExtract returns whether automatic memory extraction is enabled.
 func (s *Settings) IsAutoMemoryExtract() bool {
 	if s.AutoMemoryExtract == nil {

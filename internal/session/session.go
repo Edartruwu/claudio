@@ -1,10 +1,12 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/storage"
 )
 
@@ -96,6 +98,84 @@ func (s *Session) SaveSummary(summary string) error {
 // RenameByID updates the title of any session by ID.
 func (s *Session) RenameByID(id, title string) error {
 	return s.db.UpdateSessionTitle(id, title)
+}
+
+// PersistCompacted replaces all DB messages for the session with the given compacted
+// api.Message slice. Call this after a successful Compact() to ensure that resuming
+// the session loads the compacted history, not the original uncompacted messages.
+func (s *Session) PersistCompacted(messages []api.Message) error {
+	if s.current == nil {
+		return nil
+	}
+	if err := s.db.DeleteAllMessages(s.current.ID); err != nil {
+		return fmt.Errorf("delete old messages: %w", err)
+	}
+	for _, msg := range messages {
+		// Try to decode as a generic content-block array (covers text, tool_use, tool_result).
+		var blocks []json.RawMessage
+		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
+			// Fallback: plain string content
+			var text string
+			if json.Unmarshal(msg.Content, &text) == nil && text != "" {
+				_ = s.db.AddMessage(s.current.ID, msg.Role, text, msg.Role, "", "")
+			}
+			continue
+		}
+
+		type minBlock struct {
+			Type      string          `json:"type"`
+			Text      string          `json:"text"`
+			ID        string          `json:"id"`
+			Name      string          `json:"name"`
+			Input     json.RawMessage `json:"input"`
+			ToolUseID string          `json:"tool_use_id"`
+			Content   string          `json:"content"`
+		}
+
+		if msg.Role == "assistant" {
+			// Collect text and tool_use blocks; write text row first, then tool_use rows.
+			var textBuf string
+			var toolUses []minBlock
+			for _, raw := range blocks {
+				var b minBlock
+				if json.Unmarshal(raw, &b) != nil {
+					continue
+				}
+				switch b.Type {
+				case "text", "thinking":
+					textBuf += b.Text
+				case "tool_use":
+					toolUses = append(toolUses, b)
+				}
+			}
+			_ = s.db.AddMessage(s.current.ID, "assistant", textBuf, "assistant", "", "")
+			for _, tu := range toolUses {
+				inputStr := string(tu.Input)
+				_ = s.db.AddMessage(s.current.ID, "assistant", inputStr, "tool_use", tu.ID, tu.Name)
+			}
+		} else {
+			// user role: either plain text blocks or tool_result blocks
+			var textBuf string
+			hasToolResult := false
+			for _, raw := range blocks {
+				var b minBlock
+				if json.Unmarshal(raw, &b) != nil {
+					continue
+				}
+				switch b.Type {
+				case "text":
+					textBuf += b.Text
+				case "tool_result":
+					hasToolResult = true
+					_ = s.db.AddMessage(s.current.ID, "user", b.Content, "tool_result", b.ToolUseID, "")
+				}
+			}
+			if !hasToolResult && textBuf != "" {
+				_ = s.db.AddMessage(s.current.ID, "user", textBuf, "user", "", "")
+			}
+		}
+	}
+	return nil
 }
 
 // DeleteAllMessages removes all messages from the current session.

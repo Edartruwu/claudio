@@ -379,6 +379,7 @@ Open with `<Space>ic`. The panel shows:
 | `costConfirmThreshold` | USD amount, 0 = disabled | Pause for confirmation at this cost |
 | `denyTools` | list of tool names | Disable specific tools (e.g. `["Memory", "WebSearch"]`) |
 | `compactMode` | `auto`, `manual`, `strategic` | When to compact conversation history |
+| `compactKeepN` | integer (default `10`) | Number of recent messages to keep after compaction |
 | `maxBudget` | USD amount, 0 = unlimited | Session spend limit |
 | `outputFilter` | `true`/`false` | RTK-style command output filtering (see below) |
 
@@ -444,7 +445,7 @@ Rules are evaluated in order; first match wins. Behaviors: `allow` (skip approva
 |---------|---------|-------------|
 | `/help` | `h`, `?` | Show available commands |
 | `/model` | `m` | Show or change the AI model |
-| `/compact [n]` | | Compact conversation history (keep last n messages) |
+| `/compact [instruction]` | | Compact conversation history. Optional instruction guides what to focus on in the summary (e.g. `/compact focus on architecture decisions`). Default messages kept is set by `compactKeepN` in settings. |
 | `/cost` | | Show session cost and token usage |
 | `/memory extract` | `mem` | Manually extract memories from current conversation |
 | `/session` | `sessions` | List or manage sessions |
@@ -554,7 +555,9 @@ Tiered compaction as context approaches the window limit:
 - **90%**: suggest full compaction
 - **95%**: force full compact (summarize old messages, keep last 10 + pinned)
 
-Manual compaction: `/compact [n]` (keep last n messages). `/compact partial` clears old tool results without summarizing.
+Manual compaction: `/compact [instruction]` — runs a full compact using the model to summarize old messages. Pass an optional text instruction to guide what the summary focuses on (e.g. `/compact keep only the decisions about database schema`). The number of recent messages kept is controlled by `compactKeepN` in `settings.json` (default: 10).
+
+Compacted messages are **persisted to the session database**, so resuming a session after `/compact` loads the compacted history — not the original uncompacted messages.
 
 ---
 

@@ -26,18 +26,12 @@ func NewTodoDock(rt *tasks.Runtime) *TodoDock {
 	return &TodoDock{runtime: rt}
 }
 
-// IsActive returns true when there are in-progress planning tasks.
+// IsActive returns true when there are any non-deleted planning tasks.
 func (d *TodoDock) IsActive() bool {
 	if d.runtime == nil {
 		return false
 	}
-	items := tools.GlobalTaskStore.List()
-	for _, t := range items {
-		if t.Status == "in_progress" || t.Status == "pending" {
-			return true
-		}
-	}
-	return false
+	return len(tools.GlobalTaskStore.List()) > 0
 }
 
 // SetWidth sets the available display width.

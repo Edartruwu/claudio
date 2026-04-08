@@ -323,7 +323,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			if e.compactState.ShouldForce() {
 				// Full compaction at 95%
 				e.fireHook(ctx, hooks.PreCompact, "", "")
-				compacted, summary, err := compact.Compact(ctx, e.client, e.messages, 10)
+				compacted, summary, err := compact.Compact(ctx, e.client, e.messages, 10, "")
 				if err == nil && summary != "" {
 					e.messages = compact.EnsureToolResultPairing(compacted)
 					e.compactState.TotalTokens = 0

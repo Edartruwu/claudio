@@ -313,7 +313,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			// Build pinned indices from ChatMessages
 			pinned := m.buildPinnedEngineIndices()
 			compacted, summary, err := compact.Compact(
-				context.Background(), apiClient, msgs, keepLast, pinned,
+				context.Background(), apiClient, msgs, keepLast, "", pinned,
 			)
 			if err != nil {
 				return "", err
@@ -1408,6 +1408,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Nothing to compact (conversation too short)."})
 		} else {
 			m.engine.SetMessages(msg.compacted)
+			// Persist compacted messages to DB so they survive session resume
+			if m.session != nil {
+				if err := m.session.PersistCompacted(msg.compacted); err != nil {
+					m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Warning: failed to persist compacted messages: %v", err)})
+				}
+				_ = m.session.SaveSummary(msg.summary)
+			}
 			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Compacted. Summary:\n%s", msg.summary)})
 		}
 		m.refreshViewport()
@@ -2126,14 +2133,13 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 
 	// /compact → handle directly because closures from New() capture a stale m
 	if name == "compact" {
+		// Default keepLast from config, fallback to 10
 		keepLast := 10
-		if args != "" {
-			if _, err := fmt.Sscanf(args, "%d", &keepLast); err != nil {
-				m.addMessage(ChatMessage{Type: MsgSystem, Content: "Usage: /compact [number-of-messages-to-keep]"})
-				m.refreshViewport()
-				return m, nil
-			}
+		if m.appCtx != nil && m.appCtx.Config != nil {
+			keepLast = m.appCtx.Config.GetCompactKeepN()
 		}
+		// args is treated as an instruction (text focus hint), not a number
+		instruction := strings.TrimSpace(args)
 		if m.engine == nil {
 			m.addMessage(ChatMessage{Type: MsgError, Content: "No active conversation to compact."})
 			m.refreshViewport()
@@ -2147,7 +2153,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, func() tea.Msg {
 			compacted, summary, err := compact.Compact(
-				context.Background(), m.apiClient, msgs, keepLast, pinned,
+				context.Background(), m.apiClient, msgs, keepLast, instruction, pinned,
 			)
 			return compactDoneMsg{compacted: compacted, summary: summary, err: err}
 		}
@@ -2581,7 +2587,7 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.refreshViewport()
 			return m, func() tea.Msg {
 				compacted, summary, err := compact.Compact(
-					context.Background(), m.apiClient, msgs, 2,
+					context.Background(), m.apiClient, msgs, 2, "",
 				)
 				submitMsg := fmt.Sprintf("Implement the plan from %s. The planning conversation has been compacted — refer to the summary and plan file for context.", planPath)
 				return planCompactDoneMsg{compacted: compacted, summary: summary, err: err, submitMsg: submitMsg}
