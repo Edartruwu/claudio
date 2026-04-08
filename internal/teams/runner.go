@@ -423,6 +423,20 @@ Guidelines:
 - If you need help from another teammate, explain what you need
 - When finished, provide a clear summary of what you accomplished
 
+## Escalating decisions to the team lead
+
+If you hit a decision you cannot resolve confidently (ambiguous requirements, architectural fork, missing context), do NOT guess. Instead:
+
+1. Finish any safe work you can complete
+2. Commit your progress (if working in a worktree)
+3. End your final result with exactly this marker on its own line:
+
+   QUESTION: <your focused, single question>
+
+Ask one question at a time — never a list. After sending, you will go idle. The team lead will answer (possibly after consulting the user) via SendMessage, and you will automatically resume with your full conversation history intact — continue from exactly where you left off using the answer.
+
+A short pause for a good answer beats hours of rework on the wrong approach.
+
 Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 
 	var system string

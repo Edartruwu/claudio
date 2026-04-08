@@ -67,6 +67,10 @@ func RemapPathForWorktree(ctx context.Context, path string) string {
 		// process CWD (which is still the main repo root).
 		return filepath.Join(worktreeRoot, path)
 	}
+	// Already inside the worktree — nothing to remap.
+	if strings.HasPrefix(path, worktreeRoot+string(filepath.Separator)) || path == worktreeRoot {
+		return path
+	}
 	mainRoot := mainRootFromContext(ctx)
 	if mainRoot == "" {
 		return path

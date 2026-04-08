@@ -28,7 +28,25 @@ type spawnTeammateInput struct {
 	Isolation    string          `json:"isolation,omitempty"`
 	TaskIDs      json.RawMessage `json:"task_ids,omitempty"`
 	MaxTurns     int             `json:"max_turns,omitempty"`
-	Background   bool            `json:"run_in_background,omitempty"`
+	Background   json.RawMessage `json:"run_in_background,omitempty"`
+}
+
+// backgroundBool coerces run_in_background from bool, string "true"/"false", or absent (defaults true).
+func (in *spawnTeammateInput) backgroundBool() bool {
+	if len(in.Background) == 0 {
+		return true // default
+	}
+	// Try bool directly.
+	var b bool
+	if err := json.Unmarshal(in.Background, &b); err == nil {
+		return b
+	}
+	// Fallback: model sent a quoted string like "true" or "false".
+	var s string
+	if err := json.Unmarshal(in.Background, &s); err == nil {
+		return s != "false" && s != "0"
+	}
+	return true
 }
 
 // taskIDStrings coerces TaskIDs from either a JSON array or a JSON-encoded string.
@@ -69,7 +87,21 @@ Use this whenever you want to delegate work to a named collaborator you can trac
 1. (Optional) TeamCreate to name the team
 2. SpawnTeammate — spawn each worker with a name and task
 3. SendMessage — coordinate (use the name you gave)
-4. SpawnTeammate with run_in_background:false — wait for a specific agent to finish`
+4. SpawnTeammate with run_in_background:false — wait for a specific agent to finish
+
+## Handling questions from teammates
+
+Sub-agents are instructed to stop and ask when they hit decisions they cannot resolve. When a teammate finishes with a line like:
+
+    QUESTION: <their question>
+
+they have gone idle with their full conversation history preserved. To answer:
+
+1. Read the question and decide the answer (consult the user via AskUser if needed)
+2. Call SendMessage(<teammate name>, <your answer>)
+3. The idle teammate automatically resumes with full history intact and continues from where it left off
+
+Do NOT re-spawn them with SpawnTeammate — that creates a fresh agent with no history. SendMessage is the correct path; it triggers Revive which preserves the conversation.`
 }
 
 func (t *SpawnTeammateTool) InputSchema() json.RawMessage {
@@ -161,11 +193,7 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		modelOverride = agentDef.Model
 	}
 
-	background := in.Background
-	if !background {
-		// default to background=true unless explicitly set to false
-		background = true
-	}
+	background := in.backgroundBool()
 
 	state, err := t.Runner.Spawn(teams.SpawnConfig{
 		TeamName:     teamName,
