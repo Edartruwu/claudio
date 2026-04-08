@@ -509,7 +509,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		}
 
 		// Execute tools and build result message
-		toolResults := e.executeTools(ctx, response.ToolUses)
+		toolResults, injectedMsgs := e.executeTools(ctx, response.ToolUses)
 
 		// Append tool results as a user message — must be immediately after the
 		// assistant message so tool_result blocks have a matching tool_use in the
@@ -520,6 +520,18 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			Role:    "user",
 			Content: resultContent,
 		})
+
+		// Inject any messages requested by tools (e.g. skill content) as
+		// additional user turns. These persist in conversation history exactly
+		// like the newMessages mechanism in claude-code — the model reads the
+		// injected instructions and follows them for the rest of the session.
+		for _, msg := range injectedMsgs {
+			msgContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(msg)})
+			e.messages = append(e.messages, api.Message{
+				Role:    "user",
+				Content: msgContent,
+			})
+		}
 
 		// If max_tokens was hit, inject a recovery message so the model
 		// knows to break up large outputs on the next turn.
@@ -788,7 +800,7 @@ type approvedTool struct {
 // executeTools runs all tool calls, executing read-only tools concurrently and
 // mutating tools sequentially (waiting for any in-flight reads to finish first).
 // Order of results matches the order of toolUses.
-func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []toolResultBlock {
+func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) ([]toolResultBlock, []string) {
 	results := make([]toolResultBlock, len(toolUses))
 
 	// --- Pre-flight pass (always sequential: hooks + approval have UI side effects) ---
@@ -848,8 +860,10 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 	type execResult struct {
 		idx int
 		blk toolResultBlock
+		injected []string
 	}
 	var batch []approvedTool
+	var injectedMessages []string
 
 	flushBatch := func() {
 		if len(batch) == 0 {
@@ -857,7 +871,9 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 		}
 		if len(batch) == 1 {
 			at := batch[0]
-			results[at.idx] = e.runSingleTool(ctx, at.tu, at.tool)
+			blk, msgs := e.runSingleTool(ctx, at.tu, at.tool)
+			results[at.idx] = blk
+			injectedMessages = append(injectedMessages, msgs...)
 		} else {
 			ch := make(chan execResult, len(batch))
 			var wg sync.WaitGroup
@@ -865,13 +881,15 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 				wg.Add(1)
 				go func(at approvedTool) {
 					defer wg.Done()
-					ch <- execResult{idx: at.idx, blk: e.runSingleTool(ctx, at.tu, at.tool)}
+					blk, msgs := e.runSingleTool(ctx, at.tu, at.tool)
+					ch <- execResult{idx: at.idx, blk: blk, injected: msgs}
 				}(at)
 			}
 			wg.Wait()
 			close(ch)
 			for er := range ch {
 				results[er.idx] = er.blk
+				injectedMessages = append(injectedMessages, er.injected...)
 			}
 		}
 		batch = batch[:0]
@@ -882,16 +900,19 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) []t
 			batch = append(batch, at)
 		} else {
 			flushBatch() // drain concurrent reads before any mutating tool
-			results[at.idx] = e.runSingleTool(ctx, at.tu, at.tool)
+			blk, msgs := e.runSingleTool(ctx, at.tu, at.tool)
+			results[at.idx] = blk
+			injectedMessages = append(injectedMessages, msgs...)
 		}
 	}
 	flushBatch()
 
-	return results
+	return results, injectedMessages
 }
 
 // runSingleTool executes one tool and applies post-processing (hooks, secret scan, disk offload).
-func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools.Tool) toolResultBlock {
+// Returns the tool result block and any messages to inject into the conversation.
+func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools.Tool) (toolResultBlock, []string) {
 	result, err := tool.Execute(ctx, tu.Input)
 	if err != nil {
 		result = &tools.Result{Content: fmt.Sprintf("Tool execution error: %v", err), IsError: true}
@@ -946,7 +967,7 @@ func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools
 		ToolUseID: tu.ID,
 		Content:   content,
 		IsError:   result.IsError,
-	}
+	}, result.InjectedMessages
 }
 
 // pollBackgroundTasks checks for completed background tasks and injects their results

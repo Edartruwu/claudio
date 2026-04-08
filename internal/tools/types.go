@@ -30,6 +30,13 @@ type Tool interface {
 type Result struct {
 	Content string `json:"content"`
 	IsError bool   `json:"is_error,omitempty"`
+
+	// InjectedMessages holds additional text messages to inject into the
+	// conversation as a user turn immediately after the tool result block.
+	// This mirrors claude-code's newMessages mechanism: skill content is
+	// injected here so it becomes part of conversation history and persists
+	// across compaction, rather than being a transient tool result.
+	InjectedMessages []string
 }
 
 // ToolUse represents a tool invocation from the AI response.

@@ -70,7 +70,12 @@ func (t *SkillTool) Execute(_ context.Context, input json.RawMessage) (*Result, 
 		content = strings.ReplaceAll(content, "$ARGUMENTS", in.Arguments)
 	}
 
-	return &Result{Content: content}, nil
+	// Inject skill content as a conversation message so it persists in history
+	// and survives compaction — mirrors claude-code's newMessages mechanism.
+	return &Result{
+		Content:          fmt.Sprintf("Skill %q loaded. Follow the instructions it contains.", skill.Name),
+		InjectedMessages: []string{content},
+	}, nil
 }
 
 // findSkill looks up a skill by exact name, then falls back to case-insensitive match.

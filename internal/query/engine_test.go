@@ -147,7 +147,7 @@ func TestExecuteTools_ValidateFailure_SkipsApproval(t *testing.T) {
 		permissionMode: "default",
 	}
 
-	results := e.executeTools(context.Background(), []tools.ToolUse{
+	results, _ := e.executeTools(context.Background(), []tools.ToolUse{
 		{ID: "tu-1", Name: "FailValidate", Input: json.RawMessage(`{}`)},
 	})
 
@@ -181,7 +181,7 @@ func TestExecuteTools_ValidatePass_ProceedsToApproval(t *testing.T) {
 		permissionMode: "default",
 	}
 
-	results := e.executeTools(context.Background(), []tools.ToolUse{
+	results, _ := e.executeTools(context.Background(), []tools.ToolUse{
 		{ID: "tu-1", Name: "PassValidate", Input: json.RawMessage(`{}`)},
 	})
 
@@ -209,7 +209,7 @@ func TestExecuteTools_NonValidatable_SkipsValidation(t *testing.T) {
 		permissionMode: "auto", // auto-approve so we can test execution
 	}
 
-	results := e.executeTools(context.Background(), []tools.ToolUse{
+	results, _ := e.executeTools(context.Background(), []tools.ToolUse{
 		{ID: "tu-1", Name: "Plain", Input: json.RawMessage(`{}`)},
 	})
 
@@ -240,7 +240,7 @@ func TestExecuteTools_ValidateNonError_ProceedsNormally(t *testing.T) {
 		permissionMode: "default",
 	}
 
-	results := e.executeTools(context.Background(), []tools.ToolUse{
+	results, _ := e.executeTools(context.Background(), []tools.ToolUse{
 		{ID: "tu-1", Name: "WarnValidate", Input: json.RawMessage(`{}`)},
 	})
 
@@ -308,7 +308,7 @@ func TestExecuteTools_MultipleTools_ValidationFailsOne(t *testing.T) {
 		permissionMode: "default",
 	}
 
-	results := e.executeTools(context.Background(), []tools.ToolUse{
+	results, _ := e.executeTools(context.Background(), []tools.ToolUse{
 		{ID: "tu-1", Name: "FailTool", Input: json.RawMessage(`{}`)},
 		{ID: "tu-2", Name: "PassTool", Input: json.RawMessage(`{}`)},
 	})
@@ -351,7 +351,7 @@ func TestExecuteTools_ValidateFailure_ToolUseIDPreserved(t *testing.T) {
 		permissionMode: "default",
 	}
 
-	results := e.executeTools(context.Background(), []tools.ToolUse{
+	results, _ := e.executeTools(context.Background(), []tools.ToolUse{
 		{ID: "tu-xyz-123", Name: "FailTool", Input: json.RawMessage(`{}`)},
 	})
 
@@ -376,7 +376,7 @@ func TestExecuteTools_DeniedApproval_AfterValidation(t *testing.T) {
 		permissionMode: "default",
 	}
 
-	results := e.executeTools(context.Background(), []tools.ToolUse{
+	results, _ := e.executeTools(context.Background(), []tools.ToolUse{
 		{ID: "tu-1", Name: "DeniedTool", Input: json.RawMessage(`{}`)},
 	})
 
