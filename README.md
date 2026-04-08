@@ -949,6 +949,44 @@ model: opus
 You are an expert Go backend developer...
 ```
 
+#### Example: built-in agent roster (`~/.claudio/agents/`)
+
+Claudio ships with a ready-to-use set of agents you can reference directly via `/team` or `SpawnTeammate`:
+
+| File | `subagent_type` | Model | Role |
+|------|-----------------|-------|------|
+| `backend-jr.md` | `backend-jr` | haiku | Simple CRUD, boilerplate, straightforward tests |
+| `backend-mid.md` | `backend-mid` | sonnet | Standard features, refactors, well-scoped work |
+| `backend-senior.md` | `backend-senior` | opus | Architecture, complex problem-solving, high-stakes changes |
+| `frontend-jr.md` | `frontend-jr` | haiku | Simple components, style fixes, copy changes |
+| `frontend-mid.md` | `frontend-mid` | sonnet | Component refactors, state wiring, UI tests |
+| `frontend-senior.md` | `frontend-senior` | opus | Design systems, rendering strategy, bundle optimization |
+| `code-investigator.md` | `code-investigator` | haiku | Symbol tracing, call-graph analysis, codebase mapping |
+| `devops.md` | `devops` | sonnet | CI/CD pipelines, Dockerfiles, Kubernetes, cloud infra |
+| `qa.md` | `qa` | sonnet | E2E tests, API contract validation, OWASP security testing |
+| `prab.md` | `Prab` | sonnet | Tech lead / PM — plans, breaks down work, delegates to agents |
+
+Each file follows the standard agent format:
+
+```markdown
+---
+name: backend-jr
+description: Fast backend engineer (haiku). Best for simple, well-scoped tasks — CRUD, small fixes, boilerplate, and straightforward tests. Avoid tasks needing multi-step architectural reasoning.
+model: haiku
+tools: "*"
+---
+
+You are a capable backend engineer. You execute well-scoped, clearly defined tasks efficiently and write clean, correct code.
+
+## Rules (follow all of them — do not skip any)
+
+1. **Read first** — read every relevant file before touching anything
+2. **State your plan** — one short paragraph: what you will change and where
+3. **Implement** — follow the existing style and conventions exactly; no extras
+4. **Run tests and linter** — fix all failures before reporting
+5. **Report** — summarize what changed, paste key test output, flag anything unexpected
+```
+
 ### Agent crystallization
 
 Crystallize a session's knowledge into a reusable agent persona with its own memory directory. The agent is then invocable from any project.
@@ -1024,6 +1062,63 @@ Template JSON format (`~/.claudio/team-templates/backend-team.json`):
   "members": [
     { "name": "implementer", "subagent_type": "backend-mid",    "model": "claude-sonnet-4-6" },
     { "name": "architect",   "subagent_type": "backend-senior", "model": "claude-opus-4-6"   }
+  ]
+}
+```
+
+#### Built-in team templates (`~/.claudio/team-templates/`)
+
+Three production-ready templates are included:
+
+**`backend-team.json`** — backend implementation + QA + DevOps:
+
+```json
+{
+  "name": "backend-team",
+  "description": "Full backend feature team — implementation, architecture, QA, and DevOps.",
+  "members": [
+    { "name": "rafael", "subagent_type": "backend-senior",    "model": "claude-opus-4-6" },
+    { "name": "alex",   "subagent_type": "backend-mid",       "model": "claude-sonnet-4-6" },
+    { "name": "sam",    "subagent_type": "backend-jr",        "model": "claude-haiku-4-5-20251001" },
+    { "name": "kai",    "subagent_type": "devops",            "model": "claude-sonnet-4-6" },
+    { "name": "quinn",  "subagent_type": "qa",                "model": "claude-sonnet-4-6" },
+    { "name": "orion",  "subagent_type": "code-investigator", "model": "claude-haiku-4-5-20251001" }
+  ]
+}
+```
+
+**`frontend-team.json`** — UI architecture + components + accessibility QA:
+
+```json
+{
+  "name": "frontend-team",
+  "description": "Full frontend feature team — UI architecture, component implementation, and QA.",
+  "members": [
+    { "name": "sofia",  "subagent_type": "frontend-senior",   "model": "claude-opus-4-6" },
+    { "name": "maya",   "subagent_type": "frontend-mid",      "model": "claude-sonnet-4-6" },
+    { "name": "leo",    "subagent_type": "frontend-jr",       "model": "claude-haiku-4-5-20251001" },
+    { "name": "quinn",  "subagent_type": "qa",                "model": "claude-sonnet-4-6" },
+    { "name": "orion",  "subagent_type": "code-investigator", "model": "claude-haiku-4-5-20251001" }
+  ]
+}
+```
+
+**`fullstack-team.json`** — end-to-end product team spanning API and UI:
+
+```json
+{
+  "name": "fullstack-team",
+  "description": "Full-stack product team — backend architecture, frontend UI, QA, and DevOps.",
+  "members": [
+    { "name": "rafael", "subagent_type": "backend-senior",    "model": "claude-opus-4-6" },
+    { "name": "alex",   "subagent_type": "backend-mid",       "model": "claude-sonnet-4-6" },
+    { "name": "sofia",  "subagent_type": "frontend-senior",   "model": "claude-opus-4-6" },
+    { "name": "maya",   "subagent_type": "frontend-mid",      "model": "claude-sonnet-4-6" },
+    { "name": "leo",    "subagent_type": "frontend-jr",       "model": "claude-haiku-4-5-20251001" },
+    { "name": "sam",    "subagent_type": "backend-jr",        "model": "claude-haiku-4-5-20251001" },
+    { "name": "quinn",  "subagent_type": "qa",                "model": "claude-sonnet-4-6" },
+    { "name": "kai",    "subagent_type": "devops",            "model": "claude-sonnet-4-6" },
+    { "name": "orion",  "subagent_type": "code-investigator", "model": "claude-haiku-4-5-20251001" }
   ]
 }
 ```

@@ -206,6 +206,13 @@ func (r *Repo) DeleteBranch(name string) error {
 	return err
 }
 
+// MergeFFOnly attempts a fast-forward-only merge of the given branch into HEAD.
+// Returns an error if the merge would require a merge commit (conflict).
+func (r *Repo) MergeFFOnly(branch string) error {
+	_, err := r.run("merge", "--ff-only", branch)
+	return err
+}
+
 // Blame returns git blame for a file.
 func (r *Repo) Blame(file string) (string, error) {
 	return r.run("blame", "--line-porcelain", file)

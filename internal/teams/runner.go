@@ -521,12 +521,12 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	}
 	state.mu.Unlock()
 
-	// Worktree cleanup: remove if no changes, keep if there are changes (committed or not).
+	// Worktree cleanup: remove if no changes; auto-merge into main if complete; keep on failure/question.
 	// Uses the pre-fork HEAD SHA to detect both uncommitted files and new commits.
 	if worktreeRepo != nil && state.WorktreePath != "" {
 		hasChanges, chkErr := worktreeRepo.HasAnyWork(worktreeHeadCommit)
 		if chkErr != nil || !hasChanges {
-			// No changes — clean up worktree and branch
+			// No changes — clean up worktree and branch silently.
 			cwd, _ := os.Getwd()
 			mainRepo := git.NewRepo(cwd)
 			if mainRepo.IsRepo() {
@@ -539,8 +539,28 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			state.WorktreePath = ""
 			state.WorktreeBranch = ""
 			state.mu.Unlock()
+		} else if state.Status == StatusComplete {
+			// Agent completed successfully and has commits — auto-merge into main.
+			cwd, _ := os.Getwd()
+			mainRepo := git.NewRepo(cwd)
+			mergeErr := mainRepo.MergeFFOnly(state.WorktreeBranch)
+			if mergeErr == nil {
+				// Merged cleanly — remove worktree and branch.
+				_ = mainRepo.WorktreeRemove(state.WorktreePath, true)
+				_ = mainRepo.DeleteBranch(state.WorktreeBranch)
+				state.mu.Lock()
+				state.Result += fmt.Sprintf("\n\n[Worktree branch %s auto-merged into main and cleaned up.]", state.WorktreeBranch)
+				state.WorktreePath = ""
+				state.WorktreeBranch = ""
+				state.mu.Unlock()
+			} else {
+				// Fast-forward not possible (diverged) — keep worktree, warn team lead.
+				state.mu.Lock()
+				state.Result += fmt.Sprintf("\n\n[Auto-merge failed (not fast-forwardable). Manual merge required: git merge %s\nWorktree kept at: %s]", state.WorktreeBranch, state.WorktreePath)
+				state.mu.Unlock()
+			}
 		} else {
-			// Has changes — append worktree info to result
+			// Failed or waiting for input — keep worktree for inspection/resumption.
 			worktreeNote := fmt.Sprintf("\n\n[Worktree with changes kept at: %s (branch: %s)]", state.WorktreePath, state.WorktreeBranch)
 			state.mu.Lock()
 			state.Result += worktreeNote
