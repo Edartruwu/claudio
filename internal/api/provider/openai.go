@@ -19,6 +19,7 @@ type OpenAI struct {
 	name    string // provider name (e.g. "groq", "openai", "ollama")
 	baseURL string
 	apiKey  string
+	numCtx  int // Ollama num_ctx override; 0 means use server default
 }
 
 // NewOpenAI creates a new OpenAI-compatible provider.
@@ -28,6 +29,15 @@ func NewOpenAI(name, baseURL, apiKey string) *OpenAI {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 	}
+}
+
+// WithNumCtx sets the num_ctx (context window size) sent in every request.
+// Ollama defaults to 2048 tokens regardless of the model's actual context
+// length, silently truncating conversation history once the system prompt +
+// history exceeds that limit. Set this to e.g. 32768 for local models.
+func (o *OpenAI) WithNumCtx(n int) *OpenAI {
+	o.numCtx = n
+	return o
 }
 
 func (o *OpenAI) Name() string { return o.name }
@@ -40,7 +50,7 @@ func (o *OpenAI) StreamMessages(ctx context.Context, httpClient *http.Client, re
 		defer close(eventCh)
 		defer close(errCh)
 
-		body, err := translateRequest(req)
+		body, err := translateRequest(req, o.numCtx)
 		if err != nil {
 			errCh <- fmt.Errorf("failed to translate request: %w", err)
 			return
@@ -122,7 +132,7 @@ func (o *OpenAI) StreamMessages(ctx context.Context, httpClient *http.Client, re
 func (o *OpenAI) SendMessage(ctx context.Context, httpClient *http.Client, req *api.MessagesRequest) (*api.MessageResp, error) {
 	req.Stream = false
 
-	body, err := translateRequest(req)
+	body, err := translateRequest(req, o.numCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to translate request: %w", err)
 	}

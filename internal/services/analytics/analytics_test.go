@@ -90,8 +90,8 @@ func TestRecordUsage_AccumulatesTokens(t *testing.T) {
 	if tr.OutputTokens() != 275 {
 		t.Errorf("want 275 output tokens, got %d", tr.OutputTokens())
 	}
-	if tr.TotalTokens() != 425 {
-		t.Errorf("want 425 total tokens, got %d", tr.TotalTokens())
+	if tr.TotalTokens() != 50 {
+		t.Errorf("want 50 total tokens (last call input: 50), got %d", tr.TotalTokens())
 	}
 }
 

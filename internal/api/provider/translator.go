@@ -18,6 +18,9 @@ type openAIRequest struct {
 	Temperature *float64          `json:"temperature,omitempty"`
 	Tools       []openAITool      `json:"tools,omitempty"`
 	StreamOpts  *openAIStreamOpts `json:"stream_options,omitempty"`
+	// Options carries provider-specific parameters (e.g. Ollama's num_ctx).
+	// Omitted when nil so non-Ollama providers ignore it.
+	Options map[string]any `json:"options,omitempty"`
 }
 
 type openAIStreamOpts struct {
@@ -143,8 +146,22 @@ type openAINSMessage struct {
 // --- Translation functions ---
 
 // translateRequest converts an Anthropic MessagesRequest into an OpenAI ChatCompletion request body.
-func translateRequest(req *api.MessagesRequest) ([]byte, error) {
-	oaiReq := openAIRequest{
+// numCtx, when > 0, is passed as options.num_ctx (Ollama context window override).
+func translateRequest(req *api.MessagesRequest, numCtx int) ([]byte, error) {
+	oaiReq, err := buildOpenAIRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	if numCtx > 0 {
+		oaiReq.Options = map[string]any{"num_ctx": numCtx}
+	}
+	return json.Marshal(oaiReq)
+}
+
+// buildOpenAIRequest converts an Anthropic MessagesRequest into an openAIRequest struct
+// (without marshalling). Reusable by both the OpenAI provider and the native Ollama provider.
+func buildOpenAIRequest(req *api.MessagesRequest) (*openAIRequest, error) {
+	oaiReq := &openAIRequest{
 		Model:       req.Model,
 		Stream:      req.Stream,
 		MaxTokens:   req.MaxTokens,
@@ -209,7 +226,7 @@ func translateRequest(req *api.MessagesRequest) ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(oaiReq)
+	return oaiReq, nil
 }
 
 // translateMessage converts one Anthropic message into one or more OpenAI messages.

@@ -297,33 +297,50 @@ func (p *Panel) View() string {
 	b.WriteString(summary)
 	b.WriteString("\n\n")
 
-	// Agent list
-	listH := p.height - 8 // header + summary + hints
-	if listH < 3 {
-		listH = 3
+	// Agent list — compute visible range based on per-agent line height.
+	availLines := p.height - 8 // lines available after header + summary + hints
+	if availLines < 3 {
+		availLines = 3
 	}
 
-	startIdx := 0
-	if p.cursor >= listH {
-		startIdx = p.cursor - listH + 1
+	// Walk backward from cursor until we fill availLines, to find startIdx.
+	startIdx := p.cursor
+	used := 0
+	for i := p.cursor; i >= 0; i-- {
+		h := p.agentHeight(p.agents[i])
+		if used+h > availLines && i < p.cursor {
+			break
+		}
+		used += h
+		startIdx = i
 	}
-	endIdx := startIdx + listH
-	if endIdx > len(p.agents) {
-		endIdx = len(p.agents)
+
+	// Walk forward from startIdx until we exhaust availLines, to find endIdx.
+	endIdx := startIdx
+	used = 0
+	for i := startIdx; i < len(p.agents); i++ {
+		h := p.agentHeight(p.agents[i])
+		if used+h > availLines {
+			break
+		}
+		used += h
+		endIdx = i + 1
 	}
 
 	for i := startIdx; i < endIdx; i++ {
 		b.WriteString(p.renderAgent(p.agents[i], i == p.cursor))
 	}
 
-	// Scroll indicator
-	if len(p.agents) > listH {
-		more := len(p.agents) - endIdx
-		if more > 0 {
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
-				Render(fmt.Sprintf("↓ %d more", more)))
-			b.WriteString("\n")
-		}
+	// Scroll indicators
+	if startIdx > 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+			Render(fmt.Sprintf("↑ %d more", startIdx)))
+		b.WriteString("\n")
+	}
+	if endIdx < len(p.agents) {
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+			Render(fmt.Sprintf("↓ %d more", len(p.agents)-endIdx)))
+		b.WriteString("\n")
 	}
 
 	// Mailbox preview with messages
@@ -367,6 +384,25 @@ func (p *Panel) View() string {
 	writeHint(&b, p.width, "  j/k ⏎detail t team q exit m msg s share f fwd x kill")
 
 	return renderPanel(b.String(), p.width, p.height)
+}
+
+// agentHeight returns the number of terminal lines renderAgent will produce.
+func (p *Panel) agentHeight(a *agentItem) int {
+	n := 1 // name line
+	if a.prompt != "" {
+		n++ // prompt preview
+	}
+	if a.worktree != "" {
+		n++ // worktree path
+	}
+	if a.state != nil {
+		progress := a.state.GetProgress()
+		if len(progress.Activities) > 0 && progress.Activities[len(progress.Activities)-1] != "" {
+			n++ // activity line
+		}
+		n++ // stats line
+	}
+	return n
 }
 
 func (p *Panel) renderAgent(a *agentItem, selected bool) string {

@@ -48,7 +48,7 @@ func TestTranslateRequest_SystemPrompt(t *testing.T) {
 		},
 	}
 
-	data, err := translateRequest(req)
+	data, err := translateRequest(req, 0)
 	if err != nil {
 		t.Fatalf("translateRequest error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestTranslateRequest_SystemRaw_BlockArray(t *testing.T) {
 		Messages:  []api.Message{makeStringMessage(t, "user", "Hi")},
 	}
 
-	data, err := translateRequest(req)
+	data, err := translateRequest(req, 0)
 	if err != nil {
 		t.Fatalf("translateRequest error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestTranslateRequest_Tools(t *testing.T) {
 		Messages:  []api.Message{makeStringMessage(t, "user", "Use the tool")},
 	}
 
-	data, err := translateRequest(req)
+	data, err := translateRequest(req, 0)
 	if err != nil {
 		t.Fatalf("translateRequest error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestTranslateRequest_StreamOptions(t *testing.T) {
 		Messages:  []api.Message{makeStringMessage(t, "user", "Ping")},
 	}
 
-	data, err := translateRequest(req)
+	data, err := translateRequest(req, 0)
 	if err != nil {
 		t.Fatalf("translateRequest error: %v", err)
 	}

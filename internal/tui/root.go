@@ -529,6 +529,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filePicker.SetWidth(m.width)
 		m.modelSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
 		m.agentSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
+		m.agentSelector.SetHeight(m.height)
 		m.layout()
 		m.refreshViewport()
 		return m, nil
@@ -2019,9 +2020,10 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			panelCmd := m.handleTeammateEvent(*event.teammateEvent)
 			m.refreshViewport()
 
-			// Mark team-lead's inbox as read since we consume notifications via the event system
+			// Delete team-lead's inbox after consuming — notifications come via the event system
 			if mb := m.appCtx.TeamRunner.GetMailbox(); mb != nil {
 				mb.ReadUnread("team-lead")
+				mb.ClearInbox("team-lead")
 			}
 
 			// When an agent completes or fails, notify the AI so it can act on the result
@@ -2107,6 +2109,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		customDirs := agents.GetCustomDirs()
 		m.agentSelector = agentselector.New(m.currentAgent, customDirs...)
 		m.agentSelector.SetWidth(m.width)
+		m.agentSelector.SetHeight(m.height)
 		m.focus = FocusAgentSelector
 		m.prompt.Blur()
 		return m, nil
@@ -3478,9 +3481,10 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 				m.messageQueue = append(m.messageQueue, notification)
 			}
 
-			// Mark team-lead's inbox as read
+			// Delete team-lead's inbox after consuming
 			if mb := m.appCtx.TeamRunner.GetMailbox(); mb != nil {
 				mb.ReadUnread("team-lead")
+				mb.ClearInbox("team-lead")
 			}
 		}
 	}

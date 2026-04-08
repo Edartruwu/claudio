@@ -111,12 +111,32 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		var p api.Provider
 		switch pc.Type {
 		case "openai":
-			p = provider.NewOpenAI(name, pc.APIBase, apiKey)
+			op := provider.NewOpenAI(name, pc.APIBase, apiKey)
+			if pc.ContextWindow > 0 {
+				op.WithNumCtx(pc.ContextWindow)
+			}
+			p = op
 		case "anthropic":
 			p = provider.NewAnthropic(pc.APIBase, apiKey)
+		case "ollama":
+			// Native Ollama provider — uses /api/chat (not /v1/chat/completions)
+			// because Ollama's OpenAI-compat endpoint silently drops `options`,
+			// preventing num_ctx from being set (defaults to 2048 → context loss).
+			olp := provider.NewOllama(name, pc.APIBase)
+			if pc.ContextWindow > 0 {
+				olp.WithNumCtx(pc.ContextWindow)
+			}
+			if len(pc.NoToolsModels) > 0 {
+				olp.WithNoToolsModels(pc.NoToolsModels)
+			}
+			p = olp
 		default:
 			// Default to openai-compatible
-			p = provider.NewOpenAI(name, pc.APIBase, apiKey)
+			op := provider.NewOpenAI(name, pc.APIBase, apiKey)
+			if pc.ContextWindow > 0 {
+				op.WithNumCtx(pc.ContextWindow)
+			}
+			p = op
 		}
 		apiClient.RegisterProvider(name, p)
 		// Register model shortcuts from provider config

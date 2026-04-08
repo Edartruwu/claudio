@@ -283,12 +283,15 @@ func buildFullSystemPrompt() string {
 			// Skip memory loading entirely
 		}
 
-		// Always inject the auto-memory writing instructions, regardless of
-		// selection strategy. This tells the agent how to proactively save
-		// new memories during the session via the Write tool.
+		// Inject auto-memory writing instructions only for Anthropic models.
+		// External providers (Ollama, Groq, etc.) confuse the Memory-tool
+		// guidance with conversation context, causing them to claim they don't
+		// know things the user said earlier in the same session.
 		if memDir := appInstance.Memory.WriteTargetDir(); memDir != "" {
-			if memInstr := prompts.SessionMemorySection(memDir); memInstr != "" {
-				sections = append(sections, memInstr)
+			if !appInstance.API.IsExternalModel(appInstance.Config.Model) {
+				if memInstr := prompts.SessionMemorySection(memDir); memInstr != "" {
+					sections = append(sections, memInstr)
+				}
 			}
 		}
 	}

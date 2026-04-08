@@ -21,14 +21,35 @@ type SpawnTeammateTool struct {
 }
 
 type spawnTeammateInput struct {
-	Name         string   `json:"name"`             // short identifier (e.g. "a1", "backend-1")
-	SubagentType string   `json:"subagent_type"`    // e.g. "backend-mid", "backend-senior"
-	Prompt       string   `json:"prompt"`           // task description
-	Model        string   `json:"model,omitempty"`  // optional model override
-	Isolation    string   `json:"isolation,omitempty"` // "worktree"
-	TaskIDs      []string `json:"task_ids,omitempty"`  // task IDs to auto-complete
-	MaxTurns     int      `json:"max_turns,omitempty"`
-	Background   bool     `json:"run_in_background,omitempty"`
+	Name         string          `json:"name"`
+	SubagentType string          `json:"subagent_type"`
+	Prompt       string          `json:"prompt"`
+	Model        string          `json:"model,omitempty"`
+	Isolation    string          `json:"isolation,omitempty"`
+	TaskIDs      json.RawMessage `json:"task_ids,omitempty"`
+	MaxTurns     int             `json:"max_turns,omitempty"`
+	Background   bool            `json:"run_in_background,omitempty"`
+}
+
+// taskIDStrings coerces TaskIDs from either a JSON array or a JSON-encoded string.
+func (in *spawnTeammateInput) taskIDStrings() []string {
+	if len(in.TaskIDs) == 0 {
+		return nil
+	}
+	// Try array first.
+	var ids []string
+	if err := json.Unmarshal(in.TaskIDs, &ids); err == nil {
+		return ids
+	}
+	// Fallback: the model sent a JSON-encoded string like "[\"1\",\"2\"]".
+	var encoded string
+	if err := json.Unmarshal(in.TaskIDs, &encoded); err == nil {
+		var ids2 []string
+		if err2 := json.Unmarshal([]byte(encoded), &ids2); err2 == nil {
+			return ids2
+		}
+	}
+	return nil
 }
 
 func (t *SpawnTeammateTool) Name() string { return "SpawnTeammate" }
@@ -157,7 +178,7 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		Isolation:    in.Isolation,
 		MemoryDir:    agentDef.MemoryDir,
 		Foreground:   !background,
-		TaskIDs:      in.TaskIDs,
+		TaskIDs:      in.taskIDStrings(),
 	})
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to spawn teammate %q: %v", in.Name, err), IsError: true}, nil

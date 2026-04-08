@@ -136,6 +136,16 @@ func (c *Client) resolveProvider(model string) Provider {
 	return nil
 }
 
+// IsExternalModel returns true if the given model routes to an external (non-Anthropic) provider.
+// This is used to gate Claude-specific system prompt sections (e.g. Auto Memory instructions)
+// that confuse smaller local models like Gemma.
+func (c *Client) IsExternalModel(model string) bool {
+	if resolved, ok := c.modelShortcuts[model]; ok {
+		model = resolved
+	}
+	return c.resolveProvider(model) != nil
+}
+
 // NewClientFromExisting creates a shallow copy of an existing client with a different model.
 // All other settings (auth, base URL, thinking mode, etc.) are inherited from the parent.
 func NewClientFromExisting(parent *Client, model string) *Client {

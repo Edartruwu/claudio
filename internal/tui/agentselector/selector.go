@@ -28,6 +28,8 @@ type Model struct {
 	cursor  int
 	active  bool
 	width   int
+	height  int
+	offset  int // first visible agent index
 	current string // currently active agent type
 }
 
@@ -57,8 +59,9 @@ func indexFor(all []agents.AgentDefinition, current string) int {
 	return 0
 }
 
-func (m Model) IsActive() bool  { return m.active }
-func (m *Model) SetWidth(w int) { m.width = w }
+func (m Model) IsActive() bool   { return m.active }
+func (m *Model) SetWidth(w int)  { m.width = w }
+func (m *Model) SetHeight(h int) { m.height = h }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.active {
@@ -72,10 +75,17 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
+			if m.cursor < m.offset {
+				m.offset = m.cursor
+			}
 		}
 	case "down", "j":
 		if m.cursor < len(m.agents)-1 {
 			m.cursor++
+			visible := m.visibleRows()
+			if m.cursor >= m.offset+visible {
+				m.offset = m.cursor - visible + 1
+			}
 		}
 	case "enter":
 		m.active = false
@@ -110,7 +120,17 @@ func (m Model) View() string {
 	lines = append(lines, "")
 	lines = append(lines, sectionTitle.Render("Available Agents"))
 
-	for i, a := range m.agents {
+	visible := m.visibleRows()
+	end := min(m.offset+visible, len(m.agents))
+	showUp := m.offset > 0
+	showDown := end < len(m.agents)
+
+	if showUp {
+		lines = append(lines, hintStyle.Render("  \u2191 more above"))
+	}
+
+	for i := m.offset; i < end; i++ {
+		a := m.agents[i]
 		selected := i == m.cursor
 		isCurrent := a.Type == m.current
 
@@ -142,6 +162,10 @@ func (m Model) View() string {
 		lines = append(lines, label)
 	}
 
+	if showDown {
+		lines = append(lines, hintStyle.Render("  \u2193 more below"))
+	}
+
 	lines = append(lines, "")
 	lines = append(lines, hintStyle.Render("j/k navigate \u00B7 Enter select \u00B7 Esc cancel"))
 
@@ -158,6 +182,20 @@ func (m Model) View() string {
 		Width(m.width).
 		Align(lipgloss.Center).
 		Render(box)
+}
+
+// visibleRows returns how many agent rows fit inside the box.
+// The box has 2 border lines + 2 padding lines + 3 header lines (title, blank, section) + 2 footer lines (blank, hint) = 9 overhead lines.
+func (m Model) visibleRows() int {
+	if m.height <= 0 {
+		return len(m.agents) // no height set, show all
+	}
+	const overhead = 9
+	v := m.height - overhead
+	if v < 1 {
+		v = 1
+	}
+	return v
 }
 
 func max(a, b int) int {

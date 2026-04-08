@@ -96,10 +96,12 @@ type LspServerConfig struct {
 
 // ProviderConfig defines a non-default API provider.
 type ProviderConfig struct {
-	APIBase string            `json:"apiBase"`            // Base URL (e.g. "https://api.groq.com/openai/v1")
-	APIKey  string            `json:"apiKey,omitempty"`   // API key or "$ENV_VAR" reference
-	Type    string            `json:"type"`               // "openai" or "anthropic"
-	Models  map[string]string `json:"models,omitempty"`   // shortcut -> model ID (e.g. "llama": "llama-3.3-70b-versatile")
+	APIBase       string            `json:"apiBase"`                 // Base URL (e.g. "https://api.groq.com/openai/v1")
+	APIKey        string            `json:"apiKey,omitempty"`        // API key or "$ENV_VAR" reference
+	Type          string            `json:"type"`                    // "openai", "anthropic", or "ollama"
+	Models        map[string]string `json:"models,omitempty"`        // shortcut -> model ID (e.g. "llama": "llama-3.3-70b-versatile")
+	ContextWindow int               `json:"contextWindow,omitempty"` // Ollama num_ctx override (default 2048 is too small)
+	NoToolsModels []string          `json:"noToolsModels,omitempty"` // Ollama: glob patterns for models that don't support tool calling (e.g. ["deepseek-r1*"])
 }
 
 // PermissionRule defines a content-pattern permission for a specific tool.
