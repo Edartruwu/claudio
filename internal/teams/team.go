@@ -49,11 +49,12 @@ type TeammateIdentity struct {
 type MemberStatus string
 
 const (
-	StatusIdle      MemberStatus = "idle"
-	StatusWorking   MemberStatus = "working"
-	StatusComplete  MemberStatus = "complete"
-	StatusFailed    MemberStatus = "failed"
-	StatusShutdown  MemberStatus = "shutdown"
+	StatusIdle             MemberStatus = "idle"
+	StatusWorking          MemberStatus = "working"
+	StatusComplete         MemberStatus = "complete"
+	StatusFailed           MemberStatus = "failed"
+	StatusShutdown         MemberStatus = "shutdown"
+	StatusWaitingForInput  MemberStatus = "waiting_for_input"
 )
 
 // Available colors for teammates (gruvbox palette).
@@ -202,7 +203,7 @@ func (m *Manager) AddMember(teamName, agentName, model, prompt, subagentType str
 			if mem.Status == StatusWorking {
 				return nil, fmt.Errorf("member %q is still active in team", agentName)
 			}
-			// Terminal state (complete/failed/shutdown) — replace the old entry
+			// Terminal state (complete/failed/shutdown/waiting_for_input) — replace the old entry
 			team.Members = append(team.Members[:i], team.Members[i+1:]...)
 			break
 		}
@@ -379,6 +380,8 @@ func (m *Manager) FormatTeamStatus(teamName string) string {
 			icon = "✗"
 		case StatusShutdown:
 			icon = "⊘"
+		case StatusWaitingForInput:
+			icon = "?"
 		}
 		role := ""
 		if mem.Identity.IsLead {

@@ -272,6 +272,18 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	teamRunner := teams.NewTeammateRunner(teamMgr, func(ctx context.Context, system, prompt string) (string, error) {
 		return runSubAgent(ctx, apiClient, registry, system, prompt)
 	})
+	// Inject plugin instructions so sub-agents know to prefer plugin tools over Grep/Glob/Read.
+	if len(pluginReg.All()) > 0 {
+		var pluginInfos []prompts.PluginInfo
+		for _, p := range pluginReg.All() {
+			pluginInfos = append(pluginInfos, prompts.PluginInfo{
+				Name:         p.Name,
+				Description:  p.Description,
+				Instructions: p.Instructions,
+			})
+		}
+		teamRunner.PluginsSection = prompts.PluginsSection(pluginInfos)
+	}
 
 	// Memory-aware runner: used when a teammate is backed by a crystallized
 	// agent with its own memory directory. Lets reusable agents carry their

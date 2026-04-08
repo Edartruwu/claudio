@@ -283,17 +283,20 @@ func (p *Panel) View() string {
 
 	// Summary line
 	working := 0
-	done := 0
+	waiting := 0
 	for _, a := range p.agents {
 		switch a.status {
 		case teams.StatusWorking:
 			working++
-		case teams.StatusComplete:
-			done++
+		case teams.StatusWaitingForInput:
+			waiting++
 		}
 	}
-	summary := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(2).
-		Render(fmt.Sprintf("%d/%d working", working, len(p.agents)))
+	summaryText := fmt.Sprintf("%d/%d working", working, len(p.agents))
+	if waiting > 0 {
+		summaryText += fmt.Sprintf(", %d waiting", waiting)
+	}
+	summary := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(2).Render(summaryText)
 	b.WriteString(summary)
 	b.WriteString("\n\n")
 
@@ -444,6 +447,8 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 		statusLabel = lipgloss.NewStyle().Foreground(styles.Error).Render(" ✗")
 	case teams.StatusShutdown:
 		statusLabel = lipgloss.NewStyle().Foreground(styles.Muted).Render(" ⊘")
+	case teams.StatusWaitingForInput:
+		statusLabel = lipgloss.NewStyle().Foreground(styles.Warning).Render(" ?")
 	}
 
 	modelTag := ""
@@ -586,6 +591,8 @@ func statusIcon(s teams.MemberStatus, tick int) string {
 		return lipgloss.NewStyle().Foreground(styles.Error).Render("✗")
 	case teams.StatusShutdown:
 		return lipgloss.NewStyle().Foreground(styles.Muted).Render("⊘")
+	case teams.StatusWaitingForInput:
+		return lipgloss.NewStyle().Foreground(styles.Warning).Render("?")
 	default:
 		return lipgloss.NewStyle().Foreground(styles.Dim).Render("○")
 	}

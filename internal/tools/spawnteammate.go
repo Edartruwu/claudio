@@ -195,6 +195,48 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 
 	background := in.backgroundBool()
 
+	// Upsert semantics:
+	//  - alive (StatusWorking)  → don't touch it, report it's already running
+	//  - terminal (complete/failed/shutdown) → revive with new prompt, preserving history
+	//  - not found → fresh spawn
+	if existing, ok := t.Runner.GetStateByName(in.Name); ok {
+		agentID := existing.Identity.AgentID
+
+		if existing.Status == teams.StatusWorking {
+			return &Result{Content: fmt.Sprintf(
+				"Teammate %q is already running in team %q (agent ID: %s). Use SendMessage to communicate with it.",
+				in.Name, teamName, agentID,
+			)}, nil
+		}
+
+		// Terminal agent — revive with the new prompt (history preserved).
+		if err := t.Runner.Revive(in.Name, in.Prompt); err != nil {
+			return &Result{Content: fmt.Sprintf("Failed to revive teammate %q: %v", in.Name, err), IsError: true}, nil
+		}
+
+		if background {
+			return &Result{Content: fmt.Sprintf(
+				"Teammate %q revived in team %q (agent ID: %s)\nRole: %s\nOpen the Agents panel (space a) to monitor progress.",
+				in.Name, teamName, agentID, agentDef.Type,
+			)}, nil
+		}
+
+		done := t.Runner.WaitForOne(agentID, 30*time.Minute)
+		if !done {
+			return &Result{Content: fmt.Sprintf("Teammate %q timed out after 30 minutes", in.Name), IsError: true}, nil
+		}
+		if existing.Error != "" {
+			return &Result{Content: fmt.Sprintf("Teammate %q error: %s", in.Name, existing.Error), IsError: true}, nil
+		}
+		reviveResult := existing.Result
+		const maxBytesRevive = 50_000
+		if len(reviveResult) > maxBytesRevive {
+			reviveResult = reviveResult[:maxBytesRevive] + fmt.Sprintf("\n[Output truncated at %d bytes]", maxBytesRevive)
+		}
+		return &Result{Content: reviveResult}, nil
+	}
+
+	// Agent not found — spawn fresh.
 	state, err := t.Runner.Spawn(teams.SpawnConfig{
 		TeamName:     teamName,
 		AgentName:    in.Name,

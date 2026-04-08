@@ -221,6 +221,7 @@ type TeammateRunner struct {
 	cwdInjector        CwdInjector
 	taskCompleter      TaskCompleter
 	activeTeam         string // explicitly set active team name
+	PluginsSection     string // injected into every sub-agent's system prompt
 }
 
 // NewTeammateRunner creates a runner for spawning in-process teammates.
@@ -421,7 +422,6 @@ Guidelines:
 - Focus on your specific task
 - Report findings concisely when done
 - If you need help from another teammate, explain what you need
-- When finished, provide a clear summary of what you accomplished
 
 ## Escalating decisions to the team lead
 
@@ -437,7 +437,30 @@ Ask one question at a time — never a list. After sending, you will go idle. Th
 
 A short pause for a good answer beats hours of rework on the wrong approach.
 
+## Retry discipline
+
+When running tests, builds, or validations:
+1. Run → read the actual output
+2. If it fails, diagnose the error, fix it, run again
+3. After **3 failed attempts** on the same failure, stop — do not guess a fourth fix. Escalate with QUESTION: instead.
+
+This applies to any iterative loop: tests, lint, build, deployment checks. Always report how many attempts you made.
+
+## Completion report
+
+When your task is done, always end your final response with this section:
+
+### Done
+- What was changed or produced, and why
+- Test / build / validation results (paste actual output, not summaries)
+- Attempts made if anything failed during the process
+- Risks, deferred decisions, or anything the team lead should know
+
 Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
+
+	if r.PluginsSection != "" {
+		teammateCtx += "\n\n" + r.PluginsSection
+	}
 
 	var system string
 	if cfg.System != "" {
@@ -489,6 +512,9 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			state.Status = StatusFailed
 			state.Error = err.Error()
 		}
+	} else if containsQuestion(result) {
+		state.Status = StatusWaitingForInput
+		state.Result = result
 	} else {
 		state.Status = StatusComplete
 		state.Result = result
@@ -988,4 +1014,15 @@ func (r *TeammateRunner) FormatStatus() string {
 	}
 
 	return sb.String()
+}
+
+// containsQuestion returns true when the agent result contains a QUESTION: marker,
+// indicating the agent is waiting for input from the team lead before it can continue.
+func containsQuestion(result string) bool {
+	for _, line := range strings.Split(result, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "QUESTION:") {
+			return true
+		}
+	}
+	return false
 }

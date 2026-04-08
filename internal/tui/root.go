@@ -1564,6 +1564,25 @@ func (m Model) applyTeamContext(msg teamselector.TeamSelectedMsg) Model {
 		block = `## Active Team
 An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.`
 	} else {
+		// Auto-instantiate the team so SpawnTeammate works immediately without
+		// requiring the model to call InstantiateTeam first.
+		if m.appCtx != nil && m.appCtx.TeamManager != nil && m.appCtx.TeamRunner != nil {
+			sessionID := ""
+			if m.session != nil {
+				sessionID = m.session.Current().ID
+			}
+			teamName := msg.TemplateName
+			if _, err := m.appCtx.TeamManager.CreateTeam(teamName, msg.Description, sessionID, ""); err != nil {
+				// Team may already exist; proceed anyway.
+				_ = err
+			}
+			// Pre-register members so their subagent_type is persisted.
+			for _, mem := range msg.Members {
+				_, _ = m.appCtx.TeamManager.AddMember(teamName, mem.Name, mem.Model, "", mem.SubagentType)
+			}
+			m.appCtx.TeamRunner.SetActiveTeam(teamName)
+		}
+
 		var memberLines []string
 		for _, mem := range msg.Members {
 			line := fmt.Sprintf("  - %s (%s)", mem.Name, mem.SubagentType)
@@ -1577,12 +1596,12 @@ An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to ad
 		if msg.Description != "" {
 			desc = "\nDescription: " + msg.Description
 		}
-		block = fmt.Sprintf(`## Active Team Template: %s%s
+		block = fmt.Sprintf(`## Active Team: %s%s
 Members:
 %s
 
-Use InstantiateTeam(%q) to create this team, then SpawnTeammate to assign tasks to each member.`,
-			msg.TemplateName, desc, roster, msg.TemplateName)
+The team is ready. Use SpawnTeammate to assign tasks to each member.`,
+			msg.TemplateName, desc, roster)
 	}
 
 	newSystem := m.systemPrompt + "\n\n" + block
