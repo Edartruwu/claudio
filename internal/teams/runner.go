@@ -566,7 +566,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	if mb := r.getMailbox(cfg.TeamName); mb != nil {
 		team, _ := r.manager.GetTeam(cfg.TeamName)
 		if team != nil {
-			summary := truncateForSummary(result, 200)
+			summary := result
 			if err != nil {
 				summary = fmt.Sprintf("FAILED: %s", err.Error())
 			}
@@ -608,7 +608,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		state.AddConversation(ConversationEntry{
 			Time:    time.Now(),
 			Type:    "complete",
-			Content: truncateForSummary(result, 500),
+			Content: result,
 		})
 		if !state.Foreground {
 			r.EmitEvent(TeammateEvent{
@@ -616,7 +616,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				AgentID:        state.Identity.AgentID,
 				AgentName:      cfg.AgentName,
 				Type:           "complete",
-				Text:           truncateForSummary(result, 200),
+				Text:           result,
 				Color:          state.Identity.Color,
 				WorktreePath:   state.WorktreePath,
 				WorktreeBranch: state.WorktreeBranch,
@@ -644,12 +644,12 @@ func (r *TeammateRunner) AllStates() []*TeammateState {
 	return result
 }
 
-// GetStateByName returns a teammate's state by agent name.
+// GetStateByName returns a teammate's state by agent name or agent ID.
 func (r *TeammateRunner) GetStateByName(name string) (*TeammateState, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, s := range r.teammates {
-		if s.Identity.AgentName == name {
+		if s.Identity.AgentName == name || s.Identity.AgentID == name {
 			return s, true
 		}
 	}
@@ -950,7 +950,7 @@ func (r *TeammateRunner) Revive(agentName, newMessage string) error {
 		r.manager.UpdateMemberStatus(cfg.TeamName, state.Identity.AgentID, state.Status)
 
 		if mb := r.getMailbox(cfg.TeamName); mb != nil {
-			summary := truncateForSummary(result, 200)
+			summary := result
 			if err != nil {
 				summary = fmt.Sprintf("FAILED: %s", state.Error)
 			}
@@ -972,7 +972,7 @@ func (r *TeammateRunner) Revive(agentName, newMessage string) error {
 				}
 				return "complete"
 			}(),
-			Text:  truncateForSummary(result, 200),
+			Text:  result,
 			Color: state.Identity.Color,
 		})
 	}()

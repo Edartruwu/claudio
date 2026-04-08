@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/teams"
 )
@@ -107,7 +108,14 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 		return &Result{Content: fmt.Sprintf("Broadcast sent to all teammates from %s", from)}, nil
 	}
 
-	if err := mailbox.Send(from, in.To, msg); err != nil {
+	// Normalize recipient: strip "@teamname" suffix if present (AgentID format → AgentName).
+	// Mailbox inboxes are keyed by plain agent name within the team directory.
+	recipient := in.To
+	if idx := strings.Index(recipient, "@"); idx >= 0 {
+		recipient = recipient[:idx]
+	}
+
+	if err := mailbox.Send(from, recipient, msg); err != nil {
 		return &Result{Content: fmt.Sprintf("Send failed: %v", err), IsError: true}, nil
 	}
 
@@ -116,8 +124,8 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 	// a no-op if the agent is still working or was explicitly shutdown.
 	revived := ""
 	if t.Runner != nil {
-		if err := t.Runner.Revive(in.To, in.Message); err == nil {
-			if state, ok := t.Runner.GetStateByName(in.To); ok && state.Status == teams.StatusWorking {
+		if err := t.Runner.Revive(recipient, in.Message); err == nil {
+			if state, ok := t.Runner.GetStateByName(recipient); ok && state.Status == teams.StatusWorking {
 				revived = " (revived)"
 			}
 		}
