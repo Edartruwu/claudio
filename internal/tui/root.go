@@ -2373,13 +2373,16 @@ Task:
 
 		// Skill invocation: intercept [skill:NAME] and send skill content to engine
 		if strings.HasPrefix(output, "[skill:") && strings.Contains(output, "]") {
-			skillName := output[7:strings.Index(output, "]")]
+			endIdx := strings.Index(output, "]")
+			skillName := output[7:endIdx]
+			skillArgs := output[endIdx+1:]
 			if m.skills != nil {
 				if skill, ok := m.skills.Get(skillName); ok {
 					// Send skill content as a user message to the engine
 					m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Running skill: %s", skill.Name)})
 					m.refreshViewport()
-					return m.handleSubmit(skill.Content)
+					content := strings.ReplaceAll(skill.Content, "$ARGUMENTS", skillArgs)
+					return m.handleSubmit(content)
 				}
 			}
 			// Skill not found — show as regular message

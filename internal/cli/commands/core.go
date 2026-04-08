@@ -446,7 +446,7 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 				Name:        skillName,
 				Description: skill.Description,
 				Execute: func(args string) (string, error) {
-					return "[skill:" + skillName + "]", nil
+					return "[skill:" + skillName + "]" + args, nil
 				},
 			})
 		}
