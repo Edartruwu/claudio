@@ -110,7 +110,7 @@ func (t *InstantiateTeamTool) InputSchema() json.RawMessage {
 			},
 			"team_name": {
 				"type": "string",
-				"description": "Optional team name override. Defaults to the template name."
+				"description": "Project-scoped team name. REQUIRED in practice — never omit this. Use the format '{template_name}-{project_slug}' (e.g. 'backend-team-payments'). Omitting it defaults to the bare template name, which will conflict with any other session using the same template simultaneously."
 			}
 		},
 		"required": ["template_name"]

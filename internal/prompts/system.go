@@ -137,7 +137,8 @@ func sessionGuidanceSection() string {
  - Use the Agent tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.
  - For simple, directed codebase searches (e.g. for a specific file/class/function) use the Glob or Grep directly.
  - For broader codebase exploration and deep research, use the Agent tool with subagent_type=Explore. This is slower than using the Glob or Grep directly, so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than 3 queries.
- - /<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the Skill tool to execute them. IMPORTANT: Only use Skill for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.`
+ - /<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the Skill tool to execute them. IMPORTANT: Only use Skill for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.
+ - When calling InstantiateTeam, always pass a project-scoped team_name using the format '{template_name}-{project_slug}' (e.g. 'backend-team-payments'). Never use the bare template name — it will conflict if the same template is reused across multiple projects simultaneously.`
 }
 
 func environmentSection(model string) string {
