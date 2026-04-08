@@ -91,7 +91,13 @@ func (t *InstantiateTeamTool) Description() string {
 
 Loads the template by name, creates the team, and pre-registers all members
 (with their subagent_type) so you know the roster upfront. Use SpawnTeammate
-to assign actual work to each member.`
+to assign actual work to each member.
+
+IMPORTANT: Always provide a unique team_name scoped to the current project
+(e.g. "coding-team-myproject"). The same template may be reused across
+multiple projects simultaneously — if you omit team_name, it defaults to the
+template name and will conflict with any other session using the same template.
+A good convention is "{template_name}-{project_slug}".`
 }
 
 func (t *InstantiateTeamTool) InputSchema() json.RawMessage {
