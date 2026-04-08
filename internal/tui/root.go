@@ -1568,7 +1568,7 @@ An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to ad
 		// requiring the model to call InstantiateTeam first.
 		if m.appCtx != nil && m.appCtx.TeamManager != nil && m.appCtx.TeamRunner != nil {
 			sessionID := ""
-			if m.session != nil {
+			if m.session != nil && m.session.Current() != nil {
 				sessionID = m.session.Current().ID
 			}
 			teamName := msg.TemplateName
