@@ -144,6 +144,7 @@ func (p *Panel) buildEntries() {
 	addE("permissionMode", valOrDefault(m.PermissionMode, "default"), "cycle", p.source("permissionMode"))
 	addE("autoCompact", fmt.Sprintf("%v", m.AutoCompact), "bool", p.source("autoCompact"))
 	addE("compactMode", valOrDefault(m.CompactMode, "auto"), "cycle", p.source("compactMode"))
+	addE("compactKeepN", fmt.Sprintf("%d", m.GetCompactKeepN()), "int", p.source("compactKeepN"))
 	addE("sessionPersist", fmt.Sprintf("%v", m.SessionPersist), "bool", p.source("sessionPersist"))
 	addR("hookProfile", valOrDefault(m.HookProfile, "standard"), p.source("hookProfile"))
 
@@ -256,6 +257,10 @@ func (p *Panel) source(key string) Scope {
 		}
 	case "compactMode":
 		if p.project.CompactMode != "" {
+			return ScopeProject
+		}
+	case "compactKeepN":
+		if p.project.CompactKeepN > 0 {
 			return ScopeProject
 		}
 	case "outputFilter":
@@ -385,6 +390,18 @@ func (p *Panel) toggleEntry(idx int) (string, string) {
 		modes := []string{"ai", "keyword", "none"}
 		target.MemorySelection = cycleValue(p.merged.GetMemorySelection(), modes, "ai")
 		newVal = target.MemorySelection
+	case "compactKeepN":
+		steps := []int{5, 10, 15, 20, 30, 50}
+		cur := p.merged.GetCompactKeepN()
+		next := steps[0]
+		for i, v := range steps {
+			if cur == v && i+1 < len(steps) {
+				next = steps[i+1]
+				break
+			}
+		}
+		target.CompactKeepN = next
+		newVal = fmt.Sprintf("%d", next)
 	case "compactMode":
 		modes := []string{"auto", "manual", "strategic"}
 		target.CompactMode = cycleValue(p.merged.CompactMode, modes, "auto")
