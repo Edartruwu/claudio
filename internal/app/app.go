@@ -227,6 +227,14 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Load skills
 	skillsRegistry := skills.LoadAll(paths.Skills, cwd+"/.claudio/skills")
 
+	// Inject skills registry into SkillTool so all agents (main + teammates) can
+	// auto-detect and invoke skills. Clone() propagates the pointer to sub-agents.
+	if st, err := registry.Get("Skill"); err == nil {
+		if skillTool, ok := st.(*tools.SkillTool); ok {
+			skillTool.SkillsRegistry = skillsRegistry
+		}
+	}
+
 	// Register custom agent directories so GetAgent() can discover them
 	agents.SetCustomDirs(paths.Agents, cwd+"/.claudio/agents")
 

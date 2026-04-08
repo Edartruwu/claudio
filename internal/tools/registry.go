@@ -315,6 +315,9 @@ func DefaultRegistry() *Registry {
 	// Agent (always loaded)
 	r.Register(&AgentTool{})
 
+	// Skill tool — always loaded so the LLM sees available skills for auto-detection
+	r.Register(&SkillTool{})
+
 	// Plan mode (always loaded — AI must see full description to enter proactively)
 	r.Register(&EnterPlanModeTool{})
 	r.Register(&ExitPlanModeTool{})

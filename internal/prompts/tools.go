@@ -621,25 +621,24 @@ If called outside an EnterWorktree session, the tool is a **no-op**: it reports 
 
 // SkillDescription returns the description for the Skill tool.
 func SkillDescription(availableSkills string) string {
-	return fmt.Sprintf(`Execute a skill within the main conversation
+	return fmt.Sprintf(`Execute a skill — a specialized instruction set for a specific domain or task.
 
-When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+Before responding to any task, check whether an available skill matches. Skills provide domain knowledge, project-specific conventions, and step-by-step procedures that override default behavior.
 
-When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review"), they are referring to a skill. Use this tool to invoke it.
+Key triggers:
+- User references "/<skill-name>" (e.g. "/commit", "/review") → invoke that skill immediately
+- Task involves a domain with a matching skill (e.g. htmx, commit formatting, code review) → invoke the skill FIRST, then follow its instructions
+- You are a specialized agent (e.g. go-htmx-frontend) → proactively invoke any skill that matches your domain at the start of your work
 
 How to invoke:
-- Use this tool with the skill name and optional arguments
-- Examples:
-  - skill: "commit" - invoke the commit skill
-  - skill: "review" - invoke the review skill
-  - skill: "simplify" - invoke the simplify skill
+- Call this tool with the skill name and optional arguments
+- The tool returns the skill's instruction set — read and follow it to complete the task
 
 Important:
-- Available skills are listed below
-- When a skill matches the user's request, invoke the relevant Skill tool BEFORE generating any other response about the task
+- Invoke BEFORE generating any other response about the task
 - NEVER mention a skill without actually calling this tool
 - Do not invoke a skill that is already running
-- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- Do not use this tool for built-in CLI commands (/help, /clear, /agent, etc.)
 
 Available skills:
 %s`, availableSkills)

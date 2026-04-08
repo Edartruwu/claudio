@@ -19,7 +19,7 @@ func TestRegistry(t *testing.T) {
 
 	expectedTools := []string{
 		"Bash", "Read", "Write", "Edit", "Glob", "Grep",
-		"Agent", "EnterPlanMode", "ExitPlanMode", "ToolSearch",
+		"Agent", "Skill", "EnterPlanMode", "ExitPlanMode", "ToolSearch",
 		"WebSearch", "WebFetch", "LSP", "NotebookEdit",
 		"TaskCreate", "TaskList", "TaskGet", "TaskUpdate",
 		"EnterWorktree", "ExitWorktree",
