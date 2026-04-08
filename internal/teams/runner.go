@@ -65,8 +65,9 @@ type TeammateState struct {
 	StartedAt      time.Time
 	FinishedAt     time.Time
 	Conversation   []ConversationEntry
-	WorktreePath   string // path to git worktree (empty if no isolation)
-	WorktreeBranch string // branch name used for the worktree
+	WorktreePath     string // path to git worktree (empty if no isolation)
+	WorktreeBranch   string // branch name used for the worktree
+	WorktreeMainRoot string // main repo root from which the worktree was forked
 	MemoryDir      string // agent-scoped memory directory (empty for ephemeral teammates)
 	SystemPrompt   string // resolved system prompt used for the run (for revival)
 
@@ -389,6 +390,7 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 				state.mu.Lock()
 				state.WorktreePath = wtPath
 				state.WorktreeBranch = branch
+				state.WorktreeMainRoot = root
 				state.mu.Unlock()
 
 				// Inject CWD override + main root into context so file tools
@@ -396,6 +398,17 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 				if r.cwdInjector != nil {
 					ctx = r.cwdInjector(ctx, wtPath, root)
 				}
+			} else {
+				// Worktree creation failed (e.g. repo has no commits yet).
+				// Continue without isolation and warn the team lead in the TUI.
+				r.EmitEvent(TeammateEvent{
+					TeamName:  cfg.TeamName,
+					AgentID:   state.Identity.AgentID,
+					AgentName: cfg.AgentName,
+					Type:      "warning",
+					Text:      fmt.Sprintf("worktree isolation failed (%v) — running in main repo", wtErr),
+					Color:     state.Identity.Color,
+				})
 			}
 		}
 	}
@@ -921,11 +934,13 @@ func (r *TeammateRunner) Revive(agentName, newMessage string) error {
 
 	// Reset state for another run
 	history := state.EngineMessages
+	worktreePath := state.WorktreePath
+	worktreeMainRoot := state.WorktreeMainRoot
 	state.IsIdle = false
 	state.Status = StatusWorking
 	state.Error = ""
 	state.idleCh = make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(r.parentCtx)
 	state.cancel = cancel
 	state.mu.Unlock()
 
@@ -948,6 +963,11 @@ func (r *TeammateRunner) Revive(agentName, newMessage string) error {
 		resumeCtx := ctx
 		if r.contextDecorator != nil {
 			resumeCtx = r.contextDecorator(ctx, state)
+		}
+		// Restore worktree CWD so revived agents continue to operate in their
+		// isolated worktree rather than falling back to the main repo root.
+		if worktreePath != "" && r.cwdInjector != nil {
+			resumeCtx = r.cwdInjector(resumeCtx, worktreePath, worktreeMainRoot)
 		}
 
 		result, err := r.runAgentResume(resumeCtx, state.SystemPrompt, state.MemoryDir, history, newMessage)

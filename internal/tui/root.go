@@ -3716,6 +3716,11 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 			Type:    MsgSystem,
 			Content: fmt.Sprintf("● %s finished — %s", name, result),
 		})
+	case "warning":
+		m.addMessage(ChatMessage{
+			Type:    MsgSystem,
+			Content: fmt.Sprintf("⚠ %s — %s", name, event.Text),
+		})
 	case "error":
 		m.addMessage(ChatMessage{
 			Type:    MsgError,
