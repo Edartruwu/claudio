@@ -176,6 +176,7 @@ See [Model Configuration](#model-configuration) for the full reference.
 - [Tools](#tools)
 - [Agents](#agents)
 - [Orchestrator & Multi-Agent Teams](#orchestrator--multi-agent-teams)
+  - [The Perfect Workflow](#the-perfect-workflow)
 - [Harness — Agent Team Architecture](#harness--agent-team-architecture)
   - [The 6 patterns](#the-6-patterns)
   - [Building a harness with /harness](#building-a-harness-with-harness)
@@ -464,7 +465,8 @@ Rules are evaluated in order; first match wins. Behaviors: `allow` (skip approva
 | `/vim` | | Toggle vim keybindings |
 | `/skills` | | List available skills |
 | `/tasks` | | Show background tasks and team status |
-| `/team` | | Manage agent teams |
+| `/agent` | | Pick an agent persona to become the lead for this session (e.g. `prab` as PM) |
+| `/team` | | Pick a team template — the workers the lead will coordinate |
 | `/audit` | | Show recent tool audit log |
 | `/export [format]` | | Export conversation (markdown, json, txt) |
 | `/undo` | | Undo the last exchange |
@@ -951,7 +953,27 @@ You are an expert Go backend developer...
 
 #### Example: built-in agent roster (`~/.claudio/agents/`)
 
-Claudio ships with a ready-to-use set of agents you can reference directly via `/team` or `SpawnTeammate`:
+Claudio ships with a ready-to-use set of agents in `~/.claudio/agents/`. There are **two roles** in the multi-agent workflow:
+
+> **Product manager / team lead** — loaded with `/agent` to become the orchestrator for the session.
+> **Workers** — loaded by the PM via `SpawnTeammate` when a team template is instantiated.
+
+**`prab.md` — the product manager** (loaded with `/agent prab`):
+
+```markdown
+---
+name: Prab
+description: Tech lead and project manager. Use Prab to discuss ideas, explore trade-offs, create plans, break down work into tasks, and assign those tasks to the right agents.
+model: sonnet
+tools: *
+---
+
+You are Prab, a seasoned tech lead and project manager. You have deep engineering experience but your
+primary role is to think at the system level — bridging ideas and execution by planning clearly and
+delegating to the right agents.
+```
+
+**Worker agents** (spawned by the PM — never invoked directly):
 
 | File | `subagent_type` | Model | Role |
 |------|-----------------|-------|------|
@@ -961,22 +983,26 @@ Claudio ships with a ready-to-use set of agents you can reference directly via `
 | `frontend-jr.md` | `frontend-jr` | haiku | Simple components, style fixes, copy changes |
 | `frontend-mid.md` | `frontend-mid` | sonnet | Component refactors, state wiring, UI tests |
 | `frontend-senior.md` | `frontend-senior` | opus | Design systems, rendering strategy, bundle optimization |
+| `go-htmx-frontend-jr.md` | `go-htmx-frontend-jr` | haiku | Go + htmx partials, style fixes, simple htmx wiring |
+| `go-htmx-frontend-mid.md` | `go-htmx-frontend-mid` | sonnet | Server-rendered UIs, htmx interactions, OOB swaps, SSE |
+| `go-htmx-frontend-senior.md` | `go-htmx-frontend-senior` | opus | Hypermedia architecture, template systems, rendering strategy |
 | `code-investigator.md` | `code-investigator` | haiku | Symbol tracing, call-graph analysis, codebase mapping |
 | `devops.md` | `devops` | sonnet | CI/CD pipelines, Dockerfiles, Kubernetes, cloud infra |
 | `qa.md` | `qa` | sonnet | E2E tests, API contract validation, OWASP security testing |
-| `prab.md` | `Prab` | sonnet | Tech lead / PM — plans, breaks down work, delegates to agents |
 
-Each file follows the standard agent format:
+Each worker file follows this format:
 
 ```markdown
 ---
 name: backend-jr
-description: Fast backend engineer (haiku). Best for simple, well-scoped tasks — CRUD, small fixes, boilerplate, and straightforward tests. Avoid tasks needing multi-step architectural reasoning.
+description: Fast backend engineer (haiku). Best for simple, well-scoped tasks — CRUD, small fixes,
+  boilerplate, and straightforward tests. Avoid tasks needing multi-step architectural reasoning.
 model: haiku
 tools: "*"
 ---
 
-You are a capable backend engineer. You execute well-scoped, clearly defined tasks efficiently and write clean, correct code.
+You are a capable backend engineer. You execute well-scoped, clearly defined tasks efficiently and
+write clean, correct code.
 
 ## Rules (follow all of them — do not skip any)
 
@@ -1068,14 +1094,14 @@ Template JSON format (`~/.claudio/team-templates/backend-team.json`):
 
 #### Built-in team templates (`~/.claudio/team-templates/`)
 
-Three production-ready templates are included:
+Four production-ready templates are included. These define the **worker roster** — not the team lead. The lead is always chosen separately with `/agent` (see [The Perfect Workflow](#the-perfect-workflow)).
 
 **`backend-team.json`** — backend implementation + QA + DevOps:
 
 ```json
 {
   "name": "backend-team",
-  "description": "Full backend feature team — implementation, architecture, QA, and DevOps.",
+  "description": "Full backend feature team — implementation, architecture, QA, and DevOps. Senior for architecture and complex decisions, mid for standard features, junior for boilerplate and simple tasks, QA for testing and security validation, DevOps for pipelines and infrastructure.",
   "members": [
     { "name": "rafael", "subagent_type": "backend-senior",    "model": "claude-opus-4-6" },
     { "name": "alex",   "subagent_type": "backend-mid",       "model": "claude-sonnet-4-6" },
@@ -1092,7 +1118,7 @@ Three production-ready templates are included:
 ```json
 {
   "name": "frontend-team",
-  "description": "Full frontend feature team — UI architecture, component implementation, and QA.",
+  "description": "Full frontend feature team — UI architecture, component implementation, and QA. Senior for design-system decisions and performance-critical work, mid for standard features and refactors, junior for boilerplate and simple components, QA for accessibility audits and E2E tests.",
   "members": [
     { "name": "sofia",  "subagent_type": "frontend-senior",   "model": "claude-opus-4-6" },
     { "name": "maya",   "subagent_type": "frontend-mid",      "model": "claude-sonnet-4-6" },
@@ -1108,17 +1134,37 @@ Three production-ready templates are included:
 ```json
 {
   "name": "fullstack-team",
-  "description": "Full-stack product team — backend architecture, frontend UI, QA, and DevOps.",
+  "description": "Full-stack product team — backend architecture, frontend UI, QA, and DevOps. Use for end-to-end features that touch both API and UI layers. Senior engineers own architecture and high-risk changes; mid-level handle standard features; junior handles boilerplate; QA validates correctness and security; DevOps owns pipelines and infra.",
   "members": [
-    { "name": "rafael", "subagent_type": "backend-senior",    "model": "claude-opus-4-6" },
-    { "name": "alex",   "subagent_type": "backend-mid",       "model": "claude-sonnet-4-6" },
-    { "name": "sofia",  "subagent_type": "frontend-senior",   "model": "claude-opus-4-6" },
-    { "name": "maya",   "subagent_type": "frontend-mid",      "model": "claude-sonnet-4-6" },
-    { "name": "leo",    "subagent_type": "frontend-jr",       "model": "claude-haiku-4-5-20251001" },
-    { "name": "sam",    "subagent_type": "backend-jr",        "model": "claude-haiku-4-5-20251001" },
-    { "name": "quinn",  "subagent_type": "qa",                "model": "claude-sonnet-4-6" },
-    { "name": "kai",    "subagent_type": "devops",            "model": "claude-sonnet-4-6" },
-    { "name": "orion",  "subagent_type": "code-investigator", "model": "claude-haiku-4-5-20251001" }
+    { "name": "rafael", "subagent_type": "backend-senior",         "model": "claude-opus-4-6" },
+    { "name": "alex",   "subagent_type": "backend-mid",            "model": "claude-sonnet-4-6" },
+    { "name": "sofia",  "subagent_type": "frontend-senior",        "model": "claude-opus-4-6" },
+    { "name": "maya",   "subagent_type": "frontend-mid",           "model": "claude-sonnet-4-6" },
+    { "name": "leo",    "subagent_type": "frontend-jr",            "model": "claude-haiku-4-5-20251001" },
+    { "name": "sam",    "subagent_type": "backend-jr",             "model": "claude-haiku-4-5-20251001" },
+    { "name": "quinn",  "subagent_type": "qa",                     "model": "claude-sonnet-4-6" },
+    { "name": "kai",    "subagent_type": "devops",                 "model": "claude-sonnet-4-6" },
+    { "name": "orion",  "subagent_type": "code-investigator",      "model": "claude-haiku-4-5-20251001" }
+  ]
+}
+```
+
+**`go-fullstack-team.json`** — full Go stack with server-rendered htmx + go/template UI:
+
+```json
+{
+  "name": "go-fullstack-team",
+  "description": "Full Go fullstack feature team — backend implementation, server-rendered UI with htmx + go tmpl, architecture, QA, and DevOps. Senior engineers for architecture and complex decisions, mid for standard features, juniors for boilerplate and simple tasks, QA for testing and security validation, DevOps for pipelines and infrastructure.",
+  "members": [
+    { "name": "rafael", "subagent_type": "backend-senior",         "model": "claude-opus-4-6" },
+    { "name": "alex",   "subagent_type": "backend-mid",            "model": "claude-sonnet-4-6" },
+    { "name": "sam",    "subagent_type": "backend-jr",             "model": "claude-haiku-4-5-20251001" },
+    { "name": "luna",   "subagent_type": "go-htmx-frontend-senior","model": "claude-opus-4-6" },
+    { "name": "nova",   "subagent_type": "go-htmx-frontend-mid",   "model": "claude-sonnet-4-6" },
+    { "name": "pixel",  "subagent_type": "go-htmx-frontend-jr",    "model": "claude-haiku-4-5-20251001" },
+    { "name": "kai",    "subagent_type": "devops",                 "model": "claude-sonnet-4-6" },
+    { "name": "quinn",  "subagent_type": "qa",                     "model": "claude-sonnet-4-6" },
+    { "name": "orion",  "subagent_type": "code-investigator",      "model": "claude-haiku-4-5-20251001" }
   ]
 }
 ```
@@ -1134,21 +1180,64 @@ SpawnTeammate(name="implementer-2", subagent_type="backend-mid", prompt="task B"
 SpawnTeammate(name="architect",     subagent_type="backend-senior", prompt="task C", task_ids=["3"])
 ```
 
+### The Perfect Workflow
+
+The intended pattern is a clean separation between **orchestrator** and **workers**:
+
+```
+/agent prab          ← Step 1: choose your product manager for this session
+/team backend-team   ← Step 2: load the worker roster Prab will delegate to
+```
+
+Then just describe what you want to build. Prab plans, creates tasks, and spawns workers. You never talk to the workers directly.
+
+```
+You: /agent prab
+You: /team backend-team
+You: "Build the OAuth module with JWT tokens"
+
+Prab:
+  1. Clarifies scope (one question if ambiguous)
+  2. Explores codebase briefly with code-investigator or codex
+  3. Presents plan:
+       - Task 1: OAuth service layer (backend-mid)
+       - Task 2: DB migrations (backend-jr)
+       - Task 3: Architecture review + tests (backend-senior)
+  4. After your confirmation:
+       InstantiateTeam("backend-team-oauth")
+       TaskCreate("OAuth service layer")  → id=1
+       TaskCreate("DB migrations")        → id=2
+       TaskCreate("Review + tests")       → id=3
+       SpawnTeammate("alex",    backend-mid,    "Write OAuth service",  task_ids=["1"])
+       SpawnTeammate("sam",     backend-jr,     "Write migrations",     task_ids=["2"])
+       SpawnTeammate("rafael",  backend-senior, "Review + write tests", task_ids=["3"])
+  5. All 3 run in parallel in isolated git worktrees
+  6. Tasks auto-complete as agents finish
+  7. Prab merges worktrees, runs build, reports back to you
+```
+
+**Key rules:**
+- `/agent` selects the **lead** (orchestrator/PM). Use `prab` for general-purpose planning.
+- `/team` selects the **worker roster** (template). The lead decides which workers to spawn and when.
+- The lead is never in the team template — it's always selected separately.
+- You interact only with the lead. Workers report back to the lead, not to you.
+
 ### Example: parallel feature implementation
 
 ```
-You: /team  →  pick "backend-team"
+You: /agent prab
+You: /team backend-team
 You: "Build the OAuth module — split across agents"
 
-Prab (team lead):
-  1. InstantiateTeam("backend-team")
+Prab:
+  1. InstantiateTeam("backend-team-oauth")
   2. TaskCreate × 3 (service layer, migrations, tests)
-  3. SpawnTeammate("impl-1", backend-mid,    "Write OAuth service",   task_ids=["1"])
-  4. SpawnTeammate("impl-2", backend-mid,    "Write migrations",      task_ids=["2"])
-  5. SpawnTeammate("arch",   backend-senior, "Review + write tests",  task_ids=["3"])
+  3. SpawnTeammate("alex",   backend-mid,    "Write OAuth service",   task_ids=["1"])
+  4. SpawnTeammate("sam",    backend-jr,     "Write migrations",      task_ids=["2"])
+  5. SpawnTeammate("rafael", backend-senior, "Review + write tests",  task_ids=["3"])
   → All 3 run in parallel in isolated worktrees
   → Tasks auto-complete when agents finish
-  → Lead merges worktrees + does final build check
+  → Prab merges worktrees + does final build check
 ```
 
 ### Example: code review team
