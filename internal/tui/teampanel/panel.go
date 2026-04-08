@@ -220,9 +220,8 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 	case "q":
-		// Exit team view (without deleting)
+		// Exit team view (without deleting or clearing the active team)
 		if p.runner != nil {
-			p.runner.SetActiveTeam("")
 			p.agents = nil
 			return func() tea.Msg {
 				return panels.ActionMsg{Type: "exit_team"}
