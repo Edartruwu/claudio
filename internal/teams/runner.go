@@ -602,15 +602,13 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		if mb := r.getMailbox(cfg.TeamName); mb != nil {
 			team, _ := r.manager.GetTeam(cfg.TeamName)
 			if team != nil {
-				summary := result
+				// Use state.Result (not raw result) so worktree notes appended during
+				// cleanup (auto-merge success/failure, kept-for-inspection) are included.
+				summary := state.Result
 				if err != nil {
 					summary = fmt.Sprintf("FAILED: %s", err.Error())
 				}
-				// Include worktree info in completion message if changes were kept
 				completionText := fmt.Sprintf("[%s] Task complete: %s\n\nResult:\n%s", state.Status, state.Prompt, summary)
-				if state.WorktreePath != "" {
-					completionText += fmt.Sprintf("\n\n[Changes in worktree: %s (branch: %s)]", state.WorktreePath, state.WorktreeBranch)
-				}
 				mb.Send(state.Identity.AgentName, "team-lead", Message{
 					Text:    completionText,
 					Summary: fmt.Sprintf("%s: %s", state.Identity.AgentName, state.Status),

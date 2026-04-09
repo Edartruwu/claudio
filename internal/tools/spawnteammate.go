@@ -290,7 +290,7 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 			msg += fmt.Sprintf("\nNote: %q was already running — spawned as %q instead. Use %q for SendMessage.", in.Name, resolvedName, resolvedName)
 		}
 		if state.WorktreePath != "" {
-			msg += fmt.Sprintf("\nWorktree: %s", state.WorktreePath)
+			msg += fmt.Sprintf("\nWorktree: %s\nBranch: %s", state.WorktreePath, state.WorktreeBranch)
 		}
 		return &Result{Content: msg}, nil
 	}
