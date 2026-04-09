@@ -96,6 +96,10 @@ func (t *SkillTool) Execute(_ context.Context, input json.RawMessage) (*Result, 
 	}
 
 	content := skill.Content
+	if skill.SkillDir != "" {
+		content = "Base directory for this skill: " + skill.SkillDir + "\n\n" + content
+		content = strings.ReplaceAll(content, "${CLAUDE_SKILL_DIR}", skill.SkillDir)
+	}
 	if in.Arguments != "" {
 		content = strings.ReplaceAll(content, "$ARGUMENTS", in.Arguments)
 	}

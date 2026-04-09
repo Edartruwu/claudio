@@ -15,6 +15,7 @@ type Skill struct {
 	Content     string `json:"content"` // The prompt/instruction content
 	Source      string `json:"source"`  // "bundled", "user", "project", "plugin"
 	FilePath    string `json:"file_path,omitempty"`
+	SkillDir    string `json:"skill_dir,omitempty"` // directory containing the skill file; empty for flat .md files
 }
 
 // Registry holds all loaded skills.
@@ -106,6 +107,7 @@ func loadFromDir(r *Registry, dir, source string) {
 						Content:     body,
 						Source:      source,
 						FilePath:    path,
+						SkillDir:    filepath.Join(dir, entry.Name()),
 					})
 					break
 				}
