@@ -532,3 +532,6 @@ func wrapText(text string, maxW int) []string {
 	}
 	return lines
 }
+
+// Help returns a short keybinding hint line for the panel footer.
+func (p *Panel) Help() string { return "" }

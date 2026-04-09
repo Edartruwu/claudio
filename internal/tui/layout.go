@@ -28,8 +28,24 @@ func splitLayout(mainView string, panel panels.Panel, totalWidth, totalHeight in
 		return mainView
 	}
 
-	panel.SetSize(panelW, totalHeight)
+	// Reserve one line for the help footer if the panel provides hints.
+	helpText := panel.Help()
+	panelContentH := totalHeight
+	if helpText != "" {
+		panelContentH = totalHeight - 1
+	}
+
+	panel.SetSize(panelW, panelContentH)
 	panelView := panel.View()
+
+	// Render optional help footer as a dim 1-line bar.
+	if helpText != "" {
+		footer := lipgloss.NewStyle().
+			Width(panelW).
+			Foreground(styles.Muted).
+			Render(helpText)
+		panelView = lipgloss.JoinVertical(lipgloss.Left, panelView, footer)
+	}
 
 	// Force both sides to the exact same height so JoinHorizontal aligns
 	mainStyled := lipgloss.NewStyle().

@@ -235,3 +235,6 @@ func (p *Panel) View() string {
 		Height(p.height).
 		Render(b.String())
 }
+
+// Help returns a short keybinding hint line for the panel footer.
+func (p *Panel) Help() string { return "" }

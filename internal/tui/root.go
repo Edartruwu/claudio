@@ -81,6 +81,7 @@ type Model struct {
 	// Panels
 	activePanel   panels.Panel
 	activePanelID PanelID
+	panelPool     map[PanelID]panels.Panel // pooled panel instances; keyed by PanelID
 
 	// State
 	messages       []ChatMessage
@@ -277,6 +278,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		vpCursor:        -1,
 		whichKey:        whichkey.New(),
 		sessionRuntimes: make(map[string]*SessionRuntime),
+		panelPool:       make(map[PanelID]panels.Panel),
 	}
 
 	// Apply options
@@ -703,19 +705,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Panel focus mode: delegate all keys to active panel
 		if m.focus == FocusPanel && m.activePanel != nil {
 			cmd, consumed := m.activePanel.Update(msg)
-			if !consumed {
-				// Panel didn't consume — check for close keys
-				switch msg.String() {
-				case "esc", "q":
+			if consumed {
+				// Check if panel closed itself after consuming the key.
+				if !m.activePanel.IsActive() {
 					m.closePanel()
-					return m, nil
 				}
+				return m, cmd
 			}
-			// Check if panel closed itself
-			if !m.activePanel.IsActive() {
+			// Panel didn't consume — close keys are handled here; everything
+			// else falls through to the root key handlers below so that
+			// unrecognized keys (e.g. panel resize <,>) still reach root.
+			switch msg.String() {
+			case "esc", "q":
 				m.closePanel()
+				return m, nil
 			}
-			return m, cmd
+			// Fall through: do NOT return here so the key bubbles to root.
 		}
 
 		// Viewport focus mode: section-based navigation with cursor
@@ -3745,9 +3750,14 @@ func (m *Model) handlePanelToggleByKey(key string) (bool, tea.Cmd) {
 // ── Panel Management ────────────────────────────────────
 
 func (m *Model) openPanel(id PanelID) {
-	panel := m.createPanel(id)
-	if panel == nil {
-		return
+	// Reuse a pooled instance if available, otherwise create and cache it.
+	panel, ok := m.panelPool[id]
+	if !ok {
+		panel = m.createPanel(id)
+		if panel == nil {
+			return
+		}
+		m.panelPool[id] = panel
 	}
 	m.activePanel = panel
 	m.activePanelID = id
@@ -4208,6 +4218,7 @@ func (m *Model) applyConfigChange(key, value string) {
 
 func (m *Model) closePanel() {
 	if m.activePanel != nil {
+		// Deactivate but keep instance in the pool so state is preserved on reopen.
 		m.activePanel.Deactivate()
 	}
 	m.activePanel = nil

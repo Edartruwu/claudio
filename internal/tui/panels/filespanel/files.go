@@ -304,3 +304,6 @@ func maxInt(a, b int) int {
 	}
 	return b
 }
+
+// Help returns a short keybinding hint line for the panel footer.
+func (p *Panel) Help() string { return "" }

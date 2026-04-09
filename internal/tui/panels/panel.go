@@ -24,6 +24,10 @@ type Panel interface {
 
 	// View renders the panel content.
 	View() string
+
+	// Help returns a short one-line hint string for keybindings.
+	// Return an empty string to show no footer.
+	Help() string
 }
 
 // CloseMsg is sent by a panel when it wants to close itself.

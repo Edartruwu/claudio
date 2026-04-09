@@ -311,3 +311,6 @@ func (p *Panel) countTypes() map[string]int {
 	}
 	return counts
 }
+
+// Help returns a short keybinding hint line for the panel footer.
+func (p *Panel) Help() string { return "" }
