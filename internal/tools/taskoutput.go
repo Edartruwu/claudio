@@ -23,7 +23,9 @@ type taskOutputInput struct {
 func (t *TaskOutputTool) Name() string { return "TaskOutput" }
 
 func (t *TaskOutputTool) Description() string {
-	return `Retrieves output from a background task (shell command or agent). By default waits up to 30 seconds for the task to complete. Set timeout to 0 for non-blocking mode (returns current status immediately). Returns the task's stdout/stderr output.`
+	return `Retrieves output from a background task (shell command or agent). By default waits up to 30 seconds for the task to complete. Set timeout to 0 for non-blocking mode (returns current status immediately). Returns the task's stdout/stderr output.
+
+IMPORTANT: task_id must be a Runtime task ID (e.g. "b1", "a2") returned by a background Bash or Agent call. Do NOT pass teammate agent IDs (name@team format) — use SpawnTeammate with run_in_background:false to wait on a teammate and get its output.`
 }
 
 func (t *TaskOutputTool) InputSchema() json.RawMessage {
