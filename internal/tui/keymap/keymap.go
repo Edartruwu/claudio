@@ -49,6 +49,7 @@ func defaultBindings() map[string]ActionID {
 		"bc": ActionBufferNew,
 		"bk": ActionBufferClose,
 		"br": ActionBufferRename,
+		"bl": ActionBufferList,
 
 		// Buffer alternate (,<enter>)
 		",\n": ActionBufferAlternate,
