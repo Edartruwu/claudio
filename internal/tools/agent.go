@@ -181,12 +181,14 @@ func SubAgentModelFromContext(ctx context.Context) string {
 
 // AgentTool spawns sub-agents for complex, multi-step tasks.
 type AgentTool struct {
-	// cachedDescription is computed once on first Description() call and reused.
+	// cachedDescription and cachedSchema are computed once on first call and reused.
 	// AgentTypesList() reads agent files from disk on every call — caching here
-	// prevents repeated disk reads and keeps the tool description byte-stable so
+	// prevents repeated disk reads and keeps tool definitions byte-stable so
 	// the Anthropic prompt cache is not busted on every turn.
 	cachedDescription     string
 	cachedDescriptionOnce sync.Once
+	cachedSchema          json.RawMessage
+	cachedSchemaOnce      sync.Once
 
 	// ParentRegistry is set by the registry after construction.
 	ParentRegistry *Registry
@@ -225,8 +227,9 @@ func (t *AgentTool) Description() string {
 }
 
 func (t *AgentTool) InputSchema() json.RawMessage {
-	modelEnum := buildModelEnum(t.AvailableModels)
-	return json.RawMessage(fmt.Sprintf(`{
+	t.cachedSchemaOnce.Do(func() {
+		modelEnum := buildModelEnum(t.AvailableModels)
+		t.cachedSchema = json.RawMessage(fmt.Sprintf(`{
 		"type": "object",
 		"properties": {
 			"prompt": {
@@ -267,6 +270,8 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 		},
 		"required": ["description", "prompt"]
 	}`, modelEnum))
+	})
+	return t.cachedSchema
 }
 
 func (t *AgentTool) IsReadOnly() bool                        { return false }
