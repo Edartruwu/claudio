@@ -245,6 +245,177 @@ var (
 				Margin(0, 1)
 )
 
+// ── Ask User Dialog ─────────────────────────────────────
+
+var (
+	AskUserTitle = lipgloss.NewStyle().
+			Foreground(Aqua).
+			Bold(true)
+
+	AskUserLabel = lipgloss.NewStyle().
+			Foreground(Text).
+			Bold(true)
+
+	AskUserDim = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	AskUserSelected = lipgloss.NewStyle().
+			Foreground(Success).
+			Bold(true)
+
+	AskUserProgress = lipgloss.NewStyle().
+			Foreground(Muted)
+)
+
+// ── Plan Mode ────────────────────────────────────────────
+
+var (
+	PlanDialogTitle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(Primary)
+
+	PlanOptionCursor = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true)
+
+	PlanOptionStyle = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true)
+
+	PlanPreviewStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#aaaaaa"))
+
+	PlanHintStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#666666"))
+)
+
+// ── Agent Detail Overlay ─────────────────────────────────
+
+var (
+	AgentDetailNameStyle = lipgloss.NewStyle().
+			Bold(true)
+
+	AgentDetailDimLine = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	AgentDetailInfoStyle = lipgloss.NewStyle().
+			Foreground(Dim).
+			PaddingLeft(1)
+
+	AgentDetailTaskStyle = lipgloss.NewStyle().
+			Foreground(Dim).
+			PaddingLeft(1)
+
+	AgentDetailWorkingStyle = lipgloss.NewStyle().
+			Foreground(Warning).
+			PaddingLeft(1)
+
+	AgentDetailEscHint = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	AgentDetailAgentStyle = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true).
+			PaddingLeft(1)
+
+	AgentDetailTextStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ebdbb2")).
+			PaddingLeft(3)
+
+	AgentDetailToolStyle = lipgloss.NewStyle().
+			Foreground(Warning).
+			PaddingLeft(1)
+
+	AgentDetailToolDimStyle = lipgloss.NewStyle().
+			Foreground(Dim).
+			PaddingLeft(1)
+
+	AgentDetailDoneStyle = lipgloss.NewStyle().
+			Foreground(Success).
+			PaddingLeft(1)
+
+	AgentDetailContentStyle = lipgloss.NewStyle().
+			Foreground(Dim).
+			PaddingLeft(3)
+
+	AgentDetailErrorStyle = lipgloss.NewStyle().
+			Foreground(Error).
+			PaddingLeft(1)
+
+	AgentDetailMessageStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#83a598")).
+			PaddingLeft(1)
+)
+
+// ── Session Picker ──────────────────────────────────────
+
+var (
+	SessionNumStyle = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	SessionTitleStyle = lipgloss.NewStyle().
+			Foreground(Text)
+
+	SessionDateStyle = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	SessionHintStyle = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	SessionLabelStyle = lipgloss.NewStyle().
+			Foreground(Dim)
+)
+
+// ── Mode Line / Search ──────────────────────────────────
+
+var (
+	ModeLineStyle = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	ModeLineArrowStyle = lipgloss.NewStyle().
+			Foreground(Primary)
+
+	ModeLineHintStyle = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	SearchPlanStyle = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true)
+
+	SearchQueueStyle = lipgloss.NewStyle().
+			Foreground(Warning)
+
+	SearchHeaderStyle = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	SearchQueryStyle = lipgloss.NewStyle().
+			Foreground(Text)
+)
+
+// ── Which Key Popup ──────────────────────────────────
+
+var (
+	WhichKeyKey = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	WhichKeyDesc = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	WhichKeySep = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	WhichKeyTitle = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true)
+
+	WhichKeyBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(SurfaceAlt)
+)
+
 // ── Panels ──────────────────────────────────────────────
 
 var (

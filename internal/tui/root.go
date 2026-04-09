@@ -143,7 +143,7 @@ type Model struct {
 	planModeActive      bool   // true while the AI is in plan mode (EnterPlanMode called)
 	planFilePath        string // path of the current plan file (set by EnterPlanMode)
 	planApprovalCursor  int    // selected option in the plan approval dialog (0-3)
-
+	tooSmall            bool   // true if terminal is too small (< 60×20)
 
 	// Rate limit state
 	rateLimitWarning string
@@ -527,6 +527,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.tooSmall = msg.Width < 60 || msg.Height < 20
 		m.palette.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
 		m.modelSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
@@ -2773,21 +2774,15 @@ func (m Model) renderAskUserDialog(width int) string {
 		boxW = 30
 	}
 
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Aqua).Bold(true)
-	labelStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
-	dimStyle := lipgloss.NewStyle().Foreground(styles.Dim)
-	selectedStyle := lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
-	progressStyle := lipgloss.NewStyle().Foreground(styles.Muted)
-
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("? Question"))
+	b.WriteString(styles.AskUserTitle.Render("? Question"))
 	progress := fmt.Sprintf(" (%d/%d)", d.qIdx+1, len(d.questions))
-	b.WriteString(progressStyle.Render(progress))
+	b.WriteString(styles.AskUserProgress.Render(progress))
 	b.WriteString("\n\n")
-	b.WriteString(labelStyle.Render(q.Label))
+	b.WriteString(styles.AskUserLabel.Render(q.Label))
 	b.WriteString("\n")
 	if q.Description != "" {
-		b.WriteString(dimStyle.Render(q.Description))
+		b.WriteString(styles.AskUserDim.Render(q.Description))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
@@ -2805,15 +2800,15 @@ func (m Model) renderAskUserDialog(width int) string {
 			}
 			line := prefix + check + " " + opt
 			if i == d.optCursor && !d.typingOther {
-				b.WriteString(selectedStyle.Render(line))
+				b.WriteString(styles.AskUserSelected.Render(line))
 			} else {
-				b.WriteString(dimStyle.Render(line))
+				b.WriteString(styles.AskUserDim.Render(line))
 			}
 		} else {
 			if i == d.optCursor && !d.typingOther {
-				b.WriteString(selectedStyle.Render(prefix + opt))
+				b.WriteString(styles.AskUserSelected.Render(prefix + opt))
 			} else {
-				b.WriteString(dimStyle.Render(prefix + opt))
+				b.WriteString(styles.AskUserDim.Render(prefix + opt))
 			}
 		}
 		b.WriteString("\n")
@@ -2821,21 +2816,21 @@ func (m Model) renderAskUserDialog(width int) string {
 	// "Other" inline-typing option.
 	if d.typingOther {
 		inputText := d.freeText + "█"
-		b.WriteString(selectedStyle.Render("▸ Other: " + inputText))
+		b.WriteString(styles.AskUserSelected.Render("▸ Other: " + inputText))
 	} else if d.optCursor == otherIdx {
-		b.WriteString(selectedStyle.Render("▸ Other (type your own...)"))
+		b.WriteString(styles.AskUserSelected.Render("▸ Other (type your own...)"))
 	} else {
-		b.WriteString(dimStyle.Render("  Other (type your own...)"))
+		b.WriteString(styles.AskUserDim.Render("  Other (type your own...)"))
 	}
 	b.WriteString("\n")
 	// Divider before footer option.
-	b.WriteString(dimStyle.Render("─────────────────────────"))
+	b.WriteString(styles.AskUserDim.Render("─────────────────────────"))
 	b.WriteString("\n")
 	// "Chat about this" footer option.
 	if !d.typingOther && d.optCursor == chatIdx {
-		b.WriteString(selectedStyle.Render("▸ Chat about this"))
+		b.WriteString(styles.AskUserSelected.Render("▸ Chat about this"))
 	} else {
-		b.WriteString(dimStyle.Render("  Chat about this"))
+		b.WriteString(styles.AskUserDim.Render("  Chat about this"))
 	}
 	b.WriteString("\n")
 	b.WriteString("\n")
@@ -2887,7 +2882,7 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 		Padding(1, 2).
 		Width(boxWidth)
 
-	title := lipgloss.NewStyle().Bold(true).Foreground(styles.Primary).Render("Plan ready — how would you like to proceed?")
+	title := styles.PlanDialogTitle.Render("Plan ready — how would you like to proceed?")
 
 	usedPct := m.planContextUsedPercent()
 	var options []string
@@ -2907,7 +2902,6 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 	// Show a truncated preview of the plan file content (max 10 lines).
 	if m.planFilePath != "" {
 		if raw, err := os.ReadFile(m.planFilePath); err == nil && len(raw) > 0 {
-			previewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#aaaaaa"))
 			lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
 			const maxPreviewLines = 10
 			truncated := false
@@ -2916,10 +2910,10 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 				truncated = true
 			}
 			for _, l := range lines {
-				rows = append(rows, previewStyle.Render(l))
+				rows = append(rows, styles.PlanPreviewStyle.Render(l))
 			}
 			if truncated {
-				rows = append(rows, previewStyle.Render("…"))
+				rows = append(rows, styles.PlanPreviewStyle.Render("…"))
 			}
 			rows = append(rows, "")
 		}
@@ -2928,15 +2922,15 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 		cursor := "  "
 		style := lipgloss.NewStyle()
 		if i == m.planApprovalCursor {
-			cursor = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("› ")
-			style = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+			cursor = styles.PlanOptionCursor.Render("› ")
+			style = styles.PlanOptionStyle
 		}
 		label := cursor + style.Render(opt)
 		rows = append(rows, label)
 	}
 
 	rows = append(rows, "")
-	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render(
+	hint := styles.PlanHintStyle.Render(
 		"j/k navigate · enter confirm · esc dismiss",
 	)
 	if m.planFilePath != "" {
@@ -2944,7 +2938,7 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 		if home, err := os.UserHomeDir(); err == nil {
 			planShort = strings.Replace(planShort, home, "~", 1)
 		}
-		hint += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render(
+		hint += "\n" + styles.PlanHintStyle.Render(
 			"ctrl+g edit in $EDITOR · "+planShort,
 		)
 	}
@@ -3056,18 +3050,7 @@ func (m *Model) persistPermissionRule(rule config.PermissionRule) {
 		return false
 	}
 
-	// Debug logging.
-	if f, err := os.OpenFile("/tmp/claudio-perm-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		fmt.Fprintf(f, "[persistPermissionRule] rule tool=%q pattern=%q behavior=%q\n", rule.Tool, rule.Pattern, rule.Behavior)
-		fmt.Fprintf(f, "  appCtx.Config.PermissionRules=%d engineConfig.PermissionRules=%d engine=%v\n",
-			len(m.appCtx.Config.PermissionRules), func() int {
-				if m.engineConfig != nil {
-					return len(m.engineConfig.PermissionRules)
-				}
-				return -1
-			}(), m.engine != nil)
-		f.Close()
-	}
+
 
 	// Add to live config (skip if already present).
 	if !hasDuplicate(m.appCtx.Config.PermissionRules) {
@@ -3997,39 +3980,37 @@ func (m Model) renderAgentDetail(width, height int) string {
 	}
 	dur := time.Since(state.StartedAt).Truncate(time.Second)
 
-	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(state.Identity.Color))
+	nameStyle := styles.AgentDetailNameStyle.Copy().Foreground(lipgloss.Color(state.Identity.Color))
 	headerLeft := fmt.Sprintf(" %s %s · %s %s · %dt",
 		icon,
 		nameStyle.Render(state.Identity.AgentName),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusText),
-		lipgloss.NewStyle().Foreground(styles.Dim).Render(dur.String()),
+		styles.AgentDetailInfoStyle.Copy().PaddingLeft(0).Render(dur.String()),
 		progress.ToolCalls,
 	)
-	escHint := lipgloss.NewStyle().Foreground(styles.Subtle).Render("[ESC]")
+	escHint := styles.AgentDetailEscHint.Render("[ESC]")
 	headerRight := escHint
 	padding := width - lipgloss.Width(headerLeft) - lipgloss.Width(headerRight) - 1
 	if padding < 1 {
 		padding = 1
 	}
 	b.WriteString(headerLeft + strings.Repeat(" ", padding) + headerRight + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).Render(strings.Repeat("─", width)) + "\n")
+	b.WriteString(styles.AgentDetailDimLine.Render(strings.Repeat("─", width)) + "\n")
 
 	// Info lines: model, max_turns, prompt
-	infoStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1)
 	if state.Model != "" {
-		b.WriteString(infoStyle.Render("Model: "+state.Model) + "\n")
+		b.WriteString(styles.AgentDetailInfoStyle.Render("Model: "+state.Model) + "\n")
 	}
 	if state.MaxTurns > 0 {
-		b.WriteString(infoStyle.Render(fmt.Sprintf("Max turns: %d", state.MaxTurns)) + "\n")
+		b.WriteString(styles.AgentDetailInfoStyle.Render(fmt.Sprintf("Max turns: %d", state.MaxTurns)) + "\n")
 	}
 
 	// Task / prompt
-	taskStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1)
 	task := state.Prompt
 	if len(task) > width-4 {
 		task = task[:width-7] + "..."
 	}
-	b.WriteString(taskStyle.Render("Task: "+task) + "\n\n")
+	b.WriteString(styles.AgentDetailTaskStyle.Render("Task: "+task) + "\n\n")
 
 	// Conversation entries
 	contentLines := make([]string, 0, len(conversation)*3)
@@ -4041,7 +4022,7 @@ func (m Model) renderAgentDetail(width, height int) string {
 	// Working indicator at bottom
 	if state.Status == teams.StatusWorking {
 		contentLines = append(contentLines, "")
-		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.Warning).PaddingLeft(1).Render("◐ working..."))
+		contentLines = append(contentLines, styles.AgentDetailWorkingStyle.Render("◐ working..."))
 	}
 
 	// Apply scroll
@@ -4080,8 +4061,8 @@ func (m Model) renderAgentDetail(width, height int) string {
 	}
 
 	// Hint bar
-	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).Render(strings.Repeat("─", width)) + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1).Render("j/k scroll  m message  ESC back"))
+	b.WriteString(styles.AgentDetailDimLine.Render(strings.Repeat("─", width)) + "\n")
+	b.WriteString(styles.AgentDetailTaskStyle.Render("j/k scroll  m message  ESC back"))
 
 	return b.String()
 }
@@ -4093,9 +4074,7 @@ func (m Model) renderConversationEntry(entry teams.ConversationEntry, width int)
 	switch entry.Type {
 	case "text":
 		// Agent's thinking/response text
-		agentStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).PaddingLeft(1)
-		lines = append(lines, agentStyle.Render("● assistant"))
-		textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ebdbb2")).PaddingLeft(3)
+		lines = append(lines, styles.AgentDetailAgentStyle.Render("● assistant"))
 		// Wrap long text
 		for _, paragraph := range strings.Split(entry.Content, "\n") {
 			if len(paragraph) > width-4 {
@@ -4108,16 +4087,15 @@ func (m Model) renderConversationEntry(entry teams.ConversationEntry, width int)
 					if cut == 0 {
 						cut = width - 4
 					}
-					lines = append(lines, textStyle.Render(paragraph[:cut]))
+					lines = append(lines, styles.AgentDetailTextStyle.Render(paragraph[:cut]))
 					paragraph = paragraph[cut:]
 				}
 			}
-			lines = append(lines, textStyle.Render(paragraph))
+			lines = append(lines, styles.AgentDetailTextStyle.Render(paragraph))
 		}
 		lines = append(lines, "")
 
 	case "tool_start":
-		toolStyle := lipgloss.NewStyle().Foreground(styles.Warning).PaddingLeft(1)
 		box := fmt.Sprintf("┌─ %s", entry.ToolName)
 		if entry.Content != "" {
 			content := entry.Content
@@ -4126,10 +4104,9 @@ func (m Model) renderConversationEntry(entry teams.ConversationEntry, width int)
 			}
 			box += fmt.Sprintf("(%s)", content)
 		}
-		lines = append(lines, toolStyle.Render(box))
+		lines = append(lines, styles.AgentDetailToolStyle.Render(box))
 
 	case "tool_end":
-		toolStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1)
 		content := entry.Content
 		if content != "" {
 			// Show truncated result
@@ -4140,45 +4117,41 @@ func (m Model) renderConversationEntry(entry teams.ConversationEntry, width int)
 					if len(rl) > width-8 {
 						rl = rl[:width-11] + "..."
 					}
-					lines = append(lines, toolStyle.Render("│ "+rl))
+					lines = append(lines, styles.AgentDetailToolDimStyle.Render("│ "+rl))
 				}
-				lines = append(lines, toolStyle.Render(fmt.Sprintf("│ ... (%d more lines)", len(resultLines)-maxLines)))
+				lines = append(lines, styles.AgentDetailToolDimStyle.Render(fmt.Sprintf("│ ... (%d more lines)", len(resultLines)-maxLines)))
 			} else {
 				for _, rl := range resultLines {
 					if len(rl) > width-8 {
 						rl = rl[:width-11] + "..."
 					}
-					lines = append(lines, toolStyle.Render("│ "+rl))
+					lines = append(lines, styles.AgentDetailToolDimStyle.Render("│ "+rl))
 				}
 			}
 		}
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(1).Render("└─"))
+		lines = append(lines, styles.AgentDetailToolDimStyle.Render("└─"))
 		lines = append(lines, "")
 
 	case "complete":
-		doneStyle := lipgloss.NewStyle().Foreground(styles.Success).PaddingLeft(1)
-		lines = append(lines, doneStyle.Render("✓ Complete"))
+		lines = append(lines, styles.AgentDetailDoneStyle.Render("✓ Complete"))
 		if entry.Content != "" {
-			contentStyle := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(3)
 			for _, line := range strings.Split(entry.Content, "\n") {
 				if len(line) > width-6 {
 					line = line[:width-9] + "..."
 				}
-				lines = append(lines, contentStyle.Render(line))
+				lines = append(lines, styles.AgentDetailContentStyle.Render(line))
 			}
 		}
 		lines = append(lines, "")
 
 	case "error":
-		errStyle := lipgloss.NewStyle().Foreground(styles.Error).PaddingLeft(1)
-		lines = append(lines, errStyle.Render("✗ Error: "+entry.Content))
+		lines = append(lines, styles.AgentDetailErrorStyle.Render("✗ Error: "+entry.Content))
 		lines = append(lines, "")
 
 	case "message_in":
-		msgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#83a598")).PaddingLeft(1)
-		lines = append(lines, msgStyle.Render("┌─ ✉ from you"))
-		lines = append(lines, msgStyle.Render("│ "+entry.Content))
-		lines = append(lines, msgStyle.Render("└─"))
+		lines = append(lines, styles.AgentDetailMessageStyle.Render("┌─ ✉ from you"))
+		lines = append(lines, styles.AgentDetailMessageStyle.Render("│ "+entry.Content))
+		lines = append(lines, styles.AgentDetailMessageStyle.Render("└─"))
 		lines = append(lines, "")
 	}
 
@@ -4537,14 +4510,6 @@ func (m *Model) refreshViewport() {
 		}
 	}
 
-	// DEBUG: log viewport state to file
-	if len(m.messages) > 0 {
-		contentLines := strings.Count(content, "\n") + 1
-		debugInfo := fmt.Sprintf("msgs=%d contentLines=%d vpH=%d vpW=%d offset=%d\n---content---\n%s\n---end---\n",
-			len(m.messages), contentLines, m.viewport.Height, m.viewport.Width, m.viewport.YOffset, content)
-		os.WriteFile("/tmp/claudio-viewport-debug.txt", []byte(debugInfo), 0644)
-	}
-
 	m.viewport.SetContent(content)
 	if m.focus != FocusViewport {
 		contentLines := strings.Count(content, "\n") + 1
@@ -4641,11 +4606,6 @@ func (m *Model) renderRecentSessions(sessions []storage.Session) string {
 		boxW = 30
 	}
 
-	numStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Text)
-	dateStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
-	hintStyle := lipgloss.NewStyle().Foreground(styles.Dim)
-
 	var lines []string
 	for i, s := range sessions {
 		stitle := s.Title
@@ -4668,8 +4628,8 @@ func (m *Model) renderRecentSessions(sessions []storage.Session) string {
 			stitle = stitle[:maxTitle-1] + "…"
 		}
 
-		left := numStyle.Render(fmt.Sprintf("  %d  ", i+1)) + titleStyle.Render(stitle)
-		right := dateStyle.Render(ago)
+		left := styles.SessionNumStyle.Render(fmt.Sprintf("  %d  ", i+1)) + styles.SessionTitleStyle.Render(stitle)
+		right := styles.SessionDateStyle.Render(ago)
 		gap := boxW - lipgloss.Width(left) - lipgloss.Width(right) - 2
 		if gap < 1 {
 			gap = 1
@@ -4678,7 +4638,7 @@ func (m *Model) renderRecentSessions(sessions []storage.Session) string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, hintStyle.Render("  [1-3] resume · <Space>. browse · type to chat"))
+	lines = append(lines, styles.SessionHintStyle.Render("  [1-3] resume · <Space>. browse · type to chat"))
 
 	content := strings.Join(lines, "\n")
 
@@ -4692,7 +4652,7 @@ func (m *Model) renderRecentSessions(sessions []storage.Session) string {
 	// Inject title into top border
 	boxLines := strings.Split(box, "\n")
 	if len(boxLines) > 0 {
-		label := lipgloss.NewStyle().Foreground(styles.Dim).Render(" Recent ")
+		label := styles.SessionLabelStyle.Render(" Recent ")
 		topRunes := []rune(boxLines[0])
 		labelRunes := []rune(label)
 		pos := 3
@@ -4788,7 +4748,8 @@ func (m *Model) layout() {
 	}
 
 	modeLineH := 1
-	vpHeight := m.height - statusH - promptH - paletteH - modeLineH - 1
+	helpFooterH := 1
+	vpHeight := m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - 1
 	if vpHeight < 5 {
 		vpHeight = 5
 	}
@@ -4825,6 +4786,11 @@ func (m *Model) layout() {
 }
 
 func (m Model) View() string {
+	if m.tooSmall {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center,
+			lipgloss.NewStyle().Foreground(styles.Error).Render("Terminal too small — please resize (min 60×20)"))
+	}
+
 	m.layout()
 
 	mw := mainWidth(m.width, m.activePanel, m.panelSplitRatio)
@@ -4957,7 +4923,10 @@ func (m Model) View() string {
 		sections = append(sections, m.renderModeLine())
 	}
 
-	// 6. Status bar (full width)
+	// 6. Help footer (full width)
+	sections = append(sections, m.renderHelpFooter())
+
+	// 7. Status bar (full width)
 	hint := m.statusHint()
 	ctxUsed, ctxMax := m.contextBudget()
 	teamSummary, unreadMail := m.teamStatus()
@@ -5032,17 +5001,23 @@ func (m *Model) cyclePermissionMode() {
 	m.engineConfig.PermissionMode = "default"
 }
 
+// renderHelpFooter renders the persistent help footer at the bottom of the screen.
+func (m Model) renderHelpFooter() string {
+	footerText := "[space] commands · [/] search · [q] quit"
+	footerStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+	footer := footerStyle.Render(footerText)
+	// Pad the footer to full width
+	footer = lipgloss.NewStyle().Width(m.width).Render(footer)
+	return footer
+}
+
 // renderModeLine renders the vim-style mode line below the prompt.
 func (m Model) renderModeLine() string {
 	vimMode := m.vimModeDisplay()
 
-	modeStyle := lipgloss.NewStyle().Foreground(styles.Muted)
-	arrowStyle := lipgloss.NewStyle().Foreground(styles.Primary)
-	hintStyle := lipgloss.NewStyle().Foreground(styles.Dim)
-
 	var left string
 	if vimMode != "" {
-		left = modeStyle.Render("-- " + vimMode + " --")
+		left = styles.ModeLineStyle.Render("-- " + vimMode + " --")
 	}
 
 	// Mode indicator: plan mode takes precedence over permission mode label.
@@ -5052,19 +5027,17 @@ func (m Model) renderModeLine() string {
 	}
 	var modeIndicator string
 	if m.planModeActive {
-		planStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-		modeIndicator = arrowStyle.Render(" ▸▸ ") + planStyle.Render("plan mode")
+		modeIndicator = styles.ModeLineArrowStyle.Render(" ▸▸ ") + styles.SearchPlanStyle.Render("plan mode")
 	} else {
-		modeIndicator = arrowStyle.Render(" ▸▸ ") + hintStyle.Render(permMode+" mode")
+		modeIndicator = styles.ModeLineArrowStyle.Render(" ▸▸ ") + styles.ModeLineHintStyle.Render(permMode+" mode")
 	}
 
 	// Show queue count
 	if len(m.messageQueue) > 0 {
-		queueStyle := lipgloss.NewStyle().Foreground(styles.Warning)
-		modeIndicator += queueStyle.Render(fmt.Sprintf("  [%d queued]", len(m.messageQueue)))
+		modeIndicator += styles.SearchQueueStyle.Render(fmt.Sprintf("  [%d queued]", len(m.messageQueue)))
 	}
 
-	right := hintStyle.Render("(shift+tab to cycle)")
+	right := styles.ModeLineHintStyle.Render("(shift+tab to cycle)")
 
 	content := left + modeIndicator
 	gap := m.width - lipgloss.Width(content) - lipgloss.Width(right) - 2
@@ -5077,17 +5050,13 @@ func (m Model) renderModeLine() string {
 
 // renderSearchBar renders the search input line.
 func (m Model) renderSearchBar() string {
-	searchStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
-	queryStyle := lipgloss.NewStyle().Foreground(styles.Text)
-	hintStyle := lipgloss.NewStyle().Foreground(styles.Dim)
-
-	left := searchStyle.Render("/") + queryStyle.Render(m.vpSearchQuery) + searchStyle.Render("▌")
+	left := styles.SearchHeaderStyle.Render("/") + styles.SearchQueryStyle.Render(m.vpSearchQuery) + styles.SearchHeaderStyle.Render("▌")
 
 	var right string
 	if len(m.vpSearchMatches) > 0 {
-		right = hintStyle.Render(fmt.Sprintf("[%d/%d]", m.vpSearchIdx+1, len(m.vpSearchMatches)))
+		right = styles.ModeLineHintStyle.Render(fmt.Sprintf("[%d/%d]", m.vpSearchIdx+1, len(m.vpSearchMatches)))
 	} else if m.vpSearchQuery != "" {
-		right = hintStyle.Render("[no matches]")
+		right = styles.ModeLineHintStyle.Render("[no matches]")
 	}
 
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2

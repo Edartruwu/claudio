@@ -7,7 +7,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+
+	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
 // Timeout is the delay before showing the popup after the leader key is pressed.
@@ -125,34 +126,18 @@ func (m Model) View() string {
 		return ""
 	}
 
-	keyStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#fabd2f")). // warning/yellow
-		Bold(true)
-
-	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#bdae93")) // dim
-
-	sepStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#504945")) // subtle
-
-	titleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#d3869b")). // primary
-		Bold(true)
-
 	var lines []string
-	lines = append(lines, titleStyle.Render(" <Space> "))
-	lines = append(lines, sepStyle.Render(strings.Repeat("─", 22)))
+	lines = append(lines, styles.WhichKeyTitle.Render(" <Space> "))
+	lines = append(lines, styles.WhichKeySep.Render(strings.Repeat("─", 22)))
 
 	for _, b := range m.bindings {
-		line := "  " + keyStyle.Render(b.Key) + " " + sepStyle.Render("→") + " " + descStyle.Render(b.Desc)
+		line := "  " + styles.WhichKeyKey.Render(b.Key) + " " + styles.WhichKeySep.Render("→") + " " + styles.WhichKeyDesc.Render(b.Desc)
 		lines = append(lines, line)
 	}
 
 	content := strings.Join(lines, "\n")
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#3c3836")). // surfaceAlt
+	box := styles.WhichKeyBorder.
 		Padding(0, 1).
 		Render(content)
 
