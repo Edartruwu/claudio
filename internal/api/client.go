@@ -15,6 +15,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/auth"
 	"github.com/Abraxas-365/claudio/internal/auth/refresh"
 	"github.com/Abraxas-365/claudio/internal/auth/storage"
+	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/ratelimit"
 )
 
@@ -1059,31 +1060,73 @@ func (c *Client) applyMessageCacheBreakpoints(req *MessagesRequest) {
 // applyAttribution injects the x-anthropic-billing-header into the system prompt
 // as the first text block. This is required for OAuth tokens on Sonnet/Opus models.
 // It converts the plain string System field into a SystemRaw JSON array.
-// When prompt caching is enabled, it marks the last block with cache_control so the
-// API caches everything up to that point (saves re-paying for static system content).
+//
+// When prompt caching is enabled it splits the system prompt at
+// SystemPromptDynamicBoundary into two blocks:
+//
+//   - Static prefix  (cache_control set): identical across all sessions — the large
+//     block of instructions and tool guidance that never changes between runs.
+//     This block gets its own cache entry so it survives session changes.
+//
+//   - Dynamic suffix (no cache_control): cwd, date, CLAUDE.md content, etc.
+//     This is implicitly covered by the downstream tool-definitions cache breakpoint
+//     (applyMessageCacheBreakpoints), keeping the total breakpoint count at 4.
 func (c *Client) applyAttribution(req *MessagesRequest) {
 	authResult := c.authResolver.Resolve()
-	if !authResult.IsOAuth {
-		// For non-OAuth, emit a block array so we can attach cache_control.
-		if req.System != "" {
-			block := SystemBlock{Type: "text", Text: req.System}
+
+	// splitSystemBlocks splits req.System at SystemPromptDynamicBoundary and
+	// returns the system blocks with appropriate cache_control settings.
+	splitSystemBlocks := func(system string) []SystemBlock {
+		if system == "" {
+			return nil
+		}
+		parts := strings.SplitN(system, prompts.SystemPromptDynamicBoundary, 2)
+		staticText := strings.TrimSpace(parts[0])
+		var dynamicText string
+		if len(parts) == 2 {
+			dynamicText = strings.TrimSpace(parts[1])
+		}
+
+		if staticText == "" || !c.promptCaching {
+			// No boundary or caching disabled — single block.
+			block := SystemBlock{Type: "text", Text: system}
 			if c.promptCaching {
 				block.CacheControl = &CacheControlBlock{Type: "ephemeral"}
 			}
-			req.SystemRaw, _ = json.Marshal([]SystemBlock{block})
+			return []SystemBlock{block}
+		}
+
+		// Static prefix gets its own cache entry — stable across sessions.
+		blocks := []SystemBlock{
+			{Type: "text", Text: staticText, CacheControl: &CacheControlBlock{Type: "ephemeral"}},
+		}
+		// Dynamic suffix has no cache_control here; the tools cache breakpoint
+		// (applied later in applyMessageCacheBreakpoints) covers it implicitly.
+		if dynamicText != "" {
+			blocks = append(blocks, SystemBlock{Type: "text", Text: dynamicText})
+		}
+		return blocks
+	}
+
+	if !authResult.IsOAuth {
+		if req.System != "" {
+			req.SystemRaw, _ = json.Marshal(splitSystemBlocks(req.System))
 		}
 		return
 	}
 
+	// OAuth: prepend billing header as the first block, then the split system blocks.
 	blocks := []SystemBlock{
 		{Type: "text", Text: "x-anthropic-billing-header: cc_version=2.1.89.4fa; cc_entrypoint=cli; cch=00000;"},
 	}
-	if req.System != "" {
-		blocks = append(blocks, SystemBlock{Type: "text", Text: req.System})
-	}
-	// Mark the last block for caching — the API will cache everything up to this point.
+	blocks = append(blocks, splitSystemBlocks(req.System)...)
+	// If caching is off (splitSystemBlocks returns unmodified block), ensure the
+	// last block is still marked so we don't regress on the OAuth path.
 	if c.promptCaching && len(blocks) > 0 {
-		blocks[len(blocks)-1].CacheControl = &CacheControlBlock{Type: "ephemeral"}
+		last := &blocks[len(blocks)-1]
+		if last.CacheControl == nil {
+			last.CacheControl = &CacheControlBlock{Type: "ephemeral"}
+		}
 	}
 	req.SystemRaw, _ = json.Marshal(blocks)
 }

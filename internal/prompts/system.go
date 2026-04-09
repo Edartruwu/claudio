@@ -15,8 +15,14 @@ import (
 const SystemPromptDynamicBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"
 
 // BuildSystemPrompt constructs the full system prompt for Claudio.
+//
+// The prompt is split at SystemPromptDynamicBoundary:
+//   - Everything before the boundary is static — identical across all sessions
+//     and suitable for cross-session prompt caching.
+//   - Everything after the boundary is dynamic — contains cwd, date, model,
+//     CLAUDE.md content, etc. that change per session.
 func BuildSystemPrompt(model string, additionalContext string) string {
-	sections := []string{
+	staticSections := []string{
 		introSection(),
 		systemSection(),
 		doingTasksSection(),
@@ -25,20 +31,30 @@ func BuildSystemPrompt(model string, additionalContext string) string {
 		toneAndStyleSection(),
 		outputEfficiencySection(),
 		sessionGuidanceSection(),
+	}
+
+	dynamicSections := []string{
 		environmentSection(model),
 	}
-
 	if additionalContext != "" {
-		sections = append(sections, additionalContext)
+		dynamicSections = append(dynamicSections, additionalContext)
 	}
 
-	var result []string
-	for _, s := range sections {
+	var staticParts, dynamicParts []string
+	for _, s := range staticSections {
 		if s != "" {
-			result = append(result, s)
+			staticParts = append(staticParts, s)
 		}
 	}
-	return strings.Join(result, "\n\n")
+	for _, s := range dynamicSections {
+		if s != "" {
+			dynamicParts = append(dynamicParts, s)
+		}
+	}
+
+	return strings.Join(staticParts, "\n\n") +
+		"\n\n" + SystemPromptDynamicBoundary + "\n\n" +
+		strings.Join(dynamicParts, "\n\n")
 }
 
 func introSection() string {
