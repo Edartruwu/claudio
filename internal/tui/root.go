@@ -557,7 +557,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.whichKey.ShowWindow()
 			m.whichKey.SetWidth(m.width)
 		case "b":
-			m.whichKey.Show(whichkey.SessionBindings())
+			m.whichKey.ShowSessions()
 			m.whichKey.SetWidth(m.width)
 		case "i":
 			m.whichKey.Show(whichkey.PanelBindings())
@@ -901,6 +901,64 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.vpSearchQuery = ""
 				m.vpSearchMatches = nil
 				m.vpSearchIdx = 0
+				return m, nil
+			case "]b":
+				// Next session (same as <Space>bn)
+				_, cmd := m.switchSessionRelative(1)
+				return m, cmd
+			case "[b":
+				// Previous session (same as <Space>bp)
+				_, cmd := m.switchSessionRelative(-1)
+				return m, cmd
+			case "]m":
+				// Jump to next message section
+				if m.vpCursor >= 0 && len(m.vpSections) > 0 {
+					// Find next section after current cursor
+					for i := m.vpCursor + 1; i < len(m.vpSections); i++ {
+						// Any non-tool-group section is a message boundary
+						if !m.vpSections[i].IsToolGroup {
+							m.vpCursor = i
+							m.refreshViewport()
+							m.scrollToSection(m.vpCursor)
+							return m, nil
+						}
+					}
+				} else if m.vpCursor < 0 && len(m.vpSections) > 0 {
+					// Start from first non-tool-group section
+					for i := 0; i < len(m.vpSections); i++ {
+						if !m.vpSections[i].IsToolGroup {
+							m.vpCursor = i
+							m.refreshViewport()
+							m.scrollToSection(m.vpCursor)
+							return m, nil
+						}
+					}
+				}
+				return m, nil
+			case "[m":
+				// Jump to previous message section
+				if m.vpCursor > 0 && len(m.vpSections) > 0 {
+					// Find previous section before current cursor
+					for i := m.vpCursor - 1; i >= 0; i-- {
+						// Any non-tool-group section is a message boundary
+						if !m.vpSections[i].IsToolGroup {
+							m.vpCursor = i
+							m.refreshViewport()
+							m.scrollToSection(m.vpCursor)
+							return m, nil
+						}
+					}
+				} else if m.vpCursor < 0 && len(m.vpSections) > 0 {
+					// Start from last non-tool-group section
+					for i := len(m.vpSections) - 1; i >= 0; i-- {
+						if !m.vpSections[i].IsToolGroup {
+							m.vpCursor = i
+							m.refreshViewport()
+							m.scrollToSection(m.vpCursor)
+							return m, nil
+						}
+					}
+				}
 				return m, nil
 			case "i", "esc", "q":
 				m.focus = FocusPrompt
@@ -1728,6 +1786,11 @@ The team is ready. Use SpawnTeammate to assign tasks to each member.`,
 func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	m.palette.Deactivate()
 	m.filePicker.Deactivate()
+
+	// `:` prefix alias: treat `:command` as `/command`
+	if strings.HasPrefix(text, ":") {
+		text = "/" + text[1:]
+	}
 
 	if cmdName, cmdArgs, isCmd := commands.Parse(text); isCmd {
 		return m.handleCommand(cmdName, cmdArgs)
@@ -3176,6 +3239,73 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 				}
 				m.refreshViewport()
 			}
+			return true, nil
+		// Direct panel shortcuts (uppercase letters)
+		case "C":
+			// Config panel — toggle
+			if m.activePanelID == PanelConfig && m.activePanel != nil && m.activePanel.IsActive() {
+				m.closePanel()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+			} else {
+				m.openPanel(PanelConfig)
+			}
+			m.refreshViewport()
+			return true, nil
+		case "K":
+			// Skills panel — toggle
+			if m.activePanelID == PanelSkills && m.activePanel != nil && m.activePanel.IsActive() {
+				m.closePanel()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+			} else {
+				m.openPanel(PanelSkills)
+			}
+			m.refreshViewport()
+			return true, nil
+		case "M":
+			// Memory panel — toggle
+			if m.activePanelID == PanelMemory && m.activePanel != nil && m.activePanel.IsActive() {
+				m.closePanel()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+			} else {
+				m.openPanel(PanelMemory)
+			}
+			m.refreshViewport()
+			return true, nil
+		case "T":
+			// Tasks panel — toggle
+			if m.activePanelID == PanelTasks && m.activePanel != nil && m.activePanel.IsActive() {
+				m.closePanel()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+			} else {
+				m.openPanel(PanelTasks)
+			}
+			m.refreshViewport()
+			return true, nil
+		case "O":
+			// Tools panel — toggle
+			if m.activePanelID == PanelTools && m.activePanel != nil && m.activePanel.IsActive() {
+				m.closePanel()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+			} else {
+				m.openPanel(PanelTools)
+			}
+			m.refreshViewport()
+			return true, nil
+		case "A":
+			// Analytics panel — toggle
+			if m.activePanelID == PanelAnalytics && m.activePanel != nil && m.activePanel.IsActive() {
+				m.closePanel()
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+			} else {
+				m.openPanel(PanelAnalytics)
+			}
+			m.refreshViewport()
 			return true, nil
 		}
 		return true, nil // consumed but no match
