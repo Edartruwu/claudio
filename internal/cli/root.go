@@ -21,7 +21,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/rules"
-	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tasks"
@@ -243,7 +242,6 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string) {
 func buildFullSystemPrompt() string {
 	paths := config.GetPaths()
 	cwd, _ := os.Getwd()
-	home, _ := os.UserHomeDir()
 
 	// Gather additional context sections
 	var sections []string
@@ -255,46 +253,13 @@ func buildFullSystemPrompt() string {
 		}
 	}
 
-	// 2. Load rules
+	// 2. Load rules (excludes CLAUDE.md — that goes into the user context message via buildUserContext)
 	rulesReg := rules.LoadAll(
 		paths.Rules,
 		cwd+"/.claudio/rules",
 	)
-	rulesReg.LoadCLAUDEMD(cwd, home)
 	if rulesContent := rulesReg.ForSystemPrompt(); rulesContent != "" {
 		sections = append(sections, rulesContent)
-	}
-
-	// 3. Session memory (selection strategy from config)
-	if appInstance.Memory != nil {
-		switch appInstance.Config.GetMemorySelection() {
-		case "ai":
-			ctx := context.Background()
-			selector := &memory.AISelector{Client: appInstance.API}
-			if memContent := appInstance.Memory.ForSystemPromptWithSelection(ctx, cwd, selector); memContent != "" {
-				sections = append(sections, memContent)
-			}
-		case "keyword":
-			ctx := context.Background()
-			selector := &memory.KeywordSelector{}
-			if memContent := appInstance.Memory.ForSystemPromptWithSelection(ctx, cwd, selector); memContent != "" {
-				sections = append(sections, memContent)
-			}
-		case "none":
-			// Skip memory loading entirely
-		}
-
-		// Inject auto-memory writing instructions only for Anthropic models.
-		// External providers (Ollama, Groq, etc.) confuse the Memory-tool
-		// guidance with conversation context, causing them to claim they don't
-		// know things the user said earlier in the same session.
-		if memDir := appInstance.Memory.WriteTargetDir(); memDir != "" {
-			if !appInstance.API.IsExternalModel(appInstance.Config.Model) {
-				if memInstr := prompts.SessionMemorySection(memDir); memInstr != "" {
-					sections = append(sections, memInstr)
-				}
-			}
-		}
 	}
 
 	// 4. Learned instincts

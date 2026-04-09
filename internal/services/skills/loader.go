@@ -3,6 +3,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -44,7 +45,9 @@ func (r *Registry) Get(name string) (*Skill, bool) {
 	return s, ok
 }
 
-// All returns all loaded skills.
+// All returns all loaded skills sorted by name for deterministic ordering.
+// Consistent ordering is required so the Skill tool description stays stable
+// across turns and doesn't bust the Anthropic prompt cache.
 func (r *Registry) All() []*Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -53,6 +56,9 @@ func (r *Registry) All() []*Skill {
 	for _, s := range r.skills {
 		result = append(result, s)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
 	return result
 }
 
@@ -258,35 +264,40 @@ func bundledSkills() []*Skill {
 	}
 }
 
-var commitSkillContent = `You are being asked to create a git commit. Follow these steps carefully:
+var commitSkillContent = `## Context
 
-1. Run the following bash commands in parallel, each using the Bash tool:
-  - Run a git status command to see all untracked files. IMPORTANT: Never use the -uall flag.
-  - Run a git diff command to see both staged and unstaged changes that will be committed.
-  - Run a git log --oneline -10 command to see recent commit messages, so that you can follow this repository's commit message style.
+- ` + "`git status`" + `: !` + "`git status`" + `
+- ` + "`git diff HEAD`" + `: !` + "`git diff HEAD`" + `
+- ` + "`git log --oneline -5`" + `: !` + "`git log --oneline -5`" + `
 
-2. Analyze all staged changes (both previously staged and newly added) and draft a commit message:
-  - Summarize the nature of the changes (eg. new feature, enhancement, bug fix, refactoring, test, docs, etc.)
-  - Ensure the message accurately reflects the changes and their purpose (i.e. "add" means a wholly new feature, "update" means an enhancement, "fix" means a bug fix, etc.)
-  - Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
-  - Draft a concise (1-2 sentences) commit message that focuses on the "why" rather than the "what"
+## Git Safety Protocol
 
-3. Run the following commands:
-   - Add relevant untracked files to the staging area (prefer specific files over "git add -A")
-   - Create the commit using a HEREDOC for the message:
-     git commit -m "$(cat <<'EOF'
-     Your commit message here.
-     EOF
-     )"
-   - Run git status after the commit to verify success
+- NEVER update the git config
+- NEVER run destructive git commands (reset --hard, push --force, clean -f, branch -D) unless the user explicitly requests it
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- NEVER force push to main/master — warn the user if they request it
+- Always create NEW commits rather than amending (unless the user asks); if a pre-commit hook fails, fix and create a NEW commit
+- Prefer staging specific files over ` + "`git add -A`" + ` or ` + "`git add .`" + `
+- NEVER commit unless explicitly asked
 
-4. If the commit fails due to pre-commit hook: fix the issue and create a NEW commit (never amend)
+## Your task
+
+Based on the context above:
+1. Stage relevant untracked files (specific files, not ` + "`git add -A`" + `)
+2. Create the commit using a HEREDOC:
+` + "```" + `
+git commit -m "$(cat <<'EOF'
+Commit message here.
+EOF
+)"
+` + "```" + `
+3. Run ` + "`git status`" + ` after the commit to verify
+4. If a pre-commit hook fails: fix the issue and create a NEW commit
 
 Important:
-- NEVER run additional commands to read or explore code, besides git bash commands
-- DO NOT push to the remote repository unless the user explicitly asks
-- Never use git commands with the -i flag (interactive mode is not supported)
-- If there are no changes to commit, do not create an empty commit`
+- DO NOT push unless the user explicitly asks
+- Do not create an empty commit if there are no changes
+- Do not commit files with secrets (.env, credentials.json, etc)`
 
 var reviewSkillContent = `You are being asked to review code changes. Follow this checklist:
 
@@ -471,36 +482,39 @@ var batchSkillContent = `You are being asked to orchestrate parallel work across
 - Include file paths and specific instructions in each agent prompt
 - Never delegate understanding — each prompt must be complete`
 
-var prSkillContent = `You are being asked to create a pull request. Follow these steps carefully:
+var prSkillContent = `## Context
 
-1. Run the following bash commands in parallel:
-   - Run git status to see all untracked files (never use -uall flag)
-   - Run git diff to see both staged and unstaged changes
-   - Check if the current branch tracks a remote branch
-   - Run git log and ` + "`git diff main...HEAD`" + ` (or master) to understand the full commit history
+- ` + "`git branch --show-current`" + `: !` + "`git branch --show-current`" + `
+- ` + "`git status`" + `: !` + "`git status`" + `
+- ` + "`git diff HEAD`" + `: !` + "`git diff HEAD`" + `
+- ` + "`git log main...HEAD --oneline`" + `: !` + "`git log main...HEAD --oneline 2>/dev/null || git log master...HEAD --oneline 2>/dev/null || git log -10 --oneline`" + `
+- Existing PR: !` + "`gh pr view --json number,url 2>/dev/null || echo '(none)'`" + `
 
-2. Analyze ALL changes that will be included (all commits, not just the latest):
-   - Keep the PR title short (under 70 characters)
-   - Use the description/body for details, not the title
+## Git Safety Protocol
 
-3. Run the following commands:
-   - Create new branch if needed
-   - Push to remote with -u flag if needed
-   - Create PR using ` + "`gh pr create`" + `:
-     ` + "```" + `
-     gh pr create --title "the pr title" --body "$(cat <<'EOF'
-     ## Summary
-     <1-3 bullet points>
+- NEVER update the git config
+- NEVER run destructive git commands unless the user explicitly requests it
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- NEVER force push to main/master — warn the user if they request it
 
-     ## Test plan
-     [Bulleted markdown checklist of testing TODOs...]
-     EOF
-     )"
-     ` + "```" + `
+## Your task
 
-Important:
-- Return the PR URL when you're done
-- DO NOT push to the remote unless creating the PR requires it`
+Analyze ALL commits in this branch (not just the latest). Then:
+1. Create a new branch if currently on main/master (use ` + "`whoami`" + ` as the branch name prefix)
+2. Push the branch to origin with ` + "`-u`" + ` flag
+3. If a PR already exists (see Existing PR above): update with ` + "`gh pr edit`" + `
+   Otherwise: create with ` + "`gh pr create`" + `:
+` + "```" + `
+gh pr create --title "Short title under 70 chars" --body "$(cat <<'EOF'
+## Summary
+<1-3 bullet points>
+
+## Test plan
+[Checklist of testing TODOs...]
+EOF
+)"
+` + "```" + `
+4. Return the PR URL when done`
 
 var testSkillContent = `You are being asked to run tests and fix any failures.
 

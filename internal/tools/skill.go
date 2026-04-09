@@ -4,11 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 )
+
+// shellInterpolRe matches !`cmd` patterns in skill content.
+var shellInterpolRe = regexp.MustCompile("!`([^`]+)`")
+
+// interpolateShellCommands replaces !`cmd` placeholders with live command output,
+// mirroring Claude Code's executeShellCommandsInPrompt pattern. This lets skill
+// content inject live context (e.g. git status/diff) at invocation time instead
+// of asking the model to make extra tool calls to gather it.
+func interpolateShellCommands(content string) string {
+	return shellInterpolRe.ReplaceAllStringFunc(content, func(match string) string {
+		cmd := shellInterpolRe.FindStringSubmatch(match)[1]
+		out, err := exec.Command("sh", "-c", cmd).Output()
+		if err != nil {
+			return fmt.Sprintf("(error running `%s`: %v)", cmd, err)
+		}
+		return strings.TrimRight(string(out), "\n")
+	})
+}
 
 // SkillTool allows agents to invoke skills by name, enabling auto-detection and
 // proactive use of project-specific and domain-specific skill instructions.
@@ -69,6 +89,9 @@ func (t *SkillTool) Execute(_ context.Context, input json.RawMessage) (*Result, 
 	if in.Arguments != "" {
 		content = strings.ReplaceAll(content, "$ARGUMENTS", in.Arguments)
 	}
+	// Resolve !`cmd` placeholders before injection so the model immediately
+	// has live context (e.g. git status/diff) without extra tool-call round-trips.
+	content = interpolateShellCommands(content)
 
 	// Inject skill content as a conversation message so it persists in history
 	// and survives compaction — mirrors claude-code's newMessages mechanism.

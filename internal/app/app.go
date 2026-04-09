@@ -564,19 +564,6 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		}
 	}
 
-	// Inject agent-scoped memories if available, plus the auto-memory
-	// writing instructions so the spawned agent can save new memories
-	// back into its own memory dir during the session.
-	if memoryDir != "" {
-		agentMem := memory.NewStore(memoryDir)
-		if memContent := agentMem.ForSystemPrompt(); memContent != "" {
-			system = system + "\n\n" + memContent
-		}
-		if memInstr := prompts.SessionMemorySection(memoryDir); memInstr != "" {
-			system = system + "\n\n" + memInstr
-		}
-	}
-
 	// Extract sub-agent observer from context (set by TUI for real-time forwarding)
 	observer := tools.GetSubAgentObserver(ctx)
 

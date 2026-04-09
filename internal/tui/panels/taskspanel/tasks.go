@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Abraxas-365/claudio/internal/tasks"
@@ -50,10 +51,16 @@ type Panel struct {
 	planItems []*tools.Task
 
 	// Background tab state
-	bgItems     []*tasks.TaskState
-	showOutput  bool
-	outputLines []string
+	bgItems      []*tasks.TaskState
+	showOutput   bool
+	outputLines  []string
 	outputScroll int
+
+	// Detail overlay state (planning tab)
+	showDetail      bool
+	detailTask      *tools.Task
+	detailLines     []string // word-wrapped rendered lines
+	detailScroll    int
 }
 
 // New creates a new unified tasks panel.
@@ -68,12 +75,18 @@ func (p *Panel) Activate() {
 	p.cursor = 0
 	p.outputLines = nil
 	p.showOutput = false
+	p.showDetail = false
+	p.detailTask = nil
+	p.detailLines = nil
 	p.refresh()
 }
 
 func (p *Panel) Deactivate() {
 	p.active = false
 	p.outputLines = nil
+	p.showDetail = false
+	p.detailTask = nil
+	p.detailLines = nil
 }
 
 func (p *Panel) SetSize(w, h int) {
@@ -186,6 +199,37 @@ func (p *Panel) loadOutput() {
 }
 
 func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
+	// Detail overlay captures all keys
+	if p.showDetail {
+		switch msg.String() {
+		case "esc", "q", "enter":
+			p.showDetail = false
+			p.detailTask = nil
+			p.detailLines = nil
+		case "j", "down":
+			maxScroll := len(p.detailLines) - (p.height - 6)
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			if p.detailScroll < maxScroll {
+				p.detailScroll++
+			}
+		case "k", "up":
+			if p.detailScroll > 0 {
+				p.detailScroll--
+			}
+		case "g":
+			p.detailScroll = 0
+		case "G":
+			maxScroll := len(p.detailLines) - (p.height - 6)
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			p.detailScroll = maxScroll
+		}
+		return nil, true
+	}
+
 	switch msg.String() {
 	// Tab switching
 	case "1":
@@ -280,13 +324,125 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return tickCmd(), true
 		}
 		return nil, true
+	case "enter":
+		if p.tab == tabPlanning && p.cursor < len(p.planItems) {
+			t := p.planItems[p.cursor]
+			p.openDetail(t)
+		}
+		return nil, true
 	}
 	return nil, false
+}
+
+func (p *Panel) openDetail(t *tools.Task) {
+	p.showDetail = true
+	p.detailScroll = 0
+	p.detailTask = t
+
+	// Build markdown content
+	var md strings.Builder
+	statusLabel := map[string]string{
+		"pending":     "⬜ Pending",
+		"in_progress": "🔄 In Progress",
+		"completed":   "✅ Completed",
+	}[t.Status]
+	if statusLabel == "" {
+		statusLabel = t.Status
+	}
+	md.WriteString(fmt.Sprintf("# %s\n\n", t.Subject))
+	md.WriteString(fmt.Sprintf("**ID:** `#%s`", t.ID))
+	if t.AssignedTo != "" {
+		md.WriteString(fmt.Sprintf("  **Assigned to:** `@%s`", t.AssignedTo))
+	}
+	md.WriteString(fmt.Sprintf("  **Status:** %s\n\n", statusLabel))
+	if t.Description != "" {
+		md.WriteString("---\n\n")
+		md.WriteString(t.Description)
+		md.WriteString("\n")
+	} else {
+		md.WriteString("*No description provided.*\n")
+	}
+
+	// Render markdown via glamour
+	contentWidth := p.width - 4
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStylesFromJSONBytes(styles.GruvboxGlamourJSON()),
+		glamour.WithWordWrap(contentWidth),
+	)
+	rendered := md.String()
+	if err == nil {
+		if out, err2 := r.Render(rendered); err2 == nil {
+			rendered = out
+		}
+	}
+
+	// Split into lines for scrolling
+	p.detailLines = strings.Split(rendered, "\n")
+}
+
+func (p *Panel) renderDetail() string {
+	var b strings.Builder
+
+	// Header
+	titleStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	hintStyle := styles.PanelHint
+
+	b.WriteString(titleStyle.Render("  Task Detail"))
+	b.WriteString("\n")
+	b.WriteString(styles.SeparatorLine(p.width))
+	b.WriteString("\n")
+
+	// Scrollable content area
+	contentH := p.height - 5 // header(1) + sep(1) + bottom_sep(1) + hint(1) + padding(1)
+	if contentH < 1 {
+		contentH = 1
+	}
+
+	start := p.detailScroll
+	end := start + contentH
+	if end > len(p.detailLines) {
+		end = len(p.detailLines)
+	}
+
+	for i := start; i < end; i++ {
+		b.WriteString(p.detailLines[i])
+		b.WriteString("\n")
+	}
+
+	// Scroll indicator
+	totalLines := len(p.detailLines)
+	scrollPct := 0
+	if totalLines > contentH {
+		scrollPct = (p.detailScroll * 100) / (totalLines - contentH)
+	} else {
+		scrollPct = 100
+	}
+	scrollInfo := fmt.Sprintf("%d%%", scrollPct)
+	if totalLines > contentH {
+		scrollInfo += fmt.Sprintf(" (%d/%d)", p.detailScroll+contentH, totalLines)
+	}
+
+	b.WriteString(styles.SeparatorLine(p.width))
+	b.WriteString("\n")
+	hint := fmt.Sprintf("  j/k scroll · g/G top/bot · esc close   %s", scrollInfo)
+	b.WriteString(hintStyle.Render(hint))
+
+	return lipgloss.NewStyle().
+		Width(p.width).
+		Height(p.height).
+		Render(b.String())
 }
 
 func (p *Panel) View() string {
 	if !p.active {
 		return ""
+	}
+
+	if p.showDetail {
+		return p.renderDetail()
 	}
 
 	var b strings.Builder
@@ -395,7 +551,7 @@ func (p *Panel) renderPlanning(b *strings.Builder) {
 	}
 
 	b.WriteString("\n")
-	p.writeHint(b, "  j/k nav · tab switch · r refresh · esc close")
+	p.writeHint(b, "  j/k nav · enter detail · tab switch · r refresh · esc close")
 }
 
 func (p *Panel) renderPlanRow(t *tools.Task, selected bool) string {
