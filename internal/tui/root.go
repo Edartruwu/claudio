@@ -1367,7 +1367,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.waitForEvent()
 
-
+	case editorDoneMsg:
+		defer os.Remove(msg.path)
+		if msg.err != nil {
+			cmd := m.toast.Show("Editor error: " + msg.err.Error())
+			return m, cmd
+		}
+		if !msg.readOnly {
+			// Read back content and set as prompt text
+			data, err := os.ReadFile(msg.path)
+			if err == nil {
+				content := strings.TrimRight(string(data), "\n")
+				m.prompt.SetValue(content)
+				m.focus = FocusPrompt
+			}
+		}
+		return m, nil
 
 	case timerTickMsg:
 		if m.streaming {
@@ -3321,6 +3336,26 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 			}
 			m.refreshViewport()
 			return true, nil
+		case "e":
+			// Edit prompt in $EDITOR
+			if m.streaming {
+				cmd := m.toast.Show("Cannot edit while streaming")
+				return true, cmd
+			}
+			return true, openInEditor(m.prompt.Value(), false)
+		case "ev":
+			// View current section in $EDITOR (read-only)
+			if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
+				section := m.vpSections[m.vpCursor]
+				content := m.extractSectionText(section)
+				if content == "" {
+					cmd := m.toast.Show("No content in current section")
+					return true, cmd
+				}
+				return true, openInEditor(content, true)
+			}
+			cmd := m.toast.Show("No section focused — use <Space>wk first")
+			return true, cmd
 		}
 		return true, nil // consumed but no match
 
@@ -4507,6 +4542,68 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 }
 
 // ── Message Management ───────────────────────────────────
+
+// extractSectionText extracts plain text content from a section for viewing in editor.
+func (m *Model) extractSectionText(section Section) string {
+	if section.MsgIndex < 0 || section.MsgIndex >= len(m.messages) {
+		return ""
+	}
+
+	msg := m.messages[section.MsgIndex]
+
+	// For tool groups: extract all tool names and their results
+	if section.IsToolGroup {
+		var sb strings.Builder
+		i := section.MsgIndex
+		for i < len(m.messages) {
+			if m.messages[i].Type == MsgToolUse {
+				if sb.Len() > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString("Tool: ")
+				sb.WriteString(m.messages[i].ToolName)
+				sb.WriteString("\n")
+				if m.messages[i].ToolInput != "" {
+					sb.WriteString("Input: ")
+					sb.WriteString(m.messages[i].ToolInput)
+					sb.WriteString("\n")
+				}
+				// Look for matching result
+				toolID := m.messages[i].ToolUseID
+				for j := i + 1; j < len(m.messages) && j-i < 50; j++ {
+					if m.messages[j].Type == MsgToolResult && m.messages[j].ToolUseID == toolID {
+						if m.messages[j].IsError {
+							sb.WriteString("Error: ")
+						} else {
+							sb.WriteString("Result: ")
+						}
+						sb.WriteString(m.messages[j].Content)
+						sb.WriteString("\n")
+						break
+					}
+				}
+				i++
+			} else if m.messages[i].Type == MsgToolResult {
+				i++
+			} else {
+				break
+			}
+		}
+		return sb.String()
+	}
+
+	// For regular messages: return the content directly
+	if msg.Content != "" {
+		return msg.Content
+	}
+
+	// Fallback: try to use tool input summary if it's a tool message
+	if msg.ToolInput != "" {
+		return msg.ToolInput
+	}
+
+	return ""
+}
 
 func (m *Model) addMessage(msg ChatMessage) {
 	m.messages = append(m.messages, msg)

@@ -19,7 +19,12 @@ type planEditorFinishedMsg struct {
 	err error
 }
 
-
+// editorDoneMsg is sent when an editor opened for prompt edit or section view completes.
+type editorDoneMsg struct {
+	path     string // temp file path (will be cleaned up)
+	readOnly bool   // true if opened read-only (view mode)
+	err      error
+}
 
 // getEditor returns the user's preferred editor from $VISUAL or $EDITOR,
 // falling back to "vi".
@@ -193,5 +198,47 @@ func openPlanEditor(path string) tea.Cmd {
 	c := exec.Command(name, args...)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return planEditorFinishedMsg{err: err}
+	})
+}
+
+// openInEditor opens content in $EDITOR with optional read-only mode.
+// Returns editorDoneMsg when the editor process exits.
+// The temp file is cleaned up in the editorDoneMsg handler.
+func openInEditor(content string, readOnly bool) tea.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = os.Getenv("VISUAL")
+	}
+	if editor == "" {
+		editor = "nvim"
+	}
+
+	tmpFile, err := os.CreateTemp("", "claudio-*.md")
+	if err != nil {
+		return func() tea.Msg { return editorDoneMsg{err: err} }
+	}
+	tmpPath := tmpFile.Name()
+
+	if _, err := tmpFile.WriteString(content); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return func() tea.Msg { return editorDoneMsg{err: err} }
+	}
+	tmpFile.Close()
+
+	var args []string
+	if readOnly {
+		args = []string{"-R", tmpPath}
+	} else {
+		args = []string{tmpPath}
+	}
+
+	parts := strings.Fields(editor)
+	name := parts[0]
+	allArgs := append(parts[1:], args...)
+
+	cmd := exec.Command(name, allArgs...)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return editorDoneMsg{path: tmpPath, readOnly: readOnly, err: err}
 	})
 }

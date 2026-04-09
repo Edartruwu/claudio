@@ -34,6 +34,10 @@ func DefaultBindings() []Binding {
 		{Key: "/", Desc: "search"},
 		// Divider row (empty key)
 		{Key: "", Desc: ""},
+		{Key: "e", Desc: "edit prompt"},
+		{Key: "ev", Desc: "view section"},
+		// Divider row (empty key)
+		{Key: "", Desc: ""},
 		{Key: ".", Desc: "sessions"},
 		{Key: ";", Desc: "recent"},
 		// Divider row (empty key)
