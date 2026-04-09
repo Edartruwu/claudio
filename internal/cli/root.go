@@ -24,14 +24,18 @@ import (
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui"
+	"github.com/Abraxas-365/claudio/internal/tui/agentselector"
+	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
 
 var (
 	flagModel               string
 	flagAgent               string
+	flagTeam                string
 	flagVerbose             bool
 	flagHeadless            bool
 	flagContext             string
@@ -151,6 +155,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagDangerouslySkipPerm, "yolo", false, "Alias for --dangerously-skip-permissions")
 	rootCmd.PersistentFlags().BoolVar(&flagPrint, "print", false, "Print-only mode (no TUI, clean stdout for piping)")
 	rootCmd.PersistentFlags().StringVar(&flagAgent, "agent", "", "Run as a specific agent persona (e.g., prab, backend-senior)")
+	rootCmd.PersistentFlags().StringVar(&flagTeam, "team", "", "Pre-load a team template at startup (e.g., backend-team)")
 }
 
 func Execute() error {
@@ -527,6 +532,36 @@ func runInteractive() error {
 		tui.WithDB(appInstance.DB),
 		tui.WithTeamTemplatesDir(config.GetPaths().TeamTemplates),
 	)
+
+	// Apply --agent flag if specified
+	if flagAgent != "" {
+		agentDef := agents.GetAgent(flagAgent)
+		msg := agentselector.AgentSelectedMsg{
+			AgentType:    agentDef.Type,
+			DisplayName:  agentDef.Type,
+			SystemPrompt: agentDef.SystemPrompt,
+			Model:        agentDef.Model,
+			DisallowedTools: agentDef.DisallowedTools,
+		}
+		model = model.ApplyAgentPersonaAtStartup(msg)
+	}
+
+	// Apply --team flag if specified
+	if flagTeam != "" {
+		teamTemplatesDir := config.GetPaths().TeamTemplates
+		tmpl, err := teams.GetTemplate(teamTemplatesDir, flagTeam)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: team template %q not found: %v\n", flagTeam, err)
+		} else {
+			msg := teamselector.TeamSelectedMsg{
+				TemplateName: tmpl.Name,
+				Description:  tmpl.Description,
+				Members:      tmpl.Members,
+			}
+			model = model.ApplyTeamContextAtStartup(msg, appCtx)
+		}
+	}
+
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

@@ -1619,6 +1619,102 @@ The team is ready. Use SpawnTeammate to assign tasks to each member.`,
 	return m
 }
 
+// ApplyAgentPersonaAtStartup applies an agent persona at startup, before the engine is running.
+// Unlike applyAgentPersona, it does NOT add a system message or refresh viewport (no engine yet).
+// The model and system prompt are still updated so they apply when the engine starts.
+func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Model {
+	// Empty AgentType means "remove agent" — restore base state
+	if msg.AgentType == "" {
+		m.systemPrompt = m.baseSystemPrompt
+		m.model = m.baseModel
+		m.apiClient.SetModel(m.baseModel)
+		return m
+	}
+
+	// Append agent system prompt on top of the base
+	base := m.baseSystemPrompt
+	if msg.SystemPrompt != "" {
+		base = m.baseSystemPrompt + "\n\n" + msg.SystemPrompt
+	}
+
+	// Build filtered registry from the original (not previously filtered) registry
+	filtered := m.registry.Clone()
+	for _, name := range msg.DisallowedTools {
+		filtered.Remove(name)
+	}
+
+	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
+	if msg.Model != "" {
+		model := msg.Model
+		if resolved, ok := m.apiClient.ResolveModelShortcut(model); ok {
+			model = resolved
+		}
+		m.model = model
+		m.apiClient.SetModel(model)
+	}
+
+	// Store so future engine creation picks it up
+	m.systemPrompt = base
+	m.registry = filtered
+	m.currentAgent = msg.AgentType
+
+	return m
+}
+
+// ApplyTeamContextAtStartup applies team context at startup, before the engine is running.
+// Unlike applyTeamContext, it does NOT add a system message or refresh viewport (no engine yet).
+// The system prompt is still updated so it applies when the engine starts.
+func (m Model) ApplyTeamContextAtStartup(msg teamselector.TeamSelectedMsg, appCtx *AppContext) Model {
+	var block string
+	if msg.IsEphemeral {
+		block = `## Active Team
+An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.`
+	} else {
+		// Auto-instantiate the team so SpawnTeammate works immediately without
+		// requiring the model to call InstantiateTeam first.
+		if appCtx != nil && appCtx.TeamManager != nil && appCtx.TeamRunner != nil {
+			sessionID := ""
+			if m.session != nil && m.session.Current() != nil {
+				sessionID = m.session.Current().ID
+			}
+			teamName := msg.TemplateName
+			if _, err := appCtx.TeamManager.CreateTeam(teamName, msg.Description, sessionID, ""); err != nil {
+				// Team may already exist; proceed anyway.
+				_ = err
+			}
+			// Pre-register members so their subagent_type is persisted.
+			for _, mem := range msg.Members {
+				_, _ = appCtx.TeamManager.AddMember(teamName, mem.Name, mem.Model, "", mem.SubagentType)
+			}
+			appCtx.TeamRunner.SetActiveTeam(teamName)
+		}
+
+		var memberLines []string
+		for _, mem := range msg.Members {
+			line := fmt.Sprintf("  - %s (%s)", mem.Name, mem.SubagentType)
+			if mem.Model != "" {
+				line += " model=" + mem.Model
+			}
+			memberLines = append(memberLines, line)
+		}
+		roster := strings.Join(memberLines, "\n")
+		desc := ""
+		if msg.Description != "" {
+			desc = "\nDescription: " + msg.Description
+		}
+		block = fmt.Sprintf(`## Active Team: %s%s
+Members:
+%s
+
+The team is ready. Use SpawnTeammate to assign tasks to each member.`,
+			msg.TemplateName, desc, roster)
+	}
+
+	newSystem := m.systemPrompt + "\n\n" + block
+	m.systemPrompt = newSystem
+	return m
+}
+
 // ── Handlers ─────────────────────────────────────────────
 
 func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
