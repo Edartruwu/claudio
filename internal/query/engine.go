@@ -58,7 +58,8 @@ type EngineConfig struct {
 	SessionID      string
 	Model          string
 	PermissionMode string // "default", "auto", "headless", "plan"
-	OnTurnEnd      func(messages []api.Message) // background memory extraction callback
+	OnTurnEnd      func(messages []api.Message)                // background memory extraction callback
+	OnAutoCompact  func(messages []api.Message, summary string) // called after successful auto-compaction
 
 	// Permission pattern rules for content-based allow/deny
 	PermissionRules []config.PermissionRule
@@ -95,7 +96,8 @@ type Engine struct {
 	costConfirmThresh float64
 	discoveredTools        map[string]bool // tools discovered via ToolSearch
 	frozenDeferredReminder string          // deferred-tools system-reminder, frozen on first build
-	onTurnEnd              func(messages []api.Message) // called when a turn ends (end_turn stop reason)
+	onTurnEnd              func(messages []api.Message)                // called when a turn ends (end_turn stop reason)
+	onAutoCompact          func(messages []api.Message, summary string) // called after successful auto-compaction
 
 	// user context injection (CLAUDE.md as first user message)
 	userContextMsg      string
@@ -191,6 +193,7 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	}
 	e.costConfirmThresh = cfg.CostConfirmThreshold
 	e.onTurnEnd = cfg.OnTurnEnd
+	e.onAutoCompact = cfg.OnAutoCompact
 	return e
 }
 
@@ -330,6 +333,11 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 					// Reset replacement state — compacted messages are new, no cached replacements apply
 					e.replacementState = compact.NewReplacementState()
 					e.handler.OnTextDelta("\n[Auto-compacted conversation: " + summary[:min(len(summary), 100)] + "...]\n")
+					if e.onAutoCompact != nil {
+						msgsCopy := make([]api.Message, len(e.messages))
+						copy(msgsCopy, e.messages)
+						go e.onAutoCompact(msgsCopy, summary)
+					}
 					e.fireHook(ctx, hooks.PostCompact, "", "")
 					prompts.ClearAllSections()
 				}

@@ -14,6 +14,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/app"
 	"github.com/Abraxas-365/claudio/internal/auth/refresh"
 	"github.com/Abraxas-365/claudio/internal/config"
@@ -531,6 +532,12 @@ func runInteractive() error {
 		PermissionMode:  appInstance.Config.PermissionMode,
 		PermissionRules: appInstance.Config.PermissionRules,
 		OnTurnEnd:       appInstance.MemoryExtractor(),
+		OnAutoCompact: func(messages []api.Message, summary string) {
+			if sess != nil {
+				_ = sess.PersistCompacted(messages)
+				_ = sess.SaveSummary(summary)
+			}
+		},
 	}
 	appCtx := &tui.AppContext{
 		Session:     sess,
