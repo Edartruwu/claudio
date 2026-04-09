@@ -3,6 +3,7 @@ package agentselector
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -12,10 +13,10 @@ import (
 
 // AgentSelectedMsg is sent when the user picks an agent.
 type AgentSelectedMsg struct {
-	AgentType    string
-	DisplayName  string
-	SystemPrompt string
-	Model        string
+	AgentType       string
+	DisplayName     string
+	SystemPrompt    string
+	Model           string
 	DisallowedTools []string
 }
 
@@ -25,25 +26,32 @@ type DismissMsg struct{}
 // Model is the agent picker component.
 type Model struct {
 	agents  []agents.AgentDefinition
+	filter  textinput.Model
 	cursor  int
 	active  bool
 	width   int
 	height  int
-	offset  int // first visible agent index
 	current string // currently active agent type
 }
 
 // noneAgent is a sentinel entry that clears the active persona.
 var noneAgent = agents.AgentDefinition{
 	Type:      "",
-	WhenToUse: "Default Claudio (no persona)",
+	WhenToUse: "(none — reset persona)",
 }
 
 // New creates a new agent selector populated with all available agents.
 func New(current string, customDirs ...string) Model {
 	all := append([]agents.AgentDefinition{noneAgent}, agents.AllAgents(customDirs...)...)
+
+	ti := textinput.New()
+	ti.Placeholder = "type to filter..."
+	ti.Prompt = "> "
+	ti.Focus()
+
 	return Model{
 		agents:  all,
+		filter:  ti,
 		cursor:  indexFor(all, current),
 		active:  true,
 		current: current,
@@ -63,6 +71,23 @@ func (m Model) IsActive() bool   { return m.active }
 func (m *Model) SetWidth(w int)  { m.width = w }
 func (m *Model) SetHeight(h int) { m.height = h }
 
+// filtered returns agents matching the current filter query.
+func (m Model) filtered() []agents.AgentDefinition {
+	q := strings.ToLower(m.filter.Value())
+	if q == "" {
+		return m.agents
+	}
+	var out []agents.AgentDefinition
+	for _, a := range m.agents {
+		name := strings.ToLower(a.Type)
+		when := strings.ToLower(a.WhenToUse)
+		if strings.Contains(name, q) || strings.Contains(when, q) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.active {
 		return m, nil
@@ -75,21 +100,23 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
-			if m.cursor < m.offset {
-				m.offset = m.cursor
-			}
 		}
 	case "down", "j":
-		if m.cursor < len(m.agents)-1 {
+		items := m.filtered()
+		if m.cursor < len(items)-1 {
 			m.cursor++
-			visible := m.visibleRows()
-			if m.cursor >= m.offset+visible {
-				m.offset = m.cursor - visible + 1
-			}
 		}
 	case "enter":
 		m.active = false
-		sel := m.agents[m.cursor]
+		items := m.filtered()
+		if len(items) == 0 {
+			return m, func() tea.Msg { return DismissMsg{} }
+		}
+		cursor := m.cursor
+		if cursor >= len(items) {
+			cursor = len(items) - 1
+		}
+		sel := items[cursor]
 		return m, func() tea.Msg {
 			return AgentSelectedMsg{
 				AgentType:       sel.Type,
@@ -99,9 +126,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				DisallowedTools: sel.DisallowedTools,
 			}
 		}
-	case "esc", "q":
+	case "esc":
 		m.active = false
 		return m, func() tea.Msg { return DismissMsg{} }
+	default:
+		// Pass to textinput for filtering
+		prevVal := m.filter.Value()
+		var cmd tea.Cmd
+		m.filter, cmd = m.filter.Update(msg)
+		// Clamp cursor if filter narrowed the list
+		if m.filter.Value() != prevVal {
+			items := m.filtered()
+			if m.cursor >= len(items) && len(items) > 0 {
+				m.cursor = len(items) - 1
+			}
+			if len(items) == 0 {
+				m.cursor = 0
+			}
+		}
+		return m, cmd
 	}
 	return m, nil
 }
@@ -111,91 +154,189 @@ func (m Model) View() string {
 		return ""
 	}
 
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
-	sectionTitle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-	hintStyle := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true)
-
-	var lines []string
-	lines = append(lines, titleStyle.Render("Switch Agent Persona"))
-	lines = append(lines, "")
-	lines = append(lines, sectionTitle.Render("Available Agents"))
-
-	visible := m.visibleRows()
-	end := min(m.offset+visible, len(m.agents))
-	showUp := m.offset > 0
-	showDown := end < len(m.agents)
-
-	if showUp {
-		lines = append(lines, hintStyle.Render("  \u2191 more above"))
+	// --- dimensions ---
+	totalW := min(m.width-4, 90)
+	if totalW < 44 {
+		totalW = 44
+	}
+	totalH := min(m.height-4, 30)
+	if totalH < 10 {
+		totalH = 10
 	}
 
-	for i := m.offset; i < end; i++ {
-		a := m.agents[i]
-		selected := i == m.cursor
-		isCurrent := a.Type == m.current
+	// innerW is the content area inside the border (border takes 1 char each side)
+	innerW := totalW - 2
+	innerH := totalH - 2 // rows inside the border
 
-		check := ""
-		if isCurrent {
-			check = " \u2714"
-		}
+	leftW := innerW * 2 / 5
+	rightW := innerW - leftW - 1 // 1 char for │ separator
 
-		prefix := "  "
+	// --- set textinput width ---
+	m.filter.Width = leftW - len(m.filter.Prompt) - 1
+	if m.filter.Width < 4 {
+		m.filter.Width = 4
+	}
+
+	items := m.filtered()
+
+	// clamp cursor
+	cursor := m.cursor
+	if len(items) == 0 {
+		cursor = 0
+	} else if cursor >= len(items) {
+		cursor = len(items) - 1
+	}
+
+	// --- left pane lines ---
+	// Row 0: filter input; Row 1: blank; Rows 2+: list items
+	listH := innerH - 2
+	offset := 0
+	if cursor >= listH {
+		offset = cursor - listH + 1
+	}
+	end := min(offset+listH, len(items))
+
+	var leftLines []string
+	leftLines = append(leftLines, m.filter.View())
+	leftLines = append(leftLines, "") // blank
+
+	for i := offset; i < end; i++ {
+		a := items[i]
+		selected := i == cursor
+
+		var prefix string
+		var nameStyle lipgloss.Style
 		if selected {
-			prefix = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("\u203A ")
-		}
-
-		var nameStyle, descStyle lipgloss.Style
-		if selected {
+			prefix = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("▶ ")
 			nameStyle = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
-			descStyle = lipgloss.NewStyle().Foreground(styles.Dim)
 		} else {
+			prefix = "  "
 			nameStyle = lipgloss.NewStyle().Foreground(styles.Dim)
-			descStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#4B5563"))
 		}
 
-		name := a.Type + check
-		label := prefix + nameStyle.Render(name)
-		if a.WhenToUse != "" {
-			pad := strings.Repeat(" ", max(1, 28-lipgloss.Width(name)))
-			label += pad + descStyle.Render(a.WhenToUse)
+		name := a.Type
+		if name == "" {
+			name = "(none — reset persona)"
 		}
-		lines = append(lines, label)
+		leftLines = append(leftLines, prefix+nameStyle.Render(name))
 	}
 
-	if showDown {
-		lines = append(lines, hintStyle.Render("  \u2193 more below"))
+	// --- right pane lines ---
+	var rightLines []string
+
+	titleStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(styles.Primary)
+	valueStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+
+	if len(items) > 0 {
+		sel := items[cursor]
+
+		selName := sel.Type
+		if selName == "" {
+			selName = "(none)"
+		}
+		rightLines = append(rightLines, titleStyle.Render(selName))
+		rightLines = append(rightLines, "")
+
+		// Model override
+		modelVal := sel.Model
+		if modelVal == "" {
+			modelVal = "default"
+		}
+		rightLines = append(rightLines, labelStyle.Render("Model: ")+valueStyle.Render(modelVal))
+		rightLines = append(rightLines, "")
+
+		// Description / WhenToUse (word-wrapped)
+		desc := sel.WhenToUse
+		if desc == "(none — reset persona)" {
+			desc = "Clears the active agent persona and restores default Claudio behaviour."
+		}
+		if desc == "" {
+			desc = "No description available."
+		}
+		for _, l := range wordWrap(desc, rightW-1) {
+			rightLines = append(rightLines, valueStyle.Render(l))
+		}
+		rightLines = append(rightLines, "")
+
+		// Disallowed tools
+		toolsVal := "none"
+		if len(sel.DisallowedTools) > 0 {
+			toolsVal = strings.Join(sel.DisallowedTools, ", ")
+		}
+		rightLines = append(rightLines, labelStyle.Render("Restricted tools:"))
+		for _, l := range wordWrap(toolsVal, rightW-1) {
+			rightLines = append(rightLines, valueStyle.Render(l))
+		}
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, hintStyle.Render("j/k navigate \u00B7 Enter select \u00B7 Esc cancel"))
+	// --- pad both panes to innerH rows ---
+	for len(leftLines) < innerH {
+		leftLines = append(leftLines, "")
+	}
+	for len(rightLines) < innerH {
+		rightLines = append(rightLines, "")
+	}
 
-	content := strings.Join(lines, "\n")
+	// --- build rows ---
+	leftStyle := lipgloss.NewStyle().Width(leftW).MaxWidth(leftW)
+	rightStyle := lipgloss.NewStyle().Width(rightW).MaxWidth(rightW)
 
+	sepStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+
+	var rows []string
+	for i := 0; i < innerH; i++ {
+		l := leftStyle.Render(leftLines[i])
+		r := rightStyle.Render(rightLines[i])
+		sep := sepStyle.Render("│")
+		rows = append(rows, l+sep+r)
+	}
+
+	body := strings.Join(rows, "\n")
+
+	// --- outer box ---
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Primary).
-		Padding(1, 2).
-		Width(min(m.width-4, 85)).
-		Render(content)
+		Width(innerW).
+		Render(body)
+
+	hint := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true).
+		Render("  type to filter · j/k navigate · enter select · esc cancel")
+
+	full := lipgloss.JoinVertical(lipgloss.Left, box, hint)
 
 	return lipgloss.NewStyle().
 		Width(m.width).
 		Align(lipgloss.Center).
-		Render(box)
+		Render(full)
 }
 
-// visibleRows returns how many agent rows fit inside the box.
-// The box has 2 border lines + 2 padding lines + 3 header lines (title, blank, section) + 2 footer lines (blank, hint) = 9 overhead lines.
-func (m Model) visibleRows() int {
-	if m.height <= 0 {
-		return len(m.agents) // no height set, show all
+// wordWrap breaks s into lines of at most maxW runes.
+func wordWrap(s string, maxW int) []string {
+	if maxW <= 0 {
+		return []string{s}
 	}
-	const overhead = 9
-	v := m.height - overhead
-	if v < 1 {
-		v = 1
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return []string{""}
 	}
-	return v
+	var lines []string
+	cur := ""
+	for _, w := range words {
+		if cur == "" {
+			cur = w
+		} else if len(cur)+1+len(w) <= maxW {
+			cur += " " + w
+		} else {
+			lines = append(lines, cur)
+			cur = w
+		}
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return lines
 }
 
 func max(a, b int) int {
