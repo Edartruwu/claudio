@@ -30,4 +30,5 @@ const (
 	PanelTasks
 	PanelAgents
 	PanelTools
+	PanelConversation
 )

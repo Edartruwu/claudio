@@ -33,6 +33,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/filepicker"
 	"github.com/Abraxas-365/claudio/internal/tui/modelselector"
 	"github.com/Abraxas-365/claudio/internal/tui/panels"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/conversationpanel"
 	panelsessions "github.com/Abraxas-365/claudio/internal/tui/panels/sessions"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/analyticspanel"
 	panelconfig "github.com/Abraxas-365/claudio/internal/tui/panels/config"
@@ -104,6 +105,8 @@ type Model struct {
 	lastToolGroup   int                   // msg index of the last tool group start (-1 = none)
 	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
 	panelSplitRatio float64      // fraction of width for main area (default 0.65)
+	panelZoomed     bool         // true when zoom mode is active (wz toggle)
+	prevSplitRatio  float64      // saved split ratio before zoom, restored on second wz
 	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
 	prevSessionID   string       // for alternate session switching
 	vpCursor        int          // viewport section cursor (-1 = none)
@@ -1792,6 +1795,17 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 		text = "/" + text[1:]
 	}
 
+	// Vim-style quit commands — handled before normal command dispatch.
+	switch strings.TrimSpace(text) {
+	case "/q", "/x", "/wq":
+		if m.streaming {
+			return m, m.toast.Show("Streaming in progress — use :q! to force quit")
+		}
+		return m, tea.Quit
+	case "/q!":
+		return m, tea.Quit
+	}
+
 	if cmdName, cmdArgs, isCmd := commands.Parse(text); isCmd {
 		return m.handleCommand(cmdName, cmdArgs)
 	}
@@ -3389,11 +3403,28 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 			}
 			return true, nil
 		case "v":
-			// Open side panel split (no-op if already open)
-			hasPanel := m.activePanel != nil && m.activePanel.IsActive()
-			if !hasPanel {
-				m.openPanel(m.lastPanelID)
+			// Open conversation mirror panel
+			m.openPanel(PanelConversation)
+			m.focus = FocusPanel
+			return true, nil
+		case "z":
+			// Zoom / fullscreen toggle — maximise either the main viewport or the active panel
+			if m.panelZoomed {
+				// Restore previous split ratio
+				m.panelSplitRatio = m.prevSplitRatio
+				m.panelZoomed = false
+			} else {
+				// Save current ratio and go to extremes
+				m.prevSplitRatio = m.panelSplitRatio
+				m.panelZoomed = true
+				if m.focus == FocusPanel {
+					m.panelSplitRatio = 0.05 // panel takes ~95% width
+				} else {
+					m.panelSplitRatio = 0.97 // viewport takes ~97% width
+				}
 			}
+			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+			m.refreshViewport()
 			return true, nil
 		case "q":
 			// Close active panel
@@ -4469,6 +4500,8 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 		if m.registry != nil {
 			return toolspanel.New(m.registry)
 		}
+	case PanelConversation:
+		return conversationpanel.New()
 	}
 	return nil
 }
@@ -4743,6 +4776,12 @@ func (m *Model) refreshViewport() {
 	}
 
 	m.viewport.SetContent(content)
+	// Sync content to the conversation mirror panel if it exists in the pool.
+	if cp, ok := m.panelPool[PanelConversation]; ok {
+		if conv, ok := cp.(*conversationpanel.Panel); ok {
+			conv.SetContent(content)
+		}
+	}
 	if m.focus != FocusViewport {
 		contentLines := strings.Count(content, "\n") + 1
 		if contentLines <= m.viewport.Height {
