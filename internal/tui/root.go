@@ -57,6 +57,14 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// WindowState holds per-window session state so the main viewport and the
+// conversation mirror panel can display different sessions independently.
+type WindowState struct {
+	sessionID string        // session displayed in this window
+	messages  []ChatMessage // rendered messages for this window (only used by right window)
+	title     string        // cached session title for display
+}
+
 // Model is the root Bubble Tea model for the TUI.
 type Model struct {
 	// Components
@@ -128,6 +136,14 @@ type Model struct {
 
 	// Concurrent session runtimes — keeps background sessions alive
 	sessionRuntimes map[string]*SessionRuntime
+
+	// Per-window session state — enables independent buffers per pane.
+	// mainWindow tracks the session shown in the main viewport (left side).
+	// rightWindow tracks the session shown in the conversation mirror panel (right side).
+	// When rightWindow.sessionID == "" or matches mainWindow.sessionID, the panel mirrors
+	// the main viewport content (backward-compatible default).
+	mainWindow  WindowState
+	rightWindow WindowState
 
 	// App context for panels
 	appCtx *AppContext
@@ -495,6 +511,9 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	ratelimit.OnStatusChange(func(limits ratelimit.Limits) {
 		m.eventCh <- tuiEvent{typ: "ratelimit_changed"}
 	})
+
+	// Initialize main window state from session (may be nil if lazy-created)
+	m.syncMainWindowState()
 
 	return m
 }
@@ -1894,6 +1913,7 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	// Lazy session creation: create session BEFORE persisting the first message
 	if m.session != nil && m.session.Current() == nil {
 		m.session.Start(m.model)
+		m.syncMainWindowState()
 		// No auto-title: session label shows the short hash until the user runs /set-name
 	}
 
@@ -2346,6 +2366,12 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		m.modelSelector.SetWidth(m.width)
 		m.focus = FocusModelSelector
 		m.prompt.Blur()
+		return m, nil
+	}
+
+	// :ls / :buffers → show buffer list with markers
+	if name == "ls" || name == "buffers" {
+		m.showBufferList()
 		return m, nil
 	}
 
@@ -3429,6 +3455,13 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 	case keymap.ActionWindowSplitVertical:
 		m.openPanel(PanelConversation)
 		m.focus = FocusPanel
+		// Initialize right window to mirror the main window's session.
+		// After this, bn/bp in the right window will diverge independently.
+		if m.rightWindow.sessionID == "" {
+			m.rightWindow.sessionID = m.mainWindow.sessionID
+			m.rightWindow.title = m.mainWindow.title
+			// messages stays nil → will mirror main content until diverged
+		}
 		return nil
 
 	case keymap.ActionWindowZoom:
@@ -3484,10 +3517,18 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 
 	// ── Buffer/Session Management ──────────
 	case keymap.ActionBufferNext:
+		if m.isRightWindowFocused() {
+			_, cmd := m.switchRightWindowRelative(1)
+			return cmd
+		}
 		_, cmd := m.switchSessionRelative(1)
 		return cmd
 
 	case keymap.ActionBufferPrev:
+		if m.isRightWindowFocused() {
+			_, cmd := m.switchRightWindowRelative(-1)
+			return cmd
+		}
 		_, cmd := m.switchSessionRelative(-1)
 		return cmd
 
@@ -3506,6 +3547,10 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 	case keymap.ActionBufferAlternate:
 		_, cmd := m.switchToAlternateSession()
 		return cmd
+
+	case keymap.ActionBufferList:
+		m.showBufferList()
+		return nil
 
 	// ── Panels ─────────────────────────────
 	case keymap.ActionPanelConfig:
@@ -3738,6 +3783,7 @@ func (m *Model) doSwitchSession(id string) {
 		m.restoreSessionRuntime(rt)
 		delete(m.sessionRuntimes, id)
 		m.session.Resume(id)
+		m.syncMainWindowState()
 		m.refreshViewport()
 		// Note: caller must check m.streaming and issue waitForEvent()+spinner.Tick() if true
 		return
@@ -3844,9 +3890,196 @@ func (m *Model) doSwitchSession(id string) {
 		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
 		m.resumeSummarySet = true
 	}
+	m.syncMainWindowState()
 	m.refreshViewport()
 }
 
+// isRightWindowFocused returns true when focus is on the conversation mirror panel.
+func (m *Model) isRightWindowFocused() bool {
+	return m.focus == FocusPanel && m.activePanelID == PanelConversation
+}
+
+// rightWindowHasOwnSession returns true when the right window shows a different
+// session than the main window.
+func (m *Model) rightWindowHasOwnSession() bool {
+	return m.rightWindow.sessionID != "" && m.rightWindow.sessionID != m.mainWindow.sessionID
+}
+
+// syncMainWindowState updates mainWindow to reflect the current active session.
+func (m *Model) syncMainWindowState() {
+	if m.session != nil {
+		if cur := m.session.Current(); cur != nil {
+			m.mainWindow.sessionID = cur.ID
+			title := cur.Title
+			if title == "" && len(cur.ID) > 8 {
+				title = cur.ID[:8]
+			} else if title == "" {
+				title = cur.ID
+			}
+			m.mainWindow.title = title
+		}
+	}
+}
+
+// switchRightWindowSession loads a different session into the right (conversation
+// mirror) window without affecting the main window's session or engine state.
+func (m *Model) switchRightWindowSession(id string) {
+	if m.session == nil || m.db == nil {
+		return
+	}
+
+	// Load session metadata
+	sess, err := m.db.GetSession(id)
+	if err != nil || sess == nil {
+		return
+	}
+
+	m.rightWindow.sessionID = sess.ID
+	title := sess.Title
+	if title == "" && len(sess.ID) > 8 {
+		title = sess.ID[:8]
+	} else if title == "" {
+		title = sess.ID
+	}
+	m.rightWindow.title = title
+
+	// Load messages from DB for the right window
+	storedMsgs, err := m.db.GetMessages(sess.ID)
+	if err != nil {
+		m.rightWindow.messages = nil
+		return
+	}
+
+	m.rightWindow.messages = nil
+	for _, msg := range storedMsgs {
+		var msgType MessageType
+		switch msg.Type {
+		case "user":
+			msgType = MsgUser
+		case "assistant":
+			msgType = MsgAssistant
+		case "tool_use":
+			msgType = MsgToolUse
+		case "tool_result":
+			msgType = MsgToolResult
+		default:
+			continue
+		}
+		m.rightWindow.messages = append(m.rightWindow.messages, ChatMessage{
+			Type:      msgType,
+			Content:   msg.Content,
+			ToolName:  msg.ToolName,
+			ToolUseID: msg.ToolUseID,
+		})
+	}
+}
+
+// switchRightWindowRelative cycles the right window's session by dir (+1 or -1).
+func (m *Model) switchRightWindowRelative(dir int) (bool, tea.Cmd) {
+	if m.session == nil {
+		return true, nil
+	}
+	sessions, err := m.session.RecentForProject(20)
+	if err != nil || len(sessions) < 2 {
+		return true, nil
+	}
+
+	// Find current right window session in the list
+	curID := m.rightWindow.sessionID
+	if curID == "" {
+		// Right window not initialized — use main window's session
+		if cur := m.session.Current(); cur != nil {
+			curID = cur.ID
+		}
+	}
+
+	idx := -1
+	for i, s := range sessions {
+		if s.ID == curID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return true, nil
+	}
+	next := idx + dir
+	if next < 0 {
+		next = len(sessions) - 1
+	} else if next >= len(sessions) {
+		next = 0
+	}
+
+	m.switchRightWindowSession(sessions[next].ID)
+	m.refreshViewport()
+
+	// Show toast
+	title := sessions[next].Title
+	if title == "" {
+		short := sessions[next].ID
+		if len(short) > 8 {
+			short = short[:8]
+		}
+		title = short
+	}
+	arrow := "→"
+	if dir < 0 {
+		arrow = "←"
+	}
+	return true, m.toast.Show(fmt.Sprintf(" %s %s [right] (%d of %d) ", arrow, title, next+1, len(sessions)))
+}
+
+// showBufferList renders a :ls / :buffers style buffer list as a system message.
+// Markers follow vim conventions: % = main window, # = right window, a = active, h = hidden.
+func (m *Model) showBufferList() {
+	if m.session == nil {
+		return
+	}
+	sessions, err := m.session.RecentForProject(20)
+	if err != nil || len(sessions) == 0 {
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: "No sessions found."})
+		m.refreshViewport()
+		return
+	}
+
+	mainID := m.mainWindow.sessionID
+	rightID := m.rightWindow.sessionID
+	rightActive := m.activePanelID == PanelConversation && m.activePanel != nil && m.activePanel.IsActive()
+
+	var buf strings.Builder
+	buf.WriteString("Buffer list:\n")
+	for i, s := range sessions {
+		// Determine markers
+		marker := "  "
+		flag := " "
+		switch {
+		case s.ID == mainID && s.ID == rightID && rightActive:
+			marker = "%="
+			flag = "a"
+		case s.ID == mainID:
+			marker = "% "
+			flag = "a"
+		case s.ID == rightID && rightActive:
+			marker = "# "
+			flag = "a"
+		default:
+			flag = "h"
+		}
+
+		title := s.Title
+		if title == "" {
+			short := s.ID
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			title = short
+		}
+
+		buf.WriteString(fmt.Sprintf("  %2d %s%s  %-30s  %s\n", i+1, marker, flag, title, timeAgo(s.UpdatedAt)))
+	}
+	m.addMessage(ChatMessage{Type: MsgSystem, Content: buf.String()})
+	m.refreshViewport()
+}
 
 
 // countBackgroundSessions returns the number of sessions still streaming in the background.
@@ -4036,6 +4269,7 @@ func (m *Model) createNewSession() (bool, tea.Cmd) {
 	m.messageQueue = nil
 	m.pendingEngineMessages = nil
 	m.resumeSummarySet = false
+	m.syncMainWindowState()
 	m.refreshViewport()
 	return true, nil
 }
@@ -4976,9 +5210,16 @@ func (m *Model) refreshViewport() {
 
 	m.viewport.SetContent(content)
 	// Sync content to the conversation mirror panel if it exists in the pool.
+	// When the right window has its own session, render from rightWindow.messages
+	// instead of mirroring the main viewport.
 	if cp, ok := m.panelPool[PanelConversation]; ok {
 		if conv, ok := cp.(*conversationpanel.Panel); ok {
-			conv.SetContent(content)
+			if m.rightWindowHasOwnSession() {
+				rightContent := m.renderRightWindowContent(conv)
+				conv.SetContent(rightContent)
+			} else {
+				conv.SetContent(content)
+			}
 		}
 	}
 	if m.focus != FocusViewport {
@@ -4989,6 +5230,23 @@ func (m *Model) refreshViewport() {
 			m.viewport.GotoBottom()
 		}
 	}
+}
+
+// renderRightWindowContent renders the right window's session messages into
+// a string suitable for the conversation panel viewport.
+func (m *Model) renderRightWindowContent(conv *conversationpanel.Panel) string {
+	msgs := m.rightWindow.messages
+	if len(msgs) == 0 {
+		return lipgloss.NewStyle().Foreground(styles.Muted).Render(
+			fmt.Sprintf("  Session: %s (no messages)", m.rightWindow.title))
+	}
+	// Use the panel's width for rendering; pass -1 for cursor (no navigation in mirror)
+	panelWidth := conv.Width()
+	if panelWidth <= 0 {
+		panelWidth = 60
+	}
+	result := renderMessages(msgs, panelWidth, nil, -1, 0, nil)
+	return result.Content
 }
 
 // scrollToSection scrolls the viewport so the given section is visible.

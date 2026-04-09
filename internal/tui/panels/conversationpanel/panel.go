@@ -83,6 +83,11 @@ func (p *Panel) View() string {
 	return p.viewport.View()
 }
 
+// Width returns the current panel width (for external rendering).
+func (p *Panel) Width() int {
+	return p.width
+}
+
 // Help returns a short one-line hint string for keybindings.
 func (p *Panel) Help() string {
 	return "j/k scroll · ctrl+d/u half-page · G bottom · g top · esc close"
