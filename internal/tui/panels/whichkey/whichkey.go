@@ -40,8 +40,16 @@ func DefaultBindings() []Binding {
 // WindowBindings returns bindings for the Space+W sub-menu.
 func WindowBindings() []Binding {
 	return []Binding{
-		{Key: "k", Desc: "viewport"},
-		{Key: "j", Desc: "prompt"},
+		{Key: "w", Desc: "cycle focus"},
+		{Key: "h", Desc: "← viewport"},
+		{Key: "j", Desc: "↓ prompt"},
+		{Key: "k", Desc: "↑ viewport"},
+		{Key: "l", Desc: "→ panel"},
+		{Key: "v", Desc: "open split"},
+		{Key: "q", Desc: "close panel"},
+		{Key: "=", Desc: "reset width"},
+		{Key: ">", Desc: "widen panel"},
+		{Key: "<", Desc: "narrow panel"},
 	}
 }
 

@@ -81,6 +81,7 @@ type Model struct {
 	// Panels
 	activePanel   panels.Panel
 	activePanelID PanelID
+	lastPanelID   PanelID              // last panel opened, for wl/wv to reopen
 	panelPool     map[PanelID]panels.Panel // pooled panel instances; keyed by PanelID
 
 	// State
@@ -274,6 +275,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		thinkingExpanded: make(map[int]bool),
 		lastToolGroup:    -1,
 		panelSplitRatio:  0.65,
+		lastPanelID:      PanelConfig,
 		toolStartTimes:  make(map[string]time.Time),
 		vpCursor:        -1,
 		whichKey:        whichkey.New(),
@@ -3179,9 +3181,10 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 		return true, nil // consumed but no match
 
 	case "w":
-		// Window sub-menu
+		// Window sub-menu (nvim-style)
 		switch key {
 		case "k":
+			// Focus viewport (scroll up to last section)
 			m.focus = FocusViewport
 			m.prompt.Blur()
 			if len(m.vpSections) > 0 {
@@ -3193,9 +3196,107 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 			m.scrollToSection(m.vpCursor)
 			return true, nil
 		case "j", "p":
+			// Focus prompt
 			m.focus = FocusPrompt
 			m.vpCursor = -1
 			m.prompt.Focus()
+			m.refreshViewport()
+			return true, nil
+		case "w":
+			// Cycle focus: prompt → viewport → panel (if open) → prompt
+			hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+			switch m.focus {
+			case FocusPrompt:
+				m.focus = FocusViewport
+				m.prompt.Blur()
+				if len(m.vpSections) > 0 {
+					m.vpCursor = len(m.vpSections) - 1
+				} else {
+					m.vpCursor = 0
+				}
+				m.refreshViewport()
+				m.scrollToSection(m.vpCursor)
+			case FocusViewport:
+				if hasPanel {
+					m.focus = FocusPanel
+					m.activePanel.Activate()
+				} else {
+					m.focus = FocusPrompt
+					m.vpCursor = -1
+					m.prompt.Focus()
+					m.refreshViewport()
+				}
+			case FocusPanel:
+				m.focus = FocusPrompt
+				m.vpCursor = -1
+				m.prompt.Focus()
+				m.refreshViewport()
+			default:
+				m.focus = FocusPrompt
+				m.prompt.Focus()
+			}
+			return true, nil
+		case "h":
+			// Move focus left: panel → viewport
+			if m.focus == FocusPanel {
+				m.focus = FocusViewport
+				m.prompt.Blur()
+				if len(m.vpSections) > 0 && m.vpCursor < 0 {
+					m.vpCursor = len(m.vpSections) - 1
+				}
+				m.refreshViewport()
+			}
+			return true, nil
+		case "l":
+			// Move focus right: viewport/prompt → panel (open last-used if closed)
+			hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+			if hasPanel {
+				m.focus = FocusPanel
+				m.activePanel.Activate()
+			} else {
+				// Open last-used panel and focus it
+				m.openPanel(m.lastPanelID)
+			}
+			return true, nil
+		case "v":
+			// Open side panel split (no-op if already open)
+			hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+			if !hasPanel {
+				m.openPanel(m.lastPanelID)
+			}
+			return true, nil
+		case "q":
+			// Close active panel
+			if m.activePanel != nil && m.activePanel.IsActive() {
+				m.closePanel()
+			}
+			return true, nil
+		case "=":
+			// Reset panel split ratio to default
+			m.panelSplitRatio = 0.75
+			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+			m.refreshViewport()
+			return true, nil
+		case ">":
+			// Widen side panel (shrink main area), min ratio 0.40
+			if m.panelSplitRatio > 0.40 {
+				m.panelSplitRatio -= 0.05
+				if m.panelSplitRatio < 0.40 {
+					m.panelSplitRatio = 0.40
+				}
+			}
+			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+			m.refreshViewport()
+			return true, nil
+		case "<":
+			// Narrow side panel (expand main area), max ratio 0.85
+			if m.panelSplitRatio < 0.85 {
+				m.panelSplitRatio += 0.05
+				if m.panelSplitRatio > 0.85 {
+					m.panelSplitRatio = 0.85
+				}
+			}
+			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
 			m.refreshViewport()
 			return true, nil
 		}
@@ -3744,6 +3845,7 @@ func (m *Model) openPanel(id PanelID) {
 	}
 	m.activePanel = panel
 	m.activePanelID = id
+	m.lastPanelID = id
 	m.activePanel.Activate()
 	m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
 	m.focus = FocusPanel
@@ -4749,7 +4851,8 @@ func (m *Model) layout() {
 
 	modeLineH := 1
 	helpFooterH := 1
-	vpHeight := m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - 1
+	statusLineH := 1 // nvim-style statusline above the prompt
+	vpHeight := m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1
 	if vpHeight < 5 {
 		vpHeight = 5
 	}
@@ -4851,11 +4954,6 @@ func (m Model) View() string {
 		overlay := m.sessionPicker.View()
 		vpView = placeOverlay(vpView, overlay, m.width, m.viewport.Height)
 	}
-	if m.toast.IsActive() {
-		overlay := m.toast.View()
-		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
-	}
-
 	// Full-screen agent detail overlay replaces viewport entirely
 	if m.focus == FocusAgentDetail && m.agentDetail != nil {
 		vpView = m.renderAgentDetail(m.width, m.viewport.Height)
@@ -4912,21 +5010,24 @@ func (m Model) View() string {
 		}
 	}
 
-	// 5. Divider + Prompt (full width)
+	// 5. Statusline (full width) — shows mode, session, model; replaced by toast when active
+	sections = append(sections, m.renderStatusLine())
+
+	// 6. Divider + Prompt (full width)
 	sections = append(sections, styles.SeparatorLine(mw))
 	sections = append(sections, m.prompt.View())
 
-	// 5. Mode line (full width) — or search bar when searching
+	// 7. Mode line (full width) — or search bar when searching
 	if m.vpSearchActive {
 		sections = append(sections, m.renderSearchBar())
 	} else {
 		sections = append(sections, m.renderModeLine())
 	}
 
-	// 6. Help footer (full width)
+	// 8. Help footer (full width)
 	sections = append(sections, m.renderHelpFooter())
 
-	// 7. Status bar (full width)
+	// 9. Status bar (full width)
 	hint := m.statusHint()
 	ctxUsed, ctxMax := m.contextBudget()
 	teamSummary, unreadMail := m.teamStatus()
@@ -5064,6 +5165,77 @@ func (m Model) renderSearchBar() string {
 		gap = 1
 	}
 	return " " + left + strings.Repeat(" ", gap) + right + " "
+}
+
+// renderStatusLine renders a 1-line nvim-style statusline above the prompt.
+// When a toast is active, the toast text replaces the statusline content.
+func (m Model) renderStatusLine() string {
+	// Toast takes priority: show toast text in this row.
+	if m.toast.IsActive() {
+		toastStyle := lipgloss.NewStyle().
+			Foreground(styles.Text).
+			Background(styles.SurfaceAlt).
+			Width(m.width)
+		return toastStyle.Render(" " + m.toast.text)
+	}
+
+	// Mode pill: label + color based on focus state.
+	var modeLabel string
+	var modeColor lipgloss.Color
+	switch m.focus {
+	case FocusViewport:
+		modeLabel = "VIEWPORT"
+		modeColor = styles.Secondary // gruvbox blue
+	case FocusPanel:
+		modeLabel = "PANEL"
+		modeColor = styles.Warning // gruvbox yellow
+	default:
+		modeLabel = "PROMPT"
+		modeColor = styles.Success // gruvbox green
+	}
+	pill := lipgloss.NewStyle().
+		Foreground(modeColor).
+		Bold(true).
+		Render("● " + modeLabel)
+
+	// Center: session name + optional agent name.
+	sessName := m.sessionName()
+	if sessName == "" {
+		sessName = "new session"
+	}
+	center := sessName
+	if m.currentAgent != "" {
+		center += " · " + m.currentAgent
+	}
+	centerStyled := lipgloss.NewStyle().Foreground(styles.Dim).Render(center)
+
+	// Right: model short name + spinner text.
+	modelShort := strings.TrimPrefix(m.model, "claude-")
+	right := modelShort
+	if m.spinText != "" {
+		right += "  " + m.spinText
+	}
+	rightStyled := lipgloss.NewStyle().Foreground(styles.Muted).Render(right)
+
+	// Separator glyphs.
+	sep := lipgloss.NewStyle().Foreground(styles.Subtle).Render(" │ ")
+
+	left := " " + pill + sep + centerStyled
+	leftW := lipgloss.Width(left)
+	rightW := lipgloss.Width(rightStyled)
+	sepW := lipgloss.Width(sep)
+
+	gap := m.width - leftW - rightW - sepW - 1
+	if gap < 1 {
+		gap = 1
+	}
+
+	line := left + strings.Repeat(" ", gap) + sep + rightStyled + " "
+
+	return lipgloss.NewStyle().
+		Background(styles.SurfaceAlt).
+		Width(m.width).
+		Render(line)
 }
 
 // statusHint returns contextual keyboard hints for the status bar.
