@@ -470,11 +470,19 @@ Ask one question at a time — never a list. After sending, you will go idle. Th
 
 A short pause for a good answer beats hours of rework on the wrong approach.
 
-## Context management
+## Context management — REQUIRED
 
-For exploration and investigation tasks (reading files, searching symbols, understanding code structure), prefer spawning an Explore sub-agent via the Agent tool with subagent_type "Explore". It uses a smaller model, returns a focused summary, and keeps your context clean — avoiding the token cost of raw file contents inline in your conversation.
+**Do NOT read files directly for exploration or investigation.** Instead, always spawn an Explore sub-agent via the Agent tool (subagent_type="Explore") and describe what you need to know.
 
-Only read files directly when you need to edit them or when the result is small and targeted.
+The Explore agent uses a smaller model, returns a focused summary, and keeps your context clean. You MUST use it for:
+- Understanding directory structure or file layout
+- Reading multiple files to understand a codebase
+- Searching for symbols, patterns, or code structure
+- Any task where you are gathering information rather than writing code
+
+Only use Read/Grep/Glob directly when:
+- You are about to edit a specific file you already know the path to
+- The lookup is a single targeted read (one file, < 50 lines)
 
 ## Retry discipline
 

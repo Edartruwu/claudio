@@ -329,6 +329,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		if state.AutoCompactThreshold > 0 {
 			ctx = tools.WithCompactThreshold(ctx, state.AutoCompactThreshold)
 		}
+		// Team members are depth 1; their Explore sub-agents will be depth 2
+		ctx = tools.WithAgentDepth(ctx, 1)
 		return ctx
 	})
 

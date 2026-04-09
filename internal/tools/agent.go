@@ -80,6 +80,11 @@ func RemapPathForWorktree(ctx context.Context, path string) string {
 		// path is outside the main repo — do not remap
 		return path
 	}
+	// Paths inside .claudio-worktrees are sibling worktrees, not project source.
+	// Remapping them would produce a double-nested path. Return as-is.
+	if strings.HasPrefix(rel, ".claudio-worktrees"+string(filepath.Separator)) || rel == ".claudio-worktrees" {
+		return path
+	}
 	return filepath.Join(worktreeRoot, rel)
 }
 
