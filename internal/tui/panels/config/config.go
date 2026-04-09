@@ -715,4 +715,6 @@ func isDefault(v string) bool {
 }
 
 // Help returns a short keybinding hint line for the panel footer.
-func (p *Panel) Help() string { return "" }
+func (p *Panel) Help() string {
+	return "j/k navigate · enter toggle · d delete rule · tab scope · esc close"
+}

@@ -827,4 +827,9 @@ func max(a, b int) int {
 }
 
 // Help returns a short keybinding hint line for the panel footer.
-func (p *Panel) Help() string { return "" }
+func (p *Panel) Help() string {
+	if p.tab == tabPlanning {
+		return "j/k navigate · enter detail · tab switch · r refresh · esc close"
+	}
+	return "j/k navigate · x kill · o output · tab switch · r refresh · esc close"
+}

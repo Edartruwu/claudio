@@ -534,4 +534,12 @@ func wrapText(text string, maxW int) []string {
 }
 
 // Help returns a short keybinding hint line for the panel footer.
-func (p *Panel) Help() string { return "" }
+func (p *Panel) Help() string {
+	if p.mode == modeRename {
+		return "enter confirm · esc cancel"
+	}
+	if p.mode == modeConfirmDelete {
+		return "y confirm delete · any cancel"
+	}
+	return "↑/↓ navigate · enter open · ctrl+r rename · ctrl+d delete · ctrl+a all · esc close"
+}

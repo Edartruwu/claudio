@@ -620,4 +620,6 @@ func renderPanel(content string, width, height int) string {
 }
 
 // Help returns a short keybinding hint line for the panel footer.
-func (p *Panel) Help() string { return "" }
+func (p *Panel) Help() string {
+	return "j/k navigate · enter detail · m message · s share · f forward · x kill · q exit · t team"
+}

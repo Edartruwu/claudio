@@ -177,4 +177,6 @@ func renderGauge(pct float64, width int) string {
 }
 
 // Help returns a short keybinding hint line for the panel footer.
-func (p *Panel) Help() string { return "" }
+func (p *Panel) Help() string {
+	return "esc close"
+}

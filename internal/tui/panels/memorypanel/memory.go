@@ -313,4 +313,9 @@ func (p *Panel) countTypes() map[string]int {
 }
 
 // Help returns a short keybinding hint line for the panel footer.
-func (p *Panel) Help() string { return "" }
+func (p *Panel) Help() string {
+	if p.tab == TabMemories {
+		return "j/k navigate · tab switch · d delete · e edit · a add · r refresh · esc close"
+	}
+	return "j/k navigate · tab switch · esc close"
+}

@@ -237,4 +237,6 @@ func (p *Panel) View() string {
 }
 
 // Help returns a short keybinding hint line for the panel footer.
-func (p *Panel) Help() string { return "" }
+func (p *Panel) Help() string {
+	return "j/k navigate · / search · enter invoke · esc close"
+}
