@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
@@ -242,13 +243,33 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		), IsError: true}, nil
 	}
 
+	// If task_ids were provided, prepend their subject+description to the prompt
+	// so the sub-agent has full context without the orchestrator having to repeat it.
+	taskIDs := in.taskIDStrings()
+	prompt := in.Prompt
+	if len(taskIDs) > 0 {
+		var block strings.Builder
+		block.WriteString("--- Assigned Tasks ---\n")
+		for _, id := range taskIDs {
+			if task, ok := GlobalTaskStore.Get(id); ok {
+				block.WriteString(fmt.Sprintf("[Task #%s] %s\n", task.ID, task.Subject))
+				if task.Description != "" {
+					block.WriteString(fmt.Sprintf("Description: %s\n", task.Description))
+				}
+				block.WriteString("\n")
+			}
+		}
+		block.WriteString("---\n\n")
+		prompt = block.String() + prompt
+	}
+
 	// Upsert semantics: whether the name is new or previously finished, always spawn fresh.
 	// Spawn → AddMember removes the old terminal entry and creates a clean one;
 	// r.teammates[agentID] is overwritten with a brand-new state (no history).
 	state, err := t.Runner.Spawn(teams.SpawnConfig{
 		TeamName:     teamName,
 		AgentName:    resolvedName,
-		Prompt:       in.Prompt,
+		Prompt:       prompt,
 		System:       agentDef.SystemPrompt,
 		Model:        modelOverride,
 		SubagentType: in.SubagentType,
@@ -256,7 +277,7 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		Isolation:    in.Isolation,
 		MemoryDir:    agentDef.MemoryDir,
 		Foreground:   !background,
-		TaskIDs:      in.taskIDStrings(),
+		TaskIDs:      taskIDs,
 	})
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to spawn teammate %q: %v", resolvedName, err), IsError: true}, nil

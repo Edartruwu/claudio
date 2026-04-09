@@ -105,6 +105,17 @@ func (s *TaskStore) List() []*Task {
 	return out
 }
 
+// Get returns a task by ID, or (nil, false) if not found or deleted.
+func (s *TaskStore) Get(id string) (*Task, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tasks[strings.TrimPrefix(id, "#")]
+	if !ok || t.Status == "deleted" {
+		return nil, false
+	}
+	return t, true
+}
+
 // CompleteByIDs marks all pending/in_progress tasks with matching IDs as the given status.
 func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
 	s.mu.Lock()
