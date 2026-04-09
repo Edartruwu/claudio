@@ -93,7 +93,7 @@ func loadFromDir(r *Registry, dir, source string) {
 	for _, entry := range entries {
 		if entry.IsDir() {
 			// Look for skill.md or index.md inside the directory
-			for _, fname := range []string{"skill.md", "index.md", "README.md"} {
+			for _, fname := range []string{"SKILL.md", "skill.md", "index.md", "README.md"} {
 				path := filepath.Join(dir, entry.Name(), fname)
 				if content, err := os.ReadFile(path); err == nil {
 					name, desc, body := parseSkillFile(string(content))
