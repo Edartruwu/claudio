@@ -49,6 +49,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
 	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
 	sidebarblocks "github.com/Abraxas-365/claudio/internal/tui/sidebar/blocks"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
 	"github.com/Abraxas-365/claudio/internal/tui/teampanel"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
@@ -1426,6 +1427,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case agui.RefreshMsg:
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*agui.Panel); ok {
+				cmd := ap.HandleRefresh()
+				return m, cmd
+			}
+		}
+		return m, nil
+
 	case panels.ActionMsg:
 		switch msg.Type {
 		case "agent_message":
@@ -1443,6 +1453,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "exit_team":
 			// Close team panel and return to prompt
 			m.closePanel()
+		case "agui_toast":
+			// Display a short notification from the AGUI panel.
+			if text, ok := msg.Payload.(string); ok {
+				m.addMessage(ChatMessage{Type: MsgSystem, Content: text})
+				m.refreshViewport()
+			}
 		}
 		return m, nil
 
@@ -2350,6 +2366,12 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		m.teamSelector.SetWidth(m.width)
 		m.focus = FocusTeamSelector
 		m.prompt.Blur()
+		return m, nil
+	}
+
+	// /agui (or :AGUI) → open the two-pane agent inspector panel
+	if strings.EqualFold(name, "agui") {
+		m.togglePanel(PanelAgentGUI)
 		return m, nil
 	}
 
@@ -4612,7 +4634,11 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 			return stree.New(m.appCtx.DB, memSvc, getCurrentID)
 		}
 	case PanelAgentGUI:
-		return nil // TODO: implemented in agui package
+		var runner *teams.TeammateRunner
+		if m.appCtx != nil {
+			runner = m.appCtx.TeamRunner
+		}
+		return agui.New(runner)
 	}
 	return nil
 }

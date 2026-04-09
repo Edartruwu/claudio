@@ -32,6 +32,7 @@ func DefaultBindings() []Binding {
 		{Key: "p", Desc: "palette"},
 		{Key: "f", Desc: "files"},
 		{Key: "a", Desc: "agents"},
+		{Key: "oa", Desc: "agent inspector"},
 		{Key: "/", Desc: "search"},
 		// Divider row (empty key)
 		{Key: "", Desc: ""},
