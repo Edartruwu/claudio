@@ -175,3 +175,6 @@ func renderGauge(pct float64, width int) string {
 	return "[" + filledStyle.Render(strings.Repeat("█", filled)) +
 		emptyStyle.Render(strings.Repeat("░", width-filled)) + "]"
 }
+
+// Help returns a short keybinding hint line for the panel footer.
+func (p *Panel) Help() string { return "" }

@@ -618,3 +618,6 @@ func renderPanel(content string, width, height int) string {
 		Height(height).
 		Render(content)
 }
+
+// Help returns a short keybinding hint line for the panel footer.
+func (p *Panel) Help() string { return "" }

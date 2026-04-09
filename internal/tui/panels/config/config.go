@@ -713,3 +713,6 @@ func isDefault(v string) bool {
 	}
 	return false
 }
+
+// Help returns a short keybinding hint line for the panel footer.
+func (p *Panel) Help() string { return "" }
