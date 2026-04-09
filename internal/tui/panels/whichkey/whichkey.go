@@ -97,6 +97,14 @@ func PanelBindings() []Binding {
 	}
 }
 
+// OpenBindings returns bindings for the Space+O sub-menu (open panels).
+func OpenBindings() []Binding {
+	return []Binding{
+		{Key: "p", Desc: "session tree"},
+		{Key: "a", Desc: "agent inspector"},
+	}
+}
+
 // Model is the which-key popup overlay.
 type Model struct {
 	active   bool
@@ -133,6 +141,11 @@ func (m *Model) ShowSessions() {
 	m.Show(SessionBindings())
 }
 
+// ShowOpen shows the open-panel sub-menu bindings (Space+O).
+func (m *Model) ShowOpen() {
+	m.Show(OpenBindings())
+}
+
 // SetKeymap sets the keymap reference for dynamic binding generation.
 func (m *Model) SetKeymap(km *keymap.Keymap) {
 	m.km = km
@@ -152,6 +165,8 @@ func (m *Model) ShowFromKeymap(prefix string) {
 			m.Show(SessionBindings())
 		case "i":
 			m.Show(PanelBindings())
+		case "o":
+			m.Show(OpenBindings())
 		}
 		return
 	}

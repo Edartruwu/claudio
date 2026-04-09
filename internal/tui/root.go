@@ -41,6 +41,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/skillspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/stree"
 	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
 	"github.com/Abraxas-365/claudio/internal/utils"
@@ -4595,7 +4596,21 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 	case PanelConversation:
 		return conversationpanel.New()
 	case PanelSessionTree:
-		return nil // TODO: implemented in stree package
+		if m.appCtx != nil && m.appCtx.DB != nil {
+			var memSvc *memory.ScopedStore
+			if m.appCtx.Memory != nil {
+				memSvc = m.appCtx.Memory
+			}
+			getCurrentID := func() string {
+				if m.session != nil {
+					if cur := m.session.Current(); cur != nil {
+						return cur.ID
+					}
+				}
+				return ""
+			}
+			return stree.New(m.appCtx.DB, memSvc, getCurrentID)
+		}
 	case PanelAgentGUI:
 		return nil // TODO: implemented in agui package
 	}
