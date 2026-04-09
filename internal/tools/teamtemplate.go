@@ -141,6 +141,9 @@ func (t *InstantiateTeamTool) Execute(ctx context.Context, input json.RawMessage
 		_ = err
 	}
 	t.Runner.SetActiveTeam(teamName)
+	if tmpl.AutoCompactThreshold > 0 {
+		t.Manager.SetAutoCompactThreshold(teamName, tmpl.AutoCompactThreshold)
+	}
 
 	// Pre-register members so their subagent_type is persisted before work is assigned
 	var roster []string
@@ -149,7 +152,7 @@ func (t *InstantiateTeamTool) Execute(ctx context.Context, input json.RawMessage
 		if model == "" {
 			model = tmpl.Model
 		}
-		_, _ = t.Manager.AddMember(teamName, m.Name, model, "", m.SubagentType)
+		_, _ = t.Manager.AddMember(teamName, m.Name, model, "", m.SubagentType, m.AutoCompactThreshold)
 		line := fmt.Sprintf("  - %s (%s)", m.Name, m.SubagentType)
 		if model != "" {
 			line += " model=" + model

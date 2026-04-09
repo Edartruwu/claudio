@@ -151,6 +151,21 @@ func MaxTurnsFromContext(ctx context.Context) int {
 	return 0
 }
 
+type ctxKeyCompactThreshold struct{}
+
+// WithCompactThreshold stores an auto-compact threshold (percentage) in the context for sub-agent engines.
+func WithCompactThreshold(ctx context.Context, t int) context.Context {
+	return context.WithValue(ctx, ctxKeyCompactThreshold{}, t)
+}
+
+// CompactThresholdFromContext retrieves the auto-compact threshold (0 if not set).
+func CompactThresholdFromContext(ctx context.Context) int {
+	if v, ok := ctx.Value(ctxKeyCompactThreshold{}).(int); ok {
+		return v
+	}
+	return 0
+}
+
 type ctxKeyAgentDepth struct{}
 
 // WithAgentDepth increments the nesting depth in context.

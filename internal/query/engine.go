@@ -242,6 +242,14 @@ func (e *Engine) SetMaxTurns(n int) {
 	e.maxTurns = n
 }
 
+// SetCompactThreshold sets the context-usage percentage at which full auto-compaction
+// is triggered (overrides the default 95%). Only applied when t is between 1 and 100.
+func (e *Engine) SetCompactThreshold(t int) {
+	if e.compactState != nil && t > 0 && t <= 100 {
+		e.compactState.ForceThreshold = t
+	}
+}
+
 // SetMailboxPoller sets a function called each turn to check for incoming team messages.
 // It should return messages to inject into the conversation.
 func (e *Engine) SetMailboxPoller(fn func() []string) {

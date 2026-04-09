@@ -52,12 +52,13 @@ const maxConversationEntries = 200
 
 // TeammateState holds the runtime state of an in-process teammate.
 type TeammateState struct {
-	Identity       TeammateIdentity
-	TeamName       string
-	Prompt         string
-	Model          string // model override for this teammate
-	MaxTurns       int    // optional max agentic turns (0 = unlimited)
-	Status         MemberStatus
+	Identity             TeammateIdentity
+	TeamName             string
+	Prompt               string
+	Model                string // model override for this teammate
+	MaxTurns             int    // optional max agentic turns (0 = unlimited)
+	AutoCompactThreshold int    // % of context window to trigger full compact (0 = engine default 95%)
+	Status               MemberStatus
 	Progress       TeammateProgress
 	Result         string // final output
 	Error          string
@@ -279,17 +280,18 @@ func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 
 // SpawnConfig defines how to spawn a teammate.
 type SpawnConfig struct {
-	TeamName     string
-	AgentName    string
-	Prompt       string
-	System       string   // system prompt override
-	Model        string   // model override
-	SubagentType string   // agent definition used (e.g. "backend-senior", "prab")
-	MaxTurns     int      // optional max agentic turns (0 = unlimited)
-	Isolation    string   // "worktree" for git worktree isolation
-	MemoryDir    string   // optional agent-scoped memory directory (for crystallized agents)
-	Foreground   bool     // true when the lead is blocking on WaitForOne — suppresses task-notification
-	TaskIDs      []string // task IDs to auto-complete when agent finishes
+	TeamName             string
+	AgentName            string
+	Prompt               string
+	System               string   // system prompt override
+	Model                string   // model override
+	SubagentType         string   // agent definition used (e.g. "backend-senior", "prab")
+	MaxTurns             int      // optional max agentic turns (0 = unlimited)
+	Isolation            string   // "worktree" for git worktree isolation
+	MemoryDir            string   // optional agent-scoped memory directory (for crystallized agents)
+	Foreground           bool     // true when the lead is blocking on WaitForOne — suppresses task-notification
+	TaskIDs              []string // task IDs to auto-complete when agent finishes
+	AutoCompactThreshold int      // % of context window to trigger full compact (0 = engine default 95%)
 }
 
 // Spawn starts a new teammate goroutine.
@@ -298,6 +300,23 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 	if cfg.Model == "" {
 		if team, ok := r.manager.GetTeam(cfg.TeamName); ok && team.Model != "" {
 			cfg.Model = team.Model
+		}
+	}
+
+	// Resolve auto-compact threshold: per-member (stored from InstantiateTeam) >
+	// team-level default > 0 (engine default 95%).
+	if cfg.AutoCompactThreshold <= 0 {
+		if team, ok := r.manager.GetTeam(cfg.TeamName); ok {
+			agentID := FormatAgentID(cfg.AgentName, cfg.TeamName)
+			for _, mem := range team.Members {
+				if mem.Identity.AgentID == agentID && mem.AutoCompactThreshold > 0 {
+					cfg.AutoCompactThreshold = mem.AutoCompactThreshold
+					break
+				}
+			}
+			if cfg.AutoCompactThreshold <= 0 {
+				cfg.AutoCompactThreshold = team.AutoCompactThreshold
+			}
 		}
 	}
 
@@ -319,13 +338,14 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 	ctx, cancel := context.WithCancel(r.parentCtx)
 
 	state := &TeammateState{
-		Identity:     member.Identity,
-		TeamName:     cfg.TeamName,
-		Prompt:       cfg.Prompt,
-		Model:        cfg.Model,
-		MaxTurns:     cfg.MaxTurns,
-		MemoryDir:    cfg.MemoryDir,
-		Foreground:   cfg.Foreground,
+		Identity:             member.Identity,
+		TeamName:             cfg.TeamName,
+		Prompt:               cfg.Prompt,
+		Model:                cfg.Model,
+		MaxTurns:             cfg.MaxTurns,
+		AutoCompactThreshold: cfg.AutoCompactThreshold,
+		MemoryDir:            cfg.MemoryDir,
+		Foreground:           cfg.Foreground,
 		Status:       StatusWorking,
 		StartedAt:    time.Now(),
 		cancel:       cancel,
@@ -449,6 +469,12 @@ If you hit a decision you cannot resolve confidently (ambiguous requirements, ar
 Ask one question at a time — never a list. After sending, you will go idle. The team lead will answer (possibly after consulting the user) via SendMessage, and you will automatically resume with your full conversation history intact — continue from exactly where you left off using the answer.
 
 A short pause for a good answer beats hours of rework on the wrong approach.
+
+## Context management
+
+For exploration and investigation tasks (reading files, searching symbols, understanding code structure), prefer spawning an Explore sub-agent via the Agent tool with subagent_type "Explore". It uses a smaller model, returns a focused summary, and keeps your context clean — avoiding the token cost of raw file contents inline in your conversation.
+
+Only read files directly when you need to edit them or when the result is small and targeted.
 
 ## Retry discipline
 

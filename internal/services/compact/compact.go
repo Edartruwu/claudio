@@ -22,11 +22,12 @@ const (
 
 // State tracks compaction metrics for the current session.
 type State struct {
-	TotalTokens   int
-	MaxTokens     int
-	ToolCallCount int
-	PhaseChanges  int
-	LastPhase     string // "exploring", "planning", "implementing", "testing"
+	TotalTokens    int
+	MaxTokens      int
+	ToolCallCount  int
+	PhaseChanges   int
+	LastPhase      string // "exploring", "planning", "implementing", "testing"
+	ForceThreshold int    // % of context window to trigger full compact (0 = default 95%)
 }
 
 // ShouldSuggest returns true if compaction should be suggested.
@@ -53,8 +54,13 @@ func (s *State) ShouldFullCompact() bool {
 }
 
 // ShouldForce returns true if compaction is mandatory (about to overflow).
+// Uses ForceThreshold if set (1-100), otherwise defaults to 95%.
 func (s *State) ShouldForce() bool {
-	return s.TotalTokens > s.MaxTokens*95/100
+	threshold := s.ForceThreshold
+	if threshold <= 0 || threshold > 100 {
+		threshold = 95
+	}
+	return s.TotalTokens > s.MaxTokens*threshold/100
 }
 
 // DetectPhase infers the current work phase from recent tool usage.

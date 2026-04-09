@@ -15,25 +15,27 @@ import (
 
 // TeamConfig is the on-disk team configuration stored at ~/.claudio/teams/{name}/config.json.
 type TeamConfig struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	Model       string            `json:"model,omitempty"` // default model for all agents in this team
-	LeadAgent   string            `json:"lead_agent"`      // e.g., "team-lead@my-team"
-	LeadSession string            `json:"lead_session"`    // leader's session ID
-	Members     []*TeamMember     `json:"members"`
-	CreatedAt   time.Time         `json:"created_at"`
-	AllowPaths  []string          `json:"allow_paths,omitempty"` // shared filesystem access
+	Name                 string        `json:"name"`
+	Description          string        `json:"description,omitempty"`
+	Model                string        `json:"model,omitempty"` // default model for all agents in this team
+	AutoCompactThreshold int           `json:"autoCompactThreshold,omitempty"` // % context to trigger compact (team-level default)
+	LeadAgent            string        `json:"lead_agent"`      // e.g., "team-lead@my-team"
+	LeadSession          string        `json:"lead_session"`    // leader's session ID
+	Members              []*TeamMember `json:"members"`
+	CreatedAt            time.Time     `json:"created_at"`
+	AllowPaths           []string      `json:"allow_paths,omitempty"` // shared filesystem access
 }
 
 // TeamMember describes a teammate.
 type TeamMember struct {
-	Identity     TeammateIdentity `json:"identity"`
-	Status       MemberStatus     `json:"status"`
-	JoinedAt     time.Time        `json:"joined_at"`
-	TaskID       string           `json:"task_id,omitempty"`       // background task ID
-	Model        string           `json:"model,omitempty"`
-	Prompt       string           `json:"prompt,omitempty"`
-	SubagentType string           `json:"subagent_type,omitempty"` // agent definition used (e.g. "backend-senior")
+	Identity             TeammateIdentity `json:"identity"`
+	Status               MemberStatus     `json:"status"`
+	JoinedAt             time.Time        `json:"joined_at"`
+	TaskID               string           `json:"task_id,omitempty"`              // background task ID
+	Model                string           `json:"model,omitempty"`
+	Prompt               string           `json:"prompt,omitempty"`
+	SubagentType         string           `json:"subagent_type,omitempty"`        // agent definition used (e.g. "backend-senior")
+	AutoCompactThreshold int              `json:"autoCompactThreshold,omitempty"` // % context to trigger compact (overrides team-level)
 }
 
 // TeammateIdentity uniquely identifies an agent within a team.
@@ -186,8 +188,18 @@ func (m *Manager) CreateTeam(name, description, sessionID, model string) (*TeamC
 	return team, nil
 }
 
+// SetAutoCompactThreshold sets the team-level auto-compact threshold (percentage).
+func (m *Manager) SetAutoCompactThreshold(teamName string, threshold int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if team, ok := m.active[teamName]; ok {
+		team.AutoCompactThreshold = threshold
+		m.saveConfig(team)
+	}
+}
+
 // AddMember adds a teammate to an existing team.
-func (m *Manager) AddMember(teamName, agentName, model, prompt, subagentType string) (*TeamMember, error) {
+func (m *Manager) AddMember(teamName, agentName, model, prompt, subagentType string, autoCompactThreshold ...int) (*TeamMember, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -220,9 +232,10 @@ func (m *Manager) AddMember(teamName, agentName, model, prompt, subagentType str
 		},
 		Status:   StatusIdle,
 		JoinedAt: time.Now(),
-		Model:        model,
-		Prompt:       prompt,
-		SubagentType: subagentType,
+		Model:                model,
+		Prompt:               prompt,
+		SubagentType:         subagentType,
+		AutoCompactThreshold: func() int { if len(autoCompactThreshold) > 0 { return autoCompactThreshold[0] }; return 0 }(),
 	}
 
 	team.Members = append(team.Members, member)

@@ -325,6 +325,10 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		if state.MaxTurns > 0 {
 			ctx = tools.WithMaxTurns(ctx, state.MaxTurns)
 		}
+		// Propagate auto-compact threshold if specified
+		if state.AutoCompactThreshold > 0 {
+			ctx = tools.WithCompactThreshold(ctx, state.AutoCompactThreshold)
+		}
 		return ctx
 	})
 
@@ -602,6 +606,9 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 	engine.SetSystem(system)
 	if maxTurns := tools.MaxTurnsFromContext(ctx); maxTurns > 0 {
 		engine.SetMaxTurns(maxTurns)
+	}
+	if threshold := tools.CompactThresholdFromContext(ctx); threshold > 0 {
+		engine.SetCompactThreshold(threshold)
 	}
 
 	// Wire mailbox poller for team agents so they can receive messages mid-run

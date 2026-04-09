@@ -10,17 +10,19 @@ import (
 
 // TeamTemplateMember defines a member slot in a team template.
 type TeamTemplateMember struct {
-	Name         string `json:"name"`
-	SubagentType string `json:"subagent_type"`
-	Model        string `json:"model,omitempty"` // per-member model override
+	Name                 string `json:"name"`
+	SubagentType         string `json:"subagent_type"`
+	Model                string `json:"model,omitempty"`                  // per-member model override
+	AutoCompactThreshold int    `json:"autoCompactThreshold,omitempty"`   // % context to trigger compact (overrides team-level)
 }
 
 // TeamTemplate is a reusable team composition stored at ~/.claudio/team-templates/{name}.json.
 type TeamTemplate struct {
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	Model       string               `json:"model,omitempty"` // team default model
-	Members     []TeamTemplateMember `json:"members"`
+	Name                 string               `json:"name"`
+	Description          string               `json:"description,omitempty"`
+	Model                string               `json:"model,omitempty"` // team default model
+	AutoCompactThreshold int                  `json:"autoCompactThreshold,omitempty"` // % context to trigger compact for all members
+	Members              []TeamTemplateMember `json:"members"`
 }
 
 // LoadTemplates reads all *.json files from dir and returns the parsed templates.
