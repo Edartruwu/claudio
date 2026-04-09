@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
@@ -101,6 +102,7 @@ type Model struct {
 	active   bool
 	bindings []Binding
 	width    int
+	km       *keymap.Keymap // optional keymap reference for dynamic bindings
 }
 
 // New creates a new which-key popup.
@@ -129,6 +131,38 @@ func (m *Model) ShowWindow() {
 // ShowSessions shows the session sub-menu bindings.
 func (m *Model) ShowSessions() {
 	m.Show(SessionBindings())
+}
+
+// SetKeymap sets the keymap reference for dynamic binding generation.
+func (m *Model) SetKeymap(km *keymap.Keymap) {
+	m.km = km
+}
+
+// ShowFromKeymap shows bindings for the given prefix, reading from the keymap.
+// Falls back to the legacy hardcoded bindings if no keymap is set.
+func (m *Model) ShowFromKeymap(prefix string) {
+	if m.km == nil {
+		// Fallback to legacy behaviour
+		switch prefix {
+		case "":
+			m.Show(DefaultBindings())
+		case "w":
+			m.Show(WindowBindings())
+		case "b":
+			m.Show(SessionBindings())
+		case "i":
+			m.Show(PanelBindings())
+		}
+		return
+	}
+	keymapBindings := m.km.BindingsForPrefix(prefix)
+	bindings := make([]Binding, len(keymapBindings))
+	for i, b := range keymapBindings {
+		bindings[i] = Binding{Key: b.KeySeq, Desc: b.Action.Description}
+	}
+	if len(bindings) > 0 {
+		m.Show(bindings)
+	}
 }
 
 // Hide dismisses the popup.

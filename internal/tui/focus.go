@@ -31,4 +31,6 @@ const (
 	PanelAgents
 	PanelTools
 	PanelConversation
+	PanelSessionTree // TODO: implemented in stree package
+	PanelAgentGUI    // TODO: implemented in agui package
 )

@@ -41,6 +41,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/skillspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
+	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
 	"github.com/Abraxas-365/claudio/internal/utils"
 	"github.com/Abraxas-365/claudio/internal/tui/docks"
@@ -107,6 +108,7 @@ type Model struct {
 	panelSplitRatio float64      // fraction of width for main area (default 0.65)
 	panelZoomed     bool         // true when zoom mode is active (wz toggle)
 	prevSplitRatio  float64      // saved split ratio before zoom, restored on second wz
+	km              *keymap.Keymap // remappable key bindings
 	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
 	prevSessionID   string       // for alternate session switching
 	vpCursor        int          // viewport section cursor (-1 = none)
@@ -281,6 +283,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		lastPanelID:      PanelConfig,
 		toolStartTimes:  make(map[string]time.Time),
 		vpCursor:        -1,
+		km:              loadKeymap(),
 		whichKey:        whichkey.New(),
 		sessionRuntimes: make(map[string]*SessionRuntime),
 		panelPool:       make(map[PanelID]panels.Panel),
@@ -298,6 +301,9 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		m.todoDock = docks.NewTodoDock(nil)
 	}
 	m.filesPanel = filespanel.New()
+
+	// Wire keymap into which-key for dynamic binding display
+	m.whichKey.SetKeymap(m.km)
 
 	// Initialize sidebar
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
@@ -551,19 +557,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case whichkey.TimeoutMsg:
-		// Show which-key popup based on current leader sequence
-		switch m.leaderSeq {
-		case "pending":
-			m.whichKey.ShowDefault()
-			m.whichKey.SetWidth(m.width)
-		case "w":
-			m.whichKey.ShowWindow()
-			m.whichKey.SetWidth(m.width)
-		case "b":
-			m.whichKey.ShowSessions()
-			m.whichKey.SetWidth(m.width)
-		case "i":
-			m.whichKey.Show(whichkey.PanelBindings())
+		// Show which-key popup based on current leader sequence, reading from keymap.
+		prefix := m.leaderSeq
+		if prefix == "" {
+			// "pending" was normalised to "" — show top-level bindings
+			prefix = ""
+		}
+		bindings := m.km.BindingsForPrefix(prefix)
+		if len(bindings) > 0 {
+			wkBindings := make([]whichkey.Binding, len(bindings))
+			for i, b := range bindings {
+				wkBindings[i] = whichkey.Binding{Key: b.KeySeq, Desc: b.Action.Description}
+			}
+			m.whichKey.Show(wkBindings)
 			m.whichKey.SetWidth(m.width)
 		}
 		return m, nil
@@ -2414,6 +2420,68 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// /map <keyseq> <action> — remap a leader key binding
+	if name == "map" {
+		parts := strings.Fields(args)
+		if len(parts) < 2 {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Usage: /map <keyseq> <action-id>"})
+			m.refreshViewport()
+			return m, nil
+		}
+		keySeq := parts[0]
+		actionID := keymap.ActionID(parts[1])
+		if err := m.km.Set(keySeq, actionID); err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Map error: %s", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		return m, m.toast.Show(fmt.Sprintf("Mapped %s → %s", keySeq, actionID))
+	}
+
+	// /unmap <keyseq> — remove a leader key binding
+	if name == "unmap" {
+		keySeq := strings.TrimSpace(args)
+		if keySeq == "" {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Usage: /unmap <keyseq>"})
+			m.refreshViewport()
+			return m, nil
+		}
+		if err := m.km.Unset(keySeq); err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Unmap error: %s", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		return m, m.toast.Show(fmt.Sprintf("Unmapped %s", keySeq))
+	}
+
+	// /maps [group] — list all key bindings
+	if name == "maps" {
+		group := strings.TrimSpace(args)
+		bindings := m.km.List(group)
+		if len(bindings) == 0 {
+			if group != "" {
+				m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("No bindings for group: %s", group)})
+			} else {
+				m.addMessage(ChatMessage{Type: MsgSystem, Content: "No bindings defined."})
+			}
+			m.refreshViewport()
+			return m, nil
+		}
+		var sb strings.Builder
+		title := "Key Bindings"
+		if group != "" {
+			title = fmt.Sprintf("Key Bindings [%s]", group)
+		}
+		sb.WriteString(title + "\n")
+		sb.WriteString(strings.Repeat("─", 50) + "\n")
+		for _, b := range bindings {
+			sb.WriteString(fmt.Sprintf("  %-12s  %-28s  %s\n", b.KeySeq, string(b.Action.ID), b.Action.Description))
+		}
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: sb.String()})
+		m.refreshViewport()
+		return m, nil
+	}
+
 	cmd, ok := m.commands.Get(name)
 	if !ok {
 		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", name)})
@@ -3194,176 +3262,77 @@ func (m *Model) persistPermissionRule(rule config.PermissionRule) {
 
 // ── Leader Key State Machine ────────────────────────────
 
+// loadKeymap initialises the keymap from config, falling back to defaults.
+func loadKeymap() *keymap.Keymap {
+	km, err := keymap.Load()
+	if err != nil {
+		// Config read failed — use defaults silently.
+		return keymap.Default()
+	}
+	return km
+}
+
 // handleLeaderKey processes the next key in a leader sequence.
+// It accumulates keys in m.leaderSeq and resolves through the keymap.
 // Returns (handled bool, cmd). If handled is false, the key was not consumed.
 func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 	seq := m.leaderSeq
 	m.leaderSeq = "" // reset by default
 
-	switch seq {
-	case "pending":
-		// First key after Space
-		switch key {
-		case "w":
-			m.leaderSeq = "w"
-			return true, whichkey.ScheduleTimeout()
-		case "b":
-			m.leaderSeq = "b"
-			return true, whichkey.ScheduleTimeout()
-		case "i":
-			m.leaderSeq = "i"
-			return true, whichkey.ScheduleTimeout()
-		case ",":
-			m.leaderSeq = ","
-			return true, nil
-		case ".":
-			// Session picker (like <leader>. for telescope buffers)
-			return m.openSessionPicker()
-		case ";":
-			// Recent sessions (same as . for now)
-			return m.openSessionPicker()
-		case "/":
-			// Search sessions (open picker with search focused)
-			return m.openSessionPicker()
-		case "a":
-			// Agents panel
-			m.openPanel(PanelAgents)
-			if _, ok := m.activePanel.(*teampanel.Panel); ok {
-				return true, teampanel.ScheduleRefresh()
-			}
-			return true, nil
-		case "p":
-			// Command palette — enter insert mode so the user can type
-			if !m.streaming {
-				m.filePicker.Deactivate()
-				m.prompt.SetValue("/")
-				m.prompt.EnterVimInsert()
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-				m.updatePaletteState()
-			}
-			return true, nil
-		case "t":
-			// Todo dock — toggle expanded state
-			if m.todoDock != nil {
-				m.todoDock.ToggleExpanded()
-				m.refreshViewport()
-			}
-			return true, nil
-		case "f":
-			// File changes panel — toggle; if opening, enter FocusFiles
-			if m.filesPanel != nil {
-				if m.filesPanel.IsActive() {
-					m.filesPanel.Deactivate()
-					m.filesPanel.SetFocused(false)
-					if m.focus == FocusFiles {
-						m.focus = FocusPrompt
-						m.prompt.Focus()
-					}
-				} else {
-					m.filesPanel.Activate()
-					m.filesPanel.SetFocused(true)
-					m.focus = FocusFiles
-					m.prompt.Blur()
-				}
-				m.refreshViewport()
-			}
-			return true, nil
-		// Direct panel shortcuts (uppercase letters)
-		case "C":
-			// Config panel — toggle
-			if m.activePanelID == PanelConfig && m.activePanel != nil && m.activePanel.IsActive() {
-				m.closePanel()
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-			} else {
-				m.openPanel(PanelConfig)
-			}
-			m.refreshViewport()
-			return true, nil
-		case "K":
-			// Skills panel — toggle
-			if m.activePanelID == PanelSkills && m.activePanel != nil && m.activePanel.IsActive() {
-				m.closePanel()
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-			} else {
-				m.openPanel(PanelSkills)
-			}
-			m.refreshViewport()
-			return true, nil
-		case "M":
-			// Memory panel — toggle
-			if m.activePanelID == PanelMemory && m.activePanel != nil && m.activePanel.IsActive() {
-				m.closePanel()
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-			} else {
-				m.openPanel(PanelMemory)
-			}
-			m.refreshViewport()
-			return true, nil
-		case "T":
-			// Tasks panel — toggle
-			if m.activePanelID == PanelTasks && m.activePanel != nil && m.activePanel.IsActive() {
-				m.closePanel()
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-			} else {
-				m.openPanel(PanelTasks)
-			}
-			m.refreshViewport()
-			return true, nil
-		case "O":
-			// Tools panel — toggle
-			if m.activePanelID == PanelTools && m.activePanel != nil && m.activePanel.IsActive() {
-				m.closePanel()
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-			} else {
-				m.openPanel(PanelTools)
-			}
-			m.refreshViewport()
-			return true, nil
-		case "A":
-			// Analytics panel — toggle
-			if m.activePanelID == PanelAnalytics && m.activePanel != nil && m.activePanel.IsActive() {
-				m.closePanel()
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-			} else {
-				m.openPanel(PanelAnalytics)
-			}
-			m.refreshViewport()
-			return true, nil
-		case "e":
-			// Edit prompt in $EDITOR
-			if m.streaming {
-				cmd := m.toast.Show("Cannot edit while streaming")
-				return true, cmd
-			}
-			return true, openInEditor(m.prompt.Value(), false)
-		case "ev":
-			// View current section in $EDITOR (read-only)
-			if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
-				section := m.vpSections[m.vpCursor]
-				content := m.extractSectionText(section)
-				if content == "" {
-					cmd := m.toast.Show("No content in current section")
-					return true, cmd
-				}
-				return true, openInEditor(content, true)
-			}
-			cmd := m.toast.Show("No section focused — use <Space>wk first")
-			return true, cmd
-		}
-		return true, nil // consumed but no match
+	if seq == "pending" {
+		seq = ""
+	}
 
-	case "w":
-		// Window sub-menu (nvim-style)
-		switch key {
-		case "k":
-			// Focus viewport (scroll up to last section)
+	// Build the full key sequence accumulated so far.
+	// Special case: "," + "enter" maps to ",\n" in the keymap.
+	fullSeq := seq + key
+	if key == "enter" {
+		fullSeq = seq + "\n"
+	}
+
+	// Try to resolve an exact action.
+	action, ok := m.km.Resolve(fullSeq)
+	if ok {
+		// If this sequence is ALSO a prefix of longer bindings, we still
+		// dispatch immediately (like vim: "e" fires even if "ev" exists,
+		// because the user pressed exactly "e" and nothing more).
+		// However, to support "ev" properly, we need a sub-sequence mechanism.
+		// Check if this is also a prefix — if so, we need to wait.
+		if m.km.HasPrefix(fullSeq) {
+			// Ambiguous: "e" matches but "ev" also exists.
+			// Buffer and schedule timeout — on next key we'll extend or dispatch.
+			m.leaderSeq = fullSeq
+			return true, whichkey.ScheduleTimeout()
+		}
+		return true, m.dispatchAction(action)
+	}
+
+	// Not an exact match — is it a valid prefix?
+	if m.km.HasPrefix(fullSeq) {
+		m.leaderSeq = fullSeq
+		return true, whichkey.ScheduleTimeout()
+	}
+
+	// Try dispatching the accumulated prefix if there was one.
+	// E.g., user typed "e" then "x" — "ex" doesn't match, but "e" might.
+	if len(seq) > 0 {
+		if prevAction, prevOK := m.km.Resolve(seq); prevOK {
+			// Dispatch the prefix action; the trailing key is dropped.
+			return true, m.dispatchAction(prevAction)
+		}
+	}
+
+	return true, nil // consumed but no match (leader mode eats the key)
+}
+
+// dispatchAction executes the logic for a resolved action.
+func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
+	switch action {
+	// ── Window Management ──────────────────
+	case keymap.ActionWindowCycle:
+		hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+		switch m.focus {
+		case FocusPrompt:
 			m.focus = FocusViewport
 			m.prompt.Blur()
 			if len(m.vpSections) > 0 {
@@ -3373,160 +3342,263 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 			}
 			m.refreshViewport()
 			m.scrollToSection(m.vpCursor)
-			return true, nil
-		case "j", "p":
-			// Focus prompt
-			m.focus = FocusPrompt
-			m.vpCursor = -1
-			m.prompt.Focus()
-			m.refreshViewport()
-			return true, nil
-		case "w":
-			// Cycle focus: prompt → viewport → panel (if open) → prompt
-			hasPanel := m.activePanel != nil && m.activePanel.IsActive()
-			switch m.focus {
-			case FocusPrompt:
-				m.focus = FocusViewport
-				m.prompt.Blur()
-				if len(m.vpSections) > 0 {
-					m.vpCursor = len(m.vpSections) - 1
-				} else {
-					m.vpCursor = 0
-				}
-				m.refreshViewport()
-				m.scrollToSection(m.vpCursor)
-			case FocusViewport:
-				if hasPanel {
-					m.focus = FocusPanel
-					m.activePanel.Activate()
-				} else {
-					m.focus = FocusPrompt
-					m.vpCursor = -1
-					m.prompt.Focus()
-					m.refreshViewport()
-				}
-			case FocusPanel:
-				m.focus = FocusPrompt
-				m.vpCursor = -1
-				m.prompt.Focus()
-				m.refreshViewport()
-			default:
-				m.focus = FocusPrompt
-				m.prompt.Focus()
-			}
-			return true, nil
-		case "h":
-			// Move focus left: panel → viewport
-			if m.focus == FocusPanel {
-				m.focus = FocusViewport
-				m.prompt.Blur()
-				if len(m.vpSections) > 0 && m.vpCursor < 0 {
-					m.vpCursor = len(m.vpSections) - 1
-				}
-				m.refreshViewport()
-			}
-			return true, nil
-		case "l":
-			// Move focus right: viewport/prompt → panel (open last-used if closed)
-			hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+		case FocusViewport:
 			if hasPanel {
 				m.focus = FocusPanel
 				m.activePanel.Activate()
 			} else {
-				// Open last-used panel and focus it
-				m.openPanel(m.lastPanelID)
+				m.focus = FocusPrompt
+				m.vpCursor = -1
+				m.prompt.Focus()
+				m.refreshViewport()
 			}
-			return true, nil
-		case "v":
-			// Open conversation mirror panel
-			m.openPanel(PanelConversation)
+		case FocusPanel:
+			m.focus = FocusPrompt
+			m.vpCursor = -1
+			m.prompt.Focus()
+			m.refreshViewport()
+		default:
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+		}
+		return nil
+
+	case keymap.ActionWindowFocusUp:
+		m.focus = FocusViewport
+		m.prompt.Blur()
+		if len(m.vpSections) > 0 {
+			m.vpCursor = len(m.vpSections) - 1
+		} else {
+			m.vpCursor = 0
+		}
+		m.refreshViewport()
+		m.scrollToSection(m.vpCursor)
+		return nil
+
+	case keymap.ActionWindowFocusDown:
+		m.focus = FocusPrompt
+		m.vpCursor = -1
+		m.prompt.Focus()
+		m.refreshViewport()
+		return nil
+
+	case keymap.ActionWindowFocusLeft:
+		if m.focus == FocusPanel {
+			m.focus = FocusViewport
+			m.prompt.Blur()
+			if len(m.vpSections) > 0 && m.vpCursor < 0 {
+				m.vpCursor = len(m.vpSections) - 1
+			}
+			m.refreshViewport()
+		}
+		return nil
+
+	case keymap.ActionWindowFocusRight:
+		hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+		if hasPanel {
 			m.focus = FocusPanel
-			return true, nil
-		case "z":
-			// Zoom / fullscreen toggle — maximise either the main viewport or the active panel
-			if m.panelZoomed {
-				// Restore previous split ratio
-				m.panelSplitRatio = m.prevSplitRatio
-				m.panelZoomed = false
+			m.activePanel.Activate()
+		} else {
+			m.openPanel(m.lastPanelID)
+		}
+		return nil
+
+	case keymap.ActionWindowSplitVertical:
+		m.openPanel(PanelConversation)
+		m.focus = FocusPanel
+		return nil
+
+	case keymap.ActionWindowZoom:
+		if m.panelZoomed {
+			m.panelSplitRatio = m.prevSplitRatio
+			m.panelZoomed = false
+		} else {
+			m.prevSplitRatio = m.panelSplitRatio
+			m.panelZoomed = true
+			if m.focus == FocusPanel {
+				m.panelSplitRatio = 0.05
 			} else {
-				// Save current ratio and go to extremes
-				m.prevSplitRatio = m.panelSplitRatio
-				m.panelZoomed = true
-				if m.focus == FocusPanel {
-					m.panelSplitRatio = 0.05 // panel takes ~95% width
-				} else {
-					m.panelSplitRatio = 0.97 // viewport takes ~97% width
-				}
+				m.panelSplitRatio = 0.97
 			}
-			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-			m.refreshViewport()
-			return true, nil
-		case "q":
-			// Close active panel
-			if m.activePanel != nil && m.activePanel.IsActive() {
-				m.closePanel()
-			}
-			return true, nil
-		case "=":
-			// Reset panel split ratio to default
-			m.panelSplitRatio = 0.75
-			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-			m.refreshViewport()
-			return true, nil
-		case ">":
-			// Widen side panel (shrink main area), min ratio 0.40
-			if m.panelSplitRatio > 0.40 {
-				m.panelSplitRatio -= 0.05
-				if m.panelSplitRatio < 0.40 {
-					m.panelSplitRatio = 0.40
-				}
-			}
-			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-			m.refreshViewport()
-			return true, nil
-		case "<":
-			// Narrow side panel (expand main area), max ratio 0.85
-			if m.panelSplitRatio < 0.85 {
-				m.panelSplitRatio += 0.05
-				if m.panelSplitRatio > 0.85 {
-					m.panelSplitRatio = 0.85
-				}
-			}
-			m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-			m.refreshViewport()
-			return true, nil
 		}
-		return true, nil
+		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+		m.refreshViewport()
+		return nil
 
-	case "b":
-		// Buffer/session sub-menu
-		switch key {
-		case "n":
-			return m.switchSessionRelative(1)
-		case "p":
-			return m.switchSessionRelative(-1)
-		case "k":
-			return m.deleteCurrentSession()
-		case "r":
-			return m.renameCurrentSession()
-		case "c":
-			return m.createNewSession()
+	case keymap.ActionWindowClose:
+		if m.activePanel != nil && m.activePanel.IsActive() {
+			m.closePanel()
 		}
-		return true, nil
+		return nil
 
-	case "i":
-		// Info panels sub-menu
-		return m.handlePanelToggleByKey(key)
-
-	case ",":
-		// Alternate session: <Space>,<CR>
-		if key == "enter" {
-			return m.switchToAlternateSession()
+	case keymap.ActionWindowWiden:
+		if m.panelSplitRatio > 0.40 {
+			m.panelSplitRatio -= 0.05
+			if m.panelSplitRatio < 0.40 {
+				m.panelSplitRatio = 0.40
+			}
 		}
-		return true, nil
+		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+		m.refreshViewport()
+		return nil
+
+	case keymap.ActionWindowNarrow:
+		if m.panelSplitRatio < 0.85 {
+			m.panelSplitRatio += 0.05
+			if m.panelSplitRatio > 0.85 {
+				m.panelSplitRatio = 0.85
+			}
+		}
+		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+		m.refreshViewport()
+		return nil
+
+	case keymap.ActionWindowReset:
+		m.panelSplitRatio = 0.75
+		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+		m.refreshViewport()
+		return nil
+
+	// ── Buffer/Session Management ──────────
+	case keymap.ActionBufferNext:
+		_, cmd := m.switchSessionRelative(1)
+		return cmd
+
+	case keymap.ActionBufferPrev:
+		_, cmd := m.switchSessionRelative(-1)
+		return cmd
+
+	case keymap.ActionBufferNew:
+		_, cmd := m.createNewSession()
+		return cmd
+
+	case keymap.ActionBufferClose:
+		_, cmd := m.deleteCurrentSession()
+		return cmd
+
+	case keymap.ActionBufferRename:
+		_, cmd := m.renameCurrentSession()
+		return cmd
+
+	case keymap.ActionBufferAlternate:
+		_, cmd := m.switchToAlternateSession()
+		return cmd
+
+	// ── Panels ─────────────────────────────
+	case keymap.ActionPanelConfig:
+		m.togglePanel(PanelConfig)
+		return nil
+
+	case keymap.ActionPanelSkills:
+		m.togglePanel(PanelSkills)
+		return nil
+
+	case keymap.ActionPanelMemory:
+		m.togglePanel(PanelMemory)
+		return nil
+
+	case keymap.ActionPanelTasks:
+		m.togglePanel(PanelTasks)
+		return nil
+
+	case keymap.ActionPanelTools:
+		m.togglePanel(PanelTools)
+		return nil
+
+	case keymap.ActionPanelAnalytics:
+		m.togglePanel(PanelAnalytics)
+		return nil
+
+	case keymap.ActionPanelAgents:
+		m.openPanel(PanelAgents)
+		if _, ok := m.activePanel.(*teampanel.Panel); ok {
+			return teampanel.ScheduleRefresh()
+		}
+		return nil
+
+	case keymap.ActionPanelFiles:
+		if m.filesPanel != nil {
+			if m.filesPanel.IsActive() {
+				m.filesPanel.Deactivate()
+				m.filesPanel.SetFocused(false)
+				if m.focus == FocusFiles {
+					m.focus = FocusPrompt
+					m.prompt.Focus()
+				}
+			} else {
+				m.filesPanel.Activate()
+				m.filesPanel.SetFocused(true)
+				m.focus = FocusFiles
+				m.prompt.Blur()
+			}
+			m.refreshViewport()
+		}
+		return nil
+
+	case keymap.ActionPanelSessionTree:
+		m.togglePanel(PanelSessionTree)
+		return nil
+
+	case keymap.ActionPanelAgentGUI:
+		m.togglePanel(PanelAgentGUI)
+		return nil
+
+	// ── Navigation ─────────────────────────
+	case keymap.ActionSessionPicker, keymap.ActionSessionRecent, keymap.ActionSearch:
+		_, cmd := m.openSessionPicker()
+		return cmd
+
+	case keymap.ActionCommandPalette:
+		if !m.streaming {
+			m.filePicker.Deactivate()
+			m.prompt.SetValue("/")
+			m.prompt.EnterVimInsert()
+			m.focus = FocusPrompt
+			m.prompt.Focus()
+			m.updatePaletteState()
+		}
+		return nil
+
+	// ── Editor ─────────────────────────────
+	case keymap.ActionEditorEditPrompt:
+		if m.streaming {
+			return m.toast.Show("Cannot edit while streaming")
+		}
+		return openInEditor(m.prompt.Value(), false)
+
+	case keymap.ActionEditorViewSection:
+		if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
+			section := m.vpSections[m.vpCursor]
+			content := m.extractSectionText(section)
+			if content == "" {
+				return m.toast.Show("No content in current section")
+			}
+			return openInEditor(content, true)
+		}
+		return m.toast.Show("No section focused — use <Space>wk first")
+
+	// ── Misc ───────────────────────────────
+	case keymap.ActionTodoDock:
+		if m.todoDock != nil {
+			m.todoDock.ToggleExpanded()
+			m.refreshViewport()
+		}
+		return nil
 	}
 
-	return false, nil
+	return nil
+}
+
+// togglePanel opens a panel if it's not active, or closes it if it is.
+func (m *Model) togglePanel(id PanelID) {
+	if m.activePanelID == id && m.activePanel != nil && m.activePanel.IsActive() {
+		m.closePanel()
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+	} else {
+		m.openPanel(id)
+	}
+	m.refreshViewport()
 }
 
 func (m *Model) openSessionPicker() (bool, tea.Cmd) {
@@ -4009,23 +4081,8 @@ func (m *Model) renameCurrentSession() (bool, tea.Cmd) {
 	return true, nil
 }
 
-func (m *Model) handlePanelToggleByKey(key string) (bool, tea.Cmd) {
-	switch key {
-	case "c":
-		m.openPanel(PanelConfig)
-	case "k":
-		m.openPanel(PanelSkills)
-	case "m":
-		m.openPanel(PanelMemory)
-	case "a":
-		m.openPanel(PanelAnalytics)
-	case "t":
-		m.openPanel(PanelTasks)
-	case "o":
-		m.openPanel(PanelTools)
-	}
-	return true, nil
-}
+// handlePanelToggleByKey is kept for backward compatibility but now unused.
+// Panel toggles are dispatched through dispatchAction via the keymap.
 
 // ── Panel Management ────────────────────────────────────
 
@@ -4537,6 +4594,10 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 		}
 	case PanelConversation:
 		return conversationpanel.New()
+	case PanelSessionTree:
+		return nil // TODO: implemented in stree package
+	case PanelAgentGUI:
+		return nil // TODO: implemented in agui package
 	}
 	return nil
 }
