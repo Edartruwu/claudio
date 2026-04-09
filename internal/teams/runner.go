@@ -596,23 +596,27 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	// Send completion notification to leader's inbox BEFORE emitting the event,
 	// so the TUI's ReadUnread call (triggered by the event) sees the message and
 	// marks it read — avoiding a race where the inbox write arrives after the read.
-	if mb := r.getMailbox(cfg.TeamName); mb != nil {
-		team, _ := r.manager.GetTeam(cfg.TeamName)
-		if team != nil {
-			summary := result
-			if err != nil {
-				summary = fmt.Sprintf("FAILED: %s", err.Error())
+	// Skip for foreground (synchronous) spawns — the caller already receives the
+	// result directly; mailbox messages are for async coordination only.
+	if !state.Foreground {
+		if mb := r.getMailbox(cfg.TeamName); mb != nil {
+			team, _ := r.manager.GetTeam(cfg.TeamName)
+			if team != nil {
+				summary := result
+				if err != nil {
+					summary = fmt.Sprintf("FAILED: %s", err.Error())
+				}
+				// Include worktree info in completion message if changes were kept
+				completionText := fmt.Sprintf("[%s] Task complete: %s\n\nResult:\n%s", state.Status, state.Prompt, summary)
+				if state.WorktreePath != "" {
+					completionText += fmt.Sprintf("\n\n[Changes in worktree: %s (branch: %s)]", state.WorktreePath, state.WorktreeBranch)
+				}
+				mb.Send(state.Identity.AgentName, "team-lead", Message{
+					Text:    completionText,
+					Summary: fmt.Sprintf("%s: %s", state.Identity.AgentName, state.Status),
+					Color:   state.Identity.Color,
+				})
 			}
-			// Include worktree info in completion message if changes were kept
-			completionText := fmt.Sprintf("[%s] Task complete: %s\n\nResult:\n%s", state.Status, state.Prompt, summary)
-			if state.WorktreePath != "" {
-				completionText += fmt.Sprintf("\n\n[Changes in worktree: %s (branch: %s)]", state.WorktreePath, state.WorktreeBranch)
-			}
-			mb.Send(state.Identity.AgentName, "team-lead", Message{
-				Text:    completionText,
-				Summary: fmt.Sprintf("%s: %s", state.Identity.AgentName, state.Status),
-				Color:   state.Identity.Color,
-			})
 		}
 	}
 
