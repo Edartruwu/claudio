@@ -1120,14 +1120,6 @@ func (c *Client) applyAttribution(req *MessagesRequest) {
 		{Type: "text", Text: "x-anthropic-billing-header: cc_version=2.1.89.4fa; cc_entrypoint=cli; cch=00000;"},
 	}
 	blocks = append(blocks, splitSystemBlocks(req.System)...)
-	// If caching is off (splitSystemBlocks returns unmodified block), ensure the
-	// last block is still marked so we don't regress on the OAuth path.
-	if c.promptCaching && len(blocks) > 0 {
-		last := &blocks[len(blocks)-1]
-		if last.CacheControl == nil {
-			last.CacheControl = &CacheControlBlock{Type: "ephemeral"}
-		}
-	}
 	req.SystemRaw, _ = json.Marshal(blocks)
 }
 
