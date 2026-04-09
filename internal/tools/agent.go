@@ -181,6 +181,13 @@ func SubAgentModelFromContext(ctx context.Context) string {
 
 // AgentTool spawns sub-agents for complex, multi-step tasks.
 type AgentTool struct {
+	// cachedDescription is computed once on first Description() call and reused.
+	// AgentTypesList() reads agent files from disk on every call — caching here
+	// prevents repeated disk reads and keeps the tool description byte-stable so
+	// the Anthropic prompt cache is not busted on every turn.
+	cachedDescription     string
+	cachedDescriptionOnce sync.Once
+
 	// ParentRegistry is set by the registry after construction.
 	ParentRegistry *Registry
 	// RunAgent executes a sub-agent synchronously. Set by app initialization.
@@ -211,7 +218,10 @@ type agentInput struct {
 func (t *AgentTool) Name() string { return "Agent" }
 
 func (t *AgentTool) Description() string {
-	return prompts.AgentDescription(agents.AgentTypesList())
+	t.cachedDescriptionOnce.Do(func() {
+		t.cachedDescription = prompts.AgentDescription(agents.AgentTypesList())
+	})
+	return t.cachedDescription
 }
 
 func (t *AgentTool) InputSchema() json.RawMessage {

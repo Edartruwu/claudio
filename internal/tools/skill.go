@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
@@ -34,6 +35,12 @@ func interpolateShellCommands(content string) string {
 // proactive use of project-specific and domain-specific skill instructions.
 type SkillTool struct {
 	SkillsRegistry *skills.Registry
+
+	// cachedDescription is built once on first Description() call.
+	// Keeps the tool description byte-stable across turns so the Anthropic
+	// prompt cache is not busted every request.
+	cachedDescription     string
+	cachedDescriptionOnce sync.Once
 }
 
 type skillInput struct {
@@ -44,7 +51,10 @@ type skillInput struct {
 func (t *SkillTool) Name() string { return "Skill" }
 
 func (t *SkillTool) Description() string {
-	return prompts.SkillDescription(t.formatSkillList())
+	t.cachedDescriptionOnce.Do(func() {
+		t.cachedDescription = prompts.SkillDescription(t.formatSkillList())
+	})
+	return t.cachedDescription
 }
 
 func (t *SkillTool) InputSchema() json.RawMessage {
