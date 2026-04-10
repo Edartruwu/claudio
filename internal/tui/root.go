@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
 	"github.com/Abraxas-365/claudio/internal/ratelimit"
@@ -448,6 +449,15 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 				})
 			}
 			return infos
+		},
+		GetCavemanMode: func() string {
+			if m.appCtx != nil && m.appCtx.Config != nil {
+				return m.appCtx.Config.CavemanMode
+			}
+			return ""
+		},
+		SetCavemanMode: func(mode string) {
+			m.applyConfigChange("cavemanMode", mode)
 		},
 		ListTeams: func() string {
 			if m.appCtx == nil || m.appCtx.TeamManager == nil {
@@ -4731,6 +4741,17 @@ func (m *Model) applyConfigChange(key, value string) {
 			if bt, ok := bash.(*tools.BashTool); ok {
 				bt.OutputFilterEnabled = enabled
 			}
+		}
+	case "cavemanMode":
+		if m.appCtx != nil && m.appCtx.Config != nil {
+			m.appCtx.Config.CavemanMode = value
+		}
+		// Rebuild system prompt to inject/remove caveman rules
+		newPrompt := prompts.BuildSystemPrompt(m.model, "", value)
+		m.baseSystemPrompt = newPrompt
+		m.systemPrompt = newPrompt
+		if m.engine != nil {
+			m.engine.SetSystem(newPrompt)
 		}
 	}
 	// Other settings (autoMemoryExtract, memorySelection, compactMode, etc.)

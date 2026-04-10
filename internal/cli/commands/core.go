@@ -695,6 +695,35 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		},
 	})
 
+	// /caveman — toggle caveman mode (terse communication rules injected into system prompt)
+	r.Register(&Command{
+		Name:        "caveman",
+		Description: "Show or set caveman mode (off, lite, full, ultra)",
+		Execute: func(args string) (string, error) {
+			if deps.GetCavemanMode == nil {
+				return "Caveman mode not available.", nil
+			}
+			if args == "" {
+				mode := deps.GetCavemanMode()
+				if mode == "" {
+					mode = "off"
+				}
+				return fmt.Sprintf("Current caveman mode: %s\nAvailable: off, lite, full, ultra", mode), nil
+			}
+			args = strings.TrimSpace(strings.ToLower(args))
+			switch args {
+			case "off", "":
+				deps.SetCavemanMode("")
+				return "Caveman mode disabled.", nil
+			case "lite", "full", "ultra":
+				deps.SetCavemanMode(args)
+				return fmt.Sprintf("Caveman mode set to: %s", args), nil
+			default:
+				return fmt.Sprintf("Unknown mode %q. Available: off, lite, full, ultra", args), nil
+			}
+		},
+	})
+
 	r.Register(&Command{
 		Name:        "extra-usage",
 		Aliases:     []string{"usage"},

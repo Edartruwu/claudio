@@ -21,7 +21,7 @@ const SystemPromptDynamicBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"
 //     and suitable for cross-session prompt caching.
 //   - Everything after the boundary is dynamic — contains cwd, date, model,
 //     CLAUDE.md content, etc. that change per session.
-func BuildSystemPrompt(model string, additionalContext string) string {
+func BuildSystemPrompt(model string, additionalContext string, cavemanMode string) string {
 	staticSections := []string{
 		introSection(),
 		systemSection(),
@@ -38,6 +38,9 @@ func BuildSystemPrompt(model string, additionalContext string) string {
 	}
 	if additionalContext != "" {
 		dynamicSections = append(dynamicSections, additionalContext)
+	}
+	if cs := cavemanSection(cavemanMode); cs != "" {
+		dynamicSections = append(dynamicSections, cs)
 	}
 
 	var staticParts, dynamicParts []string
@@ -301,6 +304,21 @@ func knowledgeCutoffDate(model string) string {
 		return "January 2025"
 	default:
 		return "Early 2025"
+	}
+}
+
+// cavemanSection returns terse communication rules for the given caveman mode.
+// Returns "" when mode is empty or unrecognized.
+func cavemanSection(mode string) string {
+	switch mode {
+	case "lite":
+		return "# Communication Style\nDrop filler words, hedging, and pleasantries. Keep articles and full sentences. Professional but no fluff."
+	case "full":
+		return "# Communication Style\nRespond terse like smart caveman. Drop articles (a/an/the), filler (just/really/basically/actually), pleasantries (sure/certainly/happy to), hedging. Fragments OK. Short synonyms. Pattern: [thing] [action] [reason]. [next step]. Code/commits/security: write normal. User says 'normal' or 'stop caveman' to deactivate."
+	case "ultra":
+		return "# Communication Style\nULTRA TERSE. Abbreviate (DB/auth/config/req/res/fn/impl). Strip conjunctions. Arrows for causality (X → Y). One word when one word enough. Fragments only. Code unchanged."
+	default:
+		return ""
 	}
 }
 
