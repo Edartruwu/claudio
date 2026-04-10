@@ -79,9 +79,10 @@ func (t *SaveTeamTemplateTool) RequiresApproval(_ json.RawMessage) bool { return
 // members so the lead can assign work via SpawnTeammate.
 type InstantiateTeamTool struct {
 	deferrable
-	Runner    *teams.TeammateRunner
-	Manager   *teams.Manager
-	SessionID string
+	Runner         *teams.TeammateRunner
+	Manager        *teams.Manager
+	GetSessionID   func() string // returns current session ID at execution time
+	InstantiatedTeam string      // name of the team created by this tool (for cleanup on Close)
 }
 
 func (t *InstantiateTeamTool) Name() string { return "InstantiateTeam" }
@@ -131,15 +132,26 @@ func (t *InstantiateTeamTool) Execute(ctx context.Context, input json.RawMessage
 		return &Result{Content: fmt.Sprintf("template not found: %v", err), IsError: true}, nil
 	}
 
-	teamName := in.TeamName
-	if teamName == "" {
-		teamName = tmpl.Name
+	// Resolve session ID via closure if available.
+	sessionID := ""
+	if t.GetSessionID != nil {
+		sessionID = t.GetSessionID()
 	}
 
-	if _, err := t.Manager.CreateTeam(teamName, tmpl.Description, t.SessionID, tmpl.Model); err != nil {
+	teamName := in.TeamName
+	if teamName == "" {
+		if sessionID != "" && len(sessionID) >= 8 {
+			teamName = tmpl.Name + "-" + sessionID[:8]
+		} else {
+			teamName = tmpl.Name
+		}
+	}
+
+	if _, err := t.Manager.CreateTeam(teamName, tmpl.Description, sessionID, tmpl.Model); err != nil {
 		// Team may already exist; proceed anyway
 		_ = err
 	}
+	t.InstantiatedTeam = teamName
 	t.Runner.SetActiveTeam(teamName)
 	if tmpl.AutoCompactThreshold > 0 {
 		t.Manager.SetAutoCompactThreshold(teamName, tmpl.AutoCompactThreshold)

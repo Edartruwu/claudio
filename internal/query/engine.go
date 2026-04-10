@@ -165,6 +165,23 @@ func (e *Engine) Close() {
 	if e.toolCache != nil {
 		e.toolCache.Cleanup()
 	}
+	// Clean up any team instantiated by InstantiateTeam during this session.
+	if e.registry != nil {
+		if it, err := e.registry.Get("InstantiateTeam"); err == nil {
+			if tool, ok := it.(*tools.InstantiateTeamTool); ok && tool.InstantiatedTeam != "" {
+				if tool.Runner != nil {
+					tool.Runner.KillTeam(tool.InstantiatedTeam)
+					tool.Runner.WaitForTeam(tool.InstantiatedTeam, 5*time.Second)
+				}
+				if tool.Manager != nil {
+					_ = tool.Manager.DeleteTeam(tool.InstantiatedTeam)
+				}
+				if tool.Runner != nil {
+					tool.Runner.CleanupTeam(tool.InstantiatedTeam)
+				}
+			}
+		}
+	}
 }
 
 // NewEngineWithConfig creates a fully-configured query engine.
@@ -178,6 +195,13 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	e.taskRuntime = cfg.TaskRuntime
 	e.sessionID = cfg.SessionID
 	tools.GlobalTaskStore.LoadForSession(cfg.SessionID)
+	// Wire session ID into InstantiateTeam tool so it can auto-name teams.
+	if it, err := registry.Get("InstantiateTeam"); err == nil {
+		if tool, ok := it.(*tools.InstantiateTeamTool); ok {
+			sessionID := cfg.SessionID
+			tool.GetSessionID = func() string { return sessionID }
+		}
+	}
 	e.model = cfg.Model
 	e.permissionMode = cfg.PermissionMode
 	if e.permissionMode == "" {
