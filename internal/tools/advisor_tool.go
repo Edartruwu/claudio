@@ -11,6 +11,24 @@ import (
 	"github.com/Abraxas-365/claudio/internal/services/compact"
 )
 
+// advisorMaxIter caps the tool-calling loop to prevent runaway advisor sessions.
+const advisorMaxIter = 5
+
+// advisorWhitelist is the authoritative set of tools the advisor is allowed to call.
+// This is enforced in code — no agent config or definition can override it.
+var advisorWhitelist = map[string]bool{
+	"WebSearch": true,
+	"WebFetch":  true,
+}
+
+// advisorToolResultBlock is the JSON shape the API expects for tool results.
+type advisorToolResultBlock struct {
+	Type      string `json:"type"`
+	ToolUseID string `json:"tool_use_id"`
+	Content   string `json:"content"`
+	IsError   bool   `json:"is_error,omitempty"`
+}
+
 // AdvisorToolConfig holds the configuration for creating an AdvisorTool.
 type AdvisorToolConfig struct {
 	Definition  agents.AgentDefinition // advisor's system prompt + tools
@@ -166,25 +184,105 @@ func (t *AdvisorTool) Execute(ctx context.Context, input json.RawMessage) (*Resu
 	// was also a user message, merge them or insert a minimal assistant turn.
 	advisorMessages = ensureAlternatingRoles(advisorMessages)
 
-	// Send a single non-streaming request to the advisor model.
-	resp, err := t.client.SendMessage(ctx, &api.MessagesRequest{
-		Model:    t.model,
-		System:   systemPrompt,
-		Messages: advisorMessages,
-	})
-	if err != nil {
-		return &Result{Content: fmt.Sprintf("Advisor call failed: %v", err), IsError: true}, nil
+	// Build tool definitions — only WebSearch and WebFetch are permitted.
+	webSearch := &WebSearchTool{}
+	webFetch := &WebFetchTool{}
+	toolDefs := []APIToolDef{
+		{Name: webSearch.Name(), Description: webSearch.Description(), InputSchema: webSearch.InputSchema()},
+		{Name: webFetch.Name(), Description: webFetch.Description(), InputSchema: webFetch.InputSchema()},
 	}
+	toolDefsJSON, _ := json.Marshal(toolDefs)
 
-	// Extract text from the response.
+	// Tool-calling loop — capped at advisorMaxIter to prevent runaway sessions.
 	var responseText strings.Builder
-	for _, block := range resp.Content {
-		if block.Type == "text" && block.Text != "" {
-			if responseText.Len() > 0 {
-				responseText.WriteString("\n")
-			}
-			responseText.WriteString(block.Text)
+	for range advisorMaxIter {
+		resp, err := t.client.SendMessage(ctx, &api.MessagesRequest{
+			Model:    t.model,
+			System:   systemPrompt,
+			Messages: advisorMessages,
+			Tools:    toolDefsJSON,
+		})
+		if err != nil {
+			return &Result{Content: fmt.Sprintf("Advisor call failed: %v", err), IsError: true}, nil
 		}
+
+		// Collect text blocks from this response.
+		responseText.Reset()
+		for _, block := range resp.Content {
+			if block.Type == "text" && block.Text != "" {
+				if responseText.Len() > 0 {
+					responseText.WriteString("\n")
+				}
+				responseText.WriteString(block.Text)
+			}
+		}
+
+		// Collect tool_use blocks.
+		var toolUseBlocks []api.ContentBlock
+		for _, block := range resp.Content {
+			if block.Type == "tool_use" {
+				toolUseBlocks = append(toolUseBlocks, block)
+			}
+		}
+
+		// No tool calls — advisor is done.
+		if len(toolUseBlocks) == 0 {
+			break
+		}
+
+		// Append the full assistant turn (may include text + tool_use blocks).
+		assistantContent, _ := json.Marshal(resp.Content)
+		advisorMessages = append(advisorMessages, api.Message{
+			Role:    "assistant",
+			Content: assistantContent,
+		})
+
+		// Execute whitelisted tools; block everything else.
+		toolResults := make([]advisorToolResultBlock, 0, len(toolUseBlocks))
+		for _, block := range toolUseBlocks {
+			if !advisorWhitelist[block.Name] {
+				// Blocked tool — return a clear error to the model.
+				toolResults = append(toolResults, advisorToolResultBlock{
+					Type:      "tool_result",
+					ToolUseID: block.ID,
+					Content:   fmt.Sprintf("Tool %q is not available to the advisor.", block.Name),
+					IsError:   true,
+				})
+				continue
+			}
+
+			// Select and execute the whitelisted tool.
+			var tool Tool
+			switch block.Name {
+			case "WebSearch":
+				tool = webSearch
+			case "WebFetch":
+				tool = webFetch
+			}
+			result, execErr := tool.Execute(ctx, block.Input)
+			if execErr != nil {
+				toolResults = append(toolResults, advisorToolResultBlock{
+					Type:      "tool_result",
+					ToolUseID: block.ID,
+					Content:   fmt.Sprintf("Tool execution error: %v", execErr),
+					IsError:   true,
+				})
+			} else {
+				toolResults = append(toolResults, advisorToolResultBlock{
+					Type:      "tool_result",
+					ToolUseID: block.ID,
+					Content:   result.Content,
+					IsError:   result.IsError,
+				})
+			}
+		}
+
+		// Append tool results as a user message.
+		resultContent, _ := json.Marshal(toolResults)
+		advisorMessages = append(advisorMessages, api.Message{
+			Role:    "user",
+			Content: resultContent,
+		})
 	}
 
 	// Increment usage counter.
