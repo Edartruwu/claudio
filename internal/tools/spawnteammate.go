@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/teams"
 )
 
@@ -31,6 +32,7 @@ type SpawnTeammateTool struct {
 	Manager         *teams.Manager
 	SessionID       string
 	AvailableModels []string
+	GetCavemanMode  func() string
 }
 
 type spawnTeammateInput struct {
@@ -276,6 +278,11 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 	}
 
 	agentDef.SystemPrompt += teammateResultInstruction
+	if t.GetCavemanMode != nil {
+		if cs := prompts.CavemanSection(t.GetCavemanMode()); cs != "" {
+			agentDef.SystemPrompt += "\n\n" + cs
+		}
+	}
 
 	// Upsert semantics: whether the name is new or previously finished, always spawn fresh.
 	// Spawn → AddMember removes the old terminal entry and creates a clean one;

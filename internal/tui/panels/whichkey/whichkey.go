@@ -78,7 +78,7 @@ func SessionBindings() []Binding {
 		{Key: "c", Desc: "new"},
 		{Key: "k", Desc: "kill"},
 		{Key: "r", Desc: "rename"},
-		{Key: ".", Desc: "alternate"},
+		{Key: "l", Desc: "list"},
 	}
 }
 

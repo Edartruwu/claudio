@@ -309,6 +309,10 @@ func knowledgeCutoffDate(model string) string {
 
 // cavemanSection returns terse communication rules for the given caveman mode.
 // Returns "" when mode is empty or unrecognized.
+// CavemanSection returns the caveman communication rules for the given mode.
+// Returns "" when mode is empty or unrecognized.
+func CavemanSection(mode string) string { return cavemanSection(mode) }
+
 func cavemanSection(mode string) string {
 	switch mode {
 	case "lite":
