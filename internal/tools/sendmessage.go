@@ -124,10 +124,10 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 	// a no-op if the agent is still working or was explicitly shutdown.
 	revived := ""
 	if t.Runner != nil {
-		if err := t.Runner.Revive(recipient, in.Message); err == nil {
-			if state, ok := t.Runner.GetStateByName(recipient); ok && state.Status == teams.StatusWorking {
-				revived = " (revived)"
-			}
+		if err := t.Runner.Revive(recipient, in.Message); err != nil {
+			revived = " (warning: agent could not be revived — message queued in mailbox)"
+		} else if state, ok := t.Runner.GetStateByName(recipient); ok && state.Status == teams.StatusWorking {
+			revived = " (revived)"
 		}
 	}
 

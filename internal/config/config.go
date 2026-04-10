@@ -440,7 +440,7 @@ func (s *Settings) GetCompactKeepN() int {
 // A value of -1 means never auto-delete.
 func (s *Settings) GetAgentAutoDeleteAfter() int {
 	if s.AgentAutoDeleteAfter == 0 {
-		return 3
+		return -1
 	}
 	return s.AgentAutoDeleteAfter
 }
