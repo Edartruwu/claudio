@@ -165,7 +165,12 @@ func (p *Panel) Help() string {
 	if p.mode == modeDetail {
 		return "j/k scroll · ctrl+d/u half-page · G bottom · g top · h/esc back"
 	}
-	return "j/k navigate · enter/l open · d cancel · m message · / filter · o/tab collapse · r refresh · esc close"
+	hints := "j/k navigate · enter/l open"
+	if p.hasRunning() {
+		hints += " · d cancel"
+	}
+	hints += " · m message · / filter · o/tab collapse · r refresh · esc close"
+	return hints
 }
 
 // ── HandleRefresh ─────────────────────────────────────────────────────────────
@@ -650,12 +655,18 @@ func (p *Panel) renderList() string {
 	b.WriteString(styles.SeparatorLine(w))
 	b.WriteString("\n")
 
-	// 2. Status summary (1 line).
-	b.WriteString(p.renderStatusSummary())
-	b.WriteString("\n")
+	// 2. Status summary (1 line, hidden when all counts are zero).
+	summary := p.renderStatusSummary()
+	if summary != "" {
+		b.WriteString(summary)
+		b.WriteString("\n")
+	}
 
 	// 3. Filter bar (1 line, only when filtering).
-	fixedLines := 3 // title + sep + summary
+	fixedLines := 2 // title + sep
+	if summary != "" {
+		fixedLines++ // + summary
+	}
 	if p.filtering {
 		b.WriteString(p.renderFilterBar(w))
 		b.WriteString("\n")
@@ -672,14 +683,33 @@ func (p *Panel) renderList() string {
 	if len(fe) == 0 {
 		if p.filtering && p.filterInput.Value() != "" {
 			b.WriteString(styles.PanelHint.Render("  No matching agents"))
+			b.WriteString("\n")
 		} else {
-			b.WriteString(styles.PanelHint.Render("  No agents"))
+			b.WriteString(lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
+				styles.PanelHint.Render("No agents running yet.")))
+			b.WriteString("\n")
+			b.WriteString(lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
+				styles.PanelHint.Render("Spawn one with SpawnTeammate or")))
+			b.WriteString("\n")
+			b.WriteString(lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
+				styles.PanelHint.Render("use /agent to set a persona.")))
+			b.WriteString("\n")
 		}
-		b.WriteString("\n")
 	} else {
 		groups := p.buildGroups(fe)
 		items := p.buildDisplayItems(fe, groups)
 		startIdx, endIdx, hiddenAbove, hiddenBelow := p.visibleRange(items, availLines)
+		// Re-budget availLines if scroll indicators will be shown.
+		adjusted := availLines
+		if hiddenAbove > 0 {
+			adjusted--
+		}
+		if hiddenBelow > 0 {
+			adjusted--
+		}
+		if adjusted < availLines {
+			startIdx, endIdx, hiddenAbove, hiddenBelow = p.visibleRange(items, adjusted)
+		}
 
 		// Scroll up indicator.
 		if hiddenAbove > 0 {
@@ -721,6 +751,10 @@ func (p *Panel) renderStatusSummary() string {
 		case teams.StatusComplete, teams.StatusFailed, teams.StatusShutdown:
 			done++
 		}
+	}
+
+	if running == 0 && waiting == 0 && done == 0 {
+		return ""
 	}
 
 	sep := lipgloss.NewStyle().Foreground(styles.Muted).Render(" · ")
@@ -815,7 +849,11 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 		}
 	}
 
-	line1 := prefix + icon + " " + nameStyle.Render(name) + " " + statusLabel + dur + "\n"
+	line1content := prefix + icon + " " + nameStyle.Render(name) + " " + statusLabel + dur
+	if selected {
+		line1content = lipgloss.NewStyle().Background(styles.Subtle).Width(width).Render(line1content)
+	}
+	line1 := line1content + "\n"
 
 	if !p.twoLineMode() {
 		return line1
@@ -839,7 +877,11 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 	if activity == "" {
 		activity = " "
 	}
-	line2 := "  " + lipgloss.NewStyle().Foreground(styles.Muted).Italic(true).Render(activity) + "\n"
+	line2content := "  " + lipgloss.NewStyle().Foreground(styles.Muted).Italic(true).Render(activity)
+	if selected {
+		line2content = lipgloss.NewStyle().Background(styles.Subtle).Width(width).Render(line2content)
+	}
+	line2 := line2content + "\n"
 
 	return line1 + line2
 }
