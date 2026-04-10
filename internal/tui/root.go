@@ -5414,7 +5414,8 @@ func (m *Model) layout() {
 	modeLineH := 1
 	helpFooterH := 1
 	statusLineH := 1 // nvim-style statusline above the prompt
-	vpHeight := m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1
+	const topPadding = 1
+	vpHeight := m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1 - topPadding
 	if vpHeight < 5 {
 		vpHeight = 5
 	}
@@ -5566,6 +5567,7 @@ func (m Model) View() string {
 	}
 
 	var sections []string
+	sections = append(sections, "") // top padding — prevents content from being clipped at terminal edge
 	sections = append(sections, topArea)
 
 	// 3. Command palette or file picker (full width, between viewport and prompt)
