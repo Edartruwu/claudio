@@ -76,6 +76,11 @@ type TeammateState struct {
 	// completes. Used to resume the conversation when a new message arrives.
 	EngineMessages []api.Message
 
+	// InactivityCount tracks how many human messages have been sent without
+	// this agent receiving any message. Incremented by IncrementInactivity;
+	// reset to 0 by SendMessage when a message is routed to this agent.
+	InactivityCount int
+
 	// Foreground is true when the lead called WaitForOne on this agent.
 	// In that case the completion event is suppressed — the lead already has
 	// the result directly and a task-notification would be redundant noise.
@@ -1054,6 +1059,52 @@ func (r *TeammateRunner) Revive(agentName, newMessage string) error {
 	}()
 
 	return nil
+}
+
+// SendMessage delivers a message to a specific agent via the team mailbox and
+// resets that agent's inactivity counter. It is the preferred path for routing
+// any message (human or inter-agent) to a named agent.
+func (r *TeammateRunner) SendMessage(agentName string, msg Message) error {
+	state, ok := r.GetStateByName(agentName)
+	if !ok {
+		return fmt.Errorf("agent %q not found", agentName)
+	}
+
+	// Reset the inactivity counter — this agent is being spoken to.
+	state.mu.Lock()
+	state.InactivityCount = 0
+	state.mu.Unlock()
+
+	mb := r.GetMailbox()
+	if mb == nil {
+		return fmt.Errorf("no mailbox available for active team")
+	}
+	mb.Send("you", agentName, msg)
+	return nil
+}
+
+// IncrementInactivity increments the inactivity counter for every idle
+// (done) agent. When an agent's counter reaches threshold it is removed from
+// memory. A threshold of -1 disables auto-deletion.
+func (r *TeammateRunner) IncrementInactivity(threshold int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var toDelete []string
+	for id, state := range r.teammates {
+		state.mu.Lock()
+		if state.IsIdle {
+			state.InactivityCount++
+			if threshold != -1 && state.InactivityCount >= threshold {
+				toDelete = append(toDelete, id)
+			}
+		}
+		state.mu.Unlock()
+	}
+
+	for _, id := range toDelete {
+		delete(r.teammates, id)
+	}
 }
 
 // FormatStatus returns a summary of all teammates.

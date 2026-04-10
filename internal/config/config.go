@@ -78,6 +78,11 @@ type Settings struct {
 
 	// Sidebar configuration
 	Sidebar *SidebarConfig `json:"sidebar,omitempty"`
+
+	// AgentAutoDeleteAfter controls how many human messages of inactivity cause
+	// a done agent to be removed from memory. Default: 3. Set to -1 to never
+	// auto-delete.
+	AgentAutoDeleteAfter int `json:"agent_auto_delete_after,omitempty"`
 }
 
 // SidebarConfig controls the persistent right-side panel.
@@ -205,13 +210,14 @@ func EnsureDirs() error {
 // DefaultSettings returns settings with sensible defaults.
 func DefaultSettings() *Settings {
 	return &Settings{
-		Model:          "claude-sonnet-4-6",
-		SmallModel:     "claude-haiku-4-5-20251001",
-		PermissionMode: "default",
-		CompactMode:    "strategic",
-		SessionPersist: true,
-		HookProfile:    "standard",
-		APIBaseURL:     "https://api.anthropic.com",
+		Model:                "claude-sonnet-4-6",
+		SmallModel:           "claude-haiku-4-5-20251001",
+		PermissionMode:       "default",
+		CompactMode:          "strategic",
+		SessionPersist:       true,
+		HookProfile:          "standard",
+		APIBaseURL:           "https://api.anthropic.com",
+		AgentAutoDeleteAfter: 3,
 	}
 }
 
@@ -364,6 +370,9 @@ func mergeFromFile(settings *Settings, path string) {
 	if overlay.Sidebar != nil {
 		settings.Sidebar = overlay.Sidebar
 	}
+	if overlay.AgentAutoDeleteAfter != 0 {
+		settings.AgentAutoDeleteAfter = overlay.AgentAutoDeleteAfter
+	}
 	if overlay.Snippets != nil {
 		if settings.Snippets == nil {
 			settings.Snippets = overlay.Snippets
@@ -411,6 +420,16 @@ func (s *Settings) GetCompactKeepN() int {
 		return 10
 	}
 	return s.CompactKeepN
+}
+
+// GetAgentAutoDeleteAfter returns the number of human messages of inactivity
+// after which a done agent is removed. Returns 3 if not configured.
+// A value of -1 means never auto-delete.
+func (s *Settings) GetAgentAutoDeleteAfter() int {
+	if s.AgentAutoDeleteAfter == 0 {
+		return 3
+	}
+	return s.AgentAutoDeleteAfter
 }
 
 // IsAutoMemoryExtract returns whether automatic memory extraction is enabled.
