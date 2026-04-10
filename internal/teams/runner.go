@@ -900,6 +900,28 @@ func (r *TeammateRunner) Kill(agentID string) error {
 	return nil
 }
 
+// RemoveAgent removes a finished/failed/shutdown agent from the runner and team config.
+// Returns an error if the agent is still running.
+func (r *TeammateRunner) RemoveAgent(agentID string) error {
+	r.mu.Lock()
+	s, ok := r.teammates[agentID]
+	if !ok {
+		r.mu.Unlock()
+		return nil
+	}
+	if s.Status == StatusWorking {
+		r.mu.Unlock()
+		return fmt.Errorf("agent %q is still running", agentID)
+	}
+	teamName := s.TeamName
+	delete(r.teammates, agentID)
+	r.mu.Unlock()
+	if r.manager != nil && teamName != "" {
+		_ = r.manager.RemoveMember(teamName, agentID)
+	}
+	return nil
+}
+
 // KillAll terminates all teammates.
 func (r *TeammateRunner) KillAll() {
 	r.mu.RLock()

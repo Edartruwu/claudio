@@ -302,6 +302,24 @@ func (m *Manager) ListTeams() []*TeamConfig {
 	return result
 }
 
+// RemoveMember removes a member from the team config. Safe to call on inactive agents.
+func (m *Manager) RemoveMember(teamName, agentID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	team, ok := m.active[teamName]
+	if !ok {
+		return nil // team not found — no-op
+	}
+	newMembers := make([]*TeamMember, 0, len(team.Members))
+	for _, mem := range team.Members {
+		if mem.Identity.AgentID != agentID {
+			newMembers = append(newMembers, mem)
+		}
+	}
+	team.Members = newMembers
+	return m.saveConfig(team)
+}
+
 // DeleteTeam removes a team and cleans up.
 func (m *Manager) DeleteTeam(name string) error {
 	m.mu.Lock()

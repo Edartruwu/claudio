@@ -54,6 +54,10 @@ type Panel struct {
 	filterInput    textinput.Model // inline search/filter input
 	filtering      bool            // true when filter bar is active
 
+	confirming  bool
+	confirmID   string
+	confirmName string
+
 	width  int
 	height int
 	active bool
@@ -136,6 +140,9 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if !p.active {
 		return nil, false
 	}
+	if p.confirming {
+		return p.updateConfirm(msg)
+	}
 	// When filter is active, route most keys to the textinput.
 	if p.filtering {
 		return p.updateFilter(msg)
@@ -159,13 +166,16 @@ func (p *Panel) View() string {
 
 // Help returns the keybinding hint line shown in the panel footer.
 func (p *Panel) Help() string {
+	if p.confirming {
+		return "y confirm delete · n/esc cancel"
+	}
 	if p.filtering {
 		return "type to filter · esc clear"
 	}
 	if p.mode == modeDetail {
 		return "j/k scroll · ctrl+d/u half-page · G bottom · g top · h/esc back"
 	}
-	hints := "j/k navigate · enter/l open"
+	hints := "j/k navigate · enter/l open · x delete"
 	if p.hasRunning() {
 		hints += " · d cancel"
 	}
@@ -521,6 +531,28 @@ func (p *Panel) updateFilter(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return cmd, true
 }
 
+func (p *Panel) updateConfirm(msg tea.KeyMsg) (tea.Cmd, bool) {
+	switch msg.String() {
+	case "y", "Y":
+		id, name := p.confirmID, p.confirmName
+		p.confirming = false
+		p.confirmID = ""
+		p.confirmName = ""
+		if p.runner != nil {
+			_ = p.runner.RemoveAgent(id)
+		}
+		p.refresh()
+		return func() tea.Msg {
+			return panels.ActionMsg{Type: "agui_toast", Payload: fmt.Sprintf("Agent %q deleted", name)}
+		}, true
+	default: // n, N, esc, or anything else cancels
+		p.confirming = false
+		p.confirmID = ""
+		p.confirmName = ""
+		return nil, true
+	}
+}
+
 func (p *Panel) updateLeft(key string) (tea.Cmd, bool) {
 	fe := p.filteredEntries()
 
@@ -566,6 +598,17 @@ func (p *Panel) updateLeft(key string) (tea.Cmd, bool) {
 				return func() tea.Msg {
 					return panels.ActionMsg{Type: "agui_toast", Payload: fmt.Sprintf("Agent %s cancelled", name)}
 				}, true
+			}
+		}
+		return nil, true
+
+	case "x":
+		if p.cursor < len(fe) {
+			e := fe[p.cursor]
+			if e.status != teams.StatusWorking {
+				p.confirming = true
+				p.confirmID = e.id
+				p.confirmName = e.name
 			}
 		}
 		return nil, true
@@ -734,6 +777,13 @@ func (p *Panel) renderList() string {
 				Render(fmt.Sprintf("↓ %d more", hiddenBelow)))
 			b.WriteString("\n")
 		}
+	}
+
+	if p.confirming {
+		confirmLine := "\n" + lipgloss.NewStyle().
+			Foreground(styles.Error).Bold(true).
+			Render(fmt.Sprintf(`  Delete %q? [y/N] `, p.confirmName))
+		b.WriteString(confirmLine)
 	}
 
 	return lipgloss.NewStyle().Width(w).Height(p.height).Render(b.String())
