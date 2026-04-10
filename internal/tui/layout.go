@@ -9,74 +9,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
-// panelMinWidth is the minimum width for a side panel to be shown.
-// Below this threshold the panel is hidden to avoid cramped rendering.
-const panelMinWidth = 30
-
-// splitLayout renders the main content and an optional side panel side-by-side.
-// mainView is typically the viewport; totalHeight should be the viewport height.
-// splitRatio is the fraction of totalWidth given to the main area.
-func splitLayout(mainView string, panel panels.Panel, totalWidth, totalHeight int, splitRatio float64) string {
-	if panel == nil || !panel.IsActive() {
-		return mainView
-	}
-
-	mainW := int(float64(totalWidth) * splitRatio)
-	panelW := totalWidth - mainW - 1 // 1 for the separator
-
-	if panelW < panelMinWidth {
-		return mainView
-	}
-
-	// Reserve one line for the help footer if the panel provides hints.
-	helpText := panel.Help()
-	panelContentH := totalHeight
-	if helpText != "" {
-		panelContentH = totalHeight - 1
-	}
-
-	panel.SetSize(panelW, panelContentH)
-	panelView := panel.View()
-
-	// Render optional help footer as a dim 1-line bar.
-	if helpText != "" {
-		footer := lipgloss.NewStyle().
-			Width(panelW).
-			Foreground(styles.Muted).
-			Render(helpText)
-		panelView = lipgloss.JoinVertical(lipgloss.Left, panelView, footer)
-	}
-
-	// Force both sides to the exact same height so JoinHorizontal aligns
-	mainStyled := lipgloss.NewStyle().
-		Width(mainW).
-		Height(totalHeight).
-		Render(mainView)
-
-	panelStyled := lipgloss.NewStyle().
-		Width(panelW).
-		Height(totalHeight).
-		Render(panelView)
-
-	sep := buildSeparator(totalHeight)
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, mainStyled, sep, panelStyled)
-}
-
-// mainWidth returns the width available for the main chat area,
-// accounting for an active side panel.
-// splitRatio is the fraction of totalWidth given to the main area.
-func mainWidth(totalWidth int, panel panels.Panel, splitRatio float64) int {
-	if panel == nil || !panel.IsActive() {
-		return totalWidth
-	}
-	panelW := totalWidth - int(float64(totalWidth)*splitRatio) - 1
-	if panelW < panelMinWidth {
-		return totalWidth
-	}
-	return int(float64(totalWidth) * splitRatio)
-}
-
 // buildSeparator creates a thin vertical line of the given height.
 func buildSeparator(height int) string {
 	style := lipgloss.NewStyle().Foreground(styles.Muted)
@@ -85,4 +17,73 @@ func buildSeparator(height int) string {
 		lines[i] = style.Render("│")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// placeOverlayAt renders an overlay on top of a base string at the given (x, y)
+// position within a container of the specified width and height.
+func placeOverlayAt(base, overlay string, x, y, width, height int) string {
+	baseLines := strings.Split(base, "\n")
+	overlayLines := strings.Split(overlay, "\n")
+
+	// Pad base to fill the container height
+	for len(baseLines) < height {
+		baseLines = append(baseLines, strings.Repeat(" ", width))
+	}
+
+	for i, ol := range overlayLines {
+		row := y + i
+		if row < 0 || row >= len(baseLines) {
+			continue
+		}
+
+		baseLine := baseLines[row]
+		// Expand base line to full width using runes for correct handling
+		baseRunes := []rune(baseLine)
+		for len(baseRunes) < width {
+			baseRunes = append(baseRunes, ' ')
+		}
+
+		overlayRunes := []rune(ol)
+		// Place overlay runes at position x
+		for j, r := range overlayRunes {
+			col := x + j
+			if col >= 0 && col < len(baseRunes) {
+				baseRunes[col] = r
+			}
+		}
+		baseLines[row] = string(baseRunes)
+	}
+
+	// Truncate to container height
+	if len(baseLines) > height {
+		baseLines = baseLines[:height]
+	}
+
+	return strings.Join(baseLines, "\n")
+}
+
+// renderPanelWithHelp sizes a panel (reserving space for its help footer if
+// present) and renders the view plus footer. The caller should NOT call
+// panel.SetSize before this — renderPanelWithHelp handles it.
+func renderPanelWithHelp(panel panels.Panel, w, h int) string {
+	helpText := panel.Help()
+	contentH := h
+	if helpText != "" {
+		contentH = h - 1
+		if contentH < 1 {
+			contentH = 1
+		}
+	}
+	panel.SetSize(w, contentH)
+	panelView := panel.View()
+
+	if helpText == "" {
+		return panelView
+	}
+
+	footer := lipgloss.NewStyle().
+		Width(w).
+		Foreground(styles.Muted).
+		Render(helpText)
+	return lipgloss.JoinVertical(lipgloss.Left, panelView, footer)
 }

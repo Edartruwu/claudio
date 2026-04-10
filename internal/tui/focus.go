@@ -34,3 +34,24 @@ const (
 	PanelSessionTree // TODO: implemented in stree package
 	PanelAgentGUI    // TODO: implemented in agui package
 )
+
+// OverlayMode controls how a panel is rendered on top of the chat viewport.
+type OverlayMode int
+
+const (
+	OverlayCentered   OverlayMode = iota // centered modal ~70% w, ~70% h
+	OverlayDrawer                        // left side drawer ~35% w, full h
+	OverlayFullscreen                    // replaces viewport entirely
+)
+
+// panelOverlayMode returns the overlay rendering mode for a given panel.
+func panelOverlayMode(id PanelID) OverlayMode {
+	switch id {
+	case PanelAgents, PanelAgentGUI, PanelAnalytics, PanelSessionTree:
+		return OverlayFullscreen
+	case PanelSessions:
+		return OverlayDrawer
+	default:
+		return OverlayCentered
+	}
+}

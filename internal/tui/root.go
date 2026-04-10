@@ -115,9 +115,6 @@ type Model struct {
 	undoStash        []ChatMessage        // last user+assistant exchange popped by /undo, restored by /redo
 	lastToolGroup   int                   // msg index of the last tool group start (-1 = none)
 	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
-	panelSplitRatio float64      // fraction of width for main area (default 0.65)
-	panelZoomed     bool         // true when zoom mode is active (wz toggle)
-	prevSplitRatio  float64      // saved split ratio before zoom, restored on second wz
 	km              *keymap.Keymap // remappable key bindings
 	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
 	prevSessionID   string       // for alternate session switching
@@ -297,7 +294,6 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		expandedGroups:   make(map[int]bool),
 		thinkingExpanded: make(map[int]bool),
 		lastToolGroup:    -1,
-		panelSplitRatio:  0.65,
 		lastPanelID:      PanelConfig,
 		toolStartTimes:  make(map[string]time.Time),
 		vpCursor:        -1,
@@ -562,8 +558,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tooSmall = msg.Width < 60 || msg.Height < 20
 		m.palette.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
-		m.modelSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
-		m.agentSelector.SetWidth(mainWidth(m.width, m.activePanel, m.panelSplitRatio))
+		m.modelSelector.SetWidth(m.width)
+		m.agentSelector.SetWidth(m.width)
 		m.agentSelector.SetHeight(m.height)
 		m.layout()
 		m.refreshViewport()
@@ -1019,24 +1015,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == " " {
 				m.leaderSeq = "pending"
 				return m, whichkey.ScheduleTimeout()
-			}
-		}
-
-		// Panel resize: < shrinks main area, > expands it (not in prompt insert mode)
-		if m.focus != FocusPrompt || m.prompt.IsVimNormal() {
-			switch msg.String() {
-			case "<":
-				if m.panelSplitRatio > 0.3 {
-					m.panelSplitRatio -= 0.05
-				}
-				m.refreshViewport()
-				return m, nil
-			case ">":
-				if m.panelSplitRatio < 0.85 {
-					m.panelSplitRatio += 0.05
-				}
-				m.refreshViewport()
-				return m, nil
 			}
 		}
 
@@ -3464,55 +3442,10 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 		}
 		return nil
 
-	case keymap.ActionWindowZoom:
-		if m.panelZoomed {
-			m.panelSplitRatio = m.prevSplitRatio
-			m.panelZoomed = false
-		} else {
-			m.prevSplitRatio = m.panelSplitRatio
-			m.panelZoomed = true
-			if m.focus == FocusPanel {
-				m.panelSplitRatio = 0.05
-			} else {
-				m.panelSplitRatio = 0.97
-			}
-		}
-		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-		m.refreshViewport()
-		return nil
-
 	case keymap.ActionWindowClose:
 		if m.activePanel != nil && m.activePanel.IsActive() {
 			m.closePanel()
 		}
-		return nil
-
-	case keymap.ActionWindowWiden:
-		if m.panelSplitRatio > 0.40 {
-			m.panelSplitRatio -= 0.05
-			if m.panelSplitRatio < 0.40 {
-				m.panelSplitRatio = 0.40
-			}
-		}
-		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-		m.refreshViewport()
-		return nil
-
-	case keymap.ActionWindowNarrow:
-		if m.panelSplitRatio < 0.85 {
-			m.panelSplitRatio += 0.05
-			if m.panelSplitRatio > 0.85 {
-				m.panelSplitRatio = 0.85
-			}
-		}
-		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-		m.refreshViewport()
-		return nil
-
-	case keymap.ActionWindowReset:
-		m.panelSplitRatio = 0.75
-		m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
-		m.refreshViewport()
 		return nil
 
 	// ── Buffer/Session Management ──────────
@@ -4357,9 +4290,9 @@ func (m *Model) openPanel(id PanelID) {
 	m.activePanelID = id
 	m.lastPanelID = id
 	m.activePanel.Activate()
-	m.viewport.Width = mainWidth(m.width, m.activePanel, m.panelSplitRatio)
 	m.focus = FocusPanel
 	m.prompt.Blur()
+	m.layout()
 	m.refreshViewport()
 }
 
@@ -4810,7 +4743,7 @@ func (m *Model) closePanel() {
 	m.activePanelID = PanelNone
 	m.focus = FocusPrompt
 	m.prompt.Focus()
-	m.viewport.Width = m.width
+	m.layout()
 	m.refreshViewport()
 }
 
@@ -5483,9 +5416,13 @@ func (m *Model) layout() {
 		vpHeight = 5
 	}
 
-	mw := mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+	// Start with full width; panels render as overlays so the viewport
+	// always keeps its full width (minus sidebar).
+	mw := m.width
+
 	// If files panel is active (and no other side panel), shrink the main viewport to leave room
-	if (m.activePanel == nil || !m.activePanel.IsActive()) && m.filesPanel != nil && m.filesPanel.IsActive() {
+	hasPanel := m.activePanel != nil && m.activePanel.IsActive()
+	if !hasPanel && m.filesPanel != nil && m.filesPanel.IsActive() {
 		filesW := int(float64(m.width) * 0.35)
 		if filesW < 20 {
 			filesW = 20
@@ -5498,9 +5435,21 @@ func (m *Model) layout() {
 			mw = 10
 		}
 	}
-	// Persistent sidebar shrinks main area when no other panel is active
-	if (m.activePanel == nil || !m.activePanel.IsActive()) &&
-		(m.filesPanel == nil || !m.filesPanel.IsActive()) {
+
+	// OverlayDrawer panels (e.g. Sessions) shrink the viewport to make room
+	if hasPanel && panelOverlayMode(m.activePanelID) == OverlayDrawer {
+		drawerW := m.width * 35 / 100
+		if drawerW < 30 {
+			drawerW = 30
+		}
+		mw = m.width - drawerW - 1
+		if mw < 20 {
+			mw = 20
+		}
+	}
+
+	// Persistent sidebar shrinks main area when no panel/files panel is active
+	if !hasPanel && (m.filesPanel == nil || !m.filesPanel.IsActive()) {
 		if sw := m.sidebarWidth(); sw > 0 {
 			mw = m.width - sw - 1
 			if mw < 20 {
@@ -5522,30 +5471,9 @@ func (m Model) View() string {
 
 	m.layout()
 
-	mw := mainWidth(m.width, m.activePanel, m.panelSplitRatio)
+	// layout() already computed viewport dimensions; use them directly.
+	mw := m.viewport.Width
 	hasPanel := m.activePanel != nil && m.activePanel.IsActive()
-
-	// Mirror layout()'s width adjustments so overlays agree with viewport.
-	if !hasPanel && m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
-		filesW := int(float64(m.width) * 0.35)
-		if filesW < 20 {
-			filesW = 20
-		}
-		if filesW > m.width-20 {
-			filesW = m.width - 20
-		}
-		mw = m.width - filesW - 1
-		if mw < 10 {
-			mw = 10
-		}
-	} else if !hasPanel && (m.filesPanel == nil || !m.filesPanel.IsActive()) && m.focus != FocusAgentDetail {
-		if sw := m.sidebarWidth(); sw > 0 {
-			mw = m.width - sw - 1
-			if mw < 20 {
-				mw = 20
-			}
-		}
-	}
 
 	// 1. Viewport (messages + inline spinner)
 	vpView := m.viewport.View()
@@ -5585,10 +5513,32 @@ func (m Model) View() string {
 		vpView = m.renderAgentDetail(m.width, m.viewport.Height)
 	}
 
-	// 2. If panel is active, join viewport + panel side-by-side
+	// 2. If panel is active, render as overlay on top of the viewport
 	topArea := vpView
 	if hasPanel && m.focus != FocusAgentDetail {
-		topArea = splitLayout(vpView, m.activePanel, m.width, m.viewport.Height, m.panelSplitRatio)
+		mode := panelOverlayMode(m.activePanelID)
+		switch mode {
+		case OverlayCentered:
+			w := m.viewport.Width * 70 / 100
+			h := m.viewport.Height * 70 / 100
+			if w < 40 {
+				w = 40
+			}
+			if h < 10 {
+				h = 10
+			}
+			panelView := renderPanelWithHelp(m.activePanel, w, h)
+			topArea = placeOverlay(topArea, panelView, m.viewport.Width, m.viewport.Height)
+		case OverlayDrawer:
+			drawerW := m.width * 35 / 100
+			if drawerW < 30 {
+				drawerW = 30
+			}
+			panelView := renderPanelWithHelp(m.activePanel, drawerW, m.viewport.Height)
+			topArea = placeOverlayAt(topArea, panelView, 0, 0, mw, m.viewport.Height)
+		case OverlayFullscreen:
+			topArea = renderPanelWithHelp(m.activePanel, m.viewport.Width, m.viewport.Height)
+		}
 	} else if m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
 		// layout() already sized the viewport; files panel takes the remainder
 		filesW := m.width - mw - 1
