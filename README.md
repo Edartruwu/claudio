@@ -355,6 +355,7 @@ Open with `<Space>ic`. The panel shows:
   "autoMemoryExtract": true,
   "memorySelection": "ai",
   "outputStyle": "normal",
+  "cavemanMode": "",
   "costConfirmThreshold": 0,
   "apiBaseUrl": "https://api.anthropic.com",
   "maxBudget": 0,
@@ -383,6 +384,7 @@ Open with `<Space>ic`. The panel shows:
 | `compactKeepN` | integer (default `10`) | Number of recent messages to keep after compaction |
 | `maxBudget` | USD amount, 0 = unlimited | Session spend limit |
 | `outputFilter` | `true`/`false` | RTK-style command output filtering (see below) |
+| `cavemanMode` | `""`, `lite`, `full`, `ultra` | Compressed output mode (see [CavemanMode](#cavemanmode)) |
 
 ### CLAUDIO.md / CLAUDE.md
 
@@ -461,6 +463,7 @@ Rules are evaluated in order; first match wins. Behaviors: `allow` (skip approva
 | `/teleport <path>` | | Import a shared session file |
 | `/plugins` | | List installed plugins |
 | `/output-style [style]` | | Show or set output style (normal, concise, verbose, markdown) |
+| `/caveman [lite\|full\|ultra\|off]` | | Toggle caveman mode for compressed output (see [CavemanMode](#cavemanmode)) |
 | `/keybindings` | | Open keybindings.json in your editor |
 | `/vim` | | Toggle vim keybindings |
 | `/skills` | | List available skills |
@@ -669,6 +672,34 @@ Go build: 2 errors
 1. pkg/foo.go:10:5: undefined: bar
 2. pkg/foo.go:15:2: cannot use x (type int) as type string
 ```
+
+### CavemanMode
+
+Caveman mode reduces output token usage by ~65-75% by injecting terse communication rules into the system prompt. Inspired by [github.com/JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman), it maintains full technical accuracy while dropping unnecessary filler.
+
+**How to enable:**
+
+- **Interactive command:** `/caveman [lite|full|ultra|off]` (cycles through modes at runtime)
+- **Config panel:** `<Space>ic`, then toggle — cycles off → lite → full → ultra → off
+- **Settings file:** Set `cavemanMode` in `~/.claudio/settings.json` or `.claudio/settings.json`
+
+```json
+{
+  "cavemanMode": "full"
+}
+```
+
+**Three modes:**
+
+| Mode | Style | Example |
+|------|-------|---------|
+| `lite` | No filler/hedging, keeps articles and full sentences | "The API endpoint requires authentication" |
+| `full` | Classic caveman: drops articles, fragments OK, short synonyms, `[thing] [action] [reason]` pattern | "API endpoint needs auth. Use Bearer token for requests." |
+| `ultra` | Maximum compression: abbreviations (DB/auth/config/req/res/fn/impl), arrows for causality (X → Y), one word when one word is enough | "API req → Bearer token. Impl in auth handler." |
+
+**Always normal:** Code blocks, git commits, and security warnings are always written with full grammar and clarity, regardless of mode. This ensures critical information is never compressed.
+
+**Disable:** Use `/caveman off` or set `cavemanMode` to `""` (empty string) in settings.
 
 ### Deferred tool definitions
 
