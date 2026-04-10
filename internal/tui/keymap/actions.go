@@ -15,11 +15,7 @@ const (
 	ActionWindowFocusUp       ActionID = "window.focus-up"
 	ActionWindowFocusRight    ActionID = "window.focus-right"
 	ActionWindowSplitVertical ActionID = "window.split-vertical"
-	ActionWindowZoom          ActionID = "window.zoom"
 	ActionWindowClose         ActionID = "window.close"
-	ActionWindowWiden         ActionID = "window.widen"
-	ActionWindowNarrow        ActionID = "window.narrow"
-	ActionWindowReset         ActionID = "window.reset"
 
 	// Buffer/session management
 	ActionBufferNext      ActionID = "buffer.next"
@@ -72,11 +68,7 @@ var Registry = map[ActionID]ActionMeta{
 	ActionWindowFocusUp:       {ActionWindowFocusUp, "Focus viewport", "window"},
 	ActionWindowFocusRight:    {ActionWindowFocusRight, "Focus right panel", "window"},
 	ActionWindowSplitVertical: {ActionWindowSplitVertical, "Mirror panel", "window"},
-	ActionWindowZoom:          {ActionWindowZoom, "Zoom toggle", "window"},
 	ActionWindowClose:         {ActionWindowClose, "Close panel", "window"},
-	ActionWindowWiden:         {ActionWindowWiden, "Widen panel", "window"},
-	ActionWindowNarrow:        {ActionWindowNarrow, "Narrow panel", "window"},
-	ActionWindowReset:         {ActionWindowReset, "Reset split", "window"},
 
 	// Buffer/session management
 	ActionBufferNext:      {ActionBufferNext, "Next session", "buffer"},

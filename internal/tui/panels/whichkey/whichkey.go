@@ -66,11 +66,7 @@ func WindowBindings() []Binding {
 		{Key: "k", Desc: "↑"},
 		{Key: "l", Desc: "→"},
 		{Key: "v", Desc: "mirror"},
-		{Key: "z", Desc: "zoom"},
 		{Key: "q", Desc: "close"},
-		{Key: "=", Desc: "reset"},
-		{Key: ">", Desc: "widen"},
-		{Key: "<", Desc: "narrow"},
 	}
 }
 
