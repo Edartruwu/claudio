@@ -70,10 +70,6 @@ type Settings struct {
 	// Output filter (RTK-style token reduction for command output)
 	OutputFilter bool `json:"outputFilter,omitempty"`
 
-	// Caveman mode — injects terse communication rules into system prompt
-	// Values: "" (off), "lite", "full", "ultra"
-	CavemanMode string `json:"cavemanMode,omitempty"`
-
 	// Snippet expansion (AI writes shorthand, expander fills boilerplate)
 	Snippets *snippets.Config `json:"snippets,omitempty"`
 
@@ -361,9 +357,6 @@ func mergeFromFile(settings *Settings, path string) {
 	if json.Unmarshal(data, &raw) == nil {
 		if _, ok := raw["outputFilter"]; ok {
 			settings.OutputFilter = overlay.OutputFilter
-		}
-		if _, ok := raw["cavemanMode"]; ok {
-			settings.CavemanMode = overlay.CavemanMode
 		}
 	}
 	if len(overlay.LspServers) > 0 {

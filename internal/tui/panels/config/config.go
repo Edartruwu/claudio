@@ -160,12 +160,6 @@ func (p *Panel) buildEntries() {
 
 	addE("outputFilter", fmt.Sprintf("%v", m.OutputFilter), "bool", p.source("outputFilter"))
 
-	if m.CavemanMode != "" {
-		addE("cavemanMode", m.CavemanMode, "cycle", p.source("cavemanMode"))
-	} else {
-		addE("cavemanMode", "off", "cycle", ScopeGlobal)
-	}
-
 	if m.OutputStyle != "" {
 		addE("outputStyle", m.OutputStyle, "cycle", p.source("outputStyle"))
 	} else {
@@ -279,10 +273,6 @@ func (p *Panel) source(key string) Scope {
 					}
 				}
 			}
-		}
-	case "cavemanMode":
-		if p.project.CavemanMode != "" {
-			return ScopeProject
 		}
 	case "outputStyle":
 		if p.project.OutputStyle != "" {
@@ -419,10 +409,6 @@ func (p *Panel) toggleEntry(idx int) (string, string) {
 	case "outputFilter":
 		target.OutputFilter = !p.merged.OutputFilter
 		newVal = fmt.Sprintf("%v", target.OutputFilter)
-	case "cavemanMode":
-		modes := []string{"", "lite", "full", "ultra"}
-		target.CavemanMode = cycleValue(p.merged.CavemanMode, modes, "")
-		newVal = target.CavemanMode
 	case "outputStyle":
 		modes := []string{"normal", "concise", "verbose", "markdown"}
 		current := p.merged.OutputStyle

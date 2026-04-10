@@ -318,7 +318,7 @@ func buildFullSystemPrompt() string {
 	// Combine all additional context
 	additionalCtx := strings.Join(sections, "\n\n")
 
-	return prompts.BuildSystemPrompt(appInstance.Config.Model, additionalCtx, appInstance.Config.CavemanMode)
+	return prompts.BuildSystemPrompt(appInstance.Config.Model, additionalCtx)
 }
 
 // buildUserContext loads CLAUDE.md/CLAUDIO.md content (raw) for use in the user context message.

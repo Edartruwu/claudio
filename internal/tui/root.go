@@ -451,15 +451,6 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			}
 			return infos
 		},
-		GetCavemanMode: func() string {
-			if m.appCtx != nil && m.appCtx.Config != nil {
-				return m.appCtx.Config.CavemanMode
-			}
-			return ""
-		},
-		SetCavemanMode: func(mode string) {
-			m.applyConfigChange("cavemanMode", mode)
-		},
 		ListTeams: func() string {
 			if m.appCtx == nil || m.appCtx.TeamManager == nil {
 				return ""
@@ -4743,17 +4734,6 @@ func (m *Model) applyConfigChange(key, value string) {
 				bt.OutputFilterEnabled = enabled
 			}
 		}
-	case "cavemanMode":
-		if m.appCtx != nil && m.appCtx.Config != nil {
-			m.appCtx.Config.CavemanMode = value
-		}
-		// Rebuild system prompt to inject/remove caveman rules
-		newPrompt := m.buildFullSystemPrompt()
-		m.baseSystemPrompt = newPrompt
-		m.systemPrompt = newPrompt
-		if m.engine != nil {
-			m.engine.SetSystem(newPrompt)
-		}
 	}
 	// Other settings (autoMemoryExtract, memorySelection, compactMode, etc.)
 	// are read from config at the point of use, so saving to disk is sufficient.
@@ -4775,7 +4755,6 @@ func (m *Model) closePanel() {
 // buildFullSystemPrompt reconstructs the system prompt with all context.
 // It gathers rules, learning, output style, snippets, and plugins,
 // then calls BuildSystemPrompt with the full additionalContext.
-// This preserves project context when toggling CavemanMode.
 func (m *Model) buildFullSystemPrompt() string {
 	var sections []string
 
@@ -4809,11 +4788,7 @@ func (m *Model) buildFullSystemPrompt() string {
 	}
 
 	additionalCtx := strings.Join(sections, "\n\n")
-	cavemanMode := ""
-	if m.appCtx != nil && m.appCtx.Config != nil {
-		cavemanMode = m.appCtx.Config.CavemanMode
-	}
-	return prompts.BuildSystemPrompt(m.model, additionalCtx, cavemanMode)
+	return prompts.BuildSystemPrompt(m.model, additionalCtx)
 }
 
 // createPanel instantiates the appropriate panel for the given ID.

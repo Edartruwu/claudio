@@ -38,9 +38,6 @@ type CommandDeps struct {
 	// Output style
 	GetOutputStyle func() string
 	SetOutputStyle func(style string)
-	// Caveman mode
-	GetCavemanMode func() string
-	SetCavemanMode func(mode string)
 	// Session sharing
 	ShareSession  func(path string) (string, error)
 	TeleportSession func(path string) (string, error)

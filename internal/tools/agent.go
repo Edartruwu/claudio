@@ -224,8 +224,6 @@ type AgentTool struct {
 	TeamRunner *teams.TeammateRunner
 	// AvailableModels lists extra model names from configured providers (e.g., Groq, OpenAI-compatible).
 	AvailableModels []string
-	// GetCavemanMode returns the current caveman mode so sub-agents inherit it.
-	GetCavemanMode func() string
 }
 
 type agentInput struct {
@@ -331,13 +329,6 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		agentType = "general-purpose"
 	}
 	agentDef := agents.GetAgent(agentType)
-
-	// Inherit caveman mode from the parent session.
-	if t.GetCavemanMode != nil {
-		if cs := prompts.CavemanSection(t.GetCavemanMode()); cs != "" {
-			agentDef.SystemPrompt += "\n\n" + cs
-		}
-	}
 
 	// Inject agent type into context for sub-session labeling.
 	ctx = WithAgentType(ctx, agentDef.Type)

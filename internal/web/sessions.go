@@ -330,7 +330,7 @@ func (sm *SessionManager) loadDBSession(dbSess *storage.Session) (*ProjectSessio
 	// Build system prompt scoped to the project directory
 	oldDir, _ := os.Getwd()
 	os.Chdir(projectPath)
-	systemPrompt := prompts.BuildSystemPrompt(model, "", settings.CavemanMode)
+	systemPrompt := prompts.BuildSystemPrompt(model, "")
 	os.Chdir(oldDir)
 
 	_, cancel := context.WithCancel(context.Background())
@@ -452,7 +452,7 @@ func (sm *SessionManager) newSession(projectPath, title string) (*ProjectSession
 	// Build system prompt scoped to the project directory
 	oldDir, _ := os.Getwd()
 	os.Chdir(projectPath)
-	systemPrompt := prompts.BuildSystemPrompt(settings.Model, "", settings.CavemanMode)
+	systemPrompt := prompts.BuildSystemPrompt(settings.Model, "")
 	os.Chdir(oldDir)
 
 	_, cancel := context.WithCancel(context.Background())

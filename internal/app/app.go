@@ -372,7 +372,6 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
 				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
 			}
-			at.GetCavemanMode = func() string { return settings.CavemanMode }
 		}
 	}
 	if stop, err := registry.Get("TaskStop"); err == nil {
@@ -433,7 +432,6 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			tool.Runner = teamRunner
 			tool.Manager = teamMgr
 			tool.AvailableModels = buildAvailableModels(apiClient)
-			tool.GetCavemanMode = func() string { return settings.CavemanMode }
 		}
 	}
 	if stt, err := registry.Get("SaveTeamTemplate"); err == nil {

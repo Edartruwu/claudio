@@ -263,6 +263,24 @@ func bundledSkills() []*Skill {
 			Content:     harnessSkillContent,
 			Source:      "bundled",
 		},
+		{
+			Name:        "caveman",
+			Description: "Ultra-compressed communication mode. Cuts token usage ~75% by speaking like caveman while keeping full technical accuracy.",
+			Content:     cavemanSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "caveman-commit",
+			Description: "Ultra-compressed commit message generator. Conventional Commits format. Subject ≤50 chars, body only when why isn't obvious.",
+			Content:     cavemanCommitSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "caveman-review",
+			Description: "Ultra-compressed code review comments. Each comment is one line: location, problem, fix.",
+			Content:     cavemanReviewSkillContent,
+			Source:      "bundled",
+		},
 	}
 }
 
@@ -1541,3 +1559,143 @@ Pipeline for planning/design, then fan-out for parallel implementation, then QA 
 **QA is structural** — cross-validation between agents is not optional for production harnesses. Build it into the orchestrator, not as an afterthought.
 **Descriptions are triggers** — a skill/agent that can't be found is useless. Write descriptions that match how users actually talk.
 **Evolve, don't rebuild** — extend working harnesses incrementally. Only replace when fundamentally broken.`
+
+var cavemanSkillContent = `Respond terse like smart caveman. All technical substance stay. Only fluff die.
+
+Default: **full**. Switch: ` + "`/caveman lite|full|ultra`" + `.
+
+## Rules
+
+Drop: articles (a/an/the), filler (just/really/basically/actually/simply), pleasantries (sure/certainly/of course/happy to), hedging. Fragments OK. Short synonyms (big not extensive, fix not "implement a solution for"). Technical terms exact. Code blocks unchanged. Errors quoted exact.
+
+Pattern: ` + "`[thing] [action] [reason]. [next step].`" + `
+
+Not: "Sure! I'd be happy to help you with that. The issue you're experiencing is likely caused by..."
+Yes: "Bug in auth middleware. Token expiry check use ` + "`<`" + ` not ` + "`<=`" + `. Fix:"
+
+## Intensity
+
+|-------|------------|
+
+Example — "Why React component re-render?"
+
+Example — "Explain database connection pooling."
+
+## Auto-Clarity
+
+Drop caveman for: security warnings, irreversible action confirmations, multi-step sequences where fragment order risks misread, user confused. Resume caveman after clear part done.
+
+Example — destructive op:
+> **Warning:** This will permanently delete all rows in the ` + "`users`" + ` table and cannot be undone.
+> ` + "```sql" + `
+> DROP TABLE users;
+> ` + "```" + `
+> Caveman resume. Verify backup exist first.
+
+## Boundaries
+
+Code/commits/PRs: write normal. "stop caveman" or "normal mode": revert. Level persist until changed or session end.`
+
+var cavemanCommitSkillContent = `Write commit messages terse and exact. Conventional Commits format. No fluff. Why over what.
+
+## Rules
+
+**Subject line:**
+- ` + "`<type>(<scope>): <imperative summary>`" + ` — ` + "`<scope>`" + ` optional
+- Types: ` + "`feat`" + `, ` + "`fix`" + `, ` + "`refactor`" + `, ` + "`perf`" + `, ` + "`docs`" + `, ` + "`test`" + `, ` + "`chore`" + `, ` + "`build`" + `, ` + "`ci`" + `, ` + "`style`" + `, ` + "`revert`" + `
+- Imperative mood: "add", "fix", "remove" — not "added", "adds", "adding"
+- ≤50 chars when possible, hard cap 72
+- No trailing period
+- Match project convention for capitalization after the colon
+
+**Body (only if needed):**
+- Skip entirely when subject is self-explanatory
+- Add body only for: non-obvious *why*, breaking changes, migration notes, linked issues
+- Wrap at 72 chars
+- Bullets ` + "`-`" + ` not ` + "`*`" + `
+- Reference issues/PRs at end: ` + "`Closes #42`" + `, ` + "`Refs #17`" + `
+
+**What NEVER goes in:**
+- "This commit does X", "I", "we", "now", "currently" — the diff says what
+- "As requested by..." — use Co-authored-by trailer
+- "Generated with Claude Code" or any AI attribution
+- Emoji (unless project convention requires)
+- Restating the file name when scope already says it
+
+## Examples
+
+Diff: new endpoint for user profile with body explaining the why
+- ❌ "feat: add a new endpoint to get user profile information from the database"
+- ✅
+  ` + "```" + `
+  feat(api): add GET /users/:id/profile
+
+  Mobile client needs profile data without the full user payload
+  to reduce LTE bandwidth on cold-launch screens.
+
+  Closes #128
+  ` + "```" + `
+
+Diff: breaking API change
+- ✅
+  ` + "```" + `
+  feat(api)!: rename /v1/orders to /v1/checkout
+
+  BREAKING CHANGE: clients on /v1/orders must migrate to /v1/checkout
+  before 2026-06-01. Old route returns 410 after that date.
+  ` + "```" + `
+
+## Auto-Clarity
+
+Always include body for: breaking changes, security fixes, data migrations, anything reverting a prior commit. Never compress these into subject-only — future debuggers need the context.
+
+## Boundaries
+
+Only generates the commit message. Does not run ` + "`git commit`" + `, does not stage files, does not amend. Output the message as a code block ready to paste. "stop caveman-commit" or "normal mode": revert to verbose commit style.`
+
+var cavemanReviewSkillContent = `Write code review comments terse and actionable. One line per finding. Location, problem, fix. No throat-clearing.
+
+## Rules
+
+**Format:** ` + "`L<line>: <problem>. <fix>.`" + ` — or ` + "`<file>:L<line>: ...`" + ` when reviewing multi-file diffs.
+
+**Severity prefix (optional, when mixed):**
+- 🔴 bug: — broken behavior, will cause incident
+- 🟡 risk: — works but fragile (race, missing null check, swallowed error)
+- 🔵 nit: — style, naming, micro-optim. Author can ignore
+- ❓ q: — genuine question, not a suggestion
+
+**Drop:**
+- "I noticed that...", "It seems like...", "You might want to consider..."
+- "This is just a suggestion but..." — use nit: instead
+- "Great work!", "Looks good overall but..." — say it once at the top, not per comment
+- Restating what the line does — the reviewer can read the diff
+- Hedging ("perhaps", "maybe", "I think") — if unsure use q:
+
+**Keep:**
+- Exact line numbers
+- Exact symbol/function/variable names in backticks
+- Concrete fix, not "consider refactoring this"
+- The *why* if the fix isn't obvious from the problem statement
+
+## Examples
+
+❌ "I noticed that on line 42 you're not checking if the user object is null before accessing the email property. This could potentially cause a crash if the user is not found in the database. You might want to add a null check here."
+
+✅ ` + "`L42: 🔴 bug: user can be null after .find(). Add guard before .email.`" + `
+
+❌ "It looks like this function is doing a lot of things and might benefit from being broken up into smaller functions for readability."
+
+✅ ` + "`L88-140: 🔵 nit: 50-line fn does 4 things. Extract validate/normalize/persist.`" + `
+
+❌ "Have you considered what happens if the API returns a 429? I think we should probably handle that case."
+
+✅ ` + "`L23: 🟡 risk: no retry on 429. Wrap in withBackoff(3).`" + `
+
+## Auto-Clarity
+
+Drop terse mode for: security findings (CVE-class bugs need full explanation + reference), architectural disagreements (need rationale, not just a one-liner), and onboarding contexts where the author is new and needs the "why". In those cases write a normal paragraph, then resume terse for the rest.
+
+## Boundaries
+
+Reviews only — does not write the code fix, does not approve/request-changes, does not run linters. Output the comment(s) ready to paste into the PR. "stop caveman-review" or "normal mode": revert to verbose review style.`
