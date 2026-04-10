@@ -333,14 +333,22 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		ctx = tools.WithAgentDepth(ctx, 1)
 		// Inject advisor tool when the member was spawned with an advisor config.
 		if state.AdvisorConfig != nil {
-			advisorDef := agents.GetAgent(state.AdvisorConfig.SubagentType)
-			advisorModel := state.AdvisorConfig.Model
-			if advisorModel == "" {
-				advisorModel = advisorDef.Model
+			var advisorSystemPrompt string
+			var advisorModel string
+			if state.AdvisorConfig.SubagentType != "" {
+				advisorDef := agents.GetAgent(state.AdvisorConfig.SubagentType)
+				advisorSystemPrompt = advisorDef.SystemPrompt + "\n\n" + prompts.AdvisorSystemPrompt()
+				advisorModel = state.AdvisorConfig.Model
+				if advisorModel == "" {
+					advisorModel = advisorDef.Model
+				}
+			} else {
+				advisorSystemPrompt = prompts.AdvisorSystemPrompt()
+				advisorModel = state.AdvisorConfig.Model
 			}
 			count := 0
 			advisorTool := tools.NewAdvisorTool(tools.AdvisorToolConfig{
-				Definition:  advisorDef,
+				Definition:  agents.AgentDefinition{SystemPrompt: advisorSystemPrompt},
 				Model:       advisorModel,
 				MaxUses:     state.AdvisorConfig.MaxUses,
 				UsedCount:   &count,

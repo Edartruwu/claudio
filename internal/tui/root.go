@@ -149,6 +149,7 @@ type Model struct {
 
 	// Engine integration
 	engine                *query.Engine
+	engineRef             **query.Engine // optional external pointer updated whenever engine is set
 	pendingEngineMessages []api.Message
 	apiClient             *api.Client
 	registry     *tools.Registry
@@ -272,6 +273,13 @@ func WithDB(db *storage.DB) ModelOption {
 // WithTeamTemplatesDir sets the directory where team templates are stored.
 func WithTeamTemplatesDir(dir string) ModelOption {
 	return func(m *Model) { m.teamTemplatesDir = dir }
+}
+
+// WithEngineRef provides an external **query.Engine pointer that will be updated
+// whenever the TUI creates or reassigns its principal engine. This allows callers
+// (e.g. the advisor tool GetMessages callback) to access the live engine.
+func WithEngineRef(ref **query.Engine) ModelOption {
+	return func(m *Model) { m.engineRef = ref }
 }
 
 // New creates a new TUI model.
@@ -1963,6 +1971,9 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 		m.engine = query.NewEngineWithConfig(m.apiClient, m.registry, handler, *m.engineConfig)
 	} else {
 		m.engine = query.NewEngine(m.apiClient, m.registry, handler)
+	}
+	if m.engineRef != nil {
+		*m.engineRef = m.engine
 	}
 
 	// Wire AskUser tool channels so questions are shown interactively.
@@ -3838,6 +3849,9 @@ func (m *Model) doSwitchSession(id string) {
 				m.engine = query.NewEngineWithConfig(m.apiClient, m.registry, handler, *m.engineConfig)
 			} else {
 				m.engine = query.NewEngine(m.apiClient, m.registry, handler)
+			}
+			if m.engineRef != nil {
+				*m.engineRef = m.engine
 			}
 			if m.systemPrompt != "" {
 				m.engine.SetSystem(m.systemPrompt)

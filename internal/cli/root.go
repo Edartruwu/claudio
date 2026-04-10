@@ -183,6 +183,30 @@ func runSinglePrompt(prompt string) error {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
 	}
+
+	// Inject advisor tool for the principal agent when configured.
+	// principalEngine is captured by the closure so GetMessages works once
+	// the engine is assigned below.
+	var principalEngine *query.Engine
+	if appInstance.Config.Advisor != nil {
+		advisorSystemPrompt, advisorModel := buildAdvisorConfig(appInstance.Config.Advisor)
+		count := 0
+		advisorTool := tools.NewAdvisorTool(tools.AdvisorToolConfig{
+			Definition: agents.AgentDefinition{SystemPrompt: advisorSystemPrompt},
+			Model:      advisorModel,
+			MaxUses:    appInstance.Config.Advisor.MaxUses,
+			UsedCount:  &count,
+			GetMessages: func() []api.Message {
+				if principalEngine == nil {
+					return nil
+				}
+				return principalEngine.Messages()
+			},
+			Client: appInstance.API,
+		})
+		reg.Register(advisorTool)
+	}
+
 	handler := &query.StdoutHandler{Verbose: flagVerbose}
 	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, query.EngineConfig{
 		Hooks:           appInstance.Hooks,
@@ -193,6 +217,8 @@ func runSinglePrompt(prompt string) error {
 		PermissionRules: appInstance.Config.PermissionRules,
 		OnTurnEnd:       appInstance.MemoryExtractor(),
 	})
+	principalEngine = engine // allow GetMessages closure to resolve
+
 	engine.SetSystem(buildFullSystemPrompt())
 	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
 	engine.SetSystemContext(buildSystemContext())
@@ -203,6 +229,27 @@ func runSinglePrompt(prompt string) error {
 	printCostSummary()
 
 	return err
+}
+
+// buildAdvisorConfig resolves the system prompt and model for an AdvisorSettings block.
+// Rule: always append AdvisorSystemPrompt(); prepend the subagent's own prompt when set.
+// Model precedence: AdvisorSettings.Model > subagent.Model > appInstance.Config.Model.
+func buildAdvisorConfig(cfg *config.AdvisorSettings) (systemPrompt string, model string) {
+	if cfg.SubagentType != "" {
+		agentDef := agents.GetAgent(cfg.SubagentType)
+		systemPrompt = agentDef.SystemPrompt + "\n\n" + prompts.AdvisorSystemPrompt()
+		model = cfg.Model
+		if model == "" {
+			model = agentDef.Model
+		}
+	} else {
+		systemPrompt = prompts.AdvisorSystemPrompt()
+		model = cfg.Model
+	}
+	if model == "" {
+		model = appInstance.Config.Model
+	}
+	return systemPrompt, model
 }
 
 func loadContextProfile(name string) (string, error) {
@@ -313,6 +360,11 @@ func buildFullSystemPrompt() string {
 		if agentDef.SystemPrompt != "" {
 			sections = append(sections, agentDef.SystemPrompt)
 		}
+	}
+
+	// Advisor protocol section — tells the principal agent when/how to call the advisor
+	if appInstance.Config.Advisor != nil {
+		sections = append(sections, prompts.AdvisorProtocolSection())
 	}
 
 	// Combine all additional context
@@ -494,6 +546,30 @@ func runInteractive() error {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
 	}
+
+	// Inject advisor tool for the principal agent when configured.
+	// currentEngine tracks the live engine so GetMessages can return the
+	// current conversation. It is updated by WithEngineRef in the TUI.
+	var currentEngine *query.Engine
+	if appInstance.Config.Advisor != nil {
+		advisorSystemPrompt, advisorModel := buildAdvisorConfig(appInstance.Config.Advisor)
+		count := 0
+		advisorTool := tools.NewAdvisorTool(tools.AdvisorToolConfig{
+			Definition: agents.AgentDefinition{SystemPrompt: advisorSystemPrompt},
+			Model:      advisorModel,
+			MaxUses:    appInstance.Config.Advisor.MaxUses,
+			UsedCount:  &count,
+			GetMessages: func() []api.Message {
+				if currentEngine == nil {
+					return nil
+				}
+				return currentEngine.Messages()
+			},
+			Client: appInstance.API,
+		})
+		reg.Register(advisorTool)
+	}
+
 	engineCfg := &query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,
@@ -523,7 +599,7 @@ func runInteractive() error {
 		TeamManager: appInstance.Teams,
 		TeamRunner:  appInstance.TeamRunner,
 	}
-	model := tui.New(appInstance.API, reg, systemPrompt, sess,
+	tuiOpts := []tui.ModelOption{
 		tui.WithSkills(appInstance.Skills),
 		tui.WithEngineConfig(engineCfg),
 		tui.WithAppContext(appCtx),
@@ -531,7 +607,11 @@ func runInteractive() error {
 		tui.WithSystemContext(buildSystemContext()),
 		tui.WithDB(appInstance.DB),
 		tui.WithTeamTemplatesDir(config.GetPaths().TeamTemplates),
-	)
+	}
+	if appInstance.Config.Advisor != nil {
+		tuiOpts = append(tuiOpts, tui.WithEngineRef(&currentEngine))
+	}
+	model := tui.New(appInstance.API, reg, systemPrompt, sess, tuiOpts...)
 
 	// Apply --agent flag if specified
 	if flagAgent != "" {
