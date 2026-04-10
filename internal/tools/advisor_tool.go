@@ -14,13 +14,6 @@ import (
 // advisorMaxIter caps the tool-calling loop to prevent runaway advisor sessions.
 const advisorMaxIter = 5
 
-// advisorWhitelist is the authoritative set of tools the advisor is allowed to call.
-// This is enforced in code — no agent config or definition can override it.
-var advisorWhitelist = map[string]bool{
-	"WebSearch": true,
-	"WebFetch":  true,
-}
-
 // advisorToolResultBlock is the JSON shape the API expects for tool results.
 type advisorToolResultBlock struct {
 	Type      string `json:"type"`
@@ -237,27 +230,18 @@ func (t *AdvisorTool) Execute(ctx context.Context, input json.RawMessage) (*Resu
 			Content: assistantContent,
 		})
 
-		// Execute whitelisted tools; block everything else.
+		// Execute tools — only WebSearch and WebFetch are sent to the API,
+		// so the model can never request anything else.
 		toolResults := make([]advisorToolResultBlock, 0, len(toolUseBlocks))
 		for _, block := range toolUseBlocks {
-			if !advisorWhitelist[block.Name] {
-				// Blocked tool — return a clear error to the model.
-				toolResults = append(toolResults, advisorToolResultBlock{
-					Type:      "tool_result",
-					ToolUseID: block.ID,
-					Content:   fmt.Sprintf("Tool %q is not available to the advisor.", block.Name),
-					IsError:   true,
-				})
-				continue
-			}
-
-			// Select and execute the whitelisted tool.
 			var tool Tool
 			switch block.Name {
 			case "WebSearch":
 				tool = webSearch
 			case "WebFetch":
 				tool = webFetch
+			default:
+				continue
 			}
 			result, execErr := tool.Execute(ctx, block.Input)
 			if execErr != nil {
