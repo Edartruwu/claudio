@@ -1,6 +1,7 @@
 package agentselector
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -28,6 +29,7 @@ type Model struct {
 	agents  []agents.AgentDefinition
 	filter  textinput.Model
 	cursor  int
+	offset  int // scroll offset for the list
 	active  bool
 	width   int
 	height  int
@@ -96,15 +98,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	// listH mirrors the calculation in View() so offset adjustments are consistent.
+	listH := max(min(m.height-4, 30)-4, 6)
+
 	switch key.String() {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
+			if m.cursor < m.offset {
+				m.offset = m.cursor
+			}
 		}
 	case "down", "j":
 		items := m.filtered()
 		if m.cursor < len(items)-1 {
 			m.cursor++
+			if m.cursor >= m.offset+listH {
+				m.offset = m.cursor - listH + 1
+			}
 		}
 	case "enter":
 		m.active = false
@@ -134,7 +145,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		prevVal := m.filter.Value()
 		var cmd tea.Cmd
 		m.filter, cmd = m.filter.Update(msg)
-		// Clamp cursor if filter narrowed the list
+		// Clamp cursor and offset if filter narrowed the list
 		if m.filter.Value() != prevVal {
 			items := m.filtered()
 			if m.cursor >= len(items) && len(items) > 0 {
@@ -142,6 +153,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			if len(items) == 0 {
 				m.cursor = 0
+			}
+			// Clamp offset so we don't scroll past the end of the filtered list
+			maxOffset := max(len(items)-listH, 0)
+			if m.offset > maxOffset {
+				m.offset = maxOffset
+			}
+			if m.cursor < m.offset {
+				m.offset = m.cursor
 			}
 		}
 		return m, cmd
@@ -190,15 +209,24 @@ func (m Model) View() string {
 	// --- left pane lines ---
 	// Row 0: filter input; Row 1: blank; Rows 2+: list items
 	listH := innerH - 2
-	offset := 0
-	if cursor >= listH {
-		offset = cursor - listH + 1
+	// Use stateful offset but clamp it defensively in case height changed
+	offset := m.offset
+	maxOffset := max(len(items)-listH, 0)
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	end := min(offset+listH, len(items))
 
 	var leftLines []string
 	leftLines = append(leftLines, m.filter.View())
 	leftLines = append(leftLines, "") // blank
+
+	selectedRowStyle := lipgloss.NewStyle().
+		Background(styles.Subtle).
+		Width(leftW)
 
 	for i := offset; i < end; i++ {
 		a := items[i]
@@ -218,7 +246,18 @@ func (m Model) View() string {
 		if name == "" {
 			name = "(none — reset persona)"
 		}
-		leftLines = append(leftLines, prefix+nameStyle.Render(name))
+		line := prefix + nameStyle.Render(name)
+		if selected {
+			line = selectedRowStyle.Render(line)
+		}
+		leftLines = append(leftLines, line)
+	}
+
+	// Position counter — only show when list is scrollable
+	if len(items) > listH {
+		counter := lipgloss.NewStyle().Foreground(styles.Dim).
+			Render("  " + fmt.Sprintf("%d / %d", cursor+1, len(items)))
+		leftLines = append(leftLines, counter)
 	}
 
 	// --- right pane lines ---
