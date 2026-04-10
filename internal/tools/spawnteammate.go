@@ -287,18 +287,20 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 	// Upsert semantics: whether the name is new or previously finished, always spawn fresh.
 	// Spawn → AddMember removes the old terminal entry and creates a clean one;
 	// r.teammates[agentID] is overwritten with a brand-new state (no history).
+	parentAgentID := teams.TeammateAgentIDFromContext(ctx)
 	state, err := t.Runner.Spawn(teams.SpawnConfig{
-		TeamName:     teamName,
-		AgentName:    resolvedName,
-		Prompt:       prompt,
-		System:       agentDef.SystemPrompt,
-		Model:        modelOverride,
-		SubagentType: in.SubagentType,
-		MaxTurns:     maxTurns,
-		Isolation:    in.Isolation,
-		MemoryDir:    agentDef.MemoryDir,
-		Foreground:   !background,
-		TaskIDs:      taskIDs,
+		TeamName:      teamName,
+		AgentName:     resolvedName,
+		Prompt:        prompt,
+		System:        agentDef.SystemPrompt,
+		Model:         modelOverride,
+		SubagentType:  in.SubagentType,
+		MaxTurns:      maxTurns,
+		Isolation:     in.Isolation,
+		MemoryDir:     agentDef.MemoryDir,
+		Foreground:    !background,
+		TaskIDs:       taskIDs,
+		ParentAgentID: parentAgentID,
 	})
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to spawn teammate %q: %v", resolvedName, err), IsError: true}, nil

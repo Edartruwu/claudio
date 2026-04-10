@@ -72,6 +72,9 @@ type TeammateState struct {
 	MemoryDir      string // agent-scoped memory directory (empty for ephemeral teammates)
 	SystemPrompt   string // resolved system prompt used for the run (for revival)
 
+	// ParentAgentID is non-empty when this agent was spawned by another teammate.
+	ParentAgentID string
+
 	// EngineMessages holds the full API-level conversation after the agent
 	// completes. Used to resume the conversation when a new message arrives.
 	EngineMessages []api.Message
@@ -184,6 +187,21 @@ func GetResumeHistory(ctx context.Context) []api.Message {
 	return nil
 }
 
+// ctxKeyTeammateAgentID carries the running agent's own ID into sub-calls,
+// so SpawnTeammate can record the parent-child relationship.
+type ctxKeyTeammateAgentID struct{}
+
+// WithTeammateAgentID stores the current agent's ID in ctx.
+func WithTeammateAgentID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, ctxKeyTeammateAgentID{}, id)
+}
+
+// TeammateAgentIDFromContext retrieves the running agent's ID from ctx, or "".
+func TeammateAgentIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyTeammateAgentID{}).(string)
+	return v
+}
+
 // RunAgentFunc is the callback to execute an agent.
 // Receives (ctx, systemPrompt, userPrompt) and returns text output.
 type RunAgentFunc func(ctx context.Context, system, prompt string) (string, error)
@@ -229,6 +247,9 @@ type TeammateRunner struct {
 	taskCompleter      TaskCompleter
 	activeTeam         string // explicitly set active team name
 	PluginsSection     string // injected into every sub-agent's system prompt
+
+	childrenMu sync.Mutex
+	children   map[string][]string // parentAgentID → []childAgentID
 }
 
 // NewTeammateRunner creates a runner for spawning in-process teammates.
@@ -239,6 +260,7 @@ func NewTeammateRunner(manager *Manager, runAgent RunAgentFunc) *TeammateRunner 
 		manager:   manager,
 		runAgent:  runAgent,
 		parentCtx: context.Background(),
+		children:  make(map[string][]string),
 	}
 }
 
@@ -297,6 +319,7 @@ type SpawnConfig struct {
 	Foreground           bool     // true when the lead is blocking on WaitForOne — suppresses task-notification
 	TaskIDs              []string // task IDs to auto-complete when agent finishes
 	AutoCompactThreshold int      // % of context window to trigger full compact (0 = engine default 95%)
+	ParentAgentID        string   // non-empty when spawned by another teammate
 }
 
 // Spawn starts a new teammate goroutine.
@@ -356,6 +379,13 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		cancel:       cancel,
 		idleCh:       make(chan struct{}),
 		Conversation: make([]ConversationEntry, 0, 32),
+	}
+
+	if cfg.ParentAgentID != "" {
+		state.ParentAgentID = cfg.ParentAgentID
+		r.childrenMu.Lock()
+		r.children[cfg.ParentAgentID] = append(r.children[cfg.ParentAgentID], member.Identity.AgentID)
+		r.childrenMu.Unlock()
 	}
 
 	r.mu.Lock()
@@ -546,6 +576,10 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		state.mu.Unlock()
 	})
 
+	// Inject this agent's ID so any SpawnTeammate calls it makes can record
+	// themselves as children of this agent.
+	ctx = WithTeammateAgentID(ctx, state.Identity.AgentID)
+
 	var result string
 	var err error
 	if state.MemoryDir != "" && r.runAgentWithMemory != nil {
@@ -627,6 +661,32 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			taskStatus = "failed"
 		}
 		r.taskCompleter(cfg.TaskIDs, taskStatus)
+	}
+
+	// Kill and remove any child agents spawned by this teammate.
+	r.childrenMu.Lock()
+	childIDs := r.children[state.Identity.AgentID]
+	delete(r.children, state.Identity.AgentID)
+	r.childrenMu.Unlock()
+	for _, childID := range childIDs {
+		_ = r.Kill(childID) // best-effort
+	}
+	if len(childIDs) > 0 {
+		// Give children a moment to stop.
+		deadline := time.Now().Add(5 * time.Second)
+		for _, childID := range childIDs {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				break
+			}
+			r.WaitForOne(childID, remaining)
+		}
+		// Remove child states from the runner.
+		r.mu.Lock()
+		for _, childID := range childIDs {
+			delete(r.teammates, childID)
+		}
+		r.mu.Unlock()
 	}
 
 	// Update team status

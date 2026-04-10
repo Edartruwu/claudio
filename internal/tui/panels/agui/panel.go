@@ -206,6 +206,9 @@ func (p *Panel) refresh() {
 	states := p.runner.AllStates()
 	entries := make([]*agentEntry, 0, len(states))
 	for _, s := range states {
+		if s.ParentAgentID != "" {
+			continue
+		}
 		e := &agentEntry{
 			id:     s.Identity.AgentID,
 			name:   s.Identity.AgentName,
