@@ -15,6 +15,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
 	"github.com/Abraxas-365/claudio/internal/ratelimit"
@@ -4747,7 +4748,7 @@ func (m *Model) applyConfigChange(key, value string) {
 			m.appCtx.Config.CavemanMode = value
 		}
 		// Rebuild system prompt to inject/remove caveman rules
-		newPrompt := prompts.BuildSystemPrompt(m.model, "", value)
+		newPrompt := m.buildFullSystemPrompt()
 		m.baseSystemPrompt = newPrompt
 		m.systemPrompt = newPrompt
 		if m.engine != nil {
@@ -4769,6 +4770,50 @@ func (m *Model) closePanel() {
 	m.prompt.Focus()
 	m.layout()
 	m.refreshViewport()
+}
+
+// buildFullSystemPrompt reconstructs the system prompt with all context.
+// It gathers rules, learning, output style, snippets, and plugins,
+// then calls BuildSystemPrompt with the full additionalContext.
+// This preserves project context when toggling CavemanMode.
+func (m *Model) buildFullSystemPrompt() string {
+	var sections []string
+
+	// Add rules
+	if m.appCtx != nil && m.appCtx.Rules != nil {
+		if rulesContent := m.appCtx.Rules.ForSystemPrompt(); rulesContent != "" {
+			sections = append(sections, rulesContent)
+		}
+	}
+
+	// Add learning/instinct
+	if m.appCtx != nil && m.appCtx.Learning != nil {
+		cwd, _ := os.Getwd()
+		if instinctContent := m.appCtx.Learning.ForSystemPrompt(cwd); instinctContent != "" {
+			sections = append(sections, instinctContent)
+		}
+	}
+
+	// Add output style
+	if m.appCtx != nil && m.appCtx.Config != nil && m.appCtx.Config.OutputStyle != "" {
+		if styleContent := prompts.OutputStyleSection(prompts.OutputStyle(m.appCtx.Config.OutputStyle)); styleContent != "" {
+			sections = append(sections, styleContent)
+		}
+	}
+
+	// Add snippets
+	if m.appCtx != nil && m.appCtx.Config != nil {
+		if snippetSection := snippets.ForSystemPrompt(m.appCtx.Config.Snippets); snippetSection != "" {
+			sections = append(sections, snippetSection)
+		}
+	}
+
+	additionalCtx := strings.Join(sections, "\n\n")
+	cavemanMode := ""
+	if m.appCtx != nil && m.appCtx.Config != nil {
+		cavemanMode = m.appCtx.Config.CavemanMode
+	}
+	return prompts.BuildSystemPrompt(m.model, additionalCtx, cavemanMode)
 }
 
 // createPanel instantiates the appropriate panel for the given ID.
