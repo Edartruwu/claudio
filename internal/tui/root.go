@@ -1898,6 +1898,12 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	m.addMessage(ChatMessage{Type: MsgUser, Content: displayText})
 	m.refreshViewport()
 
+	// Increment inactivity counters for all done agents — this human message
+	// counts as a tick for agents that weren't explicitly messaged this turn.
+	if m.appCtx != nil && m.appCtx.TeamRunner != nil && m.appCtx.Config != nil {
+		m.appCtx.TeamRunner.IncrementInactivity(m.appCtx.Config.GetAgentAutoDeleteAfter())
+	}
+
 	m.streaming = true
 	m.streamText.Reset()
 	m.spinText = "Thinking..."
@@ -4396,7 +4402,7 @@ func (m Model) handleAgentMessage(text string) (tea.Model, tea.Cmd) {
 		// Send to all agents
 		states := m.appCtx.TeamRunner.AllStates()
 		for _, s := range states {
-			mailbox.Send("you", s.Identity.AgentName, teams.Message{
+			_ = m.appCtx.TeamRunner.SendMessage(s.Identity.AgentName, teams.Message{
 				Text:    message,
 				Summary: "from you: " + truncateStr(message, 50),
 			})
@@ -4422,10 +4428,14 @@ func (m Model) handleAgentMessage(text string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	mailbox.Send("you", agentName, teams.Message{
+	if err := m.appCtx.TeamRunner.SendMessage(agentName, teams.Message{
 		Text:    message,
 		Summary: "from you: " + truncateStr(message, 50),
-	})
+	}); err != nil {
+		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Failed to send message: %s", err)})
+		m.refreshViewport()
+		return m, nil
+	}
 	state.AddConversation(teams.ConversationEntry{
 		Time:    time.Now(),
 		Type:    "message_in",
