@@ -10,7 +10,7 @@ import (
 
 // AdvisorConfig specifies an advisor for a team member.
 type AdvisorConfig struct {
-	SubagentType string `json:"subagent_type"`           // resolves to an AgentDefinition (e.g. "backend-senior")
+	SubagentType string `json:"subagent_type,omitempty"` // resolves to an AgentDefinition (e.g. "backend-senior")
 	Model        string `json:"model,omitempty"`         // model override for advisor (e.g. "claude-opus-4-6")
 	MaxUses      int    `json:"max_uses,omitempty"`      // per-session call budget (0 = unlimited)
 }
