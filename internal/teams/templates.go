@@ -8,12 +8,20 @@ import (
 	"strings"
 )
 
+// AdvisorConfig specifies an advisor for a team member.
+type AdvisorConfig struct {
+	SubagentType string `json:"subagent_type"`           // resolves to an AgentDefinition (e.g. "backend-senior")
+	Model        string `json:"model,omitempty"`         // model override for advisor (e.g. "claude-opus-4-6")
+	MaxUses      int    `json:"max_uses,omitempty"`      // per-session call budget (0 = unlimited)
+}
+
 // TeamTemplateMember defines a member slot in a team template.
 type TeamTemplateMember struct {
-	Name                 string `json:"name"`
-	SubagentType         string `json:"subagent_type"`
-	Model                string `json:"model,omitempty"`                  // per-member model override
-	AutoCompactThreshold int    `json:"autoCompactThreshold,omitempty"`   // % context to trigger compact (overrides team-level)
+	Name                 string          `json:"name"`
+	SubagentType         string          `json:"subagent_type"`
+	Model                string          `json:"model,omitempty"`                  // per-member model override
+	AutoCompactThreshold int             `json:"autoCompactThreshold,omitempty"`   // % context to trigger compact (overrides team-level)
+	Advisor              *AdvisorConfig  `json:"advisor,omitempty"`
 }
 
 // TeamTemplate is a reusable team composition stored at ~/.claudio/team-templates/{name}.json.
