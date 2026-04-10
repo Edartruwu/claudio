@@ -88,6 +88,14 @@ Pure Go, zero runtime, no Node.js. `modernc.org/sqlite` keeps it CGO-free.
 
 </td>
 </tr>
+<tr>
+<td valign="top">
+
+### 🧠 Two-Brain Advisor
+Cheap executor (Haiku) does the work; expensive advisor (Opus) consults at PLAN and REVIEW — at most twice per task. Senior judgment at a fraction of the cost.
+
+</td>
+</tr>
 </table>
 
 ---
@@ -1123,6 +1131,8 @@ Template JSON format (`~/.claudio/team-templates/backend-team.json`):
 }
 ```
 
+Each member can optionally include an `advisor` block — a cheap-executor / expensive-advisor split that gives a member access to a senior advisor model at critical decision points without running the whole agent on the expensive model. See [Two-Brain Advisor](#-two-brain-advisor) for the full config reference and cost rationale.
+
 #### Built-in team templates (`~/.claudio/team-templates/`)
 
 Four production-ready templates are included. These define the **worker roster** — not the team lead. The lead is always chosen separately with `/agent` (see [The Perfect Workflow](#the-perfect-workflow)).
@@ -1364,6 +1374,187 @@ This is the right way to get "warm" agents in a team. Instead of wasting time re
 ```
 
 The `/harness` skill accounts for this: Phase 0 now inventories all existing crystallized agents, and Phase 4 explicitly checks whether any existing agent matches each role before creating a new one. Reusing an existing agent is preferred — it brings accumulated memory and avoids fragmenting learnings across duplicate personas.
+
+---
+
+## 🧠 Two-Brain Advisor
+
+The **Two-Brain Advisor** pattern splits the cognitive work of a task into two roles:
+
+| Role | Model | Job |
+|------|-------|-----|
+| **Executor** | Cheap (e.g. Haiku) | Reads files, runs tools, writes code — all the mechanical work |
+| **Advisor** | Expensive (e.g. Opus) | Thinks strategically at two fixed moments; never touches files or runs commands |
+
+The advisor is consulted **at most twice per task**: once when the executor has oriented itself and formed a plan (PLAN mode), and once when the executor believes the task is done (REVIEW mode). Outside those two moments the expensive model is completely idle.
+
+This delivers senior-level judgment at a fraction of the cost of running a senior model for every turn.
+
+### Consultation protocol
+
+The executor calls the built-in `advisor` tool with a structured brief. There are two modes:
+
+**PLAN mode** — called once after orientation, before writing any code:
+
+```
+advisor(
+  mode: "plan",
+  orientation_summary: "Codebase uses repository pattern. The auth module lives in internal/auth/.",
+  proposed_approach:   "Add JWT middleware: 1) parse token 2) inject claims into context 3) gate routes",
+  decision_needed:     "Should I add the middleware at the router level or per-handler?",
+  context_notes:       "No existing middleware abstraction. Two existing protected routes."
+)
+```
+
+**REVIEW mode** — called once after the executor thinks the task is complete:
+
+```
+advisor(
+  mode: "review",
+  original_plan:        "Add JWT middleware at router level, inject claims, gate /api/* routes",
+  execution_summary:    "Added JWTMiddleware in internal/auth/middleware.go, wired in router.go, added 3 tests",
+  outcome_artifacts:    "internal/auth/middleware.go, internal/router/router.go, internal/auth/middleware_test.go",
+  confidence:           "high — tests pass, all routes protected"
+)
+```
+
+### Advisor behavioral rules
+
+The built-in advisor (and the `advisor-sr` agent persona) operates under strict constraints:
+
+- **≤ 100 words** per response — bullet lists, no prose paragraphs
+- **PLAN mode** returns a numbered execution plan with `⚠` risk flags on uncertain steps
+- **REVIEW mode** returns exactly one of three verdicts:
+  - `PASS` — work is complete and correct, executor can declare done
+  - `NEEDS_FIX <what>` — specific problem found; executor must address it
+  - `INCOMPLETE <what>` — original plan item was skipped; executor must finish it
+- **No clarifying questions** — the advisor acts on what it receives
+- **No praise** — only actionable signals
+- **Completeness before correctness** — an incomplete correct solution is worse than a complete imperfect one
+
+The advisor's tool access is intentionally restricted: it can call **WebSearch** and **WebFetch** to look things up, but it cannot read files, run commands, or write to the filesystem. All ground truth comes from the executor's brief.
+
+### Enabling the advisor for a principal agent
+
+Set in `~/.claudio/settings.json` (global) or `.claudio/settings.json` (project-level):
+
+```json
+{
+  "advisor": {
+    "model": "claude-opus-4-6"
+  }
+}
+```
+
+With a custom agent persona and usage cap:
+
+```json
+{
+  "advisor": {
+    "subagentType": "advisor-sr",
+    "model": "claude-opus-4-6",
+    "maxUses": 6
+  }
+}
+```
+
+- `model` — required; the model used for the advisor's reasoning loop
+- `subagentType` — optional; loads a crystallized agent from `.claudio/agents/<name>.md` as the advisor persona
+- `maxUses` — optional; hard cap on advisor calls per session (`0` = unlimited). Default is off (null = advisor disabled).
+
+### Configuring per-member advisors in team templates
+
+Any team member can have its own advisor. Add an `advisor` block to the member entry:
+
+```json
+{
+  "name": "efficient-team",
+  "description": "Haiku executors with Opus advisors — maximum throughput at minimum cost",
+  "members": [
+    {
+      "name": "rafael",
+      "subagent_type": "backend-senior",
+      "model": "claude-haiku-4-5-20251001",
+      "advisor": {
+        "subagent_type": "advisor-sr",
+        "model": "claude-opus-4-6",
+        "max_uses": 4
+      }
+    },
+    {
+      "name": "alex",
+      "subagent_type": "backend-mid",
+      "model": "claude-haiku-4-5-20251001",
+      "advisor": {
+        "subagent_type": "advisor-sr",
+        "model": "claude-opus-4-6",
+        "max_uses": 4
+      }
+    },
+    { "name": "quinn", "subagent_type": "qa",               "model": "claude-haiku-4-5-20251001" },
+    { "name": "orion", "subagent_type": "code-investigator", "model": "claude-haiku-4-5-20251001" }
+  ]
+}
+```
+
+Members without an `advisor` block run without one. QA and code-investigator roles typically don't need advisors — their work is mechanical or read-only.
+
+### The `efficient-team` template
+
+The built-in `efficient-team.json` template puts all workers on Haiku and gives the developers an Opus advisor:
+
+| Member | Executor | Advisor |
+|--------|----------|---------|
+| `rafael` | backend-senior on Haiku | advisor-sr on Opus (max 4 uses) |
+| `alex` | backend-mid on Haiku | advisor-sr on Opus (max 4 uses) |
+| `sam` | backend-jr on Haiku | advisor-sr on Opus (max 4 uses) |
+| `kai` | devops on Haiku | advisor-sr on Opus (max 4 uses) |
+| `quinn` | qa on Haiku | — |
+| `orion` | code-investigator on Haiku | — |
+
+**Cost profile:** every task costs at most 2 Opus calls (plan + review). All other turns run on Haiku. This is dramatically cheaper than running senior agents on Opus for every conversation turn — and produces better outcomes than running junior agents without any strategic guidance.
+
+### Creating a custom advisor agent
+
+Create `~/.claudio/agents/advisor-sr.md` (or `.claudio/agents/advisor-sr.md` for project-scoped):
+
+```markdown
+---
+name: advisor-sr
+description: Senior advisor — strategic PLAN + REVIEW for executor agents
+---
+
+You are a senior engineering advisor. You are consulted at exactly two moments per task:
+PLAN mode (before the executor writes code) and REVIEW mode (after the executor believes it is done).
+
+PLAN mode — return a numbered execution plan:
+1. <step>
+2. <step>  ⚠ <risk if applicable>
+...
+
+REVIEW mode — return exactly one verdict on its own line:
+PASS
+NEEDS_FIX <specific problem>
+INCOMPLETE <which plan item was skipped>
+
+Rules:
+- ≤ 100 words total
+- Bullet lists only, no prose paragraphs
+- No clarifying questions — act on what you receive
+- No praise — only actionable signals
+- Completeness before correctness
+```
+
+### Prompt composition rule
+
+How the advisor's system prompt is assembled depends on whether `subagentType` is set:
+
+| Config | Advisor system prompt |
+|--------|-----------------------|
+| No `subagentType` | Built-in `AdvisorSystemPrompt()` only |
+| `subagentType` set | Agent's persona prompt **+** `AdvisorSystemPrompt()` appended after |
+
+The executor also receives an `AdvisorProtocolSection()` injection: instructions on when to call the `advisor` tool and how to write a well-formed brief.
 
 ---
 
