@@ -4331,14 +4331,7 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 			Type:    MsgSystem,
 			Content: fmt.Sprintf("◐ %s started — %s", name, task),
 		})
-		// Auto-open the Agents panel (without stealing focus) when a background agent starts,
-		// and always restart the refresh ticker so a stale/open panel updates too.
 		if event.Background {
-			if m.activePanelID != PanelAgents {
-				prevFocus := m.focus
-				m.openPanel(PanelAgents)
-				m.focus = prevFocus // restore focus so the user stays in the prompt
-			}
 			return teampanel.ScheduleRefresh()
 		}
 	case "complete":
