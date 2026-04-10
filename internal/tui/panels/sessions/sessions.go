@@ -210,16 +210,17 @@ func (p *Panel) View() string {
 		return ""
 	}
 
-	boxW := min(p.width*85/100, 110)
-	if boxW < 60 {
-		boxW = p.width - 4
+	// Use the full allocated size so the panel scales properly whether rendered
+	// as a drawer (35% width) or any other overlay mode.  The rounded border
+	// adds 1 col on each side and Padding(0,1) adds another 1 col each side,
+	// so innerW = p.width - 4.  Guard against uninitialised sizes.
+	if p.width < 10 || p.height < 5 {
+		return ""
 	}
-	boxH := min(p.height*75/100, 28)
-	if boxH < 12 {
-		boxH = 12
-	}
+	boxW := p.width
+	boxH := p.height
 
-	innerW := boxW - 4 // border + padding
+	innerW := boxW - 4 // border (1+1) + padding (1+1)
 	leftW := innerW * 50 / 100
 	rightW := innerW - leftW - 3
 
