@@ -2295,9 +2295,9 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 
 				var notification string
 				if ev.Type == "complete" {
-					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.AgentName, ev.TeamName, ev.Text, taskInfo, worktreeInfo)
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.AgentName, ev.TeamName, lastNLines(ev.Text, 15, 600), taskInfo, worktreeInfo)
 				} else {
-					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.AgentName, ev.TeamName, ev.Text, taskInfo, worktreeInfo)
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.AgentName, ev.TeamName, lastNLines(ev.Text, 15, 600), taskInfo, worktreeInfo)
 				}
 
 				if m.streaming {
@@ -4150,9 +4150,9 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 				}
 				var notification string
 				if ev.teammateEvent.Type == "complete" {
-					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, ev.teammateEvent.Text, taskInfo, worktreeInfo)
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, lastNLines(ev.teammateEvent.Text, 15, 600), taskInfo, worktreeInfo)
 				} else {
-					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, ev.teammateEvent.Text, taskInfo, worktreeInfo)
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, lastNLines(ev.teammateEvent.Text, 15, 600), taskInfo, worktreeInfo)
 				}
 				m.messageQueue = append(m.messageQueue, notification)
 			}

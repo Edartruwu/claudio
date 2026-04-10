@@ -11,6 +11,18 @@ import (
 	"github.com/Abraxas-365/claudio/internal/teams"
 )
 
+const teammateResultInstruction = `
+
+## Result format (IMPORTANT)
+When you finish, your LAST message must be a concise summary of ≤15 lines structured exactly as:
+
+### Result
+- **What was done**: one-line summary of the outcome
+- **Files changed**: list changed files (or "none")
+- **Issues / blockers**: anything unexpected, or "none"
+
+This section is extracted as the notification shown to the orchestrator. Keep it tight — no narration of tool calls, no repeating the task description.`
+
 // SpawnTeammateTool spawns a named team member through the TeammateRunner,
 // auto-creating a default team when none is active.
 type SpawnTeammateTool struct {
@@ -262,6 +274,8 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		block.WriteString("---\n\n")
 		prompt = block.String() + prompt
 	}
+
+	agentDef.SystemPrompt += teammateResultInstruction
 
 	// Upsert semantics: whether the name is new or previously finished, always spawn fresh.
 	// Spawn → AddMember removes the old terminal entry and creates a clean one;
