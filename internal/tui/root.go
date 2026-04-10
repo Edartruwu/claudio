@@ -1673,13 +1673,22 @@ An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to ad
 		// Auto-instantiate the team so SpawnTeammate works immediately without
 		// requiring the model to call InstantiateTeam first.
 		if m.appCtx != nil && m.appCtx.TeamManager != nil && m.appCtx.TeamRunner != nil {
+			// Eagerly start session so we have a stable ID for the team name.
+			if m.session != nil && m.session.Current() == nil {
+				m.session.Start(m.model)
+				m.syncMainWindowState()
+			}
 			sessionID := ""
 			if m.session != nil && m.session.Current() != nil {
 				sessionID = m.session.Current().ID
 			}
 			teamName := msg.TemplateName
-			if sessionID != "" && len(sessionID) >= 8 {
-				teamName = msg.TemplateName + "-" + sessionID[:8]
+			if sessionID != "" {
+				sfx := sessionID
+				if len(sfx) > 8 {
+					sfx = sfx[:8]
+				}
+				teamName = msg.TemplateName + "-" + sfx
 			}
 			if _, err := m.appCtx.TeamManager.CreateTeam(teamName, msg.Description, sessionID, ""); err != nil {
 				// Team may already exist; proceed anyway.
@@ -1796,8 +1805,12 @@ An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to ad
 				sessionID = m.session.Current().ID
 			}
 			teamName := msg.TemplateName
-			if sessionID != "" && len(sessionID) >= 8 {
-				teamName = msg.TemplateName + "-" + sessionID[:8]
+			if sessionID != "" {
+				sfx := sessionID
+				if len(sfx) > 8 {
+					sfx = sfx[:8]
+				}
+				teamName = msg.TemplateName + "-" + sfx
 			}
 			if _, err := appCtx.TeamManager.CreateTeam(teamName, msg.Description, sessionID, ""); err != nil {
 				// Team may already exist; proceed anyway.
