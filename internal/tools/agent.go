@@ -199,6 +199,25 @@ func SubAgentModelFromContext(ctx context.Context) string {
 	return v
 }
 
+type ctxKeyExtraTools struct{}
+
+// WithExtraTool appends a Tool to the list of extra tools carried in context.
+// Extra tools are injected into the per-agent registry in runSubAgentWithMemory
+// before the agent runs. Multiple calls accumulate tools.
+func WithExtraTool(ctx context.Context, tool Tool) context.Context {
+	existing, _ := ctx.Value(ctxKeyExtraTools{}).([]Tool)
+	updated := make([]Tool, len(existing)+1)
+	copy(updated, existing)
+	updated[len(existing)] = tool
+	return context.WithValue(ctx, ctxKeyExtraTools{}, updated)
+}
+
+// ExtraToolsFromContext returns all extra tools stored in context via WithExtraTool.
+func ExtraToolsFromContext(ctx context.Context) []Tool {
+	tools, _ := ctx.Value(ctxKeyExtraTools{}).([]Tool)
+	return tools
+}
+
 // AgentTool spawns sub-agents for complex, multi-step tasks.
 type AgentTool struct {
 	// cachedDescription and cachedSchema are computed once on first call and reused.

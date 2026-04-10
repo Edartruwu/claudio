@@ -11,6 +11,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/git"
+	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
 // TeammateProgress tracks a teammate's work activity.
@@ -79,6 +80,10 @@ type TeammateState struct {
 	// completes. Used to resume the conversation when a new message arrives.
 	EngineMessages []api.Message
 
+	// AdvisorConfig holds the advisor specification for this agent, if any.
+	// Set by Spawn() and used by the context decorator to inject the advisor tool.
+	AdvisorConfig *AdvisorConfig
+
 	// InactivityCount tracks how many human messages have been sent without
 	// this agent receiving any message. Incremented by IncrementInactivity;
 	// reset to 0 by SendMessage when a message is routed to this agent.
@@ -92,6 +97,14 @@ type TeammateState struct {
 	cancel context.CancelFunc
 	mu     sync.Mutex
 	idleCh chan struct{} // closed when teammate becomes idle
+}
+
+// GetEngineMessages returns the current engine message history, thread-safe.
+// Used by the advisor tool to get the executor's live conversation transcript.
+func (s *TeammateState) GetEngineMessages() []api.Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.EngineMessages
 }
 
 // AddConversation appends an entry to the agent's conversation, thread-safe.
@@ -310,16 +323,17 @@ type SpawnConfig struct {
 	TeamName             string
 	AgentName            string
 	Prompt               string
-	System               string   // system prompt override
-	Model                string   // model override
-	SubagentType         string   // agent definition used (e.g. "backend-senior", "prab")
-	MaxTurns             int      // optional max agentic turns (0 = unlimited)
-	Isolation            string   // "worktree" for git worktree isolation
-	MemoryDir            string   // optional agent-scoped memory directory (for crystallized agents)
-	Foreground           bool     // true when the lead is blocking on WaitForOne — suppresses task-notification
-	TaskIDs              []string // task IDs to auto-complete when agent finishes
-	AutoCompactThreshold int      // % of context window to trigger full compact (0 = engine default 95%)
-	ParentAgentID        string   // non-empty when spawned by another teammate
+	System               string         // system prompt override
+	Model                string         // model override
+	SubagentType         string         // agent definition used (e.g. "backend-senior", "prab")
+	MaxTurns             int            // optional max agentic turns (0 = unlimited)
+	Isolation            string         // "worktree" for git worktree isolation
+	MemoryDir            string         // optional agent-scoped memory directory (for crystallized agents)
+	Foreground           bool           // true when the lead is blocking on WaitForOne — suppresses task-notification
+	TaskIDs              []string       // task IDs to auto-complete when agent finishes
+	AutoCompactThreshold int            // % of context window to trigger full compact (0 = engine default 95%)
+	ParentAgentID        string         // non-empty when spawned by another teammate
+	AdvisorConfig        *AdvisorConfig // optional; if set, advisor tool is injected into executor
 }
 
 // Spawn starts a new teammate goroutine.
@@ -344,6 +358,20 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 			}
 			if cfg.AutoCompactThreshold <= 0 {
 				cfg.AutoCompactThreshold = team.AutoCompactThreshold
+			}
+		}
+	}
+
+	// Resolve advisor config: explicit SpawnConfig value takes priority; fall back
+	// to the per-member value stored by InstantiateTeam (same pattern as AutoCompactThreshold).
+	if cfg.AdvisorConfig == nil {
+		if team, ok := r.manager.GetTeam(cfg.TeamName); ok {
+			agentID := FormatAgentID(cfg.AgentName, cfg.TeamName)
+			for _, mem := range team.Members {
+				if mem.Identity.AgentID == agentID && mem.AdvisorConfig != nil {
+					cfg.AdvisorConfig = mem.AdvisorConfig
+					break
+				}
 			}
 		}
 	}
@@ -374,6 +402,7 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		AutoCompactThreshold: cfg.AutoCompactThreshold,
 		MemoryDir:            cfg.MemoryDir,
 		Foreground:           cfg.Foreground,
+		AdvisorConfig:        cfg.AdvisorConfig,
 		Status:       StatusWorking,
 		StartedAt:    time.Now(),
 		cancel:       cancel,
@@ -561,6 +590,11 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			"IMPORTANT: When you have finished making changes, you MUST commit them with git before returning your final response. "+
 			"Stage all modified files and create a descriptive commit. This is required so your work can be reviewed and merged — "+
 			"uncommitted changes in a worktree cannot be diffed or merged by the team lead.", state.WorktreePath, cwd)
+	}
+
+	// Append advisor protocol section when an advisor is configured.
+	if cfg.AdvisorConfig != nil {
+		system += "\n\n" + prompts.AdvisorProtocolSection()
 	}
 
 	// Persist the resolved system prompt so revival can reuse it verbatim.

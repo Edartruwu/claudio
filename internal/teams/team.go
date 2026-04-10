@@ -36,6 +36,7 @@ type TeamMember struct {
 	Prompt               string           `json:"prompt,omitempty"`
 	SubagentType         string           `json:"subagent_type,omitempty"`        // agent definition used (e.g. "backend-senior")
 	AutoCompactThreshold int              `json:"autoCompactThreshold,omitempty"` // % context to trigger compact (overrides team-level)
+	AdvisorConfig        *AdvisorConfig   `json:"advisor,omitempty"`              // optional advisor config (injected at spawn)
 }
 
 // TeammateIdentity uniquely identifies an agent within a team.
@@ -195,6 +196,25 @@ func (m *Manager) SetAutoCompactThreshold(teamName string, threshold int) {
 	if team, ok := m.active[teamName]; ok {
 		team.AutoCompactThreshold = threshold
 		m.saveConfig(team)
+	}
+}
+
+// SetMemberAdvisorConfig stores an AdvisorConfig on an existing team member.
+// Called by InstantiateTeam after AddMember to persist the advisor spec.
+func (m *Manager) SetMemberAdvisorConfig(teamName, agentName string, cfg *AdvisorConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	team, ok := m.active[teamName]
+	if !ok {
+		return
+	}
+	agentID := FormatAgentID(agentName, teamName)
+	for _, mem := range team.Members {
+		if mem.Identity.AgentID == agentID {
+			mem.AdvisorConfig = cfg
+			m.saveConfig(team)
+			return
+		}
 	}
 }
 

@@ -331,6 +331,24 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		}
 		// Team members are depth 1; their Explore sub-agents will be depth 2
 		ctx = tools.WithAgentDepth(ctx, 1)
+		// Inject advisor tool when the member was spawned with an advisor config.
+		if state.AdvisorConfig != nil {
+			advisorDef := agents.GetAgent(state.AdvisorConfig.SubagentType)
+			advisorModel := state.AdvisorConfig.Model
+			if advisorModel == "" {
+				advisorModel = advisorDef.Model
+			}
+			count := 0
+			advisorTool := tools.NewAdvisorTool(tools.AdvisorToolConfig{
+				Definition:  advisorDef,
+				Model:       advisorModel,
+				MaxUses:     state.AdvisorConfig.MaxUses,
+				UsedCount:   &count,
+				GetMessages: state.GetEngineMessages,
+				Client:      apiClient,
+			})
+			ctx = tools.WithExtraTool(ctx, advisorTool)
+		}
 		return ctx
 	})
 
@@ -557,6 +575,13 @@ func resolveModelAlias(alias string) string {
 func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string) (string, error) {
 	// Clone the registry so sub-agent has its own copy
 	subRegistry := parentRegistry.Clone()
+
+	// Inject any per-agent extra tools (e.g. AdvisorTool) placed in context by
+	// the context decorator. These are registered into the cloned registry so they
+	// are only available to this specific agent run.
+	for _, t := range tools.ExtraToolsFromContext(ctx) {
+		subRegistry.Register(t)
+	}
 
 	// Depth tracking (via context) prevents infinite recursion — no need to
 	// remove the Agent tool entirely. Teammates can still spawn read-only

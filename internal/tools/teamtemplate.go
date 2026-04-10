@@ -165,6 +165,9 @@ func (t *InstantiateTeamTool) Execute(ctx context.Context, input json.RawMessage
 			model = tmpl.Model
 		}
 		_, _ = t.Manager.AddMember(teamName, m.Name, model, "", m.SubagentType, m.AutoCompactThreshold)
+		if m.Advisor != nil {
+			t.Manager.SetMemberAdvisorConfig(teamName, m.Name, m.Advisor)
+		}
 		line := fmt.Sprintf("  - %s (%s)", m.Name, m.SubagentType)
 		if model != "" {
 			line += " model=" + model
