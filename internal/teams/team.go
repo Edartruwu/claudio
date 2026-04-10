@@ -37,6 +37,7 @@ type TeamMember struct {
 	SubagentType         string           `json:"subagent_type,omitempty"`        // agent definition used (e.g. "backend-senior")
 	AutoCompactThreshold int              `json:"autoCompactThreshold,omitempty"` // % context to trigger compact (overrides team-level)
 	AdvisorConfig        *AdvisorConfig   `json:"advisor,omitempty"`              // optional advisor config (injected at spawn)
+	SystemPrompt         string           `json:"system_prompt,omitempty"`        // resolved system prompt (for revival after eviction)
 }
 
 // TeammateIdentity uniquely identifies an agent within a team.
@@ -277,6 +278,25 @@ func (m *Manager) UpdateMemberStatus(teamName, agentID string, status MemberStat
 	for _, mem := range team.Members {
 		if mem.Identity.AgentID == agentID {
 			mem.Status = status
+			break
+		}
+	}
+	m.saveConfig(team)
+}
+
+// UpdateMemberSystemPrompt persists a member's resolved system prompt.
+func (m *Manager) UpdateMemberSystemPrompt(teamName, agentID, systemPrompt string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	team, ok := m.active[teamName]
+	if !ok {
+		return
+	}
+
+	for _, mem := range team.Members {
+		if mem.Identity.AgentID == agentID {
+			mem.SystemPrompt = systemPrompt
 			break
 		}
 	}

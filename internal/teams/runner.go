@@ -602,6 +602,9 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	state.SystemPrompt = system
 	state.mu.Unlock()
 
+	// Also persist to disk so we can reconstruct state after eviction.
+	r.manager.UpdateMemberSystemPrompt(cfg.TeamName, state.Identity.AgentID, system)
+
 	// Install a messages sink so we capture the engine's final history for
 	// potential revival. The sink is honored by runSubAgentWithMemory.
 	ctx = WithMessagesSink(ctx, func(msgs []api.Message) {
@@ -884,6 +887,14 @@ func (r *TeammateRunner) getMailbox(teamName string) *Mailbox {
 	return r.mailboxes[teamName]
 }
 
+// getMailboxLocked is like getMailbox but assumes r.mu is already held.
+func (r *TeammateRunner) getMailboxLocked(teamName string) *Mailbox {
+	if teamName == "" {
+		return nil
+	}
+	return r.mailboxes[teamName]
+}
+
 // Kill terminates a teammate.
 func (r *TeammateRunner) Kill(agentID string) error {
 	r.mu.RLock()
@@ -1054,7 +1065,12 @@ func (r *TeammateRunner) SetRunAgentResume(fn RunAgentResumeFunc) {
 func (r *TeammateRunner) Revive(agentName, newMessage string) error {
 	state, ok := r.GetStateByName(agentName)
 	if !ok {
-		return fmt.Errorf("agent %q not found", agentName)
+		// State was evicted by IncrementInactivity — try to reconstruct
+		// from the persisted team config so the agent can be revived.
+		state, ok = r.reconstructStateFromConfig(agentName)
+		if !ok {
+			return fmt.Errorf("agent %q not found", agentName)
+		}
 	}
 
 	state.mu.Lock()
@@ -1177,6 +1193,46 @@ func (r *TeammateRunner) SendMessage(agentName string, msg Message) error {
 	return nil
 }
 
+// reconstructStateFromConfig rebuilds a minimal TeammateState from the
+// persisted TeamConfig. This is used by Revive when the in-memory state was
+// evicted by IncrementInactivity.
+func (r *TeammateRunner) reconstructStateFromConfig(agentName string) (*TeammateState, bool) {
+	for _, team := range r.manager.ListTeams() {
+		for _, mem := range team.Members {
+			if mem.Identity.AgentName != agentName {
+				continue
+			}
+
+			systemPrompt := mem.SystemPrompt
+			// Best-effort fallback: if the system prompt was never persisted
+			// (agent spawned before this fix), leave it empty — the agent
+			// will still run, just without the original system prompt.
+
+			state := &TeammateState{
+				Identity:             mem.Identity,
+				TeamName:             team.Name,
+				Prompt:               mem.Prompt,
+				Model:                mem.Model,
+				AutoCompactThreshold: mem.AutoCompactThreshold,
+				Status:               StatusComplete,
+				IsIdle:               true,
+				SystemPrompt:         systemPrompt,
+				AdvisorConfig:        mem.AdvisorConfig,
+				idleCh:               make(chan struct{}),
+			}
+			// The idleCh should be closed since the agent is idle.
+			close(state.idleCh)
+
+			r.mu.Lock()
+			r.teammates[mem.Identity.AgentID] = state
+			r.mu.Unlock()
+
+			return state, true
+		}
+	}
+	return nil, false
+}
+
 // IncrementInactivity increments the inactivity counter for every idle
 // (done) agent. When an agent's counter reaches threshold it is removed from
 // memory. A threshold of -1 disables auto-deletion.
@@ -1190,7 +1246,13 @@ func (r *TeammateRunner) IncrementInactivity(threshold int) {
 		if state.IsIdle {
 			state.InactivityCount++
 			if threshold != -1 && state.InactivityCount >= threshold {
-				toDelete = append(toDelete, id)
+				// Don't evict agents that have unread mailbox messages —
+				// they need to stay so Revive can wake them up.
+				if mb := r.getMailboxLocked(state.TeamName); mb != nil && mb.UnreadCount(state.Identity.AgentName) > 0 {
+					state.InactivityCount = 0
+				} else {
+					toDelete = append(toDelete, id)
+				}
 			}
 		}
 		state.mu.Unlock()
