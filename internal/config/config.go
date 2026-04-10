@@ -79,6 +79,9 @@ type Settings struct {
 	// Sidebar configuration
 	Sidebar *SidebarConfig `json:"sidebar,omitempty"`
 
+	// Advisor settings (nil = advisor is off)
+	Advisor *AdvisorSettings `json:"advisor,omitempty"`
+
 	// AgentAutoDeleteAfter controls how many human messages of inactivity cause
 	// a done agent to be removed from memory. Default: 3. Set to -1 to never
 	// auto-delete.
@@ -90,6 +93,13 @@ type SidebarConfig struct {
 	Enabled bool     `json:"enabled"`
 	Width   int      `json:"width,omitempty"` // default 32
 	Blocks  []string `json:"blocks,omitempty"` // e.g. ["files","todos","tokens"]
+}
+
+// AdvisorSettings configures the advisor agent.
+type AdvisorSettings struct {
+	SubagentType string `json:"subagentType,omitempty"`
+	Model        string `json:"model,omitempty"`
+	MaxUses      int    `json:"maxUses,omitempty"` // 0 = unlimited
 }
 
 // LspServerConfig defines an LSP server connection.
@@ -369,6 +379,9 @@ func mergeFromFile(settings *Settings, path string) {
 	}
 	if overlay.Sidebar != nil {
 		settings.Sidebar = overlay.Sidebar
+	}
+	if overlay.Advisor != nil {
+		settings.Advisor = overlay.Advisor
 	}
 	if overlay.AgentAutoDeleteAfter != 0 {
 		settings.AgentAutoDeleteAfter = overlay.AgentAutoDeleteAfter
