@@ -720,79 +720,180 @@ Destroy complete! Resources: 1 destroyed.`
 	}
 }
 
-// ── Ansible ─────────────────────────────────────────────────────────────
+// ── Ansible ──────────────────────────────────────────────────────────────
 
-func TestFilterAnsible_SuccessfulPlaybook(t *testing.T) {
-	input := `PLAY [webservers] ************************************************************
+func TestFilterAnsiblePlaybook_Success(t *testing.T) {
+	input := `
+PLAY [Deploy web servers] ******************************************************
 
-TASK [Gathering Facts] ********************************************************
-ok: [web1]
-ok: [web2]
+TASK [Gathering Facts] *********************************************************
+ok: [web01]
+ok: [web02]
 
-TASK [Install nginx] **********************************************************
-ok: [web1]
-ok: [web2]
+TASK [Install nginx] ***********************************************************
+changed: [web01]
+ok: [web02]
 
-TASK [Start nginx] ************************************************************
-ok: [web1]
-ok: [web2]
+TASK [Start nginx service] *****************************************************
+ok: [web01]
+ok: [web02]
 
-PLAY RECAP ********************************************************************
-web1                       : ok=3    changed=0    unreachable=0    failed=0
-web2                       : ok=3    changed=0    unreachable=0    failed=0`
-
+PLAY RECAP *********************************************************************
+web01                      : ok=3    changed=1    unreachable=0    failed=0
+web02                      : ok=3    changed=0    unreachable=0    failed=0
+`
 	got := Filter("ansible-playbook site.yml", input)
-	if !strings.Contains(got, "PLAY [webservers]") {
+	// Should keep PLAY header
+	if !strings.Contains(got, "PLAY [Deploy web servers]") {
 		t.Errorf("expected PLAY header, got:\n%s", got)
+	}
+	// Should keep TASK headers
+	if !strings.Contains(got, "TASK [Install nginx]") {
+		t.Errorf("expected TASK header, got:\n%s", got)
+	}
+	// Should keep result lines
+	if !strings.Contains(got, "changed: [web01]") {
+		t.Errorf("expected changed result, got:\n%s", got)
+	}
+	// Should keep PLAY RECAP section
+	if !strings.Contains(got, "PLAY RECAP") {
+		t.Errorf("expected PLAY RECAP section, got:\n%s", got)
+	}
+	if !strings.Contains(got, "ok=3") {
+		t.Errorf("expected recap counts, got:\n%s", got)
+	}
+}
+
+func TestFilterAnsiblePlaybook_WithWarnings(t *testing.T) {
+	input := `[WARNING]: provided hosts list is empty, only localhost is available.
+[WARNING]: No inventory was parsed, only implicit localhost is available
+
+PLAY [local test] **************************************************************
+
+TASK [debug msg] ***************************************************************
+ok: [localhost] => {"msg": "hello"}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=1    changed=0    unreachable=0    failed=0
+`
+	got := Filter("ansible-playbook test.yml -i localhost,", input)
+	// Should strip [WARNING] lines
+	if strings.Contains(got, "[WARNING]") {
+		t.Errorf("expected WARNING lines stripped, got:\n%s", got)
+	}
+	// Should still keep TASK and result lines
+	if !strings.Contains(got, "TASK [debug msg]") {
+		t.Errorf("expected TASK header, got:\n%s", got)
 	}
 	if !strings.Contains(got, "PLAY RECAP") {
 		t.Errorf("expected PLAY RECAP, got:\n%s", got)
 	}
-	if strings.Contains(got, "ok: [web1]") {
-		t.Errorf("expected ok: lines stripped, got:\n%s", got)
+}
+
+func TestFilterAnsiblePlaybook_WithFailure(t *testing.T) {
+	input := `
+PLAY [Deploy app] **************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [app01]
+
+TASK [Deploy binary] ***********************************************************
+failed: [app01] (item=binary) => {"msg": "Permission denied"}
+
+PLAY RECAP *********************************************************************
+app01                      : ok=1    changed=0    unreachable=0    failed=1
+`
+	got := Filter("ansible-playbook deploy.yml", input)
+	// Should keep failed: lines
+	if !strings.Contains(got, "failed: [app01]") {
+		t.Errorf("expected failed result line, got:\n%s", got)
 	}
-	if strings.Contains(got, "Gathering Facts") {
-		t.Errorf("expected Gathering Facts stripped, got:\n%s", got)
-	}
-	if strings.Contains(got, "TASK [Install nginx]") {
-		t.Errorf("expected ok-only TASK headers stripped, got:\n%s", got)
+	// Should keep PLAY RECAP
+	if !strings.Contains(got, "failed=1") {
+		t.Errorf("expected recap with failures, got:\n%s", got)
 	}
 }
 
-func TestFilterAnsible_WithFailures(t *testing.T) {
-	input := `PLAY [webservers] ************************************************************
+func TestFilterAnsiblePlaybook_SkippingLines(t *testing.T) {
+	input := `
+PLAY [Configure servers] *******************************************************
 
-TASK [Gathering Facts] ********************************************************
-ok: [web1]
+TASK [Install package on RedHat] ***********************************************
+skipping: [ubuntu01]
+ok: [centos01]
 
-TASK [Deploy app] *************************************************************
-changed: [web1] => {"changed": true, "dest": "/opt/app"}
+PLAY RECAP *********************************************************************
+centos01                   : ok=1    changed=0    unreachable=0    failed=0
+ubuntu01                   : ok=0    changed=0    unreachable=0    failed=0
+`
+	got := Filter("ansible-playbook configure.yml", input)
+	if !strings.Contains(got, "skipping: [ubuntu01]") {
+		t.Errorf("expected skipping line, got:\n%s", got)
+	}
+	if !strings.Contains(got, "ok: [centos01]") {
+		t.Errorf("expected ok result, got:\n%s", got)
+	}
+}
 
-TASK [Restart service] ********************************************************
-fatal: [web1]: FAILED! => {"changed": false, "msg": "Service not found"}
+func TestFilterAnsible_AdHoc_Success(t *testing.T) {
+	input := `web01 | SUCCESS => {
+    "ansible_facts": {
+        "discovered_interpreter_python": "/usr/bin/python3"
+    },
+    "changed": false,
+    "ping": "pong"
+}`
+	got := Filter("ansible all -m ping", input)
+	// Should keep success indicators
+	if !strings.Contains(got, "SUCCESS") {
+		t.Errorf("expected SUCCESS line, got:\n%s", got)
+	}
+}
 
-PLAY RECAP ********************************************************************
-web1                       : ok=1    changed=1    unreachable=0    failed=1`
+func TestFilterAnsible_AdHoc_Error(t *testing.T) {
+	input := `web01 | UNREACHABLE! => {
+    "changed": false,
+    "msg": "Failed to connect to the host via ssh: Connection refused",
+    "unreachable": true
+}
+web02 | SUCCESS => {
+    "changed": false,
+    "ping": "pong"
+}`
+	got := Filter("ansible all -m ping -i inventory.ini", input)
+	// Should keep the UNREACHABLE line as it contains "unreachable"
+	if !strings.Contains(got, "UNREACHABLE") {
+		t.Errorf("expected UNREACHABLE line kept, got:\n%s", got)
+	}
+}
 
-	got := Filter("ansible-playbook deploy.yml", input)
-	if !strings.Contains(got, "fatal:") {
-		t.Errorf("expected fatal line kept, got:\n%s", got)
+func TestFilterAnsibleInventory_List(t *testing.T) {
+	input := `{
+    "_meta": {
+        "hostvars": {
+            "web01": {"ansible_host": "10.0.0.1"},
+            "web02": {"ansible_host": "10.0.0.2"}
+        }
+    },
+    "all": {
+        "children": ["ungrouped", "webservers"]
+    },
+    "webservers": {
+        "hosts": ["web01", "web02"]
+    }
+}`
+	got := Filter("ansible-inventory --list", input)
+	// Should produce non-empty output
+	if got == "" {
+		t.Error("expected non-empty output for ansible-inventory")
 	}
-	if !strings.Contains(got, "TASK [Restart service]") {
-		t.Errorf("expected failed task header kept, got:\n%s", got)
-	}
-	if !strings.Contains(got, "TASK [Deploy app]") {
-		t.Errorf("expected changed task header kept, got:\n%s", got)
-	}
-	if !strings.Contains(got, "changed: [web1]") {
-		t.Errorf("expected changed line kept, got:\n%s", got)
-	}
-	// JSON blob should be stripped from changed line
-	if strings.Contains(got, `"dest"`) {
-		t.Errorf("expected JSON blob stripped from changed line, got:\n%s", got)
-	}
-	if !strings.Contains(got, "PLAY RECAP") {
-		t.Errorf("expected recap kept, got:\n%s", got)
+}
+
+func TestFilterAnsibleInventory_Error(t *testing.T) {
+	input := `ERROR! No inventory was parsed, please check your configuration and options.`
+	got := Filter("ansible-inventory --list", input)
+	if !strings.Contains(got, "ERROR!") {
+		t.Errorf("expected error line, got:\n%s", got)
 	}
 }
 

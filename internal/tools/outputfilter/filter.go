@@ -70,8 +70,10 @@ func filterByCommand(cmd, output string) (string, bool) {
 		return filterPrisma(sub, output)
 	case "terraform":
 		return filterTerraform(sub, output)
-	case "ansible", "ansible-playbook":
-		return filterAnsible(sub, output)
+	case "ansible-playbook", "ansible-inventory":
+		return filterAnsible(base, output)
+	case "ansible":
+		return filterAnsible(base, output)
 	case "eslint":
 		return filterEslint(output), true
 	case "tsc":
