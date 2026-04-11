@@ -43,274 +43,104 @@ func ChatPage(projectPath string, sessionID string, sessions []SessionInfo, mess
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex h-screen overflow-hidden bg-base-100\" id=\"chat-app\" data-project=\"")
+			templ_7745c5c3_Err = AppShell(projectPath, getActiveSessionTitle(sessions), "", sessions, ChatContent(projectPath, sessionID, sessions, messages)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(projectPath)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 7, Col: 97}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" data-session=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var4 string
-			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(sessionID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 7, Col: 124}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"><!-- LEFT: Entity Nav Sidebar (280px, hidden on mobile) --><aside id=\"entity-nav\" class=\"w-[280px] flex-none flex flex-col bg-base-200 border-r border-base-300 overflow-y-auto hidden lg:flex\"><!-- Sidebar header: back to home + project name --><div class=\"flex items-center gap-2 p-3 border-b border-base-300\"><a href=\"/\" class=\"btn btn-ghost btn-xs\">←</a> <span class=\"text-xs font-bold truncate\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var5 string
-			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(projectPath)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 14, Col: 59}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</span></div><!-- SESSIONS section --><div class=\"p-2\"><div class=\"flex items-center justify-between px-2 py-1\"><span class=\"text-[10px] font-bold uppercase tracking-widest text-base-content/40\">Sessions</span> <button onclick=\"createSession()\" class=\"btn btn-ghost btn-xs text-base-content/60\">+</button></div><div id=\"session-list\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, s := range sessions {
-				var templ_7745c5c3_Var6 = []any{"flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-base-300 transition-colors", templ.KV("bg-base-300 border-l-2 border-[--color-session]", s.Active)}
-				templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var6...)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, templ.ComponentScript{Call: fmt.Sprintf("switchSession('%s')", s.ID)})
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<a class=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var7 string
-				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var6).String())
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 1, Col: 0}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" onclick=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var8 templ.ComponentScript = templ.ComponentScript{Call: fmt.Sprintf("switchSession('%s')", s.ID)}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8.Call)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" data-id=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var9 string
-				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(s.ID)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 28, Col: 22}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var10 = []any{"w-1.5 h-1.5 rounded-full flex-shrink-0", templ.KV("bg-yellow-500", s.State == "streaming"), templ.KV("bg-orange-500", s.State == "approval"), templ.KV("bg-green-500", s.Active), templ.KV("bg-gray-500", s.State == "idle")}
-				templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var10...)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span class=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var11 string
-				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var10).String())
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 1, Col: 0}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\"></span> <span class=\"flex-1 text-sm truncate\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var12 string
-				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(s.Title)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 31, Col: 55}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</span> <span class=\"badge badge-ghost badge-xs\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var13 string
-				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", s.MsgCount))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 32, Col: 80}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span><div class=\"flex gap-1 opacity-0 hover:opacity-100 transition-opacity\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, templ.ComponentScript{Call: fmt.Sprintf("event.stopPropagation();renameSession('%s')", s.ID)})
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<button class=\"btn-icon text-xs\" onclick=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var14 templ.ComponentScript = templ.ComponentScript{Call: fmt.Sprintf("event.stopPropagation();renameSession('%s')", s.ID)}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14.Call)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" title=\"Rename\">✎</button> ")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, templ.ComponentScript{Call: fmt.Sprintf("event.stopPropagation();deleteSession('%s')", s.ID)})
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<button class=\"btn-icon text-xs text-red-500\" onclick=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var15 templ.ComponentScript = templ.ComponentScript{Call: fmt.Sprintf("event.stopPropagation();deleteSession('%s')", s.ID)}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15.Call)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" title=\"Delete\">×</button></div></a>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div></div><!-- AGENTS section (populated via htmx) --><div class=\"p-2 border-t border-base-300\"><div class=\"flex items-center justify-between px-2 py-1\"><span class=\"text-[10px] font-bold uppercase tracking-widest text-base-content/40\">Agents</span></div><div id=\"nav-agents-list\" hx-get=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs("/api/nav/agents?project=" + projectPath)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 48, Col: 56}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" hx-trigger=\"load, every 5s\" hx-swap=\"innerHTML\"><p class=\"text-xs px-2 text-base-content/40\">No active agents</p></div></div><!-- TEAMS section (populated via htmx) --><div class=\"p-2 border-t border-base-300\"><div class=\"flex items-center justify-between px-2 py-1\"><span class=\"text-[10px] font-bold uppercase tracking-widest text-base-content/40\">Teams</span></div><div id=\"nav-teams-list\" hx-get=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var17 string
-			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs("/api/nav/teams?project=" + projectPath)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 61, Col: 55}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" hx-trigger=\"load, every 10s\" hx-swap=\"innerHTML\"><p class=\"text-xs px-2 text-base-content/40\">No active teams</p></div></div><!-- TASKS section (existing tasks panel logic) --><div class=\"p-2 border-t border-base-300\"><div class=\"flex items-center justify-between px-2 py-1\"><span class=\"text-[10px] font-bold uppercase tracking-widest text-base-content/40\">Tasks</span></div><div id=\"nav-tasks-list\" hx-get=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var18 string
-			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs("/api/panel/tasks?session_id=" + sessionID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 74, Col: 58}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" hx-trigger=\"load\" hx-swap=\"innerHTML\"></div></div></aside><!-- CENTER: Main chat area (flex-1) --><div class=\"flex-1 flex flex-col min-w-0 overflow-hidden\"><!-- Sidebar overlay for mobile --><div class=\"sidebar-overlay\" id=\"sidebar-overlay\" onclick=\"closeSidebar()\"></div><!-- Main chat area wrapper --><div class=\"chat-main-wrap\"><header class=\"chat-header\"><button class=\"mobile-menu-btn\" id=\"mobile-menu-btn\" onclick=\"toggleSidebar()\" aria-label=\"Sessions\">&#9776;</button> <span class=\"chat-session-title\" id=\"chat-session-title\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, s := range sessions {
-				if s.Active {
-					var templ_7745c5c3_Var19 string
-					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(s.Title)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 94, Col: 18}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</span> <span class=\"header-project-path\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(projectPath)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 98, Col: 53}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</span><div class=\"header-actions\"><div class=\"panel-toggles\"><button class=\"panel-toggle\" onclick=\"togglePanel('agents')\" id=\"pt-agents\">Agents</button> <button class=\"panel-toggle\" onclick=\"togglePanel('analytics')\" id=\"pt-analytics\">Stats</button> <button class=\"panel-toggle\" onclick=\"togglePanel('tasks')\" id=\"pt-tasks\">Tasks</button> <button class=\"panel-toggle\" onclick=\"togglePanel('config')\" id=\"pt-config\">Config</button> <button class=\"panel-toggle\" onclick=\"togglePanel('tools')\" id=\"pt-tools\">Tools</button></div><button class=\"mobile-panel-btn\" id=\"mobile-panel-btn\" onclick=\"toggleMobileDrawer()\" aria-label=\"Panels\">&#8943;</button></div></header><div class=\"chat-body\"><div class=\"chat-main\" id=\"chat-main\"><div id=\"messages\" class=\"messages-area\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, msg := range messages {
-				if msg.Role == "user" {
-					templ_7745c5c3_Err = UserMessage(msg.Content).Render(ctx, templ_7745c5c3_Buffer)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
-					templ_7745c5c3_Err = AssistantMessage(msg.Content).Render(ctx, templ_7745c5c3_Buffer)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</div><div id=\"stream-area\" class=\"stream-area\"></div><div id=\"approval-area\"></div><div class=\"chat-input-bar\"><div class=\"ac-popup\" id=\"ac-popup\"></div><div id=\"image-preview\" class=\"image-preview\"></div><div id=\"chat-form\" class=\"chat-input-form\"><button type=\"button\" class=\"btn-icon\" id=\"attach-btn\" title=\"Attach image\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48\"></path></svg></button> <input type=\"file\" id=\"image-input\" accept=\"image/*\" multiple style=\"display:none\"> <textarea placeholder=\"Type / for commands, @ for files, >> for agents...\" autocomplete=\"off\" class=\"chat-input-textarea\" id=\"chat-input\" rows=\"1\"></textarea> <button type=\"button\" class=\"btn btn-primary\" id=\"send-btn\">Send</button></div></div></div><!-- Right panel (agents/analytics/tasks) --><div id=\"side-panel\" class=\"side-panel\"><div class=\"panel-header\"><span class=\"panel-title\" id=\"panel-title\">Panel</span> <button class=\"panel-close\" onclick=\"closePanel()\">&times;</button></div><div class=\"panel-content\" id=\"panel-content\"></div></div></div><!-- Reconnection banner --><div class=\"reconnect-banner\" id=\"reconnect-banner\"><span class=\"reconnect-spinner\">&#8987;</span> Connection lost. Reconnecting...</div><!-- Toast container for background session notifications --><div class=\"toast-container\" id=\"toast-container\"></div><div class=\"status-bar\"><span class=\"status-item\"><span class=\"connection-indicator\" id=\"conn-indicator\"><span class=\"connection-dot\" id=\"conn-dot\"></span></span></span> <span class=\"status-sep\">|</span> <span class=\"status-item status-model-item\" onclick=\"openModelSelector()\" title=\"Change model\"><span class=\"status-label\">MODEL</span> <span class=\"status-model\" id=\"status-model\">-</span> <span class=\"status-edit-icon\">&#9660;</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">IN</span> <span class=\"status-value\" id=\"status-in\">0</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">OUT</span> <span class=\"status-value\" id=\"status-out\">0</span></span> <span class=\"status-sep\">|</span> <span class=\"status-item\"><span class=\"status-label\">TOTAL</span> <span class=\"status-value\" id=\"status-total\">0</span></span> <span style=\"flex:1\"></span> <span class=\"status-item\"><span class=\"status-ok\" id=\"status-state\">Ready</span></span></div></div><!-- Mobile panel drawer (slides up from bottom) --><div class=\"mobile-drawer-overlay\" id=\"mobile-drawer-overlay\" onclick=\"closeMobileDrawer()\"></div><div class=\"mobile-panel-drawer\" id=\"mobile-panel-drawer\"><div class=\"drawer-items\"><button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('agents')\"><span class=\"icon\">&#129302;</span> Agents</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('analytics')\"><span class=\"icon\">&#9776;</span> Analytics</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('tasks')\"><span class=\"icon\">&#9744;</span> Tasks</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('config')\"><span class=\"icon\">&#9881;</span> Config</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();togglePanel('tools')\"><span class=\"icon\">&#128295;</span> Tools</button> <button class=\"drawer-item\" onclick=\"closeMobileDrawer();openModelSelector()\"><span class=\"icon\">&#129302;</span> Change Model</button></div></div></div></div><!-- Model selector modal --> <div id=\"model-modal\" class=\"modal-overlay\" style=\"display:none\" onclick=\"if(event.target===this)closeModelSelector()\"><div class=\"modal-box\"><div class=\"modal-header\"><span class=\"modal-title\">Select Model</span> <button class=\"modal-close\" onclick=\"closeModelSelector()\">&times;</button></div><div id=\"model-list\" class=\"model-list\"><div style=\"color:var(--dim);padding:12px\">Loading models...</div></div></div></div><!-- Picker modal --> <dialog id=\"picker-modal\" class=\"modal\"><div class=\"modal-box bg-base-200 border border-base-300 max-w-lg w-full\"><form method=\"dialog\"><button class=\"btn btn-sm btn-circle btn-ghost absolute right-2 top-2\">✕</button></form><div id=\"picker-modal-content\" class=\"mt-2\"><!-- content injected via htmx --></div></div><form method=\"dialog\" class=\"modal-backdrop\"><button>close</button></form></dialog><script src=\"/static/app.js?v=3\"></script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <!-- Model selector modal --> <div id=\"model-modal\" class=\"modal-overlay\" style=\"display:none\" onclick=\"if(event.target===this)closeModelSelector()\"><div class=\"modal-box\"><div class=\"modal-header\"><span class=\"modal-title\">Select Model</span> <button class=\"modal-close\" onclick=\"closeModelSelector()\">&times;</button></div><div id=\"model-list\" class=\"model-list\"><div style=\"color:var(--dim);padding:12px\">Loading models...</div></div></div></div><!-- Picker modal --> <dialog id=\"picker-modal\" class=\"modal\"><div class=\"modal-box bg-base-200 border border-base-300 max-w-lg w-full\"><form method=\"dialog\"><button class=\"btn btn-sm btn-circle btn-ghost absolute right-2 top-2\">✕</button></form><div id=\"picker-modal-content\" class=\"mt-2\"><!-- content injected via htmx --></div></div><form method=\"dialog\" class=\"modal-backdrop\"><button>close</button></form></dialog><script src=\"/static/app.js?v=3\"></script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
 		templ_7745c5c3_Err = Layout("Chat").Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// Helper: extract active session title
+func getActiveSessionTitle(sessions []SessionInfo) string {
+	for _, s := range sessions {
+		if s.Active {
+			return s.Title
+		}
+	}
+	return "Chat"
+}
+
+func ChatContent(projectPath string, sessionID string, sessions []SessionInfo, messages []ChatMessage) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var3 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var3 == nil {
+			templ_7745c5c3_Var3 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"chat-app\" id=\"chat-app\" data-project=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var4 string
+		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(projectPath)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 47, Col: 63}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" data-session=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var5 string
+		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(sessionID)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 47, Col: 90}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\"><!-- Messages Area --><div id=\"messages\" class=\"messages-area\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		for _, msg := range messages {
+			if msg.Role == "user" {
+				templ_7745c5c3_Err = UserMessage(msg.Content).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else if msg.Role == "assistant" {
+				templ_7745c5c3_Err = AssistantMessage(msg.Content).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else if msg.Role == "tool" {
+				templ_7745c5c3_Err = ToolMessage(msg.ToolName, msg.Content, msg.ToolOut).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><div id=\"stream-area\" class=\"stream-area\"></div><div id=\"approval-area\"></div><!-- Reconnection banner --><div class=\"reconnect-banner\" id=\"reconnect-banner\"><span class=\"reconnect-spinner\">&#8987;</span> Connection lost. Reconnecting...</div><!-- Toast container for background session notifications --><div class=\"toast-container\" id=\"toast-container\"></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -334,9 +164,9 @@ func StreamingResponse(projectPath string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var21 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var21 == nil {
-			templ_7745c5c3_Var21 = templ.NopComponent
+		templ_7745c5c3_Var6 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var6 == nil {
+			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		return nil
@@ -359,25 +189,25 @@ func UserMessage(content string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var22 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var22 == nil {
-			templ_7745c5c3_Var22 = templ.NopComponent
+		templ_7745c5c3_Var7 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var7 == nil {
+			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"msg msg-user\"><div class=\"msg-label\">You</div><div class=\"msg-content\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"message message-user\" style=\"background: var(--bg1); border-left: 3px solid var(--accent); color: var(--fg); padding: var(--space-3); margin-bottom: var(--space-2); border-radius: 4px;\"><div class=\"message-label\" style=\"font-size: var(--font-size-sm); color: var(--accent); font-weight: 600; margin-bottom: var(--space-1);\">You</div><div class=\"message-content\" style=\"font-family: var(--font-mono); font-size: var(--font-size-base);\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var23 string
-		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(content)
+		var templ_7745c5c3_Var8 string
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(content)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 217, Col: 37}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 78, Col: 113}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -401,25 +231,103 @@ func AssistantMessage(content string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var24 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var24 == nil {
-			templ_7745c5c3_Var24 = templ.NopComponent
+		templ_7745c5c3_Var9 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var9 == nil {
+			templ_7745c5c3_Var9 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"msg msg-assistant\"><div class=\"msg-label\">Assistant</div><div class=\"msg-content markdown-body\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"message message-assistant\" style=\"background: var(--bg-soft); border-left: 3px solid var(--blue-bright); color: var(--fg1); padding: var(--space-3); margin-bottom: var(--space-2); border-radius: 4px;\"><div class=\"message-label\" style=\"font-size: var(--font-size-sm); color: var(--blue-bright); font-weight: 600; margin-bottom: var(--space-1);\">Assistant</div><div class=\"message-content markdown-body\" style=\"font-family: var(--font-mono); font-size: var(--font-size-base);\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var25 string
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(content)
+		var templ_7745c5c3_Var10 string
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(content)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 224, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 85, Col: 127}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func ToolMessage(toolName string, content string, output string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var11 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var11 == nil {
+			templ_7745c5c3_Var11 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<details class=\"message message-tool\" style=\"background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg3); padding: var(--space-3); margin-bottom: var(--space-2); border-radius: 4px; font-size: var(--font-size-sm); cursor: pointer;\"><summary style=\"font-weight: 600; color: var(--accent-dim); font-family: var(--font-mono);\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var12 string
+		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("🔧 %s", toolName))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 92, Col: 37}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</summary><div style=\"margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--bg3);\"><div style=\"margin-bottom: var(--space-2);\"><div style=\"color: var(--fg3); font-weight: 500;\">Input:</div><pre style=\"background: var(--bg1); padding: var(--space-2); border-radius: 2px; overflow-x: auto; font-size: var(--font-size-xs);\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var13 string
+		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(content)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 97, Col: 145}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</pre></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if output != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div><div style=\"color: var(--fg3); font-weight: 500;\">Output:</div><pre style=\"background: var(--bg1); padding: var(--space-2); border-radius: 2px; overflow-x: auto; font-size: var(--font-size-xs);\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var14 string
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(output)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/chat.templ`, Line: 102, Col: 145}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</pre></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div></details>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -443,12 +351,12 @@ func AgentPanel() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var26 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var26 == nil {
-			templ_7745c5c3_Var26 = templ.NopComponent
+		templ_7745c5c3_Var15 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var15 == nil {
+			templ_7745c5c3_Var15 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div class=\"panel-section\"><div class=\"panel-section-title\">Active Agents</div><div id=\"agents-list\" class=\"agents-list\"><div style=\"color:var(--dim);padding:8px 0;\">No active agents</div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<div class=\"panel-section\"><div class=\"panel-section-title\">Active Agents</div><div id=\"agents-list\" class=\"agents-list\"><div style=\"color:var(--dim);padding:8px 0;\">No active agents</div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

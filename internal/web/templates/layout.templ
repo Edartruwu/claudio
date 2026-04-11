@@ -275,6 +275,45 @@ templ Layout(title string) {
 				.main-content::-webkit-scrollbar-thumb:hover {
 					background: var(--fg3);
 				}
+
+				/* Chat Input Styling */
+				.chat-input-textarea {
+					outline: none;
+					transition: border-color 150ms ease;
+				}
+
+				.chat-input-textarea:focus {
+					border-color: var(--accent);
+					box-shadow: 0 0 0 1px var(--accent);
+				}
+
+				/* Chat Messages Area */
+				.messages-area {
+					display: flex;
+					flex-direction: column;
+					gap: var(--space-2);
+				}
+
+				.message {
+					display: flex;
+					flex-direction: column;
+					word-wrap: break-word;
+					overflow-wrap: break-word;
+				}
+
+				.message-label {
+					display: block;
+					margin-bottom: var(--space-1);
+				}
+
+				.message-content {
+					line-height: var(--line-height);
+				}
+
+				pre {
+					margin: 0;
+					overflow-x: auto;
+				}
 			</style>
 			<script src="https://unpkg.com/htmx.org@2.0.4"></script>
 			<script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>

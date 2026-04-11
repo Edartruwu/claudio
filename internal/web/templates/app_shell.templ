@@ -48,8 +48,19 @@ templ AppShell(projectPath string, sessionTitle string, modelBadge string, sessi
 			</div>
 
 			<!-- Main Input Zone (for prompts, etc.) -->
-			<div class="main-input">
-				<!-- Placeholder for input component -->
+			<div class="main-input" id="input-zone">
+				<div id="chat-form" class="chat-input-form" style="display: flex; gap: var(--space-2); align-items: flex-end;">
+					<button type="button" class="btn-icon" id="attach-btn" title="Attach image" style="background: none; border: none; color: var(--fg3); cursor: pointer; padding: var(--space-2); flex-shrink: 0;">
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+					</button>
+					<input type="file" id="image-input" accept="image/*" multiple style="display:none"/>
+					<textarea placeholder="Type / for commands, @ for files, >> for agents..." autocomplete="off" class="chat-input-textarea" id="chat-input" rows="1" style="flex: 1; background: var(--bg1); border: 1px solid var(--bg3); color: var(--fg); font-family: var(--font-mono); padding: var(--space-2); border-radius: 4px; resize: vertical; transition: border-color 150ms ease;" 
+						hx-post="/api/send-message"
+						hx-target="#messages"
+						hx-swap="beforeend"
+						hx-trigger="keydown[ctrlKey&&key=='Enter']"></textarea>
+					<button type="button" class="btn btn-primary" id="send-btn" style="background: var(--accent); color: var(--bg-hard); font-weight: 700; border: none; padding: var(--space-2) var(--space-4); border-radius: 4px; cursor: pointer; flex-shrink: 0;">Send</button>
+				</div>
 			</div>
 		</div>
 	</div>
