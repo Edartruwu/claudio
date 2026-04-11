@@ -6073,22 +6073,19 @@ func (m Model) renderStatusLine() string {
 
 	// Mode pill: label + color based on focus state.
 	var modeLabel string
-	var modeColor lipgloss.Color
+	var pillStyle lipgloss.Style
 	switch m.focus {
 	case FocusViewport:
 		modeLabel = "VIEWPORT"
-		modeColor = styles.Secondary // gruvbox blue
+		pillStyle = styles.StatusLinePillViewport
 	case FocusPanel:
 		modeLabel = "PANEL"
-		modeColor = styles.Warning // gruvbox yellow
+		pillStyle = styles.StatusLinePillPanel
 	default:
 		modeLabel = "PROMPT"
-		modeColor = styles.Success // gruvbox green
+		pillStyle = styles.StatusLinePillPrompt
 	}
-	pill := lipgloss.NewStyle().
-		Foreground(modeColor).
-		Bold(true).
-		Render("● " + modeLabel)
+	pill := pillStyle.Render("● " + modeLabel)
 
 	// Center: session name + optional agent name.
 	sessName := m.sessionName()
@@ -6099,7 +6096,7 @@ func (m Model) renderStatusLine() string {
 	if m.currentAgent != "" {
 		center += " · " + m.currentAgent
 	}
-	centerStyled := lipgloss.NewStyle().Foreground(styles.Dim).Render(center)
+	centerStyled := styles.StatusLineCenterStyle.Render(center)
 
 	// Right: model short name + spinner text.
 	modelShort := strings.TrimPrefix(m.model, "claude-")
@@ -6107,10 +6104,10 @@ func (m Model) renderStatusLine() string {
 	if m.spinText != "" {
 		right += "  " + m.spinText
 	}
-	rightStyled := lipgloss.NewStyle().Foreground(styles.Muted).Render(right)
+	rightStyled := styles.StatusLineRightStyle.Render(right)
 
 	// Separator glyphs.
-	sep := lipgloss.NewStyle().Foreground(styles.Subtle).Render(" │ ")
+	sep := styles.StatusLineSeparator.Render(" │ ")
 
 	left := " " + pill + sep + centerStyled
 	leftW := lipgloss.Width(left)
