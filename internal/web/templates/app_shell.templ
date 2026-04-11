@@ -1,0 +1,63 @@
+package templates
+
+// AppShell wraps the 3-zone layout: sidebar + main-area
+templ AppShell(projectPath string, sessionTitle string, modelBadge string, sessions []SessionInfo, children templ.Component) {
+	<div class="app-shell">
+		<!-- LEFT SIDEBAR ZONE -->
+		<div class="sidebar">
+			<!-- Sidebar Header: App Logo -->
+			<div class="sidebar-header">
+				<h1>claudio</h1>
+			</div>
+
+			<!-- Sidebar Nav -->
+			<nav class="sidebar-nav">
+				<!-- Sessions (Active) -->
+				<a href="#" class="nav-item active">
+					<span>Sessions</span>
+				</a>
+				<!-- Agents (Placeholder) -->
+				<a href="#" class="nav-item placeholder">
+					<span>Agents</span>
+				</a>
+				<!-- Tasks (Placeholder) -->
+				<a href="#" class="nav-item placeholder">
+					<span>Tasks</span>
+				</a>
+			</nav>
+
+			<!-- Sidebar Footer: Settings -->
+			<div class="sidebar-footer">
+				<a href="/settings" title="Settings">⚙</a>
+			</div>
+		</div>
+
+		<!-- MAIN AREA ZONE -->
+		<div class="main-area">
+			<!-- Main Header: Session Title + Model Badge -->
+			<header class="main-header">
+				<div class="session-title">{ sessionTitle }</div>
+				if modelBadge != "" {
+					<div class="model-badge">{ modelBadge }</div>
+				}
+			</header>
+
+			<!-- Main Content (Scrollable) -->
+			<div class="main-content">
+				@children
+			</div>
+
+			<!-- Main Input Zone (for prompts, etc.) -->
+			<div class="main-input">
+				<!-- Placeholder for input component -->
+			</div>
+		</div>
+	</div>
+
+	<!-- Sidebar Toggle for Mobile -->
+	<script>
+		function toggleSidebar() {
+			document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+		}
+	</script>
+}
