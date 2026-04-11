@@ -1,10 +1,14 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,6 +75,43 @@ func (t *PluginProxyTool) IsReadOnly() bool { return false }
 
 func (t *PluginProxyTool) RequiresApproval(_ json.RawMessage) bool { return true }
 
+// resizeImage uses nearest-neighbor scaling to resize an image to a maximum width.
+func resizeImage(src image.Image, maxWidth int) image.Image {
+	b := src.Bounds()
+	w, h := b.Max.X, b.Max.Y
+	if w <= maxWidth {
+		return src
+	}
+	nw := maxWidth
+	nh := h * maxWidth / w
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	for y := 0; y < nh; y++ {
+		for x := 0; x < nw; x++ {
+			dst.Set(x, y, src.At(x*w/nw, y*h/nh))
+		}
+	}
+	return dst
+}
+
+// compressImage reads an image file, decodes it, resizes if needed, and re-encodes as JPEG.
+func compressImage(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		// unsupported format — return raw bytes as fallback
+		return raw, nil
+	}
+	img = resizeImage(img, 1024)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 72}); err != nil {
+		return raw, nil
+	}
+	return buf.Bytes(), nil
+}
+
 func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*tools.Result, error) {
 	var in struct {
 		Command string `json:"command"`
@@ -116,8 +157,8 @@ func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*
 			".webp": "image/webp",
 		}
 		if mt, ok := mediaTypes[ext]; ok {
-			if data, err := os.ReadFile(trimmed); err == nil {
-				b64 := base64.StdEncoding.EncodeToString(data)
+			if compressed, err := compressImage(trimmed); err == nil {
+				b64 := base64.StdEncoding.EncodeToString(compressed)
 				return &tools.Result{
 					Content: result,
 					Images:  []tools.ImageData{{MediaType: mt, Data: b64}},
