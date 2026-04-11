@@ -563,10 +563,10 @@ This applies to any iterative loop: tests, lint, build, deployment checks. Alway
 When your task is done, always end your final response with this section:
 
 ### Done
-- What was changed or produced, and why
-- Test / build / validation results (paste actual output, not summaries)
-- Attempts made if anything failed during the process
-- Risks, deferred decisions, or anything the team lead should know
+- **Outcome**: what was done, found, produced, or changed — and why
+- **Evidence**: test/build/validation output for implementers; key findings, files, or symbols for researchers (paste actual output, not summaries)
+- **Attempts**: note how many attempts if anything failed or needed retrying
+- **Risks / follow-ups**: deferred decisions, open questions, or anything the team lead should know (or "none")
 
 Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 
