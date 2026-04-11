@@ -5767,8 +5767,7 @@ func (m Model) View() string {
 	// 5. Statusline (full width) — shows mode, session, model; replaced by toast when active
 	sections = append(sections, m.renderStatusLine())
 
-	// 6. Divider + Prompt (full width)
-	sections = append(sections, styles.SeparatorLine(mw))
+	// 6. Prompt (full width)
 	sections = append(sections, m.prompt.View())
 
 	// 7. Mode line (full width) — or search bar when searching
@@ -5778,8 +5777,10 @@ func (m Model) View() string {
 		sections = append(sections, m.renderModeLine())
 	}
 
-	// 8. Help footer (full width)
-	sections = append(sections, m.renderHelpFooter())
+	// 8. Help footer (full width) — only if it has content
+	if footer := m.renderHelpFooter(); strings.TrimSpace(footer) != "" {
+		sections = append(sections, footer)
+	}
 
 	// 9. Status bar (full width)
 	hint := m.statusHint()
