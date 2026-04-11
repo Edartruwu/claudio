@@ -1175,6 +1175,15 @@ func lastNLines(text string, maxLines int, maxChars int) string {
 	return text
 }
 
+// summaryFromResult extracts the ### Done section if present; otherwise falls
+// back to lastNLines so there is no regression when the agent omits the block.
+func summaryFromResult(text string, maxLines int, maxChars int) string {
+	if idx := strings.LastIndex(text, "### Done"); idx != -1 {
+		return text[idx:]
+	}
+	return lastNLines(text, maxLines, maxChars)
+}
+
 // expandedResult returns the first n lines of content.
 func expandedResult(content string, n int) []string {
 	lines := strings.Split(content, "\n")
