@@ -119,6 +119,12 @@ func (s *Server) registerRoutes() {
 	// Command execution
 	s.mux.HandleFunc("POST /api/commands/execute", s.requireAuth(s.handleCommandExecute))
 
+	// Picker API (for /agent and /team commands)
+	s.mux.HandleFunc("GET /api/picker/agents", s.requireAuth(s.handlePickerAgents))
+	s.mux.HandleFunc("GET /api/picker/teams", s.requireAuth(s.handlePickerTeams))
+	s.mux.HandleFunc("POST /api/picker/select-agent", s.requireAuth(s.handlePickerSelectAgent))
+	s.mux.HandleFunc("POST /api/picker/spawn-team", s.requireAuth(s.handlePickerSpawnTeam))
+
 	// Panels
 	s.mux.HandleFunc("GET /api/panel/", s.requireAuth(s.handlePanel))
 	s.mux.HandleFunc("POST /api/panel/config/update", s.requireAuth(s.handleConfigUpdate))
