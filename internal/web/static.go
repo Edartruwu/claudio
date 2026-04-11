@@ -29,6 +29,19 @@ const cssContent = `
   --aqua:        #8ec07c;
   --orange:      #fe8019;
 
+  /* Entity type colors */
+  --color-session: #8ec07c;
+  --color-agent: #d3869b;
+  --color-team: #83a598;
+  --color-task: #fabd2f;
+
+  /* Status indicator colors */
+  --color-status-idle: #928374;
+  --color-status-running: #b8bb26;
+  --color-status-waiting: #fabd2f;
+  --color-status-error: #fb4934;
+  --color-status-completed: #b8bb26;
+
   --radius:      6px;
   --radius-lg:   10px;
   --font-mono:   'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
@@ -895,6 +908,18 @@ a:hover { text-decoration: underline; }
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 49;
 }
 .sidebar-overlay.visible { display: block; }
+
+/* ═══════════════════ ENTITY NAV (mobile overlay) ═══════════════════ */
+@media (max-width: 1024px) {
+  #entity-nav.flex {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    width: 280px;
+  }
+}
 
 /* ═══════════════════ RESPONSIVE — iPhone 15 Pro (393×852) ═══════════════════ */
 @media (max-width: 768px) {
@@ -1802,12 +1827,22 @@ const appJSContent = `
 
   /* ── Session sidebar (mobile) ── */
   window.toggleSidebar=function(){
-    $('session-sidebar').classList.toggle('open');
-    $('sidebar-overlay').classList.toggle('visible');
+    var nav=$('entity-nav');
+    if(nav){
+      nav.classList.toggle('hidden');
+      nav.classList.toggle('flex');
+    }
+    var overlay=$('sidebar-overlay');
+    if(overlay)overlay.classList.toggle('visible');
   };
   window.closeSidebar=function(){
-    $('session-sidebar').classList.remove('open');
-    $('sidebar-overlay').classList.remove('visible');
+    var nav=$('entity-nav');
+    if(nav){
+      nav.classList.add('hidden');
+      nav.classList.remove('flex');
+    }
+    var overlay=$('sidebar-overlay');
+    if(overlay)overlay.classList.remove('visible');
   };
 
   /* ── Multi-session: switch session ── */
