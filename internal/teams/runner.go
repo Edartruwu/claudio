@@ -38,6 +38,7 @@ type TeammateEvent struct {
 	Type           string // "started", "text", "tool_start", "tool_end", "complete", "error"
 	Text           string
 	ToolName       string
+	Input          string // truncated tool input (for "tool_start" events)
 	Color          string
 	WorktreePath   string // set on complete/error if worktree has changes
 	WorktreeBranch string

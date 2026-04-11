@@ -880,6 +880,8 @@ func (s *Server) handleAutocompleteCommands(w http.ResponseWriter, _ *http.Reque
 		{Name: "agent", Description: "Chat with a running agent"},
 		{Name: "team", Description: "Spawn or switch to a team"},
 		{Name: "analytics", Description: "Show analytics panel", ClientOnly: true},
+		{Name: "gain", Description: "Show token savings from output filters"},
+		{Name: "discover", Description: "Show commands without a filter — reduce token usage"},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cmds)

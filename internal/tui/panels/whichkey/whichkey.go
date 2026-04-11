@@ -16,7 +16,8 @@ import (
 const Timeout = 300 * time.Millisecond
 
 // TimeoutMsg is sent when the leader key timeout elapses.
-type TimeoutMsg struct{}
+// Gen carries the generation counter so stale messages can be ignored.
+type TimeoutMsg struct{ Gen int }
 
 // Binding represents a single leader key binding.
 type Binding struct {
@@ -193,9 +194,10 @@ func (m *Model) SetWidth(w int) {
 }
 
 // ScheduleTimeout returns a tea.Cmd that sends TimeoutMsg after the delay.
-func ScheduleTimeout() tea.Cmd {
+// gen must match the model's leaderSeqGen at receipt time or the message is discarded.
+func ScheduleTimeout(gen int) tea.Cmd {
 	return tea.Tick(Timeout, func(time.Time) tea.Msg {
-		return TimeoutMsg{}
+		return TimeoutMsg{Gen: gen}
 	})
 }
 

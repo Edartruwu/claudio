@@ -861,6 +861,7 @@ func (o *teammateObserver) OnSubAgentToolStart(_ string, tu tools.ToolUse) {
 		AgentName: o.state.Identity.AgentName,
 		Type:      "tool_start",
 		ToolName:  tu.Name,
+		Input:     truncateRawInput(tu.Input),
 		Color:     o.state.Identity.Color,
 	})
 }
@@ -878,6 +879,17 @@ func (o *teammateObserver) OnSubAgentToolEnd(_ string, tu tools.ToolUse, result 
 		Type:     "tool_end",
 		Content:  content,
 		ToolName: tu.Name,
+	})
+
+	// Emit tool_end event for TUI real-time updates
+	o.runner.EmitEvent(teams.TeammateEvent{
+		TeamName:  o.state.TeamName,
+		AgentID:   o.state.Identity.AgentID,
+		AgentName: o.state.Identity.AgentName,
+		Type:      "tool_end",
+		ToolName:  tu.Name,
+		Text:      content,
+		Color:     o.state.Identity.Color,
 	})
 }
 

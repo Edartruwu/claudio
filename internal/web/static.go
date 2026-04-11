@@ -1053,6 +1053,12 @@ a:hover { text-decoration: underline; }
    Picker Modal & Items
    ═══════════════════════════════════════════════════════════ */
 
+.picker-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .picker-item {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border-radius: 6px; width: 100%;

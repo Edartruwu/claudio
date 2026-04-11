@@ -119,6 +119,7 @@ type Model struct {
 	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
 	km              *keymap.Keymap // remappable key bindings
 	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
+	leaderSeqGen    int          // incremented each time a new timeout is scheduled; stale TimeoutMsgs are ignored
 	prevSessionID   string       // for alternate session switching
 	vpCursor        int          // viewport section cursor (-1 = none)
 	vpSections      []Section    // cached section metadata from last render
@@ -187,10 +188,20 @@ type Model struct {
 	logoFrame int // increments on each logoTickMsg to drive the color-wave animation
 }
 
+// ToolCallEntry represents a single tool call in the real-time feed.
+type ToolCallEntry struct {
+	ToolName string // name of the tool
+	Input    string // truncated input (≤80 chars)
+	Output   string // truncated output (≤120 chars)
+	Status   string // "running", "done", "error"
+	IsSkill  bool   // true if this is a skill invocation
+}
+
 // agentDetailOverlay holds state for the full-screen agent conversation view.
 type agentDetailOverlay struct {
-	state  *teams.TeammateState
-	scroll int // vertical scroll offset
+	state     *teams.TeammateState
+	scroll    int              // vertical scroll offset
+	toolCalls []ToolCallEntry // live tool call feed (max 20 entries)
 }
 
 // askUserDialogState holds the state for an interactive AskUser question dialog.
@@ -588,6 +599,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case whichkey.TimeoutMsg:
+		// Ignore stale timeouts from previous leader sequences.
+		if msg.Gen != m.leaderSeqGen {
+			return m, nil
+		}
 		// Show which-key popup based on current leader sequence, reading from keymap.
 		prefix := m.leaderSeq
 		if prefix == "" {
@@ -1011,7 +1026,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case " ":
 				m.leaderSeq = "pending"
-				return m, whichkey.ScheduleTimeout()
+				m.leaderSeqGen++
+				return m, whichkey.ScheduleTimeout(m.leaderSeqGen)
 			}
 			return m, nil
 		}
@@ -1028,7 +1044,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Start leader sequence on Space
 			if msg.String() == " " {
 				m.leaderSeq = "pending"
-				return m, whichkey.ScheduleTimeout()
+				m.leaderSeqGen++
+				return m, whichkey.ScheduleTimeout(m.leaderSeqGen)
 			}
 		}
 
@@ -3467,7 +3484,8 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 			// Ambiguous: "e" matches but "ev" also exists.
 			// Buffer and schedule timeout — on next key we'll extend or dispatch.
 			m.leaderSeq = fullSeq
-			return true, whichkey.ScheduleTimeout()
+			m.leaderSeqGen++
+			return true, whichkey.ScheduleTimeout(m.leaderSeqGen)
 		}
 		return true, m.dispatchAction(action)
 	}
@@ -3475,7 +3493,8 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 	// Not an exact match — is it a valid prefix?
 	if m.km.HasPrefix(fullSeq) {
 		m.leaderSeq = fullSeq
-		return true, whichkey.ScheduleTimeout()
+		m.leaderSeqGen++
+		return true, whichkey.ScheduleTimeout(m.leaderSeqGen)
 	}
 
 	// Try dispatching the accumulated prefix if there was one.
@@ -4447,8 +4466,9 @@ func (m *Model) openAgentDetail(agentID string) (Model, tea.Cmd) {
 		return *m, nil
 	}
 	m.agentDetail = &agentDetailOverlay{
-		state:  state,
-		scroll: 0,
+		state:     state,
+		scroll:    0,
+		toolCalls: []ToolCallEntry{},
 	}
 	m.prevFocus = m.focus
 	m.focus = FocusAgentDetail
@@ -4474,6 +4494,34 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 		})
 		if event.Background {
 			return teampanel.ScheduleRefresh()
+		}
+	case "tool_start":
+		// Wire tool_start into the agent detail overlay if it's currently open
+		if m.agentDetail != nil && m.agentDetail.state.Identity.AgentID == event.AgentID {
+			entry := ToolCallEntry{
+				ToolName: event.ToolName,
+				Input:    event.Input,
+				Output:   "",
+				Status:   "running",
+				IsSkill:  event.ToolName == "Skill",
+			}
+			m.agentDetail.toolCalls = append(m.agentDetail.toolCalls, entry)
+			// Cap at 20 entries
+			if len(m.agentDetail.toolCalls) > 20 {
+				m.agentDetail.toolCalls = m.agentDetail.toolCalls[len(m.agentDetail.toolCalls)-20:]
+			}
+		}
+	case "tool_end":
+		// Wire tool_end into the agent detail overlay if it's currently open
+		if m.agentDetail != nil && m.agentDetail.state.Identity.AgentID == event.AgentID {
+			// Find the last running entry for this tool and update it
+			for i := len(m.agentDetail.toolCalls) - 1; i >= 0; i-- {
+				if m.agentDetail.toolCalls[i].ToolName == event.ToolName && m.agentDetail.toolCalls[i].Status == "running" {
+					m.agentDetail.toolCalls[i].Output = event.Text
+					m.agentDetail.toolCalls[i].Status = "done"
+					break
+				}
+			}
 		}
 	case "complete":
 		result := event.Text
@@ -4695,8 +4743,17 @@ func (m Model) renderAgentDetail(width, height int) string {
 	}
 	b.WriteString(styles.AgentDetailTaskStyle.Render("Task: "+task) + "\n\n")
 
-	// Conversation entries
+	// Conversation entries (including tool call feed)
 	contentLines := make([]string, 0, len(conversation)*3)
+
+	// Render tool calls feed if available
+	if len(m.agentDetail.toolCalls) > 0 {
+		contentLines = append(contentLines, styles.AgentDetailInfoStyle.Render("─ tool calls ─"))
+		for _, tc := range m.agentDetail.toolCalls {
+			contentLines = append(contentLines, m.renderToolCallEntry(tc, width-2))
+		}
+		contentLines = append(contentLines, "")
+	}
 	for _, entry := range conversation {
 		lines := m.renderConversationEntry(entry, width-2)
 		contentLines = append(contentLines, lines...)
@@ -4839,6 +4896,63 @@ func (m Model) renderConversationEntry(entry teams.ConversationEntry, width int)
 	}
 
 	return lines
+}
+
+// renderToolCallEntry renders a single tool call entry for the tool call feed.
+func (m Model) renderToolCallEntry(tc ToolCallEntry, width int) string {
+	var parts []string
+
+	// Tool name with icon/color
+	toolName := tc.ToolName
+	if tc.IsSkill {
+		// Skill calls: use orange accent color with ★ prefix
+		toolName = styles.ToolBadge.Render("★ " + toolName)
+	} else {
+		// Regular tool calls: use Warning color (already defined style)
+		toolName = styles.AgentDetailToolStyle.Render(toolName)
+	}
+
+	// Status indicator
+	var statusBadge string
+	switch tc.Status {
+	case "running":
+		// Use spinner character for running status
+		statusBadge = lipgloss.NewStyle().Foreground(styles.Warning).Render("⠋ running")
+	case "done":
+		statusBadge = styles.AgentDetailDoneStyle.Render("✓ done")
+	case "error":
+		statusBadge = styles.AgentDetailErrorStyle.Render("✗ error")
+	default:
+		statusBadge = lipgloss.NewStyle().Foreground(styles.Muted).Render(tc.Status)
+	}
+
+	// Build the line with tool name and status
+	line := fmt.Sprintf("  %s  %s", toolName, statusBadge)
+
+	// Add truncated input if available
+	if tc.Input != "" {
+		input := tc.Input
+		if len(input) > 80 {
+			input = input[:77] + "..."
+		}
+		inputLine := fmt.Sprintf("    input: %s", styles.AgentDetailContentStyle.Render(input))
+		parts = append(parts, line)
+		parts = append(parts, inputLine)
+	} else {
+		parts = append(parts, line)
+	}
+
+	// Add truncated output if available
+	if tc.Output != "" {
+		output := tc.Output
+		if len(output) > 120 {
+			output = output[:117] + "..."
+		}
+		outputLine := fmt.Sprintf("    output: %s", styles.AgentDetailContentStyle.Render(output))
+		parts = append(parts, outputLine)
+	}
+
+	return strings.Join(parts, "\n")
 }
 
 // applyConfigChange applies a config change to the live session immediately.

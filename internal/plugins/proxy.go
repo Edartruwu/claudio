@@ -156,12 +156,12 @@ func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*
 			".gif":  "image/gif",
 			".webp": "image/webp",
 		}
-		if mt, ok := mediaTypes[ext]; ok {
+		if _, ok := mediaTypes[ext]; ok {
 			if compressed, err := compressImage(trimmed); err == nil {
 				b64 := base64.StdEncoding.EncodeToString(compressed)
 				return &tools.Result{
 					Content: result,
-					Images:  []tools.ImageData{{MediaType: mt, Data: b64}},
+					Images:  []tools.ImageData{{MediaType: "image/jpeg", Data: b64}},
 				}, nil
 			}
 		}
