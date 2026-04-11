@@ -1002,6 +1002,28 @@ func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools
 		content = content[:maxContent] + "\n... (truncated)"
 	}
 
+	// If the tool result includes images, build array content for the API.
+	if len(result.Images) > 0 {
+		blocks := make([]toolContentBlock, 0, 1+len(result.Images))
+		blocks = append(blocks, toolContentBlock{Type: "text", Text: content})
+		for _, img := range result.Images {
+			blocks = append(blocks, toolContentBlock{
+				Type: "image",
+				Source: &toolImageSource{
+					Type:      "base64",
+					MediaType: img.MediaType,
+					Data:      img.Data,
+				},
+			})
+		}
+		return toolResultBlock{
+			Type:      "tool_result",
+			ToolUseID: tu.ID,
+			Content:   blocks,
+			IsError:   result.IsError,
+		}, result.InjectedMessages
+	}
+
 	return toolResultBlock{
 		Type:      "tool_result",
 		ToolUseID: tu.ID,
@@ -1302,10 +1324,24 @@ func extractTextContent(content json.RawMessage) string {
 
 // toolResultBlock is the format the API expects for tool results.
 type toolResultBlock struct {
-	Type      string `json:"type"`
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-	IsError   bool   `json:"is_error,omitempty"`
+	Type      string      `json:"type"`
+	ToolUseID string      `json:"tool_use_id"`
+	Content   interface{} `json:"content"`
+	IsError   bool        `json:"is_error,omitempty"`
+}
+
+// toolContentBlock is a single block within a tool result's content array.
+type toolContentBlock struct {
+	Type   string           `json:"type"`
+	Text   string           `json:"text,omitempty"`
+	Source *toolImageSource `json:"source,omitempty"`
+}
+
+// toolImageSource describes a base64-encoded image for the API.
+type toolImageSource struct {
+	Type      string `json:"type"`       // always "base64"
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 // StdoutHandler is a simple event handler that prints to stdout.

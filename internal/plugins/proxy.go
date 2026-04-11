@@ -2,9 +2,12 @@ package plugins
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/tools"
@@ -100,6 +103,29 @@ func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*
 	}
 
 	result := string(output)
+
+	// Detect if the output is a path to an image file.
+	trimmed := strings.TrimSpace(result)
+	if !strings.Contains(trimmed, "\n") {
+		ext := strings.ToLower(filepath.Ext(trimmed))
+		mediaTypes := map[string]string{
+			".jpg":  "image/jpeg",
+			".jpeg": "image/jpeg",
+			".png":  "image/png",
+			".gif":  "image/gif",
+			".webp": "image/webp",
+		}
+		if mt, ok := mediaTypes[ext]; ok {
+			if data, err := os.ReadFile(trimmed); err == nil {
+				b64 := base64.StdEncoding.EncodeToString(data)
+				return &tools.Result{
+					Content: result,
+					Images:  []tools.ImageData{{MediaType: mt, Data: b64}},
+				}, nil
+			}
+		}
+	}
+
 	if result == "" {
 		result = "(no output)"
 	}

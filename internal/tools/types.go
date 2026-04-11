@@ -26,10 +26,20 @@ type Tool interface {
 	RequiresApproval(input json.RawMessage) bool
 }
 
+// ImageData holds a base64-encoded image to attach to a tool result.
+type ImageData struct {
+	MediaType string // e.g. "image/jpeg"
+	Data      string // base64-encoded bytes
+}
+
 // Result holds the output of a tool execution.
 type Result struct {
 	Content string `json:"content"`
 	IsError bool   `json:"is_error,omitempty"`
+
+	// Images holds optional base64-encoded images to include as vision content
+	// blocks in the tool result sent to the API.
+	Images []ImageData
 
 	// InjectedMessages holds additional text messages to inject into the
 	// conversation as a user turn immediately after the tool result block.
