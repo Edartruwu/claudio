@@ -4511,6 +4511,12 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 				m.agentDetail.toolCalls = m.agentDetail.toolCalls[len(m.agentDetail.toolCalls)-20:]
 			}
 		}
+		// Also route to AGUI panel if it's the active panel
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*agui.Panel); ok {
+				ap.HandleTeammateEvent(event)
+			}
+		}
 	case "tool_end":
 		// Wire tool_end into the agent detail overlay if it's currently open
 		if m.agentDetail != nil && m.agentDetail.state.Identity.AgentID == event.AgentID {
@@ -4521,6 +4527,12 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 					m.agentDetail.toolCalls[i].Status = "done"
 					break
 				}
+			}
+		}
+		// Also route to AGUI panel if it's the active panel
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*agui.Panel); ok {
+				ap.HandleTeammateEvent(event)
 			}
 		}
 	case "complete":

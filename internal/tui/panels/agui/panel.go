@@ -1,6 +1,6 @@
-// Package agui provides the AGUI two-mode agent inspector panel.
-// List mode shows all agents as a rich scrollable list (default).
-// Detail mode shows the selected agent's full-screen conversation.
+// Package agui provides the AGUI agent inspector panel with unified split-view layout.
+// Left pane shows agent list with filtering and team grouping.
+// Right pane shows agent detail with header, live tools, and conversation feed.
 // Opens with <Space>oa or the :AGUI command.
 package agui
 
@@ -32,23 +32,16 @@ func ScheduleRefresh() tea.Cmd {
 	})
 }
 
-// panelMode is the two-mode display state.
-type panelMode int
-
-const (
-	modeList   panelMode = 0 // default: rich scrollable agent list
-	modeDetail panelMode = 1 // full-screen conversation for selected agent
-)
-
-// Panel is the AGUI two-mode agent inspector implementing panels.Panel.
+// Panel is the AGUI split-view agent inspector implementing panels.Panel.
 type Panel struct {
 	runner *teams.TeammateRunner
 
 	entries    []*agentEntry  // flat list of all agents, populated on refresh
-	cursor     int            // list-mode cursor: index into filteredEntries()
-	rightVP    viewport.Model // full-width scrollable conversation (detail mode)
-	mode       panelMode      // current display mode
-	selectedID string         // agentID of the currently viewed agent
+	cursor     int            // list cursor: index into filteredEntries()
+	detailVP   viewport.Model // scrollable right pane viewport
+	focusedPane int           // 0 = left (list), 1 = right (detail)
+	selectedID string         // agentID of the currently-selected agent for detail view
+	atBottom   bool           // whether right pane is scrolled to bottom (auto-scroll flag)
 
 	collapsedTeams map[string]bool // team names → collapsed state
 	filterInput    textinput.Model // inline search/filter input
@@ -99,6 +92,8 @@ func New(runner *teams.TeammateRunner) *Panel {
 		runner:         runner,
 		collapsedTeams: make(map[string]bool),
 		filterInput:    fi,
+		atBottom:       true,
+		focusedPane:    0, // start with left pane focused
 	}
 }
 
@@ -111,10 +106,11 @@ func (p *Panel) IsActive() bool { return p.active }
 func (p *Panel) Activate() {
 	p.active = true
 	p.cursor = 0
-	p.mode = modeList
 	p.selectedID = ""
 	p.filtering = false
 	p.filterInput.SetValue("")
+	p.focusedPane = 0
+	p.atBottom = true
 	p.refresh()
 }
 
@@ -127,8 +123,14 @@ func (p *Panel) Deactivate() {
 func (p *Panel) SetSize(w, h int) {
 	p.width = w
 	p.height = h
-	p.rightVP.Width = w
-	p.rightVP.Height = p.contentHeight()
+	// Calculate detail VP dimensions accounting for left pane, borders, and padding
+	leftWidth := p.leftPaneWidth()
+	// detailVP gets the remaining width, minus borders
+	p.detailVP.Width = p.width - leftWidth - 3 // account for separator and padding
+	if p.detailVP.Width < 20 {
+		p.detailVP.Width = 20
+	}
+	p.detailVP.Height = p.contentHeight()
 	p.ready = true
 	if p.selectedID != "" {
 		p.loadConversation()
@@ -147,21 +149,18 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if p.filtering {
 		return p.updateFilter(msg)
 	}
-	if p.mode == modeDetail {
+	if p.focusedPane == 1 {
 		return p.updateRight(msg.String())
 	}
 	return p.updateLeft(msg.String())
 }
 
-// View renders the panel in the current mode.
+// View renders the panel with split layout.
 func (p *Panel) View() string {
 	if !p.active || !p.ready {
 		return ""
 	}
-	if p.mode == modeDetail {
-		return lipgloss.NewStyle().Width(p.width).Height(p.height).Render(p.renderDetail())
-	}
-	return lipgloss.NewStyle().Width(p.width).Height(p.height).Render(p.renderList())
+	return p.renderSplitView()
 }
 
 // Help returns the keybinding hint line shown in the panel footer.
@@ -172,14 +171,14 @@ func (p *Panel) Help() string {
 	if p.filtering {
 		return "type to filter · esc clear"
 	}
-	if p.mode == modeDetail {
-		return "j/k scroll · ctrl+d/u half-page · G bottom · g top · h/esc back"
+	if p.focusedPane == 1 {
+		return "j/k scroll · ctrl+d/u half-page · G bottom · g top · h/tab/esc back"
 	}
-	hints := "j/k navigate · enter/l open · x delete"
+	hints := "j/k navigate · enter/l select · tab panel · x delete"
 	if p.hasRunning() {
 		hints += " · d cancel"
 	}
-	hints += " · m message · / filter · o/tab collapse · r refresh · esc close"
+	hints += " · m message · / filter · o collapse · r refresh · esc close"
 	return hints
 }
 
@@ -197,15 +196,48 @@ func (p *Panel) HandleRefresh() tea.Cmd {
 	return nil
 }
 
+// ── HandleTeammateEvent ───────────────────────────────────────────────────────
+
+// HandleTeammateEvent processes real-time agent events for the selected agent.
+// Updates the detail view live as new conversation entries arrive.
+func (p *Panel) HandleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
+	// Only update if this event is for the selected agent
+	if event.AgentID != p.selectedID {
+		return nil
+	}
+
+	// Rebuild the detail content from fresh state
+	p.loadConversation()
+
+	// Auto-scroll to bottom if user hasn't manually scrolled up
+	if p.atBottom {
+		p.detailVP.GotoBottom()
+	}
+
+	return nil
+}
+
 // ── private helpers ───────────────────────────────────────────────────────────
 
-// contentHeight is the viewport height: total minus title rows.
+// contentHeight is the viewport height for right pane: total minus title rows.
 func (p *Panel) contentHeight() int {
 	h := p.height - 3 // title (1) + separator (1) + hint (1)
 	if h < 2 {
 		h = 2
 	}
 	return h
+}
+
+// leftPaneWidth calculates the width of the left pane (~30% of total, minimum 20).
+func (p *Panel) leftPaneWidth() int {
+	w := p.width * 30 / 100
+	if w < 20 {
+		w = 20
+	}
+	if w > p.width-40 {
+		w = p.width - 40 // ensure right pane gets at least 40 cols
+	}
+	return w
 }
 
 // twoLineMode returns true when the panel is tall enough for two-line agent rows.
@@ -267,15 +299,11 @@ func (p *Panel) loadConversation() {
 	}
 	state, ok := p.runner.GetState(p.selectedID)
 	if !ok {
-		p.rightVP.SetContent(styles.PanelHint.Render("  Agent not found."))
+		p.detailVP.SetContent(styles.PanelHint.Render("  Agent not found."))
 		return
 	}
-	content := p.formatConversation(state)
-	p.rightVP.SetContent(content)
-	// Auto-scroll to bottom for running agents so latest output is visible.
-	if state.Status == teams.StatusWorking {
-		p.rightVP.GotoBottom()
-	}
+	content := p.buildConversationDetail(state)
+	p.detailVP.SetContent(content)
 }
 
 // ── filter helpers ────────────────────────────────────────────────────────────
@@ -418,24 +446,238 @@ func (p *Panel) visibleRange(items []displayItem, availLines int) (start, end, h
 	return startIdx, endIdx, hiddenAbove, hiddenBelow
 }
 
-// ── conversation formatting ───────────────────────────────────────────────────
+// ── conversation detail building ──────────────────────────────────────────────
 
-func (p *Panel) formatConversation(state *teams.TeammateState) string {
-	entries := state.GetConversation()
-	rw := p.width - 4 // leave some padding
+// buildConversationDetail constructs the 3-section right pane content:
+// header (name/status/model/task), tools section, and conversation feed.
+func (p *Panel) buildConversationDetail(state *teams.TeammateState) string {
+	rw := p.detailVP.Width - 2 // leave padding
 	if rw < 10 {
 		rw = 10
 	}
 
-	if len(entries) == 0 {
-		if state.Status == teams.StatusWorking {
-			spinner := spinFrames[p.tick%len(spinFrames)]
-			return "\n" + lipgloss.NewStyle().Foreground(styles.Warning).Render("  "+spinner+" waiting for first output…") + "\n"
+	var b strings.Builder
+
+	// Section 1: Header (name, status, elapsed, model, turns, task, error/result)
+	b.WriteString(p.buildDetailHeader(state, rw))
+	b.WriteString("\n")
+
+	// Section 2: Tools section (last 20 tool calls)
+	toolContent := p.buildToolsSection(state, rw)
+	if toolContent != "" {
+		b.WriteString(styles.SeparatorLine(rw + 2))
+		b.WriteString("\n")
+		b.WriteString(toolContent)
+		b.WriteString("\n")
+	}
+
+	// Section 3: Conversation section
+	conversationContent := p.formatConversation(state, rw)
+	if conversationContent != "" {
+		b.WriteString(styles.SeparatorLine(rw + 2))
+		b.WriteString("\n")
+		b.WriteString(conversationContent)
+		b.WriteString("\n")
+	}
+
+	// Streaming indicator for running agents.
+	if state.Status == teams.StatusWorking {
+		spinner := spinFrames[p.tick%len(spinFrames)]
+		b.WriteString("\n" + lipgloss.NewStyle().Foreground(styles.Warning).Render("  "+spinner+" streaming") + "\n")
+	}
+
+	return b.String()
+}
+
+// buildDetailHeader constructs the fixed header section.
+func (p *Panel) buildDetailHeader(state *teams.TeammateState, width int) string {
+	var b strings.Builder
+
+	// Line 1: Agent name, status icon, elapsed time
+	nameStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	if state.Identity.Color != "" {
+		nameStyle = nameStyle.Foreground(lipgloss.Color(state.Identity.Color))
+	}
+
+	icon := agentStatusIcon(state.Status, p.tick)
+	agentName := nameStyle.Render(state.Identity.AgentName)
+
+	var elapsed string
+	if !state.StartedAt.IsZero() {
+		var d time.Duration
+		if !state.FinishedAt.IsZero() {
+			d = state.FinishedAt.Sub(state.StartedAt).Truncate(time.Second)
+		} else {
+			d = time.Since(state.StartedAt).Truncate(time.Second)
 		}
-		return styles.PanelHint.Render("  No conversation yet.")
+		elapsed = "  " + lipgloss.NewStyle().Foreground(styles.Dim).Render(smartDuration(d))
+	}
+
+	statusLabel := agentStatusLabel(state.Status)
+	line1 := "  " + icon + " " + agentName + "  " + statusLabel + elapsed
+	b.WriteString(line1)
+	b.WriteString("\n")
+
+	// Line 2: Model and turns
+	if state.Model != "" || state.MaxTurns > 0 {
+		var line2Parts []string
+		if state.Model != "" {
+			line2Parts = append(line2Parts, "Model: "+state.Model)
+		}
+		if state.MaxTurns > 0 {
+			progress := state.GetProgress()
+			line2Parts = append(line2Parts, fmt.Sprintf("Turn %d/%d", progress.ToolCalls, state.MaxTurns))
+		}
+		line2 := "  " + strings.Join(line2Parts, "  ·  ")
+		b.WriteString(line2)
+		b.WriteString("\n")
+	}
+
+	// Line 3: Task/Prompt (first 120 chars)
+	if state.Prompt != "" {
+		task := state.Prompt
+		if len(task) > 120 {
+			task = task[:117] + "…"
+		}
+		taskLine := "  " + lipgloss.NewStyle().Foreground(styles.Dim).Italic(true).Render("Task: "+task)
+		b.WriteString(taskLine)
+		b.WriteString("\n")
+	}
+
+	// Line 4: Error message if failed
+	if state.Status == teams.StatusFailed && state.Error != "" {
+		errorLine := "  " + lipgloss.NewStyle().Foreground(styles.Error).Render("✗ "+state.Error)
+		b.WriteString(errorLine)
+		b.WriteString("\n")
+	}
+
+	// Line 5: Result summary if complete
+	if state.Status == teams.StatusComplete && state.Result != "" {
+		result := state.Result
+		if len(result) > 200 {
+			result = result[:197] + "…"
+		}
+		resultLine := "  " + lipgloss.NewStyle().Foreground(styles.Success).Render("✓ "+result)
+		b.WriteString(resultLine)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// buildToolsSection constructs the TOOLS section with live tool calls.
+func (p *Panel) buildToolsSection(state *teams.TeammateState, width int) string {
+	if state == nil {
+		return ""
+	}
+
+	// Extract tool calls from conversation
+	var toolCalls []teams.ConversationEntry
+	for _, entry := range state.Conversation {
+		if entry.Type == "tool_start" || entry.Type == "tool_end" {
+			toolCalls = append(toolCalls, entry)
+		}
+	}
+
+	if len(toolCalls) == 0 {
+		return ""
+	}
+
+	// Keep last 20 tool calls
+	if len(toolCalls) > 20 {
+		toolCalls = toolCalls[len(toolCalls)-20:]
 	}
 
 	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Muted).Render("─── TOOLS ───"))
+	b.WriteString("\n")
+
+	// Group tool_start and tool_end entries
+	toolMap := make(map[string]*toolCallGroup) // tool name → tool group
+	for _, entry := range toolCalls {
+		if entry.Type == "tool_start" {
+			if _, ok := toolMap[entry.ToolName]; !ok {
+				toolMap[entry.ToolName] = &toolCallGroup{name: entry.ToolName}
+			}
+			toolMap[entry.ToolName].input = entry.Content
+			toolMap[entry.ToolName].status = "running"
+		} else if entry.Type == "tool_end" {
+			if _, ok := toolMap[entry.ToolName]; !ok {
+				toolMap[entry.ToolName] = &toolCallGroup{name: entry.ToolName}
+			}
+			toolMap[entry.ToolName].output = entry.Content
+			toolMap[entry.ToolName].status = "done"
+		}
+	}
+
+	// Render tool calls in order they appear
+	seen := make(map[string]bool)
+	for _, entry := range toolCalls {
+		if entry.Type != "tool_start" {
+			continue
+		}
+		if seen[entry.ToolName] {
+			continue // Skip duplicates
+		}
+		seen[entry.ToolName] = true
+
+		group := toolMap[entry.ToolName]
+		if group == nil {
+			continue
+		}
+
+		// Determine status badge and color
+		var statusBadge string
+		switch group.status {
+		case "running":
+			spinner := spinFrames[p.tick%len(spinFrames)]
+			statusBadge = lipgloss.NewStyle().Foreground(styles.Warning).Render(spinner)
+		case "done":
+			statusBadge = lipgloss.NewStyle().Foreground(styles.Success).Render("✓")
+		default:
+			statusBadge = " "
+		}
+
+		// Tool name with skill indicator
+		toolNameStyle := lipgloss.NewStyle()
+		if group.name == "Skill" {
+			toolNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e78a1f")) // orange
+			statusBadge = lipgloss.NewStyle().Foreground(lipgloss.Color("#e78a1f")).Render("★")
+		}
+		toolName := toolNameStyle.Render(group.name)
+
+		// Truncate input to 60 chars
+		input := group.input
+		if len(input) > 60 {
+			input = input[:57] + "…"
+		}
+
+		line := fmt.Sprintf("  %s %s  %s", statusBadge, toolName, styles.ToolSummary.Render(input))
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+type toolCallGroup struct {
+	name   string
+	input  string
+	output string
+	status string // "running", "done"
+}
+
+// formatConversation renders the full conversation feed.
+func (p *Panel) formatConversation(state *teams.TeammateState, rw int) string {
+	entries := state.GetConversation()
+
+	if len(entries) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Muted).Render("─── CONVERSATION ───"))
+	b.WriteString("\n")
 
 	for _, e := range entries {
 		switch e.Type {
@@ -458,7 +700,7 @@ func (p *Panel) formatConversation(state *teams.TeammateState) string {
 			b.WriteString(prefix + content + "\n\n")
 
 		case "tool_start":
-			toolLine := styles.ToolName.Render("  ⚙ "+e.ToolName) + "\n"
+			toolLine := styles.ToolName.Render("  → " + e.ToolName) + "\n"
 			b.WriteString(toolLine)
 			if e.Content != "" {
 				b.WriteString(styles.ToolSummary.Render("    "+e.Content) + "\n")
@@ -468,7 +710,7 @@ func (p *Panel) formatConversation(state *teams.TeammateState) string {
 		case "tool_end":
 			if e.Content != "" {
 				b.WriteString(
-					lipgloss.NewStyle().Foreground(styles.Success).Render("  ✓ ") +
+					lipgloss.NewStyle().Foreground(styles.Success).Render("  ← ") +
 						styles.ToolSummary.Render(e.Content) + "\n\n")
 			}
 
@@ -483,12 +725,6 @@ func (p *Panel) formatConversation(state *teams.TeammateState) string {
 		case "error":
 			b.WriteString(styles.ToolError.Render("  ✗ "+e.Content) + "\n\n")
 		}
-	}
-
-	// Streaming indicator for running agents.
-	if state.Status == teams.StatusWorking {
-		spinner := spinFrames[p.tick%len(spinFrames)]
-		b.WriteString("\n" + lipgloss.NewStyle().Foreground(styles.Warning).Render("  "+spinner+" streaming") + "\n")
 	}
 
 	return b.String()
@@ -574,12 +810,20 @@ func (p *Panel) updateLeft(key string) (tea.Cmd, bool) {
 			e := fe[p.cursor]
 			p.selectedID = e.id
 			p.loadConversation()
-			p.mode = modeDetail
+			p.atBottom = true
 			if e.status == teams.StatusWorking {
 				return ScheduleRefresh(), true
 			}
 		}
 		return nil, true
+
+	case "tab":
+		// Switch to right pane
+		if p.selectedID != "" {
+			p.focusedPane = 1
+			return nil, true
+		}
+		return nil, false
 
 	case "r":
 		p.refresh()
@@ -629,7 +873,7 @@ func (p *Panel) updateLeft(key string) (tea.Cmd, bool) {
 		p.filterInput.Focus()
 		return nil, true
 
-	case "o", "tab":
+	case "o":
 		// Toggle collapsed state for the group of the currently selected agent.
 		if p.cursor < len(fe) {
 			teamKey := fe[p.cursor].team
@@ -655,25 +899,31 @@ func (p *Panel) updateLeft(key string) (tea.Cmd, bool) {
 func (p *Panel) updateRight(key string) (tea.Cmd, bool) {
 	switch key {
 	case "j", "down":
-		p.rightVP.ScrollDown(1)
+		p.detailVP.ScrollDown(1)
+		p.atBottom = false
 		return nil, true
 	case "k", "up":
-		p.rightVP.ScrollUp(1)
+		p.detailVP.ScrollUp(1)
+		p.atBottom = false
 		return nil, true
 	case "ctrl+d":
-		p.rightVP.HalfPageDown()
+		p.detailVP.HalfPageDown()
+		p.atBottom = false
 		return nil, true
 	case "ctrl+u":
-		p.rightVP.HalfPageUp()
+		p.detailVP.HalfPageUp()
+		p.atBottom = false
 		return nil, true
 	case "G":
-		p.rightVP.GotoBottom()
+		p.detailVP.GotoBottom()
+		p.atBottom = true
 		return nil, true
 	case "g":
-		p.rightVP.GotoTop()
+		p.detailVP.GotoTop()
+		p.atBottom = false
 		return nil, true
-	case "h", "esc":
-		p.mode = modeList
+	case "h", "esc", "tab":
+		p.focusedPane = 0
 		return nil, true
 	}
 	return nil, false
@@ -681,43 +931,69 @@ func (p *Panel) updateRight(key string) (tea.Cmd, bool) {
 
 // ── rendering ─────────────────────────────────────────────────────────────────
 
-// renderList renders the full-width agent list (list mode).
-func (p *Panel) renderList() string {
-	w := p.width
+// renderSplitView renders the split layout with left and right panes.
+func (p *Panel) renderSplitView() string {
+	leftPane := p.renderLeftPane()
+	rightPane := p.renderRightPane()
+
+	// Apply borders to both panes
+	leftBorder := p.borderStyle(p.focusedPane == 0)
+	rightBorder := p.borderStyle(p.focusedPane == 1)
+
+	leftStyled := leftBorder.Width(p.leftPaneWidth()).Height(p.height).Render(leftPane)
+	rightWidth := p.width - p.leftPaneWidth() - 2
+	if rightWidth < 20 {
+		rightWidth = 20
+	}
+	rightStyled := rightBorder.Width(rightWidth).Height(p.height).Render(rightPane)
+
+	// Join horizontally
+	joined := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
+	return lipgloss.NewStyle().Width(p.width).Height(p.height).Render(joined)
+}
+
+// borderStyle returns a style with the appropriate border (active = primary, inactive = muted).
+func (p *Panel) borderStyle(active bool) lipgloss.Style {
+	s := lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	if active {
+		s = s.BorderForeground(styles.Primary)
+	} else {
+		s = s.BorderForeground(styles.Muted)
+	}
+	return s
+}
+
+// renderLeftPane renders the agent list pane.
+func (p *Panel) renderLeftPane() string {
+	w := p.leftPaneWidth() - 4 // account for borders
 	var b strings.Builder
 
-	// 1. Title line with hint shortcuts (1 line).
-	titleLeft := styles.PanelTitle.Render("Agents")
-	hints := lipgloss.NewStyle().Foreground(styles.Muted).Render("[/] filter  [r]ef")
-	gap := w - lipgloss.Width(titleLeft) - lipgloss.Width(hints)
-	if gap < 1 {
-		gap = 1
+	// 1. Title line with status summary
+	titleLeft := styles.PanelTitle.Render("AGENTS")
+	summary := p.renderStatusSummary()
+	if summary != "" {
+		gap := w - lipgloss.Width(titleLeft) - lipgloss.Width(summary)
+		if gap < 1 {
+			gap = 1
+		}
+		b.WriteString(titleLeft + strings.Repeat(" ", gap) + summary)
+	} else {
+		b.WriteString(titleLeft)
 	}
-	b.WriteString(titleLeft + strings.Repeat(" ", gap) + hints)
 	b.WriteString("\n")
 	b.WriteString(styles.SeparatorLine(w))
 	b.WriteString("\n")
 
-	// 2. Status summary (1 line, hidden when all counts are zero).
-	summary := p.renderStatusSummary()
-	if summary != "" {
-		b.WriteString(summary)
-		b.WriteString("\n")
-	}
-
-	// 3. Filter bar (1 line, only when filtering).
+	// 2. Filter bar (1 line, only when filtering).
 	fixedLines := 2 // title + sep
-	if summary != "" {
-		fixedLines++ // + summary
-	}
 	if p.filtering {
 		b.WriteString(p.renderFilterBar(w))
 		b.WriteString("\n")
 		fixedLines++
 	}
 
-	// 4. Agent list with scroll indicators.
-	availLines := p.height - fixedLines
+	// 3. Agent list with scroll indicators.
+	availLines := p.height - fixedLines - 3 // account for border and padding
 	if availLines < 2 {
 		availLines = 2
 	}
@@ -729,13 +1005,7 @@ func (p *Panel) renderList() string {
 			b.WriteString("\n")
 		} else {
 			b.WriteString(lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
-				styles.PanelHint.Render("No agents running yet.")))
-			b.WriteString("\n")
-			b.WriteString(lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
-				styles.PanelHint.Render("Spawn one with SpawnTeammate or")))
-			b.WriteString("\n")
-			b.WriteString(lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
-				styles.PanelHint.Render("use /agent to set a persona.")))
+				styles.PanelHint.Render("No agents yet.")))
 			b.WriteString("\n")
 		}
 	} else {
@@ -756,7 +1026,7 @@ func (p *Panel) renderList() string {
 
 		// Scroll up indicator.
 		if hiddenAbove > 0 {
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(2).
 				Render(fmt.Sprintf("↑ %d more", hiddenAbove)))
 			b.WriteString("\n")
 		}
@@ -773,7 +1043,7 @@ func (p *Panel) renderList() string {
 
 		// Scroll down indicator.
 		if hiddenBelow > 0 {
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(2).
 				Render(fmt.Sprintf("↓ %d more", hiddenBelow)))
 			b.WriteString("\n")
 		}
@@ -786,33 +1056,42 @@ func (p *Panel) renderList() string {
 		b.WriteString(confirmLine)
 	}
 
-	return lipgloss.NewStyle().Width(w).Height(p.height).Render(b.String())
+	return b.String()
 }
 
-// renderStatusSummary builds the "N running · N waiting · N done" line.
+// renderStatusSummary builds the status counts summary line (e.g., "3◐ 1● 1✗").
 func (p *Panel) renderStatusSummary() string {
-	var running, waiting, done int
+	var working, done, failed int
 	for _, e := range p.entries {
 		switch e.status {
 		case teams.StatusWorking:
-			running++
-		case teams.StatusWaitingForInput:
-			waiting++
-		case teams.StatusComplete, teams.StatusFailed, teams.StatusShutdown:
+			working++
+		case teams.StatusComplete:
 			done++
+		case teams.StatusFailed:
+			failed++
 		}
 	}
 
-	if running == 0 && waiting == 0 && done == 0 {
+	if working == 0 && done == 0 && failed == 0 {
 		return ""
 	}
 
-	sep := lipgloss.NewStyle().Foreground(styles.Muted).Render(" · ")
-	runStr := lipgloss.NewStyle().Foreground(styles.Warning).Render(fmt.Sprintf("%d running", running))
-	waitStr := lipgloss.NewStyle().Foreground(styles.Warning).Render(fmt.Sprintf("%d waiting", waiting))
-	doneStr := lipgloss.NewStyle().Foreground(styles.Success).Render(fmt.Sprintf("%d done", done))
+	var parts []string
+	if working > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(styles.Warning).
+			Render(fmt.Sprintf("%d◐", working)))
+	}
+	if done > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(styles.Success).
+			Render(fmt.Sprintf("%d●", done)))
+	}
+	if failed > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(styles.Error).
+			Render(fmt.Sprintf("%d✗", failed)))
+	}
 
-	return "  " + runStr + sep + waitStr + sep + doneStr
+	return strings.Join(parts, " ")
 }
 
 // renderFilterBar renders the active filter input line.
@@ -899,7 +1178,16 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 		}
 	}
 
-	line1content := prefix + icon + " " + nameStyle.Render(name) + " " + statusLabel + dur
+	// Tool count
+	var toolCount string
+	if e.state != nil {
+		progress := e.state.GetProgress()
+		if progress.ToolCalls > 0 {
+			toolCount = lipgloss.NewStyle().Foreground(styles.Dim).Render(fmt.Sprintf(" %dt", progress.ToolCalls))
+		}
+	}
+
+	line1content := prefix + icon + " " + nameStyle.Render(name) + " " + statusLabel + dur + toolCount
 	if selected {
 		line1content = lipgloss.NewStyle().Background(styles.Subtle).Width(width).Render(line1content)
 	}
@@ -909,7 +1197,7 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 		return line1
 	}
 
-	// Line 2: italic last message preview from GetProgress().
+	// Line 2: italic last activity preview from GetProgress().
 	activity := ""
 	if e.state != nil {
 		progress := e.state.GetProgress()
@@ -934,6 +1222,57 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 	line2 := line2content + "\n"
 
 	return line1 + line2
+}
+
+// renderRightPane renders the agent detail pane.
+func (p *Panel) renderRightPane() string {
+	w := p.detailVP.Width
+	if w < 20 {
+		w = 20
+	}
+
+	var b strings.Builder
+
+	// Title line
+	if p.selectedID != "" && p.runner != nil {
+		if state, ok := p.runner.GetState(p.selectedID); ok {
+			nameStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+			if state.Identity.Color != "" {
+				nameStyle = nameStyle.Foreground(lipgloss.Color(state.Identity.Color))
+			}
+			agentName := nameStyle.Render(state.Identity.AgentName)
+			teamName := ""
+			if state.TeamName != "" {
+				teamName = "  " + lipgloss.NewStyle().Foreground(styles.Dim).Render(state.TeamName)
+			}
+
+			var statusColor lipgloss.Color
+			switch state.Status {
+			case teams.StatusWorking:
+				statusColor = styles.Warning
+			case teams.StatusComplete:
+				statusColor = styles.Success
+			case teams.StatusFailed:
+				statusColor = styles.Error
+			default:
+				statusColor = styles.Muted
+			}
+			statusBadge := "  " + lipgloss.NewStyle().Foreground(statusColor).Render("["+string(state.Status)+"]")
+
+			headerContent := agentName + teamName + statusBadge
+			b.WriteString(headerContent)
+		}
+	} else {
+		b.WriteString(styles.PanelHint.Render("select an agent"))
+	}
+	b.WriteString("\n")
+	b.WriteString(styles.SeparatorLine(w))
+	b.WriteString("\n")
+
+	// Viewport content
+	b.WriteString(p.detailVP.View())
+
+	return b.String()
 }
 
 func agentStatusIcon(s teams.MemberStatus, tick int) string {
@@ -969,70 +1308,6 @@ func agentStatusLabel(s teams.MemberStatus) string {
 		color = styles.Dim
 	}
 	return lipgloss.NewStyle().Foreground(color).Render(string(s))
-}
-
-// renderDetail renders the full-width conversation detail mode.
-func (p *Panel) renderDetail() string {
-	w := p.width
-	var b strings.Builder
-
-	// Header line: "← agentName  team  [status] spinner  [esc]"
-	if p.selectedID != "" && p.runner != nil {
-		if state, ok := p.runner.GetState(p.selectedID); ok {
-			nameStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-			if state.Identity.Color != "" {
-				nameStyle = nameStyle.Foreground(lipgloss.Color(state.Identity.Color))
-			}
-
-			backArrow := lipgloss.NewStyle().Foreground(styles.Muted).Render("← ")
-			agentName := nameStyle.Render(state.Identity.AgentName)
-			teamName := ""
-			if state.TeamName != "" {
-				teamName = "  " + lipgloss.NewStyle().Foreground(styles.Dim).Render(state.TeamName)
-			}
-
-			var statusColor lipgloss.Color
-			switch state.Status {
-			case teams.StatusWorking:
-				statusColor = styles.Warning
-			case teams.StatusComplete:
-				statusColor = styles.Success
-			case teams.StatusFailed:
-				statusColor = styles.Error
-			default:
-				statusColor = styles.Muted
-			}
-			statusBadge := "  " + lipgloss.NewStyle().Foreground(statusColor).Render("["+string(state.Status)+"]")
-
-			spinnerStr := ""
-			if state.Status == teams.StatusWorking {
-				frame := spinFrames[p.tick%len(spinFrames)]
-				spinnerStr = " " + lipgloss.NewStyle().Foreground(styles.Warning).Render(frame)
-			}
-
-			escHint := lipgloss.NewStyle().Foreground(styles.Muted).Render("[esc]")
-
-			headerContent := backArrow + agentName + teamName + statusBadge + spinnerStr
-			headerWidth := lipgloss.Width(headerContent)
-			escWidth := lipgloss.Width(escHint)
-			gap := w - headerWidth - escWidth
-			if gap < 1 {
-				gap = 1
-			}
-			b.WriteString(headerContent + strings.Repeat(" ", gap) + escHint)
-		} else {
-			b.WriteString(styles.PanelHint.Render("← " + p.selectedID))
-		}
-	} else {
-		b.WriteString(styles.PanelHint.Render("  select an agent"))
-	}
-	b.WriteString("\n")
-	b.WriteString(styles.SeparatorLine(w))
-	b.WriteString("\n")
-
-	b.WriteString(p.rightVP.View())
-
-	return lipgloss.NewStyle().Width(w).Height(p.height).Render(b.String())
 }
 
 // smartDuration formats a duration concisely.
