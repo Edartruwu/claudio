@@ -11,6 +11,9 @@ import (
 
 // buildSeparator creates a thin vertical line of the given height.
 func buildSeparator(height int) string {
+	if height <= 0 {
+		return ""
+	}
 	style := lipgloss.NewStyle().Foreground(styles.Muted)
 	lines := make([]string, height)
 	for i := range lines {
@@ -67,6 +70,9 @@ func placeOverlayAt(base, overlay string, x, y, width, height int) string {
 // panel.SetSize before this — renderPanelWithHelp handles it.
 func renderPanelWithHelp(panel panels.Panel, w, h int) string {
 	helpText := panel.Help()
+	if h < 2 {
+		helpText = ""
+	}
 	contentH := h
 	if helpText != "" {
 		contentH = h - 1
