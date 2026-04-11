@@ -885,26 +885,17 @@ func renderMessage(msg ChatMessage, maxW int, thinkingExpanded bool) string {
 		return indent + styles.ToolSuccess.Render("✓ ") + styles.ToolSummary.Render(brief)
 
 	case MsgThinking:
-		headerStyle := lipgloss.NewStyle().Foreground(styles.Orange).Italic(true).Bold(true)
 		if !thinkingExpanded {
-			header := headerStyle.Render("Thinking: ") +
-				lipgloss.NewStyle().Foreground(styles.Orange).Italic(true).Render(truncate(firstLine(msg.Content), maxW-14))
-			hint := lipgloss.NewStyle().Foreground(styles.Subtle).Render("  ▶ ctrl+o expand")
-			return lipgloss.NewStyle().
-				BorderStyle(lipgloss.Border{Left: "▌"}).
-				BorderLeft(true).
-				BorderForeground(styles.Orange).
-				PaddingLeft(1).
+			header := styles.ThinkingHeaderStyle.Render("Thinking: ") +
+				styles.ThinkingHeaderStyle.Render(truncate(firstLine(msg.Content), maxW-14))
+			hint := styles.ThinkingHintStyle.Render("  ▶ ctrl+o expand")
+			return styles.ThinkingBoxCollapsed.
 				Width(maxW).
 				Render(header + hint)
 		}
-		header := headerStyle.Render("Thinking:")
-		body := lipgloss.NewStyle().Foreground(styles.Muted).Width(maxW - 4).Render(msg.Content)
-		return lipgloss.NewStyle().
-			BorderStyle(lipgloss.Border{Left: "▌"}).
-			BorderLeft(true).
-			BorderForeground(styles.Orange).
-			PaddingLeft(1).
+		header := styles.ThinkingHeaderStyle.Render("Thinking:")
+		body := styles.ThinkingBodyStyle.Width(maxW - 4).Render(msg.Content)
+		return styles.ThinkingBoxExpanded.
 			Width(maxW).
 			Render(header + "\n\n" + body)
 
@@ -957,21 +948,20 @@ func renderStatusBar(width int, s StatusBarState) string {
 		var modeStyle lipgloss.Style
 		switch s.VimMode {
 		case "NORMAL":
-			modeStyle = lipgloss.NewStyle().Background(styles.Secondary).Foreground(styles.Surface).Bold(true).Padding(0, 1)
+			modeStyle = styles.StatusVimModeNormal
 		case "VISUAL":
-			modeStyle = lipgloss.NewStyle().Background(styles.Primary).Foreground(styles.Surface).Bold(true).Padding(0, 1)
+			modeStyle = styles.StatusVimModeVisual
 		case "VIEWPORT":
-			modeStyle = lipgloss.NewStyle().Background(styles.Warning).Foreground(styles.Surface).Bold(true).Padding(0, 1)
+			modeStyle = styles.StatusVimModeViewport
 		default: // INSERT
-			modeStyle = lipgloss.NewStyle().Background(styles.Success).Foreground(styles.Surface).Bold(true).Padding(0, 1)
+			modeStyle = styles.StatusVimModeInsert
 		}
 		parts = append(parts, modeStyle.Render(s.VimMode))
 	}
 
 	// Session name
 	if s.SessionName != "" {
-		sessStyle := lipgloss.NewStyle().Foreground(styles.Aqua)
-		parts = append(parts, sessStyle.Render(s.SessionName))
+		parts = append(parts, styles.StatusSessionStyle.Render(s.SessionName))
 	}
 
 	parts = append(parts, styles.StatusModel.Render(s.Model))
@@ -982,8 +972,7 @@ func renderStatusBar(width int, s StatusBarState) string {
 
 	// Panel indicator
 	if s.PanelName != "" {
-		panelStyle := lipgloss.NewStyle().Foreground(styles.Primary)
-		parts = append(parts, panelStyle.Render("◧ "+s.PanelName))
+		parts = append(parts, styles.StatusPanelStyle.Render("◧ "+s.PanelName))
 	}
 
 	if s.Tokens > 0 {
@@ -1003,31 +992,25 @@ func renderStatusBar(width int, s StatusBarState) string {
 
 	// Background sessions indicator
 	if s.BackgroundSessions > 0 {
-		bgStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
-		parts = append(parts, bgStyle.Render(fmt.Sprintf("⚡%d bg", s.BackgroundSessions)))
+		parts = append(parts, styles.StatusBackgroundSessions.Render(fmt.Sprintf("⚡%d bg", s.BackgroundSessions)))
 	}
 
 	// Team status
 	if s.TeamSummary != "" {
-		teamStyle := lipgloss.NewStyle().Foreground(styles.Warning)
-		parts = append(parts, teamStyle.Render(s.TeamSummary))
+		parts = append(parts, styles.StatusTeamStyle.Render(s.TeamSummary))
 	}
 	if s.UnreadMailbox > 0 {
-		mailStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
-		parts = append(parts, mailStyle.Render(fmt.Sprintf("✉ %d", s.UnreadMailbox)))
+		parts = append(parts, styles.StatusMailStyle.Render(fmt.Sprintf("✉ %d", s.UnreadMailbox)))
 	}
 
 	// Rate limit indicators
 	if s.IsUsingOverage {
-		ovStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
-		parts = append(parts, ovStyle.Render("⚡ Extra Usage"))
+		parts = append(parts, styles.StatusOverageStyle.Render("⚡ Extra Usage"))
 	}
 	if s.RateLimitError != "" {
-		rlStyle := lipgloss.NewStyle().Foreground(styles.Error).Bold(true)
-		parts = append(parts, rlStyle.Render(s.RateLimitError))
+		parts = append(parts, styles.StatusRateLimitError.Render(s.RateLimitError))
 	} else if s.RateLimitWarning != "" {
-		rlStyle := lipgloss.NewStyle().Foreground(styles.Warning)
-		parts = append(parts, rlStyle.Render(s.RateLimitWarning))
+		parts = append(parts, styles.StatusRateLimitWarning.Render(s.RateLimitWarning))
 	}
 
 	if s.Cost > 0 {
@@ -1249,11 +1232,10 @@ func renderContextBar(used, max int) string {
 	}
 
 	filledStyle := lipgloss.NewStyle().Foreground(barColor)
-	emptyStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
 	pctStyle := lipgloss.NewStyle().Foreground(barColor)
 
 	bar := filledStyle.Render(strings.Repeat("█", filled)) +
-		emptyStyle.Render(strings.Repeat("░", barWidth-filled))
+		styles.ContextBarEmpty.Render(strings.Repeat("░", barWidth-filled))
 
 	return fmt.Sprintf("[%s] %s", bar, pctStyle.Render(fmt.Sprintf("%d%%", pct)))
 }

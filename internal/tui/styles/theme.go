@@ -108,6 +108,31 @@ var (
 
 	SystemStyle = lipgloss.NewStyle().
 			Foreground(Muted)
+
+	// Thinking message styles (cached for performance in hot render path)
+	ThinkingHeaderStyle = lipgloss.NewStyle().
+			Foreground(Orange).
+			Italic(true).
+			Bold(true)
+
+	ThinkingHintStyle = lipgloss.NewStyle().
+			Foreground(Subtle).
+			Italic(true)
+
+	ThinkingBoxCollapsed = lipgloss.NewStyle().
+			BorderStyle(lipgloss.Border{Left: "▌"}).
+			BorderLeft(true).
+			BorderForeground(Orange).
+			PaddingLeft(1)
+
+	ThinkingBoxExpanded = lipgloss.NewStyle().
+			BorderStyle(lipgloss.Border{Left: "▌"}).
+			BorderLeft(true).
+			BorderForeground(Orange).
+			PaddingLeft(1)
+
+	ThinkingBodyStyle = lipgloss.NewStyle().
+			Foreground(Muted)
 )
 
 // ── Prompt ────────────────────────────────────────────────
@@ -150,6 +175,87 @@ var (
 
 	StatusActive = lipgloss.NewStyle().
 			Foreground(Warning)
+
+	// Status bar vim mode styles (cached for performance in hot render path)
+	StatusVimModeNormal = lipgloss.NewStyle().
+			Background(Secondary).
+			Foreground(Surface).
+			Bold(true).
+			Padding(0, 1)
+
+	StatusVimModeVisual = lipgloss.NewStyle().
+			Background(Primary).
+			Foreground(Surface).
+			Bold(true).
+			Padding(0, 1)
+
+	StatusVimModeViewport = lipgloss.NewStyle().
+			Background(Warning).
+			Foreground(Surface).
+			Bold(true).
+			Padding(0, 1)
+
+	StatusVimModeInsert = lipgloss.NewStyle().
+			Background(Success).
+			Foreground(Surface).
+			Bold(true).
+			Padding(0, 1)
+
+	// Status bar inline styles (cached for performance in hot render path)
+	StatusSessionStyle = lipgloss.NewStyle().
+			Foreground(Aqua)
+
+	StatusPanelStyle = lipgloss.NewStyle().
+			Foreground(Primary)
+
+	StatusBackgroundSessions = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	StatusTeamStyle = lipgloss.NewStyle().
+			Foreground(Warning)
+
+	StatusMailStyle = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	StatusOverageStyle = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	StatusRateLimitError = lipgloss.NewStyle().
+			Foreground(Error).
+			Bold(true)
+
+	StatusRateLimitWarning = lipgloss.NewStyle().
+			Foreground(Warning)
+
+	// Context bar styles (cached for performance in hot render path)
+	ContextBarEmpty = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	// Status line styles (cached for performance in hot render path)
+	StatusLineCenterStyle = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	StatusLineRightStyle = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	StatusLineSeparator = lipgloss.NewStyle().
+			Foreground(Subtle)
+
+	// Status line mode pill styles
+	StatusLinePillViewport = lipgloss.NewStyle().
+			Foreground(Secondary).
+			Bold(true)
+
+	StatusLinePillPanel = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	StatusLinePillPrompt = lipgloss.NewStyle().
+			Foreground(Success).
+			Bold(true)
 )
 
 // ── Overlays / Dialogs ───────────────────────────────────
