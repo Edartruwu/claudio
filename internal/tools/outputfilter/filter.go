@@ -68,6 +68,14 @@ func filterByCommand(cmd, output string) (string, bool) {
 		return filterBundle(sub, output)
 	case "prisma":
 		return filterPrisma(sub, output)
+	case "ansible", "ansible-playbook":
+		return filterAnsible(sub, output)
+	case "eslint":
+		return filterEslint(output), true
+	case "tsc":
+		return filterTsc(output), true
+	case "curl":
+		return filterCurl(output)
 	}
 
 	return "", false

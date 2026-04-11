@@ -560,3 +560,217 @@ The following changes will be applied to the database schema:
 		t.Errorf("expected env line stripped, got:\n%s", got)
 	}
 }
+
+// ── Ansible ─────────────────────────────────────────────────────────────
+
+func TestFilterAnsible_SuccessfulPlaybook(t *testing.T) {
+	input := `PLAY [webservers] ************************************************************
+
+TASK [Gathering Facts] ********************************************************
+ok: [web1]
+ok: [web2]
+
+TASK [Install nginx] **********************************************************
+ok: [web1]
+ok: [web2]
+
+TASK [Start nginx] ************************************************************
+ok: [web1]
+ok: [web2]
+
+PLAY RECAP ********************************************************************
+web1                       : ok=3    changed=0    unreachable=0    failed=0
+web2                       : ok=3    changed=0    unreachable=0    failed=0`
+
+	got := Filter("ansible-playbook site.yml", input)
+	if !strings.Contains(got, "PLAY [webservers]") {
+		t.Errorf("expected PLAY header, got:\n%s", got)
+	}
+	if !strings.Contains(got, "PLAY RECAP") {
+		t.Errorf("expected PLAY RECAP, got:\n%s", got)
+	}
+	if strings.Contains(got, "ok: [web1]") {
+		t.Errorf("expected ok: lines stripped, got:\n%s", got)
+	}
+	if strings.Contains(got, "Gathering Facts") {
+		t.Errorf("expected Gathering Facts stripped, got:\n%s", got)
+	}
+	if strings.Contains(got, "TASK [Install nginx]") {
+		t.Errorf("expected ok-only TASK headers stripped, got:\n%s", got)
+	}
+}
+
+func TestFilterAnsible_WithFailures(t *testing.T) {
+	input := `PLAY [webservers] ************************************************************
+
+TASK [Gathering Facts] ********************************************************
+ok: [web1]
+
+TASK [Deploy app] *************************************************************
+changed: [web1] => {"changed": true, "dest": "/opt/app"}
+
+TASK [Restart service] ********************************************************
+fatal: [web1]: FAILED! => {"changed": false, "msg": "Service not found"}
+
+PLAY RECAP ********************************************************************
+web1                       : ok=1    changed=1    unreachable=0    failed=1`
+
+	got := Filter("ansible-playbook deploy.yml", input)
+	if !strings.Contains(got, "fatal:") {
+		t.Errorf("expected fatal line kept, got:\n%s", got)
+	}
+	if !strings.Contains(got, "TASK [Restart service]") {
+		t.Errorf("expected failed task header kept, got:\n%s", got)
+	}
+	if !strings.Contains(got, "TASK [Deploy app]") {
+		t.Errorf("expected changed task header kept, got:\n%s", got)
+	}
+	if !strings.Contains(got, "changed: [web1]") {
+		t.Errorf("expected changed line kept, got:\n%s", got)
+	}
+	// JSON blob should be stripped from changed line
+	if strings.Contains(got, `"dest"`) {
+		t.Errorf("expected JSON blob stripped from changed line, got:\n%s", got)
+	}
+	if !strings.Contains(got, "PLAY RECAP") {
+		t.Errorf("expected recap kept, got:\n%s", got)
+	}
+}
+
+// ── ESLint ──────────────────────────────────────────────────────────────
+
+func TestFilterEslint_WithErrors(t *testing.T) {
+	input := `/home/user/project/src/App.js
+  3:10  error  'foo' is defined but never used  no-unused-vars
+  7:5   warning  Unexpected console statement     no-console
+
+/home/user/project/src/utils.js
+  12:1  error  'bar' is not defined  no-undef
+
+✖ 3 problems (2 errors, 1 warning)`
+
+	got := Filter("eslint src/", input)
+	if !strings.Contains(got, "no-unused-vars") {
+		t.Errorf("expected error detail, got:\n%s", got)
+	}
+	if !strings.Contains(got, "no-undef") {
+		t.Errorf("expected error detail, got:\n%s", got)
+	}
+	if !strings.Contains(got, "3 problems") {
+		t.Errorf("expected summary, got:\n%s", got)
+	}
+}
+
+func TestFilterEslint_NoIssues(t *testing.T) {
+	got := Filter("eslint src/", "")
+	if got != "" {
+		t.Errorf("expected empty for empty input, got: %q", got)
+	}
+}
+
+// ── TSC ─────────────────────────────────────────────────────────────────
+
+func TestFilterTsc_WithErrors(t *testing.T) {
+	input := `src/App.tsx(10,5): error TS2304: Cannot find name 'foo'.
+src/utils.ts(25,10): error TS7006: Parameter 'x' implicitly has an 'any' type.
+
+Found 2 errors in 2 files.`
+
+	got := Filter("tsc --noEmit", input)
+	if !strings.Contains(got, "error TS2304") {
+		t.Errorf("expected TS error, got:\n%s", got)
+	}
+	if !strings.Contains(got, "error TS7006") {
+		t.Errorf("expected TS error, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Found 2 errors") {
+		t.Errorf("expected error count, got:\n%s", got)
+	}
+}
+
+func TestFilterTsc_WatchMode(t *testing.T) {
+	input := `Starting compilation in watch mode...
+
+src/index.ts(5,3): error TS2322: Type 'string' is not assignable to type 'number'.
+
+Watching for file changes.
+
+Found 1 error.`
+
+	got := Filter("tsc --watch", input)
+	if strings.Contains(got, "Starting compilation") {
+		t.Errorf("expected watch mode line stripped, got:\n%s", got)
+	}
+	if strings.Contains(got, "Watching for file changes") {
+		t.Errorf("expected watch status stripped, got:\n%s", got)
+	}
+	if !strings.Contains(got, "error TS2322") {
+		t.Errorf("expected error kept, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Found 1 error") {
+		t.Errorf("expected error count, got:\n%s", got)
+	}
+}
+
+// ── Curl ────────────────────────────────────────────────────────────────
+
+func TestFilterCurl_Verbose(t *testing.T) {
+	input := `* Connected to example.com (93.184.216.34) port 443
+* TLS 1.3 connection established
+> GET /api/data HTTP/1.1
+> Host: example.com
+> User-Agent: curl/8.1.2
+> Accept: */*
+> 
+< HTTP/1.1 200 OK
+< Date: Mon, 01 Jan 2024 00:00:00 GMT
+< Content-Type: application/json
+< Server: nginx
+< X-Request-Id: abc123
+< 
+{"status":"ok","data":[1,2,3]}`
+
+	got := Filter("curl -v https://example.com/api/data", input)
+	if !strings.Contains(got, "HTTP/1.1 200 OK") {
+		t.Errorf("expected HTTP status line, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Content-Type: application/json") {
+		t.Errorf("expected Content-Type, got:\n%s", got)
+	}
+	if !strings.Contains(got, `{"status":"ok"`) {
+		t.Errorf("expected response body, got:\n%s", got)
+	}
+	if strings.Contains(got, "Connected to") {
+		t.Errorf("expected connection info stripped, got:\n%s", got)
+	}
+	if strings.Contains(got, "User-Agent") {
+		t.Errorf("expected request headers stripped, got:\n%s", got)
+	}
+	if strings.Contains(got, "X-Request-Id") {
+		t.Errorf("expected noise headers stripped, got:\n%s", got)
+	}
+}
+
+func TestFilterCurl_NonVerbose(t *testing.T) {
+	input := `{"status":"ok","data":"hello world"}`
+	got := Filter("curl https://example.com/api/data", input)
+	if got != input {
+		t.Errorf("expected passthrough for non-verbose, got:\n%s", got)
+	}
+}
+
+func TestFilterCurl_LongBodyTruncated(t *testing.T) {
+	var lines []string
+	for i := 0; i < 150; i++ {
+		lines = append(lines, `{"line": `+itoa(i)+`}`)
+	}
+	input := strings.Join(lines, "\n")
+	got := Filter("curl https://example.com/data", input)
+	if !strings.Contains(got, "truncated") {
+		t.Errorf("expected truncation notice, got:\n%s", got)
+	}
+	// Should not contain line 120
+	if strings.Contains(got, `"line": 120`) {
+		t.Errorf("expected lines beyond 100 truncated, got late line in output")
+	}
+}
