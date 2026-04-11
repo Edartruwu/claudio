@@ -1,365 +1,310 @@
-# Investigation Report: TUI Codebase Structure & Layout Analysis
+# Investigation Report: Team Agent Result/Completion Reporting Flow
 
 ## Subject
-Investigation of the TUI codebase (`internal/tui/`) to identify layout structure, spacing/padding patterns, viewport handling, and potential rendering issues causing content to disappear at the top of the terminal (especially in Alacritty).
+Investigation of the complete result/completion reporting flow for team agents, with focus on system prompt injection patterns, result format specifications, and potential conflicts between `### Done` (from runner.go) and `### Result` (from spawnteammate.go).
 
 ## Codebase Overview
 
-### Top-Level Architecture
-The TUI is built using **Bubbletea + Lipgloss** with an **Elm-style Model/Update/View pattern**. The codebase consists of **56 Go files** organized in a modular structure:
+The team agent system consists of:
+- **`internal/teams/runner.go`**: Core TeammateRunner that spawns and manages team agents
+- **`internal/tools/spawnteammate.go`**: SpawnTeammate tool (explicit team agent spawner with result format instruction)
+- **`internal/tools/agent.go`**: Generic Agent tool (spawns sub-agents, routes to TeammateRunner when team is active)
+- **`internal/tui/messages.go`**: UI layer that extracts result summaries from agent output
+- **`internal/tui/root.go`**: TUI notification handler that displays completion events to user
 
-- **Root coordinator**: `root.go` (214 symbols, ~6,400 lines) — main Model, Update, View, and layout logic
-- **Message rendering**: `messages.go` (86 symbols) — ChatMessage formatting, viewport content generation
-- **Components**: Reusable UI blocks (prompt, spinner, sidebar, panels, docks)
-- **Panels**: Modal/drawer overlays for different views (conversation, config, tasks, skills, memory, etc.)
-- **Subsidiary systems**: Docks (todo, permissions), sidebars, keymaps, vim mode, notifications
-
-### View Hierarchy
-The final rendered screen (line 5810 in root.go) is built as a vertical stack using `lipgloss.JoinVertical()`:
-
-```
-1. "" (empty line - TOP PADDING)
-2. topArea (viewport + overlays/sidebars)
-3. [Command palette or file picker] (optional)
-4. [Dock - permissions or todo] (optional)
-5. Status line (renderStatusLine)
-6. Separator line
-7. Prompt (prompt.View())
-8. Mode line (renderModeLine or renderSearchBar)
-9. Help footer (renderHelpFooter)
-10. Status bar (renderStatusBar)
-```
+The flow involves two distinct spawning paths:
+1. **Direct team spawn**: SpawnTeammate tool → TeammateRunner.Spawn()
+2. **Generic agent spawn with team**: Agent tool → TeamRunner.Spawn() (when team is active)
 
 ## Key Findings
 
-### 1. **Top Padding Mechanism - Intentional but Fragile**
-- **Location**: `root.go:5740` and layout `root.go:5587-5588`
-- **Description**: 
-  - A single empty string `""` is prepended to sections to prevent "content from being clipped at terminal edge"
-  - This is accounted for in the viewport height calculation: `const topPadding = 1`
-  - **vpHeight calculation** (line 5588):
-    ```go
-    vpHeight := m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1 - topPadding
-    ```
-  - This reserves exactly 1 line for the empty padding
-- **Risk**: The comment suggests this is a workaround for a clipping issue. If the empty line doesn't render correctly or if content is being positioned incorrectly, the viewport content could be pushed down or clipped.
+### Finding 1: TeammateRunner Injects `### Done` Header (runner.go:515-571)
 
-### 2. **Viewport Height Calculation - Potential Off-by-One Issues**
-- **Location**: `root.go:5576-5590`
-- **Description**:
-  ```
-  statusH = 1          (status bar at top - NOT RENDERED IN MAIN OUTPUT)
-  promptH = dynamic    (1-10 lines, from textarea height)
-  paletteH = 0 or 10   (command palette when active)
-  modeLineH = 1        (vim mode / mode indicator line)
-  helpFooterH = 1      (keyboard hints)
-  statusLineH = 1      (above prompt, nvim-style)
-  topPadding = 1       (empty line)
-  + 1 for "separator" (not explicitly named)
-  ```
-- **Issue Identified**: The `statusH = 1` variable is set but appears to be unused in the calculation! This suggests the calculation was refactored but the variable wasn't removed. The actual layout items stacked are:
-  - topArea (viewport height)
-  - [palette]
-  - [dock]
-  - statusline (renderStatusLine)
-  - separator
-  - prompt
-  - modeline/searchbar
-  - helpfooter
-  - statusbar (renderStatusBar)
-  
-  But `vpHeight` is calculated as: `m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1 - topPadding`
-  
-  **The unused `statusH` is being subtracted even though it's not in the layout!**
+**Location**: `internal/teams/runner.go:515-571`
 
-### 3. **Dynamic Prompt Height Issue**
-- **Location**: `prompt/prompt.go:684-705`
-- **Description**:
-  - Prompt height is **dynamic**: `Height() = lipgloss.Height(m.View())`
-  - The View() method renders text + pills row + divider + actual textarea
-  - If pills (images, pastes) are present, they add `2 + pills_height` to the rendered height
-  - Layout recalculation happens every frame in `View()` (line 5646): `m.layout()`
-- **Risk**: If the prompt height changes (e.g., when images are added or removed), the viewport height will shrink/expand, but the GotoTop/GotoBottom logic (lines 5331-5338) only triggers based on content lines, not on layout changes.
+**Description**: The `runTeammate()` function builds a `teammateCtx` string that is **always** injected into every spawned teammate's system prompt (lines 515-571). This context includes a "Completion report" section that specifies the `### Done` header format.
 
-### 4. **Window Size Message Handler - Viewport Refresh**
-- **Location**: `root.go:565-576`
-- **Description**:
-  ```go
-  case tea.WindowSizeMsg:
-      m.width = msg.Width
-      m.height = msg.Height
-      m.tooSmall = msg.Width < 60 || msg.Height < 20
-      m.palette.SetWidth(m.width)
-      m.filePicker.SetWidth(m.width)
-      m.modelSelector.SetWidth(m.width)
-      m.agentSelector.SetWidth(m.height)  // NOTE: height passed to agentSelector, not width!
-      m.layout()
-      m.refreshViewport()
-      return m, nil
-  ```
-- **Issue**: Line 573: `m.agentSelector.SetHeight(m.height)` — this should likely be `SetWidth` not `SetHeight`, or there's a missing SetWidth call.
-- **More importantly**: `refreshViewport()` is called, which updates the viewport content **after** layout() has calculated the new viewport dimensions. This should work, but let's verify the flow.
+**Full `### Done` instruction**:
+```
+## Completion report
 
-### 5. **Viewport Content Refresh - GotoTop/GotoBottom Logic**
-- **Location**: `root.go:5282-5339` (refreshViewport method)
-- **Description**:
-  - When focus is NOT on viewport (line 5331): `if m.focus != FocusViewport`
-    - If content fits in viewport: `GotoTop()`
-    - If content is larger: `GotoBottom()`
-  - When focus IS on viewport: viewport YOffset is NOT changed (implicit)
-- **Risk**: If the user has scrolled partway through content, then the content changes size (e.g., tool expands), the viewport will jump to top or bottom without warning. More critically, there's no mechanism to **revalidate YOffset when viewport height changes**. If `m.viewport.Height` is reduced after content is already set, and `YOffset` was calculated for the old height, it could cause content clipping.
+When your task is done, always end your final response with this section:
 
-### 6. **Section Tracking & Scroll Management**
-- **Location**: `root.go:5304-5306` (renderMessages result), `5368-5377` (scrollToSection)
-- **Description**:
-  - `renderMessages()` returns `Sections` — metadata about line ranges for each message/tool
-  - `vpSections` caches these for scroll-to-section logic
-  - `scrollToSection()` adjusts `YOffset` based on `LineStart` and `LineCount`
-- **Issue**: If `vpHeight` changes but `vpSections` is stale, the scroll-to calculations will use incorrect viewport heights. The sections don't have viewport-dependent state; they're computed once per render.
+### Done
+- What was changed or produced, and why
+- Test / build / validation results (paste actual output, not summaries)
+- Attempts made if anything failed during the process
+- Risks, deferred decisions, or anything the team lead should know
+```
 
-### 7. **Sidebar Width Interaction**
-- **Location**: `root.go:5625-5637` (layout method, sidebar width reduction)
-- **Description**:
-  - Sidebar is persistent on the right side when no overlay panel is active
-  - Sidebar width is calculated as percentage or fixed minimum
-  - Affects `m.viewport.Width` but viewport content is already rendered
-- **Issue**: If sidebar toggled on/off mid-stream, or if sidebar width calculation is wrong, the viewport might overflow its allocated width or content might be clipped.
+**Construction**: Built in `fmt.Sprintf()` at line 515, appended to `System` prompt at line 579 (if a System was provided) or used as the entire system prompt at line 581.
 
-### 8. **Overlay Placement - placeOverlay Function**
-- **Location**: `root.go:6180-6187` and `layout.go:24-62`
-- **Description**: Two overlay placement strategies:
-  - `placeOverlay()` — centers overlay in viewport (uses lipgloss.Place)
-  - `placeOverlayAt()` — places overlay at specific x,y coordinates
-- **Issue**: Both functions render the **entire container height** to avoid clipping, but if base content is shorter than container height, they pad with spaces. This is correct, but if YOffset is wrong, the base content might be positioned incorrectly before the overlay is placed.
+**Key line (579)**: `system = cfg.System + "\n\n" + teammateCtx`
+- This means `### Done` is ALWAYS present in the final system prompt for ALL teammates spawned via TeammateRunner
 
-### 9. **Empty Top Padding - Rendering Details**
-- **Location**: `root.go:5740`
-- **Code**: `sections = append(sections, "")` followed by `sections = append(sections, topArea)`
-- **Issue - CRITICAL**: The empty string is meant to be a blank line, but:
-  - `lipgloss.JoinVertical()` joins with newlines
-  - An empty string becomes a single newline character
-  - If the terminal's cursor is already at line 1, an extra newline might push content down unexpectedly
-  - In some terminals (like Alacritty), if the TUI doesn't explicitly place the cursor or if scrolling is off by one, this could cause the top line to be clipped by the terminal's rendering bounds
+### Finding 2: SpawnTeammate Injects `### Result` Header (spawnteammate.go:14-24 and line 278)
 
----
+**Location**: `internal/tools/spawnteammate.go:14-24` (constant definition) and line 278 (appended to system prompt)
+
+**Description**: SpawnTeammate tool defines a separate `teammateResultInstruction` constant that specifies `### Result` format:
+
+```go
+const teammateResultInstruction = `
+
+## Result format (IMPORTANT)
+When you finish, your LAST message must be a concise summary of ≤15 lines structured exactly as:
+
+### Result
+- **What was done**: one-line summary of the outcome
+- **Files changed**: list changed files (or "none")
+- **Issues / blockers**: anything unexpected, or "none"
+
+This section is extracted as the notification shown to the orchestrator. Keep it tight — no narration of tool calls, no repeating the task description.`
+```
+
+**Appended at line 278**:
+```go
+agentDef.SystemPrompt += teammateResultInstruction
+```
+
+This is appended BEFORE calling `t.Runner.Spawn()` at line 284.
+
+### Finding 3: CONFLICT CONFIRMED - Both Headers Are Injected into SpawnTeammate Agents
+
+**Location**: Interaction between spawnteammate.go:278 and runner.go:579
+
+**Critical Finding**: When SpawnTeammate spawns an agent:
+1. Line 278 (spawnteammate.go): `### Result` instruction is appended to `agentDef.SystemPrompt`
+2. Line 288 passes this augmented SystemPrompt to `SpawnConfig.System`
+3. Line 579 (runner.go): The SpawnConfig.System is prepended to `teammateCtx`, which contains `### Done`
+
+**Final system prompt for SpawnTeammate agents**:
+```
+[agent_definition_base_system_prompt]
++
+[### Result format instruction] (from spawnteammate.go:14-24, appended at line 278)
++
+"\n\n"
++
+[### Done format instruction] (from runner.go:515-571, added at line 579)
+```
+
+**EVIDENCE**: 
+- SpawnTeammate.Execute, line 278: `agentDef.SystemPrompt += teammateResultInstruction`
+- SpawnTeammate.Execute, line 288: passes modified SystemPrompt to `SpawnConfig{System: agentDef.SystemPrompt}`
+- TeammateRunner.runTeammate, line 578-579: `if cfg.System != "" { system = cfg.System + "\n\n" + teammateCtx }`
+- Runner always appends `teammateCtx` which contains the full `### Done` block
+
+**This is a direct, factual conflict**: Both `### Result` and `### Done` are present in the same system prompt.
+
+### Finding 4: Agent Tool Routes Through TeammateRunner WITHOUT `### Result` (agent.go:375-388)
+
+**Location**: `internal/tools/agent.go:375-388`
+
+**Description**: When the Agent tool is called and a team is active:
+```go
+if t.TeamRunner != nil && t.TeamRunner.ActiveTeamName() != "" {
+    // ... team setup ...
+    state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
+        TeamName:   teamName,
+        AgentName:  shortName,
+        Prompt:     in.Prompt,
+        System:     agentDef.SystemPrompt,  // <-- no modification here
+        Model:      modelOverride,
+        MaxTurns:   maxTurns,
+        MemoryDir:  agentDef.MemoryDir,
+        Foreground: !in.RunInBackground,
+        TaskIDs:    in.TaskIDs,
+    })
+```
+
+**Critical observation**: The Agent tool passes `agentDef.SystemPrompt` **unmodified** to SpawnConfig.System. It does NOT add the `### Result` instruction like SpawnTeammate does.
+
+**Therefore**: Agent tool agents via TeammateRunner receive ONLY `### Done` (injected by runner.go), NOT `### Result`.
+
+### Finding 5: summaryFromResult Searches Only for `### Done` (messages.go:1180-1185)
+
+**Location**: `internal/tui/messages.go:1180-1185`
+
+**Description**: The extraction function looks ONLY for `### Done`:
+```go
+func summaryFromResult(text string, maxLines int, maxChars int) string {
+    if idx := strings.LastIndex(text, "### Done"); idx != -1 {
+        return text[idx:]
+    }
+    return lastNLines(text, maxLines, maxChars)
+}
+```
+
+**Behavior**:
+- Searches for the last occurrence of `### Done` in agent output
+- If found, returns everything from that marker onward
+- If NOT found, falls back to extracting last N lines (maxLines, maxChars)
+
+**Important**: This function does NOT recognize or extract `### Result`. If an agent outputs `### Result` but NOT `### Done`, the fallback logic applies (last N lines).
+
+### Finding 6: summaryFromResult Used in Notifications (root.go:2369, 2371, 4307, 4309)
+
+**Location**: `internal/tui/root.go:2369, 2371, 4307, 4309`
+
+**Description**: summaryFromResult is called in two places within team completion event handlers:
+
+1. **Main event handler (lines 2360-2380)**:
+   - On AgentCompleted event (line 2369): `summaryFromResult(ev.Text, 15, 600)`
+   - On AgentFailed event (line 2371): `summaryFromResult(ev.Text, 15, 600)`
+   - Extracts summary with max 15 lines, 600 chars
+
+2. **Secondary event handler (lines 4300-4312)**:
+   - On TeammateCompleted event (line 4307): `summaryFromResult(ev.teammateEvent.Text, 15, 600)`
+   - On TeammateCompletedFailed event (line 4309): `summaryFromResult(ev.teammateEvent.Text, 15, 600)`
+
+**Usage context**: The extracted summary is embedded in a task notification shown to the orchestrator (user):
+```
+<task-notification>
+Agent '<name>' in team '<team>' completed.
+Result summary: [extracted by summaryFromResult]
+```
+
+**Purpose**: The summary is displayed to the user as part of the completion notification. It goes to the orchestrator notification system.
+
+### Finding 7: No Other Files Reference `### Result` (grep confirms)
+
+**Search results**: Only `internal/tools/spawnteammate.go` contains `### Result` in the codebase. No other Go files reference, search for, or extract this marker.
 
 ## Symbol Map
 
 | Symbol | File | Role |
 |--------|------|------|
-| `Model` | `root.go:71-188` | Main TUI state container |
-| `View()` | `root.go:5640-5811` | Renders the entire terminal screen |
-| `Update()` | `root.go:561-1500+` | Processes input and events |
-| `layout()` | `root.go:5576-5638` | Calculates viewport and component dimensions |
-| `refreshViewport()` | `root.go:5282-5339` | Renders messages into viewport content |
-| `renderMessages()` | `messages.go:85+` | Converts ChatMessages to formatted strings with sections |
-| `placeOverlay()` | `root.go:6180-6187` | Centers modal overlays on viewport |
-| `renderStatusLine()` | `root.go:5921-5990` | Renders mode/session/model status line |
-| `renderHelpFooter()` | `root.go:5856-5864` | Renders keyboard shortcuts footer |
-| `renderModeLine()` | `root.go:5866-5901` | Renders vim mode / permission mode line |
-| `Sidebar.View()` | `sidebar/sidebar.go:33-100` | Stacks sidebar blocks vertically with title separators |
-| `width/height` (Model fields) | `root.go:104` | Terminal dimensions from WindowSizeMsg |
-| `viewport.Width/Height` | `root.go:73` | Viewport component dimensions (set in layout) |
-| `vpHeight` (local var) | `root.go:5588` | Calculated height of viewport content area |
-| `topPadding` (const) | `root.go:5587` | Constant = 1 line, reserved at top |
-
----
+| `summaryFromResult` | `internal/tui/messages.go:1180` | Extracts `### Done` section from agent output; fallback to last N lines |
+| `teammateResultInstruction` | `internal/tools/spawnteammate.go:14` | Constant defining `### Result` format for SpawnTeammate |
+| `teammate_ctx` (local var) | `internal/teams/runner.go:515` | Built system prompt fragment containing `### Done` instruction |
+| `SpawnTeammateTool.Execute` | `internal/tools/spawnteammate.go:205` | Appends `### Result` to system prompt before calling Runner.Spawn |
+| `TeammateRunner.Spawn` | `internal/teams/runner.go:341` | Entry point that delegates to `runTeammate()` |
+| `runTeammate` | `internal/teams/runner.go:442` | Core function that injects `### Done` and calls agent executor |
+| `AgentTool.Execute` | `internal/tools/agent.go:319` | Routes to TeammateRunner if team active (lines 375-388) |
 
 ## Dependencies & Data Flow
 
-### Layout Calculation Flow
-1. **Update (WindowSizeMsg)** → sets `m.width`, `m.height`
-2. **View()** called → calls `m.layout()` 
-3. **layout()** computes:
-   - `vpHeight` based on terminal height minus all UI elements
-   - `mw` (main viewport width) considering sidebar/panels
-   - Updates `m.viewport.Width` and `m.viewport.Height`
-4. **refreshViewport()** called separately (when messages change or on WindowSizeMsg)
-   - Renders messages into string content
-   - Calls `m.viewport.SetContent(content)`
-   - Auto-scrolls to top or bottom based on focus
-5. **View()** renders sections with calculated viewport dimensions
-
-### Viewport Content Flow
+### Path 1: SpawnTeammate → Full Dual-Instruction Conflict
 ```
-ChatMessage[] → renderMessages() → [Content string + Sections metadata] 
-              → viewport.SetContent()
-              → viewport.View() (reads YOffset, renders visible window)
-              → placeOverlay() (if needed)
-              → lipgloss.JoinVertical() (final stack)
+SpawnTeammate.Execute()
+  ├─ Line 278: agentDef.SystemPrompt += "### Result format..."
+  └─ Line 284: t.Runner.Spawn(SpawnConfig{System: agentDef.SystemPrompt})
+       └─ runner.go:442: runTeammate()
+            ├─ Line 515-571: Build teammates_ctx with "### Done format..."
+            ├─ Line 579: system = cfg.System + "\n\n" + teammates_ctx
+            │            (System from SpawnConfig contains ### Result)
+            │            (teammates_ctx contains ### Done)
+            └─ Line 624/626: Execute agent with combined system prompt
+
+Agent output:
+  └─ root.go:2369/2371: summaryFromResult(output) → searches for "### Done"
 ```
 
-### Height Budget
+**Result**: SpawnTeammate agents receive BOTH `### Result` AND `### Done` instructions. The TUI looks only for `### Done`.
+
+### Path 2: Agent Tool with Active Team → Single `### Done` Instruction
 ```
-Terminal Height
-├─ topPadding (1)
-├─ topArea (variable, usually viewport + sidebar)
-│  └─ viewport.View() (height = vpHeight)
-├─ [palette] (0 or 10)
-├─ [dock] (variable)
-├─ statusline (1)
-├─ separator (1)
-├─ prompt (promptH, dynamic 1-10)
-├─ modeline (1)
-├─ helpfooter (1)
-└─ statusbar (1)
+Agent.Execute(team_is_active)
+  ├─ Line 376-377: Get team name, create slug name
+  └─ Line 378: t.TeamRunner.Spawn(SpawnConfig{System: agentDef.SystemPrompt})
+       └─ runner.go:442: runTeammate()
+            ├─ Line 515-571: Build teammates_ctx with "### Done format..."
+            ├─ Line 578-579: system = cfg.System + "\n\n" + teammates_ctx
+            │                (System is unmodified agentDef.SystemPrompt, NO ### Result)
+            │                (teammates_ctx contains ### Done)
+            └─ Line 624/626: Execute agent with combined system prompt
+
+Agent output:
+  └─ root.go:4307/4309: summaryFromResult(output) → searches for "### Done"
 ```
 
----
+**Result**: Agent tool agents receive only `### Done` instruction. No conflict.
+
+### Path 3: Agent Tool with No Active Team → No Team Instructions
+```
+Agent.Execute(team_NOT_active)
+  ├─ Line 419-438 or 441-462: Execute via RunAgent/RunAgentWithMemory
+  └─ No team system prompt augmentation; uses only agentDef.SystemPrompt
+
+Agent output:
+  └─ Not team-managed; notification flow does not apply
+```
+
+**Result**: Non-team agents do not receive `### Done` or `### Result` instructions.
 
 ## Risks & Observations
 
-### 1. **CRITICAL: Unused statusH in vpHeight Calculation**
-The variable `statusH = 1` is subtracted from vpHeight, but there is no status bar at the top being rendered in the sections stack. This causes the viewport to be allocated **1 line smaller than it should be**, effectively wasting 1 line and reducing available message space.
+### 1. **CRITICAL: Dual Conflicting Instructions in SpawnTeammate**
+   - **Risk**: SpawnTeammate agents receive BOTH `### Result` (line 278) and `### Done` (line 579 via runner.go:515-571)
+   - **Symptom**: Agent may be unsure which format to use; unclear which is authoritative
+   - **Impact**: User/orchestrator receives notification based on `### Done`, but agent may produce `### Result` as primary format
+   - **Status**: CONFIRMED — both are injected into the same system prompt
 
-**Impact**: In a 24-line terminal, the viewport might be 2 lines shorter than expected, causing more aggressive scrolling or message cropping.
+### 2. **Asymmetric Instructions Between SpawnTeammate and Agent Tool**
+   - **Risk**: SpawnTeammate agents get `### Result`, but Agent tool agents get only `### Done`
+   - **Expected behavior**: Both paths through TeammateRunner should have consistent instructions
+   - **Observation**: SpawnTeammate appears to be the "explicit" path with result format emphasis, while Agent tool agents are treated as "generic" sub-tasks
+   - **Inconsistency severity**: MEDIUM — both work, but semantics differ
 
-### 2. **Empty Top Padding — Rendering Artifact**
-The leading empty string in sections (line 5740) is intended to prevent clipping, but:
-- Its effectiveness depends on how lipgloss renders empty strings
-- If the terminal cursor or scrolling position is not properly reset, this might not prevent clipping
-- **In Alacritty specifically**: If the TUI doesn't disable alternate screen or if timing is off, the top line could be clipped by the terminal's native scrollback region
+### 3. **summaryFromResult Fallback Silently Ignores `### Result`**
+   - **Risk**: If SpawnTeammate agent outputs ONLY `### Result` (and no `### Done`), the fallback extracts last N lines
+   - **Expected behavior**: Either extract `### Result` as fallback, OR ensure `### Done` is always present
+   - **Status**: POTENTIAL — code does not account for `### Result` header at all
 
-### 3. **YOffset Not Validated on Resize**
-When viewport height changes (WindowSizeMsg → layout() → refreshViewport), the YOffset is **not revalidated**. If YOffset points beyond the content after a resize, or if it points to a stale section position, content could be clipped.
+### 4. **No End-to-End Test Verification**
+   - **Risk**: The two result format specs were added separately without integration verification
+   - **Evidence**: `teammates_ctx` built in runner.go (team feature) pre-dates SpawnTeammate tool; SpawnTeammate added its own instruction without coordinating removal of conflict
+   - **Observation**: SpawnTeammate docs (line 88-137) make no mention of `### Done` format, only of agent spawning semantics
 
-### 4. **Sidebar Width Calculation Complexity**
-The sidebar width is computed with multiple fallbacks and minimums (lines 5625-5633). If any of these calculations are off-by-one, the viewport could be sized incorrectly and positioned off-screen.
-
-### 5. **Dynamic Prompt Height Complicates Layout**
-Since prompt height is computed from rendered content (including optional pills), and this happens **after** viewport dimensions are set, there's a potential for layout thrashing:
-- If prompt grows, viewport shrinks
-- This might cause content reflow in the viewport
-- Which could change the number of lines, causing a re-render
-- Which could change prompt height again
-
-### 6. **Viewport.SetContent() with GotoTop/GotoBottom**
-Lines 5333-5337 in refreshViewport():
-```go
-if contentLines <= m.viewport.Height {
-    m.viewport.GotoTop()
-} else {
-    m.viewport.GotoBottom()
-}
-```
-This logic uses `contentLines` from string counting, not from the actual rendered Sections. If `renderMessages()` produces sections with different line counts than `strings.Count()`, the scroll position could be wrong.
-
-### 7. **Sidebar/Panel Rendering Order**
-The viewport is rendered, then overlaid with panel/sidebar. If the sidebar's height differs from viewport height, there could be padding differences, causing misalignment between viewport and sidebar.
-
----
-
-## All TUI Files & Roles
-
-### Core Files (root, layout, messages)
-- **root.go** (6,369 lines) — Main Model, Update, View, layout logic, event handling
-- **layout.go** (89 lines) — Helper functions: buildSeparator, placeOverlayAt, renderPanelWithHelp
-- **messages.go** (1,000+ lines) — Renders ChatMessages, builds Sections, formats tool calls, diffs, etc.
-
-### Input & Prompt
-- **prompt/prompt.go** — Textarea-based input with vim mode, history, image/paste attachments
-- **prompt/pills.go** — Renders pills for @mentions, pastes, images
-- **prompt/prompt_vim_test.go** — Vim mode tests
-- **keymap/keymap.go** — Key binding registry and leader-key handling
-- **keymap/actions.go** — Action definitions
-- **vim/vim.go** — Vim mode state machine (Insert, Normal, Visual modes)
-- **vim/vim_test.go** — Vim mode tests
-- **attachments.go** — Image attachment handling
-- **attachments_test.go** — Tests
-- **editor.go** — External editor integration
-- **context.go** — Context/state management
-- **sessionrt.go** — Per-session runtime state
-
-### Panels & Overlays
-- **panels/panel.go** — Panel interface/base
-- **panels/conversationpanel/panel.go** — Mirrored conversation view for right window
-- **panels/config/config.go** — Configuration editor
-- **panels/skillspanel/skills.go** — Skills browser
-- **panels/taskspanel/tasks.go** — Task/todo browser
-- **panels/toolspanel/tools.go** — Available tools browser
-- **panels/analyticspanel/analytics.go** — Usage/cost/token analytics
-- **panels/memorypanel/memory.go** — Memory/knowledge base browser
-- **panels/whichkey/whichkey.go** — Vim which-key menu
-- **panels/filespanel/files.go** — File picker/browser
-- **panels/agui/panel.go** — Agent UI configuration
-- **panels/stree/panel.go** — Syntax tree viewer
-- **panels/sessions/sessions.go** — Session switcher
-- **commandpalette/palette.go** — Command palette (fuzzy finder)
-- **filepicker/picker.go** — File/directory picker
-- **agentselector/selector.go** — Agent/persona selector
-- **teamselector/selector.go** — Team switcher
-- **modelselector/selector.go** — Model selector
-- **permissions/dialog.go** — Permission approval dialog
-- **teampanel/panel.go** — Team status display
-
-### Docks & Sidebars
-- **docks/dock.go** — Dock interface
-- **docks/todo_dock.go** — Inline todo list
-- **sidebar/sidebar.go** — Sidebar block stacking layout
-- **sidebar/block.go** — Block interface
-- **sidebar/blocks/files.go** — Recent files sidebar block
-- **sidebar/blocks/todos.go** — Todos sidebar block
-- **sidebar/blocks/tokens.go** — Token/cost usage block
-
-### Styling & Utilities
-- **styles/theme.go** — Lipgloss color palette and reusable styles
-- **styles/agent_colors.go** — Agent-specific color assignments
-- **styles/glamour.go** — Markdown rendering configuration
-- **components/spinner.go** — Animated spinner component
-- **notifications/queue.go** — Toast/notification queue
-- **toast.go** — Toast overlay
-- **welcome.go** — Welcome screen with animated logo
-- **focus.go** — Focus mode enum and helpers
-- **images.go** — Image attachment utilities
-- **logo_test.go** — Logo animation test
-- **sanitize_test.go** — HTML sanitization test
-- **delete_interaction_test.go** — Message deletion test
-- **planmode_test.go** — Plan mode interaction test
-
----
+### 5. **Possible Instruction Precedence Issue**
+   - **Risk**: When both `### Result` and `### Done` are in system prompt, which takes precedence?
+   - **Observation**: `### Result` is appended at line 278 (in SpawnTeammate.Execute), then `### Done` comes in later (line 579 in runTeammate)
+   - **Question**: Do LLMs prefer the last instruction or first? Undefined.
 
 ## Open Questions
 
-1. **Why is `statusH` subtracted from vpHeight if it's not rendered?**
-   - Is this a leftover from a refactor?
-   - Should it be removed, or is there a hidden status bar at the top that should be rendered?
+1. **Intentional dual-instruction design?**
+   - Was the `### Result` format intentionally designed to coexist with `### Done` in SpawnTeammate agents?
+   - Or is `### Result` meant to replace `### Done` for this tool only?
 
-2. **Does the empty top padding line actually prevent clipping in Alacritty?**
-   - Does lipgloss.JoinVertical() render an empty string as a true newline?
-   - Is there a better way to ensure the top line is visible (e.g., alternate screen buffer management)?
+2. **Why does summaryFromResult only search for `### Done`?**
+   - Should it also search for `### Result` as an alternative?
+   - Should SpawnTeammate agents NOT produce `### Done` at all?
 
-3. **What causes the viewport height to be incorrect on certain terminal sizes?**
-   - The calculation seems correct in theory, but practice suggests issues in Alacritty
-   - Is it a rounding error in the dynamically-sized components (prompt, sidebar)?
-   - Is it terminal-specific rendering behavior?
+3. **When was `## Result format` added to SpawnTeammate?**
+   - Was this added after `### Done` was already in runner.go?
+   - Was there a migration plan to consolidate?
 
-4. **Should YOffset be revalidated/clamped when viewport height changes?**
-   - Currently, refreshViewport() only auto-scrolls on focus changes, not on layout changes
-   - This could leave YOffset pointing to an invalid position
+4. **Is the asymmetry intentional?**
+   - Agent tool agents receive only `### Done` (from runner.go)
+   - SpawnTeammate agents receive both (from spawnteammate.go + runner.go)
+   - Is this the intended design?
 
-5. **How does the viewport content rendering interact with the sidebar?**
-   - Is the sidebar height always exactly matched to viewport height?
-   - Could padding differences cause visual misalignment?
+5. **Which format is the canonical specification?**
+   - Candidate 1: `### Done` in runner.go (included for ALL teammates)
+   - Candidate 2: `### Result` in spawnteammate.go (explicit tool documentation)
+   - Should one be deprecated?
 
----
+## Summary
 
-## Conclusion
+- **`### Done`** (runner.go:565-569) is injected into ALL teammates spawned via TeammateRunner.
+- **`### Result`** (spawnteammate.go:14-24) is injected into agents spawned via SpawnTeammate ONLY.
+- **SpawnTeammate agents receive BOTH formats**, creating a direct conflict.
+- **Agent tool agents receive ONLY `### Done`** when team is active.
+- **summaryFromResult searches ONLY for `### Done`**, ignoring `### Result` entirely.
+- **No other system searches for or extracts `### Result`** in the codebase.
 
-The TUI layout is well-structured overall, but there are **several calculation issues** that could cause content clipping or misalignment at the top of the terminal:
-
-1. **Unused statusH** wastes 1 line of viewport space
-2. **Empty top padding** is a potential workaround for a deeper terminal interaction issue
-3. **YOffset is not revalidated** on resize, which could cause content to disappear
-4. **Dynamic prompt height** adds layout complexity that could cause thrashing
-5. **Viewport height calculation** includes multiple interdependent values (sidebar width, panel state) that could compound rounding errors
-
-The most likely culprit for **content disappearing at the top in Alacritty** is either:
-- The empty padding line not working as intended (Alacritty-specific behavior)
-- YOffset being positioned incorrectly and not recalculated on resize
-- The viewport height being 1-2 lines smaller than intended due to the unused statusH or rounding errors
+The design has two separate completion-reporting specifications that were added independently without full integration. SpawnTeammate's `### Result` instruction is ignored by the TUI notification layer, which exclusively uses `### Done`.
 
 ---
 
-**Investigation completed by**: orion-1  
-**Date**: 2024  
-**Codebase**: internal/tui/ (56 .go files, ~10,620 lines)
+## Investigation Method
+
+- Searched codebase for all references to `### Done`, `### Result`, `summaryFromResult`, `TeamRunner`, `Spawn`
+- Traced system prompt construction through SpawnTeammate and Agent tool execution paths
+- Verified integration points where system prompts are combined and used
+- Confirmed extraction logic in TUI notification handlers
+- Cross-referenced with completion event flow in root.go
+
+All findings are based on static code analysis. Runtime behavior (e.g., which instruction the LLM actually follows) cannot be determined from code inspection alone.
