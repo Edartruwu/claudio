@@ -78,6 +78,12 @@ func filterByCommand(cmd, output string) (string, bool) {
 		return filterTsc(output), true
 	case "curl":
 		return filterCurl(output)
+	case "jest":
+		return filterJest(sub, output)
+	case "vitest":
+		return filterJest(sub, output)
+	case "pytest":
+		return filterPytest(sub, output)
 	}
 
 	return "", false

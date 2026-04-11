@@ -933,3 +933,200 @@ func TestFilterCurl_LongBodyTruncated(t *testing.T) {
 		t.Errorf("expected lines beyond 100 truncated, got late line in output")
 	}
 }
+
+// ── Jest / Vitest ─────────────────────────────────────────────────────────
+
+func TestFilterJest_AllPassing(t *testing.T) {
+	input := `PASS src/components/Button.test.tsx
+PASS src/utils/helpers.test.ts
+✓ renders correctly (12 ms)
+✓ handles click events (3 ms)
+✓ returns correct value (1 ms)
+
+Test Suites: 2 passed, 2 total
+Tests:       3 passed, 3 total
+Snapshots:   0 total
+Time:        1.234 s
+Ran all test suites.
+`
+	got := Filter("jest", input)
+	// Should contain the summary lines
+	if !strings.Contains(got, "Tests:") {
+		t.Errorf("expected Tests summary, got:\n%s", got)
+	}
+	if !strings.Contains(got, "3 passed") {
+		t.Errorf("expected passed count, got:\n%s", got)
+	}
+	// Should not contain individual passing test lines
+	if strings.Contains(got, "renders correctly") {
+		t.Errorf("expected passing test lines stripped, got:\n%s", got)
+	}
+	// Should not contain PASS filename lines (all passing run = just summary)
+	if strings.Contains(got, "PASS src/") {
+		t.Errorf("expected PASS filename lines stripped for all-pass run, got:\n%s", got)
+	}
+}
+
+func TestFilterJest_WithFailures(t *testing.T) {
+	input := `FAIL src/components/Button.test.tsx
+PASS src/utils/helpers.test.ts
+
+● Button › renders correctly
+
+  Expected: "red"
+  Received: "blue"
+
+  at Object.<anonymous> (src/components/Button.test.tsx:15:5)
+
+✓ handles click events (3 ms)
+✗ renders correctly (5 ms)
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 2 passed, 3 total
+Snapshots:   0 total
+Time:        1.567 s
+`
+	got := Filter("jest", input)
+	// Should contain failure details
+	if !strings.Contains(got, "●") {
+		t.Errorf("expected failure block, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Expected") {
+		t.Errorf("expected failure detail, got:\n%s", got)
+	}
+	// Should contain the failing file
+	if !strings.Contains(got, "FAIL src/") {
+		t.Errorf("expected FAIL filename, got:\n%s", got)
+	}
+	// Should contain summary
+	if !strings.Contains(got, "1 failed") {
+		t.Errorf("expected failure count in summary, got:\n%s", got)
+	}
+	// Stack trace should be stripped
+	if strings.Contains(got, "at Object.<anonymous>") {
+		t.Errorf("expected stack trace stripped, got:\n%s", got)
+	}
+	// Individual passing test lines should be stripped
+	if strings.Contains(got, "✓ handles click") {
+		t.Errorf("expected passing test lines stripped, got:\n%s", got)
+	}
+}
+
+func TestFilterVitest_AllPassing(t *testing.T) {
+	// vitest uses the same filter as jest
+	input := `✓ src/utils/math.test.ts (3)
+✓ src/components/Card.test.ts (2)
+
+Test Files  2 passed (2)
+Test Suites: 2 passed, 2 total
+Tests:       5 passed, 5 total
+Duration    0.82s
+`
+	got := Filter("vitest", input)
+	if !strings.Contains(got, "Tests:") {
+		t.Errorf("expected Tests summary, got:\n%s", got)
+	}
+	if !strings.Contains(got, "5 passed") {
+		t.Errorf("expected passed count, got:\n%s", got)
+	}
+}
+
+func TestFilterJest_CoverageStripped(t *testing.T) {
+	input := `PASS src/index.test.ts
+
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Time:        0.5 s
+
+----------|---------|----------|---------|---------|-------------------
+File      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Lines
+----------|---------|----------|---------|---------|-------------------
+All files |   85.71 |     87.5 |      80 |   85.71 |
+ src      |   85.71 |     87.5 |      80 |   85.71 |
+  index.ts|   85.71 |     87.5 |      80 |   85.71 | 42-45
+----------|---------|----------|---------|---------|-------------------
+`
+	got := Filter("jest", input)
+	// Coverage table should be stripped
+	if strings.Contains(got, "% Stmts") {
+		t.Errorf("expected coverage table stripped, got:\n%s", got)
+	}
+	if strings.Contains(got, "-------") {
+		t.Errorf("expected coverage separator stripped, got:\n%s", got)
+	}
+	// Summary should still be present
+	if !strings.Contains(got, "Tests:") {
+		t.Errorf("expected Tests summary, got:\n%s", got)
+	}
+}
+
+// ── Pytest ────────────────────────────────────────────────────────────────
+
+func TestFilterPytest_AllPassing(t *testing.T) {
+	input := `platform linux -- Python 3.11.0, pytest-7.3.1, pluggy-1.0.0
+rootdir: /home/user/project
+plugins: anyio-3.6.2
+collected 4 items
+
+test_math.py::test_add PASSED                     [ 25%]
+test_math.py::test_subtract PASSED                [ 50%]
+test_math.py::test_multiply PASSED                [ 75%]
+test_math.py::test_divide PASSED                  [100%]
+
+============================== 4 passed in 0.12s ==============================
+`
+	got := Filter("pytest", input)
+	// Should return just the final result line
+	if !strings.Contains(got, "4 passed") {
+		t.Errorf("expected pass count, got:\n%s", got)
+	}
+	// Platform/header should be stripped
+	if strings.Contains(got, "platform linux") {
+		t.Errorf("expected platform header stripped, got:\n%s", got)
+	}
+	// PASSED lines should be stripped
+	if strings.Contains(got, "PASSED") {
+		t.Errorf("expected PASSED lines stripped, got:\n%s", got)
+	}
+}
+
+func TestFilterPytest_WithFailures(t *testing.T) {
+	input := `platform linux -- Python 3.11.0, pytest-7.3.1, pluggy-1.0.0
+rootdir: /home/user/project
+plugins: anyio-3.6.2
+collected 4 items
+
+test_math.py::test_add PASSED                     [ 25%]
+test_math.py::test_subtract FAILED                [ 50%]
+test_math.py::test_multiply PASSED                [ 75%]
+test_math.py::test_divide ERROR                   [100%]
+
+=========================== short test summary info ============================
+FAILED test_math.py::test_subtract - AssertionError: assert 3 == 4
+ERROR test_math.py::test_divide - ZeroDivisionError: division by zero
+============================== 2 failed, 2 passed in 0.15s ==============================
+`
+	got := Filter("pytest", input)
+	// Should contain the short summary section
+	if !strings.Contains(got, "short test summary info") {
+		t.Errorf("expected short test summary section, got:\n%s", got)
+	}
+	if !strings.Contains(got, "FAILED test_math.py::test_subtract") {
+		t.Errorf("expected FAILED line, got:\n%s", got)
+	}
+	if !strings.Contains(got, "ERROR test_math.py::test_divide") {
+		t.Errorf("expected ERROR line, got:\n%s", got)
+	}
+	// Should contain the final result
+	if !strings.Contains(got, "2 failed") {
+		t.Errorf("expected failure count in result, got:\n%s", got)
+	}
+	// PASSED lines should be stripped
+	if strings.Contains(got, "test_add PASSED") {
+		t.Errorf("expected PASSED lines stripped, got:\n%s", got)
+	}
+	// Platform header should be stripped
+	if strings.Contains(got, "platform linux") {
+		t.Errorf("expected platform header stripped, got:\n%s", got)
+	}
+}
