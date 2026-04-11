@@ -572,6 +572,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agentSelector.SetWidth(m.width)
 		m.agentSelector.SetHeight(m.height)
 		m.layout()
+		// Clamp YOffset after viewport height is recalculated to prevent it from pointing past visible area
+		if m.viewport.YOffset > m.viewport.TotalLineCount()-m.viewport.Height {
+			m.viewport.GotoBottom()
+		}
 		m.refreshViewport()
 		return m, nil
 
@@ -5574,7 +5578,6 @@ func (m *Model) sidebarWidth() int {
 // ── Layout & View ────────────────────────────────────────
 
 func (m *Model) layout() {
-	statusH := 1
 	promptH := m.prompt.Height()
 	paletteH := 0
 	if m.palette.IsActive() || m.filePicker.IsActive() {
@@ -5585,7 +5588,7 @@ func (m *Model) layout() {
 	helpFooterH := 1
 	statusLineH := 1 // nvim-style statusline above the prompt
 	const topPadding = 1
-	vpHeight := m.height - statusH - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1 - topPadding
+	vpHeight := m.height - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1 - topPadding
 	if vpHeight < 5 {
 		vpHeight = 5
 	}
@@ -5737,7 +5740,7 @@ func (m Model) View() string {
 	}
 
 	var sections []string
-	sections = append(sections, "") // top padding — prevents content from being clipped at terminal edge
+	sections = append(sections, lipgloss.NewStyle().Height(1).Render("")) // top padding — prevents content from being clipped at terminal edge
 	sections = append(sections, topArea)
 
 	// 3. Command palette or file picker (full width, between viewport and prompt)
