@@ -52,6 +52,22 @@ func filterByCommand(cmd, output string) (string, bool) {
 		return filterDocker(sub, output)
 	case "make":
 		return filterMake(output)
+	case "gh":
+		return filterGh(sub, output)
+	case "aws":
+		return filterAws(sub, output)
+	case "kubectl":
+		return filterKubectl(sub, output)
+	case "rake":
+		return filterRake(sub, output)
+	case "rspec":
+		return filterRspec(sub, output)
+	case "rubocop":
+		return filterRubocop(sub, output)
+	case "bundle":
+		return filterBundle(sub, output)
+	case "prisma":
+		return filterPrisma(sub, output)
 	}
 
 	return "", false
