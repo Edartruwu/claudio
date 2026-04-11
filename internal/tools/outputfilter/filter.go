@@ -68,6 +68,8 @@ func filterByCommand(cmd, output string) (string, bool) {
 		return filterBundle(sub, output)
 	case "prisma":
 		return filterPrisma(sub, output)
+	case "terraform":
+		return filterTerraform(sub, output)
 	}
 
 	return "", false

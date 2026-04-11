@@ -560,3 +560,162 @@ The following changes will be applied to the database schema:
 		t.Errorf("expected env line stripped, got:\n%s", got)
 	}
 }
+
+// ── Terraform ────────────────────────────────────────────────────────────
+
+func TestFilterTerraformPlan_WithChanges(t *testing.T) {
+	input := `Terraform used the selected providers to generate the following execution plan. Resource actions are indicated with the following symbols:
+  + create
+  - destroy
+  ~ update in-place
+
+Terraform will perform the following actions:
+
+  # aws_instance.example will be created
+  + resource "aws_instance" "example" {
+      + ami           = "ami-0c55b159cbfafe1f0"
+      + instance_type = "t2.micro"
+    }
+
+  # aws_security_group.example will be created
+  + resource "aws_security_group" "example" {
+      + name = "example"
+    }
+
+  # aws_instance.old will be destroyed
+  - resource "aws_instance" "old" {
+      - id = "i-0123456789abcdef0"
+    }
+
+Plan: 2 to add, 0 to change, 1 to destroy.`
+	got := Filter("terraform plan", input)
+	// Should keep the Plan summary
+	if !strings.Contains(got, "Plan: 2 to add") {
+		t.Errorf("expected Plan summary, got:\n%s", got)
+	}
+	// Should keep resource lines with +/- prefix
+	if !strings.Contains(got, "+ resource") {
+		t.Errorf("expected resource creation line, got:\n%s", got)
+	}
+	if !strings.Contains(got, "- resource") {
+		t.Errorf("expected resource destruction line, got:\n%s", got)
+	}
+	// Should strip execution plan header
+	if strings.Contains(got, "execution plan") {
+		t.Errorf("expected execution plan line stripped, got:\n%s", got)
+	}
+}
+
+func TestFilterTerraformPlan_WithRefreshingState(t *testing.T) {
+	input := `Refreshing state... [id=i-0123456789abcdef0]
+
+Terraform used the selected providers to generate the following execution plan. Resource actions are indicated with the following symbols:
+
+  # aws_instance.example will be updated in-place
+  ~ resource "aws_instance" "example" {
+      ~ tags = {
+          + "environment" = "prod"
+        }
+    }
+
+Plan: 0 to add, 1 to change, 0 to destroy.`
+	got := Filter("terraform plan", input)
+	// Should strip refreshing state
+	if strings.Contains(got, "Refreshing state") {
+		t.Errorf("expected Refreshing state stripped, got:\n%s", got)
+	}
+	// Should keep Plan summary
+	if !strings.Contains(got, "Plan: 0 to add, 1 to change") {
+		t.Errorf("expected Plan summary, got:\n%s", got)
+	}
+}
+
+func TestFilterTerraformApply_Success(t *testing.T) {
+	input := `aws_instance.example: Creating...
+aws_instance.example: Creation complete after 15s [id=i-0123456789abcdef0]
+aws_security_group.example: Creating...
+aws_security_group.example: Creation complete after 2s [id=sg-0123456789abcdef0]
+
+Apply complete! Resources: 2 added, 0 changed, 0 destroyed.`
+	got := Filter("terraform apply", input)
+	// Should keep creation complete lines
+	if !strings.Contains(got, "Creation complete") {
+		t.Errorf("expected completion line, got:\n%s", got)
+	}
+	// Should keep apply summary
+	if !strings.Contains(got, "Apply complete") {
+		t.Errorf("expected apply summary, got:\n%s", got)
+	}
+}
+
+func TestFilterTerraformInit_Success(t *testing.T) {
+	input := `Initializing the backend...
+
+Initializing provider plugins
+- Finding hashicorp/aws versions matching ">= 5.0"...
+- Installing hashicorp/aws v5.0.0...
+- Installed hashicorp/aws v5.0.0 (signed by HashiCorp)
+
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that would be made to your infrastructure. If you approve those
+changes, you can apply them with "terraform apply".`
+	got := Filter("terraform init", input)
+	// Should only keep the success message
+	if !strings.Contains(got, "successfully initialized") {
+		t.Errorf("expected success message, got:\n%s", got)
+	}
+	// Should strip provider downloading/installation
+	if strings.Contains(got, "Downloading") || strings.Contains(got, "Installing") {
+		t.Errorf("expected provider lines stripped, got:\n%s", got)
+	}
+	// Should strip version finding
+	if strings.Contains(got, "Finding hashicorp/aws") {
+		t.Errorf("expected version finding stripped, got:\n%s", got)
+	}
+}
+
+func TestFilterTerraformInit_WithError(t *testing.T) {
+	input := `Initializing the backend...
+
+Initializing provider plugins
+- Finding hashicorp/aws versions matching ">= 5.0"...
+
+Error: Failed to download provider
+
+Could not download hashicorp/aws: Failed to fetch auth token`
+	got := Filter("terraform init", input)
+	// Should keep error message
+	if !strings.Contains(got, "Error:") {
+		t.Errorf("expected error message, got:\n%s", got)
+	}
+	// Should strip version finding
+	if strings.Contains(got, "Finding hashicorp/aws") {
+		t.Errorf("expected version finding stripped, got:\n%s", got)
+	}
+}
+
+func TestFilterTerraformValidate_Success(t *testing.T) {
+	input := `Success! The configuration is valid.`
+	got := Filter("terraform validate", input)
+	if !strings.Contains(got, "Success") {
+		t.Errorf("expected success message, got:\n%s", got)
+	}
+}
+
+func TestFilterTerraformDestroy_Success(t *testing.T) {
+	input := `aws_instance.example: Destroying... [id=i-0123456789abcdef0]
+aws_instance.example: Destruction complete after 30s
+
+Destroy complete! Resources: 1 destroyed.`
+	got := Filter("terraform destroy", input)
+	// Should keep destruction lines
+	if !strings.Contains(got, "Destruction complete") {
+		t.Errorf("expected destruction line, got:\n%s", got)
+	}
+	// Should keep destroy summary
+	if !strings.Contains(got, "Destroy complete") {
+		t.Errorf("expected destroy summary, got:\n%s", got)
+	}
+}
