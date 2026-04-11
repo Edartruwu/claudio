@@ -1545,6 +1545,49 @@ Rules:
 - Completeness before correctness
 ```
 
+### How the advisor is wired up
+
+The advisor is **not** something the executor manually spawns via `SpawnTeammate`. Instead, when a team member has an `advisor` block in its template, the runtime automatically injects an `advisor` tool into that agent's tool list at spawn time. The agent calls it like any other tool:
+
+```
+advisor(mode="plan", orientation_summary="...", proposed_approach="...", decision_needed="...")
+advisor(mode="review", original_plan="...", execution_summary="...", outcome_artifacts="...", confidence="high")
+```
+
+The `max_uses` counter is a shared pointer — the same counter tracks both PLAN and REVIEW calls, so `max_uses: 4` means at most 4 total advisor consultations across the agent's lifetime, not 4 per mode.
+
+### How context flows to the advisor
+
+The advisor receives context from two sources simultaneously:
+
+**1. The agent's live message history (automatic)**
+
+At call time, the runtime invokes a `getMessages()` callback that captures the executor's full conversation history up to that moment. This history is then compressed via `compact.Compact` — summarized down to ~10 messages using the instruction:
+
+> *"Summarize the work done so far, preserving key decisions, findings, and errors."*
+
+If compression fails, the original uncompressed history is used as a fallback.
+
+**2. The structured brief (explicit, written by the agent)**
+
+The agent fills in the brief fields when calling the tool. In PLAN mode: `orientation_summary`, `proposed_approach`, `decision_needed`, and optionally `context_notes`. In REVIEW mode: `original_plan`, `execution_summary`, `outcome_artifacts`, and `confidence`.
+
+**How they're combined**
+
+The compressed history is used as the base conversation. The formatted brief is appended as the final user message on top of it. The advisor then sees:
+
+```
+[compressed history of what the agent did so far]
+     ↓
+[structured brief: what the agent found, plans, and needs decided]
+```
+
+This gives the advisor both the raw work trail and a synthesized summary — the brief fills in intent; the history provides evidence.
+
+An `ensureAlternatingRoles` pass fixes any consecutive same-role messages before the payload is sent (the Anthropic API rejects non-alternating role sequences).
+
+The advisor's own tool-calling loop is capped at 5 iterations. Its tool access is intentionally restricted to **WebSearch** and **WebFetch** only — it cannot read files, run commands, or write anything. All ground truth comes from what the executor describes in the brief.
+
 ### Prompt composition rule
 
 How the advisor's system prompt is assembled depends on whether `subagentType` is set:
