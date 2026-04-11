@@ -567,6 +567,7 @@ When your task is done, always end your final response with this section:
 - **Evidence**: test/build/validation output for implementers; key findings, files, or symbols for researchers (paste actual output, not summaries)
 - **Attempts**: note how many attempts if anything failed or needed retrying
 - **Risks / follow-ups**: deferred decisions, open questions, or anything the team lead should know (or "none")
+- **Plan file**: if you created a plan (via EnterPlanMode/ExitPlanMode), include the full path to the plan file here so the team lead can review it directly
 
 Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 
