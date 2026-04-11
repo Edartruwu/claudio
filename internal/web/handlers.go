@@ -18,25 +18,43 @@ import (
 )
 
 // handleStatic serves static files (CSS, JS).
+// First checks embedded staticFiles, then falls back to filesystem in internal/web/static/
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/static/")
+	
+	// Try embedded files first
 	content, ok := staticFiles[path]
-	if !ok {
+	if ok {
+		if strings.HasSuffix(path, ".css") {
+			w.Header().Set("Content-Type", "text/css")
+		} else if strings.HasSuffix(path, ".js") {
+			w.Header().Set("Content-Type", "application/javascript")
+		}
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		w.Header().Set("ETag", fmt.Sprintf(`"%x"`, len(content)))
+		if match := r.Header.Get("If-None-Match"); match == fmt.Sprintf(`"%x"`, len(content)) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		io.WriteString(w, content)
+		return
+	}
+	
+	// Fallback to filesystem (for dynamically built files like Tailwind CSS)
+	fsPath := filepath.Join("internal/web/static", path)
+	data, err := os.ReadFile(fsPath)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	
 	if strings.HasSuffix(path, ".css") {
 		w.Header().Set("Content-Type", "text/css")
 	} else if strings.HasSuffix(path, ".js") {
 		w.Header().Set("Content-Type", "application/javascript")
 	}
 	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
-	w.Header().Set("ETag", fmt.Sprintf(`"%x"`, len(content)))
-	if match := r.Header.Get("If-None-Match"); match == fmt.Sprintf(`"%x"`, len(content)) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	io.WriteString(w, content)
+	w.Write(data)
 }
 
 // handleLoginPage renders the login form.

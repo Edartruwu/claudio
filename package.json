@@ -1,0 +1,9 @@
+{
+  "name": "claudio",
+  "private": true,
+  "devDependencies": {
+    "tailwindcss": "^3.4.17",
+    "daisyui": "^4.12.10",
+    "autoprefixer": "^10.4.0"
+  }
+}

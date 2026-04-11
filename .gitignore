@@ -5,3 +5,5 @@ bin/
 .claudio/
 .claudio-worktrees/
 .DS_Store
+node_modules/
+internal/web/static/vendor/tailwind.min.css
