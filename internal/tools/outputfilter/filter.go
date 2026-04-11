@@ -68,6 +68,12 @@ func filterByCommand(cmd, output string) (string, bool) {
 		return filterBundle(sub, output)
 	case "prisma":
 		return filterPrisma(sub, output)
+	case "jest":
+		return filterJest(sub, output)
+	case "vitest":
+		return filterJest(sub, output)
+	case "pytest":
+		return filterPytest(sub, output)
 	}
 
 	return "", false
