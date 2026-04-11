@@ -470,6 +470,8 @@ Rules are evaluated in order; first match wins. Behaviors: `allow` (skip approva
 | `/share [path]` | | Export session for sharing |
 | `/teleport <path>` | | Import a shared session file |
 | `/plugins` | | List installed plugins |
+| `/gain` | | Show token savings from output filters — bytes stripped per command, savings %, top commands |
+| `/discover` | | Show commands that ran without a filter — opportunities to reduce token usage |
 | `/output-style [style]` | | Show or set output style (normal, concise, verbose, markdown) |
 | `/caveman [lite\|full\|ultra\|off]` | | Toggle caveman mode for compressed output (see [CavemanMode](#cavemanmode)) |
 | `/keybindings` | | Open keybindings.json in your editor |
@@ -2032,6 +2034,44 @@ claudio-codex index   # run once; queries auto-refresh on subsequent calls
 | `hotspots [limit]` | Most-referenced symbols |
 
 Once installed and indexed, Claudio automatically prefers `claudio-codex` over raw file searches for symbol lookups — dramatically reducing token usage on large codebases.
+
+---
+
+### claudio-screenshot — Visual Feedback Plugin
+
+[**claudio-screenshot**](https://github.com/Abraxas-365/claudio-screenshot) is a first-party plugin that lets the AI take screenshots of any web page and see them inline — no drag-and-drop needed. Screenshots are automatically compressed (resized to ≤1024px, re-encoded as JPEG quality 72) before being sent as vision blocks, cutting image token cost by 3–8×.
+
+**Install:**
+
+```bash
+git clone https://github.com/Abraxas-365/claudio-screenshot
+cd claudio-screenshot
+make install   # builds and copies binary into ~/.claudio/plugins/
+```
+
+**macOS — sign after install:**
+
+```bash
+codesign --force --sign - ~/.claudio/plugins/claudio-screenshot
+```
+
+**Usage (the AI calls this automatically, or you can run it directly):**
+
+```bash
+# Screenshot any page
+claudio-screenshot take http://localhost:8080
+
+# Full page capture
+claudio-screenshot take http://localhost:8080 --full-page
+
+# Save a session for protected pages (interactive — supports OAuth, OTP, SSO)
+claudio-screenshot session save myapp --url http://localhost:8080 --interactive
+
+# Screenshot a protected page using a saved session
+claudio-screenshot take http://localhost:8080/dashboard --session myapp --full-page
+```
+
+Once installed, just ask Claudio: *"take a screenshot of localhost:8080/dashboard"* — it will capture, compress, and analyze the UI inline.
 
 ---
 
