@@ -165,6 +165,16 @@ func (db *DB) migrate() error {
 		`DROP TABLE IF EXISTS team_tasks`,
 		// 17 — rename
 		`ALTER TABLE team_tasks_v2 RENAME TO team_tasks`,
+		// 18 — filter savings tracking for /gain and /discover commands
+		`CREATE TABLE IF NOT EXISTS filter_savings (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			command TEXT NOT NULL,
+			bytes_in INTEGER NOT NULL DEFAULT 0,
+			bytes_out INTEGER NOT NULL DEFAULT 0,
+			saved_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// 19 — index for filter savings queries grouped by command
+		`CREATE INDEX IF NOT EXISTS idx_filter_savings_command ON filter_savings(command)`,
 	}
 
 	for i, m := range migrations {
@@ -238,6 +248,8 @@ func (db *DB) detectExistingSchemaVersion() int {
 	}
 
 	switch {
+	case hasTable("filter_savings"):
+		return 19
 	case hasTable("instincts"):
 		return 13
 	case hasTable("audit_log"):
