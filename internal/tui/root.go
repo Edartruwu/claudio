@@ -2503,6 +2503,84 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// /gain — show filter savings stats
+	if name == "gain" {
+		if m.appCtx == nil || m.appCtx.FilterSavings == nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Filter savings service not available."})
+			m.refreshViewport()
+			return m, nil
+		}
+		svc := m.appCtx.FilterSavings
+		ctx := context.Background()
+		stats, err := svc.GetStats(ctx)
+		if err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Failed to get stats: %v", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		topCmds, err := svc.GetTopCommands(ctx, 10)
+		if err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Failed to get top commands: %v", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		var sb strings.Builder
+		sb.WriteString("Filter Savings Summary\n")
+		sb.WriteString(strings.Repeat("─", 38) + "\n")
+		sb.WriteString(fmt.Sprintf("Total processed:  %s commands\n", formatInt(stats.RecordCount)))
+		sb.WriteString(fmt.Sprintf("Bytes in:         %s\n", formatBytes(stats.TotalBytesIn)))
+		saved := stats.TotalBytesIn - stats.TotalBytesOut
+		if saved < 0 {
+			saved = 0
+		}
+		sb.WriteString(fmt.Sprintf("Bytes saved:      %s (%.1f%%)\n", formatBytes(saved), stats.SavingsPct))
+		if len(topCmds) > 0 {
+			sb.WriteString("\nTop commands by savings:\n")
+			for _, cs := range topCmds {
+				cmdSaved := cs.BytesIn - cs.BytesOut
+				if cmdSaved < 0 {
+					cmdSaved = 0
+				}
+				sb.WriteString(fmt.Sprintf("  %-16s %s saved (%.0f%%)   %d runs\n",
+					cs.Command, formatBytes(cmdSaved), cs.SavingsPct, cs.Count))
+			}
+		}
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: sb.String()})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	// /discover — show commands without filter coverage
+	if name == "discover" {
+		if m.appCtx == nil || m.appCtx.FilterSavings == nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Filter savings service not available."})
+			m.refreshViewport()
+			return m, nil
+		}
+		suggestions, err := m.appCtx.FilterSavings.Discover(context.Background(), 10)
+		if err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Failed to get suggestions: %v", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		if len(suggestions) == 0 {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "No unfiltered commands found yet. Run some commands and check back!"})
+			m.refreshViewport()
+			return m, nil
+		}
+		var sb strings.Builder
+		sb.WriteString("Unfiltered Command Opportunities\n")
+		sb.WriteString(strings.Repeat("─", 38) + "\n")
+		sb.WriteString("Commands seen without filtering applied — adding filters could save tokens:\n\n")
+		for _, s := range suggestions {
+			sb.WriteString(fmt.Sprintf("  %-14s avg %s/run   %d occurrences\n",
+				s.Command, formatBytes(s.AvgBytesIn), s.Occurrences))
+		}
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: sb.String()})
+		m.refreshViewport()
+		return m, nil
+	}
+
 	// /map <keyseq> <action> — remap a leader key binding
 	if name == "map" {
 		parts := strings.Fields(args)
@@ -6224,6 +6302,36 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max-1] + "…"
+}
+
+// formatBytes formats a byte count as a human-readable string (B, KB, MB, GB).
+func formatBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
+}
+
+// formatInt formats an int64 with comma separators.
+func formatInt(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var result []byte
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, byte(c))
+	}
+	return string(result)
 }
 
 func formatToolSummary(tu tools.ToolUse) string {

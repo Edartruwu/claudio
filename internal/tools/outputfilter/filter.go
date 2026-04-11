@@ -73,6 +73,26 @@ func filterByCommand(cmd, output string) (string, bool) {
 	return "", false
 }
 
+// FilterAndRecord applies output filtering and calls rec with the byte counts.
+// rec receives a normalized key (base command + first subcommand, e.g. "git diff"),
+// bytes before filtering, and bytes after. rec may be nil (no-op).
+// The existing Filter function is unchanged.
+func FilterAndRecord(command, output string, rec func(cmd string, bytesIn, bytesOut int)) string {
+	result := Filter(command, output)
+	if rec != nil {
+		cmd := normalizeCommand(command)
+		parts := strings.Fields(cmd)
+		key := cmd
+		if len(parts) >= 2 {
+			key = parts[0] + " " + parts[1]
+		} else if len(parts) == 1 {
+			key = parts[0]
+		}
+		rec(key, len(output), len(result))
+	}
+	return result
+}
+
 // normalizeCommand strips leading env vars, shell prefixes, etc.
 func normalizeCommand(cmd string) string {
 	cmd = strings.TrimSpace(cmd)

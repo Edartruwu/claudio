@@ -17,9 +17,13 @@ import (
 
 // BashTool executes shell commands.
 type BashTool struct {
-	Security           SecurityChecker
-	TaskRuntime        *tasks.Runtime
+	Security            SecurityChecker
+	TaskRuntime         *tasks.Runtime
 	OutputFilterEnabled bool
+	// FilterRecorder is an optional callback invoked after output filtering
+	// with the normalized command key and byte counts (in, out).
+	// If nil, filtering still applies but no analytics are recorded.
+	FilterRecorder func(cmd string, bytesIn, bytesOut int)
 }
 
 type bashInput struct {
@@ -178,7 +182,7 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 
 	// Apply output filter to reduce token usage (RTK-style)
 	if t.OutputFilterEnabled && result != "(no output)" {
-		result = outputfilter.Filter(in.Command, result)
+		result = outputfilter.FilterAndRecord(in.Command, result, t.FilterRecorder)
 	}
 
 	// Truncate large outputs — matches Claude Code's 30KB Bash cap.

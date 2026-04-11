@@ -25,6 +25,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
+	"github.com/Abraxas-365/claudio/internal/services/filtersavings"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/services/mcp"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
@@ -47,8 +48,9 @@ type App struct {
 	Learning  *learning.Store
 	Skills    *skills.Registry
 	Memory    *memory.ScopedStore
-	Analytics    *analytics.Tracker
-	Auditor      *security.Auditor
+	Analytics     *analytics.Tracker
+	FilterSavings *filtersavings.Service
+	Auditor       *security.Auditor
 	TaskRuntime  *tasks.Runtime
 	Teams        *teams.Manager
 	TeamRunner   *teams.TeammateRunner
@@ -168,11 +170,19 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		AllowPaths: settings.AllowPaths,
 	}
 
+	// Initialize filter savings analytics service
+	filterSvc := filtersavings.NewService(db)
+
 	// Inject security into file/shell tools
 	if bash, err := registry.Get("Bash"); err == nil {
 		if bt, ok := bash.(*tools.BashTool); ok {
 			bt.Security = sec
 			bt.OutputFilterEnabled = settings.OutputFilter
+			if settings.OutputFilter {
+				bt.FilterRecorder = func(cmd string, bytesIn, bytesOut int) {
+					_ = filterSvc.Record(context.Background(), cmd, bytesIn, bytesOut)
+				}
+			}
 		}
 	}
 	if read, err := registry.Get("Read"); err == nil {
@@ -502,8 +512,9 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		Learning:  learningStore,
 		Skills:    skillsRegistry,
 		Memory:    memoryStore,
-		Analytics: analyticsTracker,
-		Auditor:     auditor,
+		Analytics:     analyticsTracker,
+		FilterSavings: filterSvc,
+		Auditor:       auditor,
 		TaskRuntime: taskRuntime,
 		Teams:       teamMgr,
 		TeamRunner:  teamRunner,

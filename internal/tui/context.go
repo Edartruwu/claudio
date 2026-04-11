@@ -7,6 +7,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/rules"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
+	"github.com/Abraxas-365/claudio/internal/services/filtersavings"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/storage"
@@ -21,8 +22,9 @@ type AppContext struct {
 	Session     *session.Session
 	Memory      *memory.ScopedStore
 	Config      *config.Settings
-	Analytics   *analytics.Tracker
-	Learning    *learning.Store
+	Analytics     *analytics.Tracker
+	FilterSavings *filtersavings.Service
+	Learning      *learning.Store
 	TaskRuntime *tasks.Runtime
 	DB          *storage.DB
 	Hooks       *hooks.Manager
