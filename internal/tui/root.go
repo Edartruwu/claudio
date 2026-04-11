@@ -5454,6 +5454,16 @@ func (m *Model) refreshViewport() {
 			m.viewport.GotoBottom()
 		}
 	}
+
+	if m.focus == FocusViewport {
+		maxOffset := m.viewport.TotalLineCount() - m.viewport.Height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if m.viewport.YOffset > maxOffset {
+			m.viewport.GotoBottom()
+		}
+	}
 }
 
 // renderRightWindowContent renders the right window's session messages into
@@ -5722,6 +5732,9 @@ func (m *Model) layout() {
 			filesW = m.width - 20
 		}
 		mw = m.width - filesW - 1
+		if mw < 0 {
+			mw = 0
+		}
 		if mw < 10 {
 			mw = 10
 		}
@@ -5732,6 +5745,9 @@ func (m *Model) layout() {
 		drawerW := m.width * 35 / 100
 		if drawerW < 30 {
 			drawerW = 30
+		}
+		if drawerW > m.width-20 {
+			drawerW = m.width - 20
 		}
 		mw = m.width - drawerW - 1
 		if mw < 20 {
@@ -5818,12 +5834,21 @@ func (m Model) View() string {
 			if h < 10 {
 				h = 10
 			}
+			if w > m.viewport.Width-2 {
+				w = m.viewport.Width - 2
+			}
+			if h > m.viewport.Height-2 {
+				h = m.viewport.Height - 2
+			}
 			panelView := renderPanelWithHelp(m.activePanel, w, h)
 			topArea = placeOverlay(topArea, panelView, m.viewport.Width, m.viewport.Height)
 		case OverlayDrawer:
 			drawerW := m.width * 35 / 100
 			if drawerW < 30 {
 				drawerW = 30
+			}
+			if drawerW > m.width-20 {
+				drawerW = m.width - 20
 			}
 			panelView := renderPanelWithHelp(m.activePanel, drawerW, m.viewport.Height)
 			topArea = placeOverlayAt(topArea, panelView, 0, 0, mw, m.viewport.Height)
@@ -5891,10 +5916,8 @@ func (m Model) View() string {
 		sections = append(sections, m.renderModeLine())
 	}
 
-	// 8. Help footer (full width) — only if it has content
-	if footer := m.renderHelpFooter(); strings.TrimSpace(footer) != "" {
-		sections = append(sections, footer)
-	}
+	// 8. Help footer (full width)
+	sections = append(sections, m.renderHelpFooter())
 
 	// 9. Status bar (full width)
 	hint := m.statusHint()
