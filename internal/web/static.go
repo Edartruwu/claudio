@@ -1048,6 +1048,30 @@ a:hover { text-decoration: underline; }
   .toast-container { top: auto; bottom: 70px; right: 8px; left: 8px; }
   .toast { max-width: 100%; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Picker Modal & Items
+   ═══════════════════════════════════════════════════════════ */
+
+.picker-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 6px; width: 100%;
+  background: transparent; border: 1px solid var(--border);
+  cursor: pointer; text-align: left; margin-bottom: 6px;
+  transition: background 0.15s;
+}
+
+.picker-item:hover { background: var(--bg1); }
+
+.picker-item .picker-name { font-weight: 600; font-size: 0.9em; }
+
+.picker-item .picker-desc { font-size: 0.78em; color: var(--dim); }
+
+.picker-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.picker-status-running { background: var(--green); }
+
+.picker-status-idle { background: var(--dim); }
 `
 
 const appJSContent = `
@@ -1388,6 +1412,23 @@ const appJSContent = `
       }else if(res.action==='send_as_message'){
         // Command not handled server-side, send as regular message to AI
         sendChatMessage(res.data);
+      }else if(res.action==='open_modal'){
+        // Fetch the picker HTML and inject into modal
+        fetch(res.data)
+          .then(function(r){return r.text();})
+          .then(function(html){
+            document.getElementById('picker-modal-content').innerHTML=html;
+            document.getElementById('picker-modal').showModal();
+          });
+      }else if(res.action==='agent_selected'){
+        closePickerModal();
+        if(res.message)appendSystemMsg(res.message);
+      }else if(res.action==='team_spawned'){
+        closePickerModal();
+        if(res.message)appendSystemMsg(res.message);
+        // Refresh nav agents/teams lists
+        htmx.trigger('#nav-agents-list','refresh');
+        htmx.trigger('#nav-teams-list','refresh');
       }else if(res.message){
         appendSystemMsg(res.message);
       }
@@ -1431,6 +1472,13 @@ const appJSContent = `
     .catch(function(err){
       showToast('error','Failed to send: '+err.message);
     });
+  }
+
+  function closePickerModal(){
+    var m=document.getElementById('picker-modal');
+    if(m)m.close();
+    var c=document.getElementById('picker-modal-content');
+    if(c)c.innerHTML='';
   }
 
   function appendSystemMsg(text){
