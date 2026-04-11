@@ -14,6 +14,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/web/templates"
 )
 
@@ -1096,4 +1097,77 @@ func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// ── Nav Sidebar API ──
+
+// NavAgentItem describes an agent for the nav sidebar.
+type NavAgentItem struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	TaskCount int    `json:"task_count"`
+}
+
+// handleNavAgents returns the list of available agents.
+func (s *Server) handleNavAgents(w http.ResponseWriter, r *http.Request) {
+	projectPath := r.URL.Query().Get("project")
+	if projectPath == "" {
+		http.Error(w, "missing project", http.StatusBadRequest)
+		return
+	}
+
+	allAgents := agents.AllAgents()
+	items := make([]NavAgentItem, 0, len(allAgents))
+	for _, a := range allAgents {
+		items = append(items, NavAgentItem{
+			ID:        a.Type,
+			Name:      a.Type,
+			Status:    "idle",
+			TaskCount: 0,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}
+
+// NavTeamItem describes a team for the nav sidebar.
+type NavTeamItem struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	MemberCount int    `json:"member_count"`
+	Status      string `json:"status"`
+}
+
+// handleNavTeams returns the list of active teams.
+func (s *Server) handleNavTeams(w http.ResponseWriter, r *http.Request) {
+	projectPath := r.URL.Query().Get("project")
+	if projectPath == "" {
+		http.Error(w, "missing project", http.StatusBadRequest)
+		return
+	}
+
+	allTeams := s.teams.ListTeams()
+	items := make([]NavTeamItem, 0, len(allTeams))
+	for _, t := range allTeams {
+		status := "idle"
+		// Check if any team member is working
+		for _, member := range t.Members {
+			if member.Status == teams.StatusWorking {
+				status = "active"
+				break
+			}
+		}
+
+		items = append(items, NavTeamItem{
+			ID:          t.Name,
+			Name:        t.Name,
+			MemberCount: len(t.Members),
+			Status:      status,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
 }

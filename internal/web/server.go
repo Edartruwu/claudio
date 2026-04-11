@@ -15,6 +15,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
+	"github.com/Abraxas-365/claudio/internal/teams"
 )
 
 // Config holds web server configuration.
@@ -32,6 +33,7 @@ type Server struct {
 	sessions *SessionManager
 	skills   *skills.Registry
 	db       *storage.DB
+	teams    *teams.Manager
 	tokens   map[string]time.Time // auth token -> expiry
 	mu       sync.RWMutex
 }
@@ -44,12 +46,16 @@ func New(cfg Config, skillsRegistry *skills.Registry) *Server {
 		log.Printf("Warning: failed to open DB for session persistence: %v", err)
 	}
 
+	paths := config.GetPaths()
+	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
+
 	s := &Server{
 		config:   cfg,
 		mux:      http.NewServeMux(),
 		sessions: NewSessionManager(db),
 		skills:   skillsRegistry,
 		db:       db,
+		teams:    teamMgr,
 		tokens:   make(map[string]time.Time),
 	}
 	s.registerRoutes()
@@ -122,6 +128,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/sessions/model", s.requireAuth(s.handleGetModel))
 	s.mux.HandleFunc("POST /api/sessions/model", s.requireAuth(s.handleSetModel))
 	s.mux.HandleFunc("GET /api/sessions/models", s.requireAuth(s.handleListModels))
+
+	// Nav sidebar
+	s.mux.HandleFunc("GET /api/nav/agents", s.requireAuth(s.handleNavAgents))
+	s.mux.HandleFunc("GET /api/nav/teams", s.requireAuth(s.handleNavTeams))
 }
 
 // requireAuth wraps a handler with authentication check.
