@@ -877,7 +877,8 @@ func (s *Server) handleAutocompleteCommands(w http.ResponseWriter, _ *http.Reque
 		{Name: "export", Description: "Export conversation as markdown"},
 		{Name: "undo", Description: "Undo the last exchange"},
 		{Name: "tasks", Description: "Show background tasks", ClientOnly: true},
-		{Name: "agents", Description: "Show agents panel", ClientOnly: true},
+		{Name: "agent", Description: "Chat with a running agent"},
+		{Name: "team", Description: "Spawn or switch to a team"},
 		{Name: "analytics", Description: "Show analytics panel", ClientOnly: true},
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1005,6 +1006,31 @@ func (s *Server) handleCommandExecute(w http.ResponseWriter, r *http.Request) {
 		}
 		sess.mu.Unlock()
 		result = cmdResult{Status: "ok", Action: "export", Data: sb.String(), Message: "Conversation exported."}
+
+	case "agent":
+		if args == "" {
+			// No args → open picker modal
+			result = cmdResult{
+				Status: "ok",
+				Action: "open_modal",
+				Data:   "/api/picker/agents?session=" + sessionID,
+			}
+		} else {
+			// With args (agent name) → directly address that agent
+			result = cmdResult{
+				Status:  "ok",
+				Action:  "agent_selected",
+				Data:    args,
+				Message: "Now chatting with " + args,
+			}
+		}
+
+	case "team":
+		result = cmdResult{
+			Status: "ok",
+			Action: "open_modal",
+			Data:   "/api/picker/teams?session=" + sessionID,
+		}
 
 	default:
 		// Check if this is a skill command
@@ -1170,4 +1196,191 @@ func (s *Server) handleNavTeams(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(items)
+}
+
+// ── Picker API (for /agent and /team commands) ──
+
+// handlePickerAgents renders an HTML partial with a list of active agents.
+func (s *Server) handlePickerAgents(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
+		return
+	}
+
+	// Get all available agent definitions
+	agentDefs := agents.AllAgents(agents.GetCustomDirs()...)
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<div class="picker-list">`)
+	fmt.Fprintf(w, `<div class="picker-header">Available Agents</div>`)
+
+	for _, agent := range agentDefs {
+		// Escape agent name for htmx values
+		fmt.Fprintf(w, `<button class="picker-item" hx-post="/api/picker/select-agent" hx-vals='{"name":"%s","session":"%s"}' hx-target="#picker-modal-content" hx-swap="innerHTML" onclick="void(0)">`, 
+			escapeHTMLAttr(agent.Type), escapeHTMLAttr(sessionID))
+		fmt.Fprintf(w, `<span class="picker-name">%s</span>`, escapeHTML(agent.Type))
+		fmt.Fprintf(w, `<span class="picker-desc">%s</span>`, escapeHTML(agent.WhenToUse))
+		fmt.Fprintf(w, `<span class="picker-status-dot picker-status-idle"></span>`)
+		fmt.Fprintf(w, `</button>`)
+	}
+
+	fmt.Fprintf(w, `</div>`)
+}
+
+// handlePickerTeams renders an HTML partial with a list of team templates.
+func (s *Server) handlePickerTeams(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session")
+	if sessionID == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
+		return
+	}
+
+	// Get all team templates
+	templates := s.teams.ListTemplates()
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<div class="picker-list">`)
+	fmt.Fprintf(w, `<div class="picker-header">Team Templates</div>`)
+
+	for _, tmpl := range templates {
+		// Escape template name for htmx values
+		fmt.Fprintf(w, `<button class="picker-item" hx-post="/api/picker/spawn-team" hx-vals='{"template":"%s","session":"%s"}' hx-target="#picker-modal-content" hx-swap="innerHTML">`,
+			escapeHTMLAttr(tmpl.Name), escapeHTMLAttr(sessionID))
+		fmt.Fprintf(w, `<span class="picker-name">%s</span>`, escapeHTML(tmpl.Name))
+		if tmpl.Description != "" {
+			fmt.Fprintf(w, `<span class="picker-desc">%s</span>`, escapeHTML(tmpl.Description))
+		}
+		fmt.Fprintf(w, `<span class="picker-count">%d members</span>`, len(tmpl.Members))
+		fmt.Fprintf(w, `</button>`)
+	}
+
+	fmt.Fprintf(w, `</div>`)
+}
+
+// handlePickerSelectAgent handles selecting an agent from the picker.
+func (s *Server) handlePickerSelectAgent(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	agentName := r.FormValue("name")
+	sessionID := r.FormValue("session")
+
+	if agentName == "" || sessionID == "" {
+		http.Error(w, "missing name or session", http.StatusBadRequest)
+		return
+	}
+
+	// Validate agent exists
+	agent := agents.GetAgent(agentName)
+	if agent.Type != agentName {
+		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+
+	type pickerResult struct {
+		Status  string `json:"status"`
+		Action  string `json:"action"`
+		Data    string `json:"data"`
+		Message string `json:"message"`
+	}
+
+	result := pickerResult{
+		Status:  "ok",
+		Action:  "agent_selected",
+		Data:    agentName,
+		Message: "Now chatting with " + agentName,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// handlePickerSpawnTeam handles spawning a team from the picker.
+func (s *Server) handlePickerSpawnTeam(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	templateName := r.FormValue("template")
+	sessionID := r.FormValue("session")
+
+	if templateName == "" || sessionID == "" {
+		http.Error(w, "missing template or session", http.StatusBadRequest)
+		return
+	}
+
+	// Get the template to validate it exists
+	tmpl, err := s.teams.GetTemplate(templateName)
+	if err != nil {
+		http.Error(w, "template not found", http.StatusNotFound)
+		return
+	}
+
+	// Generate unique team name from template name and session ID
+	teamName := templateName
+	if len(sessionID) >= 8 {
+		teamName = templateName + "-" + sessionID[:8]
+	}
+
+	// Create the team and pre-register members
+	if _, err := s.teams.CreateTeam(teamName, tmpl.Description, sessionID, tmpl.Model); err != nil {
+		// Team may already exist, proceed anyway
+		_ = err
+	}
+
+	if tmpl.AutoCompactThreshold > 0 {
+		s.teams.SetAutoCompactThreshold(teamName, tmpl.AutoCompactThreshold)
+	}
+
+	// Pre-register members from template
+	for _, m := range tmpl.Members {
+		model := m.Model
+		if model == "" {
+			model = tmpl.Model
+		}
+		_, _ = s.teams.AddMember(teamName, m.Name, model, "", m.SubagentType, m.AutoCompactThreshold)
+		if m.Advisor != nil {
+			s.teams.SetMemberAdvisorConfig(teamName, m.Name, m.Advisor)
+		}
+	}
+
+	type pickerResult struct {
+		Status  string `json:"status"`
+		Action  string `json:"action"`
+		Message string `json:"message"`
+	}
+
+	result := pickerResult{
+		Status:  "ok",
+		Action:  "team_spawned",
+		Message: "Team '" + teamName + "' spawned",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// escapeHTML escapes HTML special characters.
+func escapeHTML(s string) string {
+	return strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+	).Replace(s)
+}
+
+// escapeHTMLAttr escapes HTML attribute values (also escapes single quotes for use in single-quoted attributes).
+func escapeHTMLAttr(s string) string {
+	return strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+		"'", "&#39;",
+	).Replace(s)
 }
