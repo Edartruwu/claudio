@@ -1,9 +1,6 @@
 package memory
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 const (
 	ScopeProject = "project"
@@ -50,7 +47,7 @@ func (s *ScopedStore) Save(entry *Entry) error {
 // Remove deletes a memory entry from all scopes where it exists.
 func (s *ScopedStore) Remove(name string) error {
 	var lastErr error
-	for _, store := range s.allStores() {
+	for _, store := range s.orderedStores() {
 		if err := store.Remove(name); err != nil {
 			lastErr = err
 		}
@@ -91,32 +88,6 @@ func (s *ScopedStore) FindRelevant(context string) []*Entry {
 	return result
 }
 
-// ForSystemPrompt returns all memories formatted for the system prompt.
-// Merges across scopes with deduplication, respecting the 25KB cap.
-func (s *ScopedStore) ForSystemPrompt() string {
-	memories := s.LoadAll()
-	if len(memories) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("# Memories\n\n")
-	sb.WriteString("The following memories from previous sessions may be relevant:\n\n")
-
-	totalLen := 0
-	for _, m := range memories {
-		entry := fmt.Sprintf("## %s (%s)\n%s\n\n", m.Name, m.Type, m.Content)
-		if totalLen+len(entry) > maxIndexBytes {
-			sb.WriteString("... (additional memories truncated)\n")
-			break
-		}
-		sb.WriteString(entry)
-		totalLen += len(entry)
-	}
-
-	return sb.String()
-}
-
 // LoadIndex returns the MEMORY.md index from the primary write target.
 func (s *ScopedStore) LoadIndex() string {
 	target := s.writeTarget("")
@@ -134,17 +105,6 @@ func (s *ScopedStore) GlobalStore() *Store { return s.global }
 
 // AgentStore returns the agent-scoped store (for direct access if needed).
 func (s *ScopedStore) AgentStore() *Store { return s.agent }
-
-// WriteTargetDir returns the directory the default Save() would write to.
-// Priority matches writeTarget("") — project > global. Returns "" if no
-// store is available.
-func (s *ScopedStore) WriteTargetDir() string {
-	target := s.writeTarget("")
-	if target == nil {
-		return ""
-	}
-	return target.Dir()
-}
 
 // writeTarget returns the store to write to based on the requested scope.
 func (s *ScopedStore) writeTarget(scope string) *Store {
@@ -185,7 +145,4 @@ func (s *ScopedStore) orderedStores() []*Store {
 	return stores
 }
 
-// allStores returns all non-nil stores (no priority order).
-func (s *ScopedStore) allStores() []*Store {
-	return s.orderedStores()
-}
+

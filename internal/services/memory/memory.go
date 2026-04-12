@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 const (
@@ -105,7 +104,7 @@ func (s *Store) LoadAll() []*Entry {
 			continue
 		}
 
-		entry := parseMemoryFile(string(data), path)
+		entry := ParseEntry(string(data), path)
 		if entry != nil {
 			memories = append(memories, entry)
 		}
@@ -114,45 +113,19 @@ func (s *Store) LoadAll() []*Entry {
 }
 
 // FindRelevant returns memories relevant to the given context string.
+// Matches against name, description, and content.
 func (s *Store) FindRelevant(context string) []*Entry {
 	all := s.LoadAll()
 	lower := strings.ToLower(context)
 
 	var relevant []*Entry
 	for _, entry := range all {
-		desc := strings.ToLower(entry.Description + " " + entry.Name)
-		if strings.Contains(lower, strings.ToLower(entry.Name)) ||
-			strings.Contains(desc, lower) ||
-			containsAnyWord(lower, desc) {
+		searchable := strings.ToLower(entry.Name + " " + entry.Description + " " + entry.Content)
+		if strings.Contains(searchable, lower) || containsAnyWord(lower, searchable) {
 			relevant = append(relevant, entry)
 		}
 	}
 	return relevant
-}
-
-// ForSystemPrompt returns all memories formatted for injection into the system prompt.
-func (s *Store) ForSystemPrompt() string {
-	memories := s.LoadAll()
-	if len(memories) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("# Memories\n\n")
-	sb.WriteString("The following memories from previous sessions may be relevant:\n\n")
-
-	totalLen := 0
-	for _, m := range memories {
-		entry := fmt.Sprintf("## %s (%s)\n%s\n\n", m.Name, m.Type, m.Content)
-		if totalLen+len(entry) > maxIndexBytes {
-			sb.WriteString("... (additional memories truncated)\n")
-			break
-		}
-		sb.WriteString(entry)
-		totalLen += len(entry)
-	}
-
-	return sb.String()
 }
 
 // LoadIndex reads the MEMORY.md index file.
@@ -220,7 +193,8 @@ func (s *Store) rebuildIndex() error {
 	return os.WriteFile(indexPath, []byte(content.String()), 0644)
 }
 
-func parseMemoryFile(content, path string) *Entry {
+// ParseEntry parses a memory markdown file (with optional YAML frontmatter) into an Entry.
+func ParseEntry(content, path string) *Entry {
 	lines := strings.Split(content, "\n")
 	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
 		return &Entry{Content: content, FilePath: path}
@@ -302,14 +276,4 @@ func containsAnyWord(haystack, needleStr string) bool {
 	return false
 }
 
-// SessionMemoryFile creates a session memory .tmp file for context handoff.
-func SessionMemoryFile(dir, sessionID, summary string) error {
-	os.MkdirAll(dir, 0755)
-	filename := fmt.Sprintf("%s-%s.tmp", time.Now().Format("2006-01-02"), sessionID[:8])
-	path := filepath.Join(dir, filename)
 
-	content := fmt.Sprintf("# Session %s\n\nDate: %s\n\n%s\n",
-		sessionID[:8], time.Now().Format("2006-01-02 15:04"), summary)
-
-	return os.WriteFile(path, []byte(content), 0644)
-}

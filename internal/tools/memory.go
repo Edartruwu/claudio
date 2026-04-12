@@ -116,21 +116,7 @@ func (t *MemoryTool) listMemories() (*Result, error) {
 }
 
 func (t *MemoryTool) searchMemories(query string) (*Result, error) {
-	entries := t.Store.LoadAll()
-	if len(entries) == 0 {
-		return &Result{Content: "No memories found."}, nil
-	}
-
-	lower := strings.ToLower(query)
-	var matches []*memory.Entry
-
-	for _, e := range entries {
-		searchable := strings.ToLower(e.Name + " " + e.Description + " " + e.Content)
-		if strings.Contains(searchable, lower) {
-			matches = append(matches, e)
-		}
-	}
-
+	matches := t.Store.FindRelevant(query)
 	if len(matches) == 0 {
 		return &Result{Content: fmt.Sprintf("No memories matching %q found.", query)}, nil
 	}

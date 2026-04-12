@@ -6281,44 +6281,11 @@ func (m Model) sessionName() string {
 }
 
 // parseNewMemory parses a memory file content (with frontmatter) into an Entry.
+// Returns nil if the user didn't fill in the name (template not edited).
 func parseNewMemory(content string) *memory.Entry {
-	lines := strings.Split(content, "\n")
-	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
+	entry := memory.ParseEntry(content, "")
+	if entry == nil || entry.Name == "" || entry.Name == "new-memory" {
 		return nil
-	}
-
-	endIdx := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			endIdx = i
-			break
-		}
-	}
-	if endIdx < 0 {
-		return nil
-	}
-
-	entry := &memory.Entry{}
-	for _, line := range lines[1:endIdx] {
-		line = strings.TrimSpace(line)
-		if idx := strings.Index(line, ":"); idx > 0 {
-			key := strings.TrimSpace(line[:idx])
-			val := strings.TrimSpace(line[idx+1:])
-			val = strings.Trim(val, `"'`)
-			switch key {
-			case "name":
-				entry.Name = val
-			case "description":
-				entry.Description = val
-			case "type":
-				entry.Type = val
-			}
-		}
-	}
-
-	entry.Content = strings.TrimSpace(strings.Join(lines[endIdx+1:], "\n"))
-	if entry.Name == "" || entry.Name == "new-memory" {
-		return nil // User didn't fill in the name
 	}
 	if entry.Type == "" {
 		entry.Type = "project"
