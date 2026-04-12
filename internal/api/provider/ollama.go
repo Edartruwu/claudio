@@ -284,6 +284,9 @@ func (o *Ollama) SendMessage(ctx context.Context, httpClient *http.Client, req *
 
 	// Build content blocks
 	var blocks []api.ContentBlock
+	if chunk.Message.Thinking != "" {
+		blocks = append(blocks, api.ContentBlock{Type: "thinking", Thinking: chunk.Message.Thinking})
+	}
 	if chunk.Message.Content != "" {
 		blocks = append(blocks, api.ContentBlock{Type: "text", Text: chunk.Message.Content})
 	}
@@ -323,6 +326,7 @@ type ollamaStreamState struct {
 	nextBlockIndex     int
 	toolCallsEmitted   bool
 	toolCallCounter    int
+	thinkingEmitted    bool
 }
 
 func newOllamaStreamState() *ollamaStreamState {
@@ -332,6 +336,32 @@ func newOllamaStreamState() *ollamaStreamState {
 // translateOllamaChunk converts one /api/chat NDJSON chunk into Anthropic-style stream events.
 func translateOllamaChunk(chunk ollamaStreamChunk, state *ollamaStreamState) []api.StreamEvent {
 	var events []api.StreamEvent
+
+	// Thinking block — Ollama delivers the full thinking text in a single chunk.
+	// Emit it as a complete thinking block before any text content.
+	if chunk.Message.Thinking != "" && !state.thinkingEmitted {
+		state.thinkingEmitted = true
+		blockJSON, _ := json.Marshal(api.ContentBlock{Type: "thinking", Thinking: ""})
+		events = append(events, api.StreamEvent{
+			Type:         "content_block_start",
+			Index:        state.nextBlockIndex,
+			ContentBlock: blockJSON,
+		})
+		deltaJSON, _ := json.Marshal(map[string]string{
+			"type":     "thinking_delta",
+			"thinking": chunk.Message.Thinking,
+		})
+		events = append(events, api.StreamEvent{
+			Type:  "content_block_delta",
+			Index: state.nextBlockIndex,
+			Delta: deltaJSON,
+		})
+		events = append(events, api.StreamEvent{
+			Type:  "content_block_stop",
+			Index: state.nextBlockIndex,
+		})
+		state.nextBlockIndex++
+	}
 
 	// Text delta
 	if chunk.Message.Content != "" {
