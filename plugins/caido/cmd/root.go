@@ -24,6 +24,16 @@ var Root = &cobra.Command{
 		return cmd.Help()
 	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Skip config loading for setup and status commands
+		// Check if we're in one of those commands by looking at the immediate subcommand
+		if len(args) > 0 && (args[0] == "setup" || args[0] == "status") {
+			return nil
+		}
+		// Also check if the cmd itself is setup/status (when called directly as a subcommand)
+		if cmd.Name() == "setup" || cmd.Name() == "status" {
+			return nil
+		}
+
 		// Load config
 		var err error
 		Cfg, err = config.Load()

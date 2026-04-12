@@ -1,6 +1,6 @@
 module github.com/Abraxas-365/claudio-plugin-caido
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/caido-community/sdk-go v0.4.0
@@ -19,6 +19,8 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.19 // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
