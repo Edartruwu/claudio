@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -947,30 +948,33 @@ type webCommand struct {
 	ClientOnly  bool   `json:"client_only,omitempty"` // handled purely in JS
 }
 
+// webCommands is the master list of slash commands available in the web UI.
+// It is used by both the autocomplete endpoint and the /discover command handler.
+var webCommands = []webCommand{
+	{Name: "help", Description: "Show available commands", ClientOnly: true},
+	{Name: "clear", Description: "Clear conversation history"},
+	{Name: "model", Description: "Show or change the AI model"},
+	{Name: "compact", Description: "Compact conversation to save context"},
+	{Name: "cost", Description: "Show session cost and token usage", ClientOnly: true},
+	{Name: "new", Description: "Start a new session"},
+	{Name: "rename", Description: "Rename the current session"},
+	{Name: "diff", Description: "Show git diff"},
+	{Name: "status", Description: "Show git status"},
+	{Name: "commit", Description: "Create a git commit with AI message"},
+	{Name: "export", Description: "Export conversation as markdown"},
+	{Name: "undo", Description: "Undo the last exchange"},
+	{Name: "tasks", Description: "Show background tasks", ClientOnly: true},
+	{Name: "agent", Description: "Chat with a running agent"},
+	{Name: "team", Description: "Spawn or switch to a team"},
+	{Name: "analytics", Description: "Show analytics panel", ClientOnly: true},
+	{Name: "gain", Description: "Show session token usage stats"},
+	{Name: "discover", Description: "Show all available commands"},
+}
+
 // handleAutocompleteCommands returns the list of available slash commands.
 func (s *Server) handleAutocompleteCommands(w http.ResponseWriter, _ *http.Request) {
-	cmds := []webCommand{
-		{Name: "help", Description: "Show available commands", ClientOnly: true},
-		{Name: "clear", Description: "Clear conversation history"},
-		{Name: "model", Description: "Show or change the AI model"},
-		{Name: "compact", Description: "Compact conversation to save context"},
-		{Name: "cost", Description: "Show session cost and token usage", ClientOnly: true},
-		{Name: "new", Description: "Start a new session"},
-		{Name: "rename", Description: "Rename the current session"},
-		{Name: "diff", Description: "Show git diff"},
-		{Name: "status", Description: "Show git status"},
-		{Name: "commit", Description: "Create a git commit with AI message"},
-		{Name: "export", Description: "Export conversation as markdown"},
-		{Name: "undo", Description: "Undo the last exchange"},
-		{Name: "tasks", Description: "Show background tasks", ClientOnly: true},
-		{Name: "agent", Description: "Chat with a running agent"},
-		{Name: "team", Description: "Spawn or switch to a team"},
-		{Name: "analytics", Description: "Show analytics panel", ClientOnly: true},
-		{Name: "gain", Description: "Show token savings from output filters"},
-		{Name: "discover", Description: "Show commands without a filter — reduce token usage"},
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cmds)
+	json.NewEncoder(w).Encode(webCommands)
 }
 
 // handleAutocompleteAgents returns the list of available agents for >> communication.
@@ -1119,6 +1123,127 @@ func (s *Server) handleCommandExecute(w http.ResponseWriter, r *http.Request) {
 			Action: "open_modal",
 			Data:   "/api/picker/teams?session=" + sessionID,
 		}
+
+	case "compact":
+		keepLast := 20
+		if args != "" {
+			if _, err := fmt.Sscanf(args, "%d", &keepLast); err != nil || keepLast < 1 {
+				result = cmdResult{Status: "error", Message: "Usage: /compact [number-of-messages-to-keep]"}
+				break
+			}
+		}
+		sess.mu.Lock()
+		n := len(sess.Messages)
+		if n <= keepLast {
+			sess.mu.Unlock()
+			result = cmdResult{Status: "ok", Message: fmt.Sprintf("Nothing to compact (%d messages, threshold is %d).", n, keepLast)}
+			break
+		}
+		sess.Messages = sess.Messages[n-keepLast:]
+		// Reset engine so it rebuilds from the trimmed message list
+		if sess.engine != nil {
+			sess.engine = nil
+		}
+		kept := len(sess.Messages)
+		sess.mu.Unlock()
+		result = cmdResult{Status: "ok", Action: "clear_messages", Message: fmt.Sprintf("Compacted conversation to last %d messages.", kept)}
+
+	case "diff":
+		gitCmd := exec.Command("git", "diff")
+		gitCmd.Dir = sess.ProjectPath
+		out, err := gitCmd.Output()
+		if err != nil {
+			result = cmdResult{Status: "ok", Message: "git diff failed: " + err.Error()}
+			break
+		}
+		if len(strings.TrimSpace(string(out))) == 0 {
+			result = cmdResult{Status: "ok", Message: "No changes (working tree is clean)."}
+			break
+		}
+		result = cmdResult{Status: "ok", Message: "```diff\n" + string(out) + "```"}
+
+	case "status":
+		gitCmd := exec.Command("git", "status")
+		gitCmd.Dir = sess.ProjectPath
+		out, err := gitCmd.Output()
+		if err != nil {
+			result = cmdResult{Status: "ok", Message: "git status failed: " + err.Error()}
+			break
+		}
+		result = cmdResult{Status: "ok", Message: "```\n" + string(out) + "```"}
+
+	case "commit":
+		// Check for staged changes first
+		stagedCmd := exec.Command("git", "diff", "--staged")
+		stagedCmd.Dir = sess.ProjectPath
+		stagedOut, err := stagedCmd.Output()
+		if err != nil {
+			result = cmdResult{Status: "ok", Message: "git diff --staged failed: " + err.Error()}
+			break
+		}
+		if len(strings.TrimSpace(string(stagedOut))) == 0 {
+			result = cmdResult{Status: "ok", Message: "Nothing staged. Run `git add` first."}
+			break
+		}
+		// Ask AI for a commit message
+		sess.mu.Lock()
+		client := sess.Client
+		sess.mu.Unlock()
+		prompt := "Generate a concise git commit message (conventional commits style) for the following diff. Return only the commit message text, nothing else:\n\n```diff\n" + string(stagedOut) + "\n```"
+		userContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(prompt)})
+		aiReq := &api.MessagesRequest{
+			MaxTokens: 256,
+			Messages: []api.Message{
+				{Role: "user", Content: userContent},
+			},
+		}
+		aiResp, err := client.SendMessage(context.Background(), aiReq)
+		if err != nil {
+			result = cmdResult{Status: "ok", Message: "Failed to generate commit message: " + err.Error()}
+			break
+		}
+		commitMsg := ""
+		for _, block := range aiResp.Content {
+			if block.Type == "text" {
+				commitMsg = strings.TrimSpace(block.Text)
+				break
+			}
+		}
+		if commitMsg == "" {
+			result = cmdResult{Status: "ok", Message: "AI returned an empty commit message. Aborting."}
+			break
+		}
+		// Run git commit
+		commitCmd := exec.Command("git", "commit", "-m", commitMsg)
+		commitCmd.Dir = sess.ProjectPath
+		commitOut, err := commitCmd.CombinedOutput()
+		if err != nil {
+			result = cmdResult{Status: "ok", Message: fmt.Sprintf("git commit failed: %v\n```\n%s\n```", err, string(commitOut))}
+			break
+		}
+		result = cmdResult{Status: "ok", Message: fmt.Sprintf("Committed: **%s**\n\n```\n%s\n```", commitMsg, strings.TrimSpace(string(commitOut)))}
+
+	case "gain":
+		sess.mu.Lock()
+		in := sess.TotalInputTokens
+		out := sess.TotalOutputTokens
+		n := len(sess.Messages)
+		sess.mu.Unlock()
+		msg := fmt.Sprintf("Session Token Usage\n%s\nMessages:       %d\nInput tokens:   %d\nOutput tokens:  %d\nTotal tokens:   %d",
+			strings.Repeat("─", 38), n, in, out, in+out)
+		result = cmdResult{Status: "ok", Message: msg}
+
+	case "discover":
+		var sb strings.Builder
+		sb.WriteString("## Available Commands\n\n")
+		for _, cmd := range webCommands {
+			marker := ""
+			if cmd.ClientOnly {
+				marker = " *(client-side)*"
+			}
+			sb.WriteString(fmt.Sprintf("- **/%s** — %s%s\n", cmd.Name, cmd.Description, marker))
+		}
+		result = cmdResult{Status: "ok", Message: sb.String()}
 
 	default:
 		// Check if this is a skill command
