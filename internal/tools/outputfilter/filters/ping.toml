@@ -1,0 +1,12 @@
+schema_version = 1
+
+[filters.ping]
+description = "ping: keep summary, drop per-packet lines"
+match_command = "^ping\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^64 bytes from",
+  "^Request timeout",
+]
+max_lines = 15
+on_empty = "ping: ok"
