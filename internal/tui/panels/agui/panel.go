@@ -256,8 +256,20 @@ func (p *Panel) refresh() {
 		return
 	}
 	states := p.runner.AllStates()
+	// Build a lookup so we can check if a parent is itself a non-lead agent.
+	stateByID := make(map[string]*teams.TeammateState, len(states))
+	for _, s := range states {
+		stateByID[s.Identity.AgentID] = s
+	}
 	entries := make([]*agentEntry, 0, len(states))
 	for _, s := range states {
+		// Hide depth-3+ agents: those spawned by a non-lead tracked teammate.
+		// Principal agents (IsLead=true) and their direct children are always shown.
+		if s.ParentAgentID != "" {
+			if parent, ok := stateByID[s.ParentAgentID]; ok && !parent.Identity.IsLead {
+				continue
+			}
+		}
 		e := &agentEntry{
 			id:     s.Identity.AgentID,
 			name:   s.Identity.AgentName,

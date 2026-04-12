@@ -474,6 +474,10 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		r.childrenMu.Lock()
 		r.children[cfg.ParentAgentID] = append(r.children[cfg.ParentAgentID], member.Identity.AgentID)
 		r.childrenMu.Unlock()
+	} else {
+		// Agents spawned directly by the TUI session (no parent teammate) are
+		// principal agents — mark them as lead so sub-agents can be identified.
+		state.Identity.IsLead = true
 	}
 
 	r.mu.Lock()
