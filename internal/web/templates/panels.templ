@@ -42,17 +42,43 @@ templ ConfigPanel(data PanelData) {
 
 templ TasksPanel(data PanelData) {
 	<div class="panel-section">
-		<div class="panel-section-title">Tasks</div>
+		<div class="panel-section-title">tasks</div>
 		if len(data.Tasks) == 0 {
-			<div style="color:var(--dim);padding:8px 0;">No tasks yet</div>
+			<div style="color:var(--fg4);padding:8px 0;">no tasks</div>
 		} else {
 			for _, t := range data.Tasks {
-				<div class="task-item">
-					<div class="task-title">{ t.Title }</div>
-					<span class={ "task-status " + t.Status }>{ t.Status }</span>
-					if t.Description != "" {
-						<div style="font-size:0.75rem;color:var(--fg2);margin-top:4px;">{ t.Description }</div>
-					}
+				<div style="background:var(--bg1);border:1px solid var(--bg2);border-radius:4px;padding:var(--space-2);margin-bottom:var(--space-1);display:flex;gap:var(--space-2);align-items:flex-start;">
+					<!-- Status icon & color -->
+					<div style="flex-shrink:0;">
+						if t.Status == "pending" {
+							<span style="color:var(--fg4);font-size:16px;">○</span>
+						} else if t.Status == "in_progress" {
+							<span style="color:var(--yellow-bright);font-size:16px;">◉</span>
+						} else if t.Status == "completed" {
+							<span style="color:var(--green-bright);font-size:16px;">✓</span>
+						} else if t.Status == "stopped" {
+							<span style="color:var(--danger);font-size:16px;">✗</span>
+						} else {
+							<span style="color:var(--fg4);font-size:16px;">○</span>
+						}
+					</div>
+					<!-- Content: Title + Priority -->
+					<div style="flex:1;min-width:0;">
+						<div style="color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:var(--space-1);">{ t.Title }</div>
+						if t.Description != "" {
+							<div style="font-size:var(--font-size-xs);color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{ t.Description }</div>
+						}
+					</div>
+					<!-- Priority badge -->
+					<div style="flex-shrink:0;">
+						if t.Status == "pending" {
+							<span style="font-size:var(--font-size-xs);color:var(--red-bright);font-weight:600;">P1</span>
+						} else if t.Status == "in_progress" {
+							<span style="font-size:var(--font-size-xs);color:var(--yellow);font-weight:600;">P2</span>
+						} else {
+							<span style="font-size:var(--font-size-xs);color:var(--fg3);font-weight:600;">P3</span>
+						}
+					</div>
 				</div>
 			}
 		}
@@ -136,9 +162,56 @@ templ toolRow(t ToolInfo, sessionID string) {
 
 templ AgentsPanelContent() {
 	<div class="panel-section">
-		<div class="panel-section-title">Sub-Agents</div>
+		<div class="panel-section-title">agents</div>
 		<div id="agents-list" class="agents-list">
-			<div style="color:var(--dim);padding:8px 0;">No active agents</div>
+			<div style="color:var(--fg4);padding:8px 0;">no active agents</div>
 		</div>
+	</div>
+}
+
+templ PanelTabs(activeTab string) {
+	<div style="display:flex;gap:var(--space-4);border-bottom:1px solid var(--bg2);padding:0;margin-bottom:var(--space-3);">
+		if activeTab == "agents" {
+			<button
+				style="padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:calc(var(--space-2) - 2px);"
+				hx-get="/api/panel/agents"
+				hx-target="#panel-content"
+				hx-swap="innerHTML"
+			>
+				agents
+			</button>
+		} else {
+			<button
+				style="padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg4);"
+				hx-get="/api/panel/agents"
+				hx-target="#panel-content"
+				hx-swap="innerHTML"
+				onmouseover="this.style.color='var(--fg2)'"
+				onmouseout="this.style.color='var(--fg4)'"
+			>
+				agents
+			</button>
+		}
+		if activeTab == "tasks" {
+			<button
+				style="padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:calc(var(--space-2) - 2px);"
+				hx-get="/api/panel/tasks"
+				hx-target="#panel-content"
+				hx-swap="innerHTML"
+			>
+				tasks
+			</button>
+		} else {
+			<button
+				style="padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg4);"
+				hx-get="/api/panel/tasks"
+				hx-target="#panel-content"
+				hx-swap="innerHTML"
+				onmouseover="this.style.color='var(--fg2)'"
+				onmouseout="this.style.color='var(--fg4)'"
+			>
+				tasks
+			</button>
+		}
 	</div>
 }

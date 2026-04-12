@@ -606,8 +606,10 @@ func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 	case "config":
 		templates.ConfigPanel(data).Render(r.Context(), w)
 	case "tasks":
+		templates.PanelTabs("tasks").Render(r.Context(), w)
 		templates.TasksPanel(data).Render(r.Context(), w)
 	case "agents":
+		templates.PanelTabs("agents").Render(r.Context(), w)
 		templates.AgentsPanelContent().Render(r.Context(), w)
 	case "tools":
 		data.SessionID = sessionID
@@ -617,6 +619,8 @@ func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<div style="color:var(--dim);padding:8px">Unknown panel: %s</div>`, panelName)
 	}
 }
+
+
 
 // collectToolInfos builds the ToolInfo list for the tools panel.
 func collectToolInfos(sess *ProjectSession) []templates.ToolInfo {
