@@ -603,6 +603,15 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 	// Clone the registry so sub-agent has its own copy
 	subRegistry := parentRegistry.Clone()
 
+	// Wire agent-scoped memory store if this agent has its own memory dir
+	if memoryDir != "" {
+		if memTool, err := subRegistry.Get("Memory"); err == nil {
+			if mt, ok := memTool.(*tools.MemoryTool); ok {
+				mt.Store.SetAgentStore(memoryDir)
+			}
+		}
+	}
+
 	// Inject any per-agent extra tools (e.g. AdvisorTool) placed in context by
 	// the context decorator. These are registered into the cloned registry so they
 	// are only available to this specific agent run.

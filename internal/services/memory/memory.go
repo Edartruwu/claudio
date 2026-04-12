@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -28,6 +29,8 @@ type Entry struct {
 	Scope       string // project, global, agent (controls where Save writes)
 	Content     string
 	FilePath    string
+	Tags        []string
+	UpdatedAt   time.Time
 }
 
 // Store manages the memory directory.
@@ -62,6 +65,11 @@ func (s *Store) Save(entry *Entry) error {
 		content.WriteString(fmt.Sprintf("description: %s\n", entry.Description))
 	}
 	content.WriteString(fmt.Sprintf("type: %s\n", entry.Type))
+	if len(entry.Tags) > 0 {
+		content.WriteString(fmt.Sprintf("tags: [%s]\n", strings.Join(entry.Tags, ", ")))
+	}
+	entry.UpdatedAt = time.Now()
+	content.WriteString(fmt.Sprintf("updated_at: %s\n", entry.UpdatedAt.Format(time.RFC3339)))
 	content.WriteString("---\n\n")
 	content.WriteString(entry.Content)
 
@@ -113,14 +121,14 @@ func (s *Store) LoadAll() []*Entry {
 }
 
 // FindRelevant returns memories relevant to the given context string.
-// Matches against name, description, and content.
+// Matches against name, description, content, and tags.
 func (s *Store) FindRelevant(context string) []*Entry {
 	all := s.LoadAll()
 	lower := strings.ToLower(context)
 
 	var relevant []*Entry
 	for _, entry := range all {
-		searchable := strings.ToLower(entry.Name + " " + entry.Description + " " + entry.Content)
+		searchable := strings.ToLower(entry.Name + " " + entry.Description + " " + entry.Content + " " + strings.Join(entry.Tags, " "))
 		if strings.Contains(searchable, lower) || containsAnyWord(lower, searchable) {
 			relevant = append(relevant, entry)
 		}
@@ -225,6 +233,19 @@ func ParseEntry(content, path string) *Entry {
 				entry.Description = val
 			case "type":
 				entry.Type = val
+			case "tags":
+				// parse "[a, b, c]" format
+				val = strings.Trim(val, "[]")
+				for _, t := range strings.Split(val, ",") {
+					t = strings.TrimSpace(t)
+					if t != "" {
+						entry.Tags = append(entry.Tags, t)
+					}
+				}
+			case "updated_at":
+				if t, err := time.Parse(time.RFC3339, val); err == nil {
+					entry.UpdatedAt = t
+				}
 			}
 		}
 	}

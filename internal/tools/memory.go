@@ -110,6 +110,9 @@ func (t *MemoryTool) listMemories() (*Result, error) {
 			scope = fmt.Sprintf(" [%s]", e.Scope)
 		}
 		sb.WriteString(fmt.Sprintf("- **%s** (%s)%s — %s\n", e.Name, e.Type, scope, e.Description))
+		if len(e.Tags) > 0 {
+			sb.WriteString(fmt.Sprintf("  tags: %s\n", strings.Join(e.Tags, ", ")))
+		}
 	}
 
 	return &Result{Content: sb.String()}, nil
@@ -129,7 +132,11 @@ func (t *MemoryTool) searchMemories(query string) (*Result, error) {
 		if len(content) > 200 {
 			content = content[:200] + "..."
 		}
-		sb.WriteString(fmt.Sprintf("## %s (%s)\n%s\n\n%s\n\n", e.Name, e.Type, e.Description, content))
+		sb.WriteString(fmt.Sprintf("## %s (%s)\n%s\n\n", e.Name, e.Type, e.Description))
+		if len(e.Tags) > 0 {
+			sb.WriteString(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(e.Tags, ", ")))
+		}
+		sb.WriteString(fmt.Sprintf("%s\n\n", content))
 	}
 
 	return &Result{Content: sb.String()}, nil
@@ -167,6 +174,9 @@ func formatMemoryFull(e *memory.Entry) string {
 	sb.WriteString(fmt.Sprintf("- **Description:** %s\n", e.Description))
 	if e.Scope != "" {
 		sb.WriteString(fmt.Sprintf("- **Scope:** %s\n", e.Scope))
+	}
+	if len(e.Tags) > 0 {
+		sb.WriteString(fmt.Sprintf("- **Tags:** %s\n", strings.Join(e.Tags, ", ")))
 	}
 	sb.WriteString(fmt.Sprintf("\n## Content\n\n%s\n", e.Content))
 	return sb.String()
