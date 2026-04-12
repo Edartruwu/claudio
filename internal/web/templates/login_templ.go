@@ -41,19 +41,19 @@ func LoginPage(errorMsg string) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"login-container\"><div class=\"login-card\"><div class=\"login-header\"><h1>claudio</h1><p class=\"subtitle\">AI Coding Assistant</p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div style=\"background: var(--bg-hard); display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: var(--space-4);\"><div style=\"background: var(--bg-soft); border: 1px solid var(--bg2); border-radius: 6px; padding: var(--space-6); max-width: 400px; width: 100%;\"><!-- Heading --><h1 style=\"color: var(--accent); font-family: var(--font-mono); font-size: 1.5rem; letter-spacing: 0.1em; text-align: center; margin: 0 0 var(--space-6) 0;\">claudio</h1><!-- Error Message -->")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if errorMsg != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"error-msg\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div style=\"color: var(--danger); font-size: var(--font-size-sm); margin-bottom: var(--space-3);\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(errorMsg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/login.templ`, Line: 12, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/login.templ`, Line: 12, Col: 113}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -64,7 +64,7 @@ func LoginPage(errorMsg string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<form method=\"POST\" action=\"/login\" class=\"login-form\"><input type=\"password\" name=\"password\" placeholder=\"Password\" autofocus required class=\"input\"> <button type=\"submit\" class=\"btn btn-primary\">Sign In</button></form></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<!-- Login Form --><form method=\"POST\" action=\"/login\" style=\"display: flex; flex-direction: column; gap: var(--space-4);\"><!-- Password Input --><div><label style=\"color: var(--fg3); font-size: var(--font-size-sm); display: block; margin-bottom: var(--space-1);\">Password</label> <input type=\"password\" name=\"password\" placeholder=\"Enter password\" autofocus required style=\"width: 100%; background: var(--bg1); border: 1px solid var(--bg3); color: var(--fg); font-family: var(--font-mono); padding: var(--space-2) var(--space-3); border-radius: 4px; outline: none; transition: border-color 150ms ease; box-sizing: border-box;\" onfocus=\"this.style.borderColor = 'var(--accent)'; this.style.boxShadow = '0 0 0 2px rgba(254,128,25,0.15)';\" onblur=\"this.style.borderColor = 'var(--bg3)'; this.style.boxShadow = 'none';\"></div><!-- Submit Button --><button type=\"submit\" style=\"width: 100%; background: var(--accent); color: var(--bg-hard); font-family: var(--font-mono); font-weight: bold; padding: var(--space-2); border: none; border-radius: 4px; cursor: pointer; transition: background-color 150ms ease;\" onmouseover=\"this.style.backgroundColor = 'var(--orange)'\" onmouseout=\"this.style.backgroundColor = 'var(--accent)'\">Sign In</button></form></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

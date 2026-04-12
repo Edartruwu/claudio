@@ -36,6 +36,7 @@ templ AppShell(projectPath string, sessionTitle string, modelBadge string, sessi
 		<div class="main-area">
 			<!-- Main Header: Session Title + Model Badge -->
 			<header class="main-header">
+				<button class="sidebar-toggle" onclick="toggleSidebar()" style="display: none; background: none; border: none; color: var(--fg); cursor: pointer; font-size: 16px; padding: var(--space-2);">☰</button>
 				<div class="session-title">{ sessionTitle }</div>
 				if modelBadge != "" {
 					<div class="model-badge">{ modelBadge }</div>
@@ -65,10 +66,23 @@ templ AppShell(projectPath string, sessionTitle string, modelBadge string, sessi
 		</div>
 	</div>
 
+	<!-- Mobile overlay (closes sidebar when clicked) -->
+	<div id="sidebar-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99; background: rgba(0,0,0,0.5);" onclick="closeSidebar()"></div>
+
 	<!-- Sidebar Toggle for Mobile -->
 	<script>
 		function toggleSidebar() {
-			document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+			const sidebar = document.querySelector('.sidebar');
+			const overlay = document.getElementById('sidebar-overlay');
+			sidebar.classList.toggle('open');
+			overlay.style.display = sidebar.classList.contains('open') ? 'block' : 'none';
+		}
+
+		function closeSidebar() {
+			const sidebar = document.querySelector('.sidebar');
+			const overlay = document.getElementById('sidebar-overlay');
+			sidebar.classList.remove('open');
+			overlay.style.display = 'none';
 		}
 	</script>
 }
