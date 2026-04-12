@@ -19,7 +19,7 @@ type CommandDeps struct {
 	GetModel        func() string
 	SetModel        func(model string)
 	GetThinkingLabel func() string // returns human-readable thinking mode
-	Compact         func(keepLast int) (string, error)
+	Compact         func(keepLast int, instruction string) (string, error)
 	GetTokens       func() int
 	GetCost         func() float64
 	ListSessions    func(limit int) ([]SessionInfo, error)

@@ -360,7 +360,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			m.usageTracker = api.NewUsageTracker(model, 0)
 		},
 		GetThinkingLabel: func() string { return apiClient.ThinkingLabel() },
-		Compact: func(keepLast int) (string, error) {
+		Compact: func(keepLast int, instruction string) (string, error) {
 			if m.engine == nil {
 				return "", fmt.Errorf("no active conversation")
 			}
@@ -368,7 +368,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			// Build pinned indices from ChatMessages
 			pinned := m.buildPinnedEngineIndices()
 			compacted, summary, err := compact.Compact(
-				context.Background(), apiClient, msgs, keepLast, "", pinned,
+				context.Background(), apiClient, msgs, keepLast, instruction, pinned,
 			)
 			if err != nil {
 				return "", err
@@ -2979,6 +2979,8 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		default:
 			if msg.Type == tea.KeyRunes {
 				d.freeText += string(msg.Runes)
+			} else if msg.Type == tea.KeySpace {
+				d.freeText += " "
 			}
 		}
 		m.refreshViewport()
@@ -4582,9 +4584,7 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 		})
 		// Refresh both the team panel and the AGUI panel so the new agent appears immediately.
 		var cmds []tea.Cmd
-		if event.Background {
-			cmds = append(cmds, teampanel.ScheduleRefresh())
-		}
+		cmds = append(cmds, teampanel.ScheduleRefresh())
 		if m.activePanel != nil {
 			if ap, ok := m.activePanel.(*agui.Panel); ok {
 				ap.HandleRefresh()
@@ -4650,6 +4650,13 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 				ap.HandleTeammateEvent(event)
 			}
 		}
+	case "text":
+		// Stream text into the AGUI panel detail view if it's open and showing this agent.
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*agui.Panel); ok {
+				return ap.HandleTeammateEvent(event)
+			}
+		}
 	case "warning":
 		m.addMessage(ChatMessage{
 			Type:    MsgSystem,
@@ -4660,6 +4667,12 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 			Type:    MsgError,
 			Content: fmt.Sprintf("✗ %s failed — %s", name, event.Text),
 		})
+		// Also route error to AGUI panel.
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*agui.Panel); ok {
+				ap.HandleTeammateEvent(event)
+			}
+		}
 	}
 	return nil
 }

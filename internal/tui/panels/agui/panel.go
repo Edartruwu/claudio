@@ -256,18 +256,20 @@ func (p *Panel) refresh() {
 		return
 	}
 	states := p.runner.AllStates()
-	// Build a set of all tracked agent IDs so we can identify depth-2+ sub-agents.
-	trackedIDs := make(map[string]struct{}, len(states))
+	// Build a map of all tracked agent IDs → state for depth filtering.
+	stateByID := make(map[string]*teams.TeammateState, len(states))
 	for _, s := range states {
-		trackedIDs[s.Identity.AgentID] = struct{}{}
+		stateByID[s.Identity.AgentID] = s
 	}
 	entries := make([]*agentEntry, 0, len(states))
 	for _, s := range states {
-		// Hide depth-2+ sub-agents: those whose parent is itself a tracked teammate.
-		// Agents spawned by the TUI session (parent not in the runner) are shown.
+		// Hide depth-3+ sub-agents: those whose parent is a non-lead tracked teammate.
+		// Agents with no parent, or whose parent is the lead (Prab), are always shown.
 		if s.ParentAgentID != "" {
-			if _, parentIsTeammate := trackedIDs[s.ParentAgentID]; parentIsTeammate {
-				continue
+			if parentState, parentIsTeammate := stateByID[s.ParentAgentID]; parentIsTeammate {
+				if !parentState.Identity.IsLead {
+					continue
+				}
 			}
 		}
 		e := &agentEntry{

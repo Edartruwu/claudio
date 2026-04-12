@@ -59,15 +59,11 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 
 	r.Register(&Command{
 		Name:        "compact",
-		Description: "Compact conversation history to save context",
+		Description: "Compact conversation history to save context. Optional query focuses the summary.",
 		Execute: func(args string) (string, error) {
 			keepLast := 10
-			if args != "" {
-				if _, err := fmt.Sscanf(args, "%d", &keepLast); err != nil {
-					return "Usage: /compact [number-of-messages-to-keep]", nil
-				}
-			}
-			summary, err := deps.Compact(keepLast)
+			instruction := strings.TrimSpace(args)
+			summary, err := deps.Compact(keepLast, instruction)
 			if err != nil {
 				return fmt.Sprintf("Compaction failed: %v", err), nil
 			}

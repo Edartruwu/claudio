@@ -314,9 +314,67 @@ func (r *TeammateRunner) SetTaskCompleter(fn TaskCompleter) {
 
 // EmitEvent sends an event to the registered handler.
 func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
+	// Persist event into the agent's TeammateState so the AGUI panel can read
+	// live conversation / tool / activity data without relying solely on TUI callbacks.
+	if event.AgentID != "" {
+		r.mu.RLock()
+		state, ok := r.teammates[event.AgentID]
+		r.mu.RUnlock()
+		if ok {
+			switch event.Type {
+			case "text":
+				if event.Text != "" {
+					state.AddConversation(ConversationEntry{
+						Time:    time.Now(),
+						Type:    "text",
+						Content: event.Text,
+					})
+					state.AddActivity(truncateActivity(event.Text, 80))
+				}
+			case "tool_start":
+				state.IncrToolCalls()
+				state.AddConversation(ConversationEntry{
+					Time:     time.Now(),
+					Type:     "tool_start",
+					Content:  event.Input,
+					ToolName: event.ToolName,
+				})
+				state.AddActivity("→ " + event.ToolName)
+			case "tool_end":
+				state.AddConversation(ConversationEntry{
+					Time:     time.Now(),
+					Type:     "tool_end",
+					Content:  truncateActivity(event.Text, 200),
+					ToolName: event.ToolName,
+				})
+			case "complete":
+				state.AddConversation(ConversationEntry{
+					Time:    time.Now(),
+					Type:    "complete",
+					Content: event.Text,
+				})
+			case "error":
+				state.AddConversation(ConversationEntry{
+					Time:    time.Now(),
+					Type:    "error",
+					Content: event.Text,
+				})
+			}
+		}
+	}
+
 	if r.eventHandler != nil {
 		r.eventHandler.OnTeammateEvent(event)
 	}
+}
+
+func truncateActivity(s string, max int) string {
+	// strip newlines for single-line activity display
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > max {
+		return s[:max-1] + "…"
+	}
+	return s
 }
 
 // SpawnConfig defines how to spawn a teammate.

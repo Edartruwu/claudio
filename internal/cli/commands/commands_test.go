@@ -34,7 +34,7 @@ func testDeps() *commands.CommandDeps {
 	return &commands.CommandDeps{
 		GetModel:      func() string { return "test-model" },
 		SetModel:      func(model string) {},
-		Compact:       func(keepLast int) (string, error) { return "summary", nil },
+		Compact:       func(keepLast int, instruction string) (string, error) { return "summary", nil },
 		GetTokens:     func() int { return 100 },
 		GetCost:       func() float64 { return 0.01 },
 		ListSessions:  func(limit int) ([]commands.SessionInfo, error) { return nil, nil },
