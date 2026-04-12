@@ -194,6 +194,7 @@ func parseExtractionResponse(response string) []*Entry {
 
 		if entry.Name != "" && len(contentLines) > 0 {
 			entry.Content = strings.TrimSpace(strings.Join(contentLines, "\n"))
+			entry.Scope = ScopeProject
 			entries = append(entries, entry)
 		}
 	}

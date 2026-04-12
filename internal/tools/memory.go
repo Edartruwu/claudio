@@ -16,15 +16,19 @@ type MemoryTool struct {
 }
 
 type memoryInput struct {
-	Action string `json:"action"` // "list", "search", "read"
-	Query  string `json:"query,omitempty"`
-	Name   string `json:"name,omitempty"`
+	Action      string `json:"action"` // "list", "search", "read", "save", "update", "delete"
+	Query       string `json:"query,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Content     string `json:"content,omitempty"`
+	Description string `json:"description,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Scope       string `json:"scope,omitempty"`
 }
 
 func (t *MemoryTool) Name() string { return "Memory" }
 
 func (t *MemoryTool) Description() string {
-	return `Access persistent memories from previous sessions.
+	return `Access and manage persistent memories from previous sessions.
 
 Memories contain user preferences, project decisions, feedback, and references that were saved across sessions.
 
@@ -33,13 +37,17 @@ Memories contain user preferences, project decisions, feedback, and references t
 - **list**: List all available memories with their names, types, and descriptions.
 - **search**: Search memories by keyword (matches name, description, and content). Use the "query" parameter.
 - **read**: Read the full content of a specific memory by name. Use the "name" parameter.
+- **save**: Save a new memory. Required: name, content. Optional: description, type, scope. Returns error if name already exists.
+- **update**: Update an existing memory. Required: name, content. Optional: description, type, scope. Overwrites existing.
+- **delete**: Delete a memory by name. Required: name.
 
 ## When to Use
 
 - When you need context about the user, project, or past decisions
 - When the user references something from a previous conversation
 - When you want to check if relevant guidance exists before making a decision
-- Before starting work on a project you haven't seen recently`
+- Before starting work on a project you haven't seen recently
+- To save important insights or decisions for future sessions`
 }
 
 func (t *MemoryTool) InputSchema() json.RawMessage {
@@ -48,8 +56,8 @@ func (t *MemoryTool) InputSchema() json.RawMessage {
 		"properties": {
 			"action": {
 				"type": "string",
-				"enum": ["list", "search", "read"],
-				"description": "The action to perform: list all memories, search by keyword, or read a specific memory"
+				"enum": ["list", "search", "read", "save", "update", "delete"],
+				"description": "The action to perform: list, search, read, save, update, or delete a memory"
 			},
 			"query": {
 				"type": "string",
@@ -57,14 +65,32 @@ func (t *MemoryTool) InputSchema() json.RawMessage {
 			},
 			"name": {
 				"type": "string",
-				"description": "Memory name to read (for action=read)"
+				"description": "Memory name (for actions: read, save, update, delete)"
+			},
+			"content": {
+				"type": "string",
+				"description": "Memory content (required for save/update)"
+			},
+			"description": {
+				"type": "string",
+				"description": "One-line description (optional, for save/update)"
+			},
+			"type": {
+				"type": "string",
+				"enum": ["user", "feedback", "project", "reference"],
+				"description": "Memory type (optional, default: project). One of: user, feedback, project, reference"
+			},
+			"scope": {
+				"type": "string",
+				"enum": ["project", "global", "agent"],
+				"description": "Memory scope (optional, default: project). One of: project, global, agent"
 			}
 		},
 		"required": ["action"]
 	}`)
 }
 
-func (t *MemoryTool) IsReadOnly() bool                        { return true }
+func (t *MemoryTool) IsReadOnly() bool                        { return false }
 func (t *MemoryTool) RequiresApproval(_ json.RawMessage) bool { return false }
 
 func (t *MemoryTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
@@ -90,8 +116,29 @@ func (t *MemoryTool) Execute(ctx context.Context, input json.RawMessage) (*Resul
 			return &Result{Content: "Name parameter required for read action", IsError: true}, nil
 		}
 		return t.readMemory(in.Name)
+	case "save":
+		if in.Name == "" {
+			return &Result{Content: "Name parameter required for save action", IsError: true}, nil
+		}
+		if in.Content == "" {
+			return &Result{Content: "Content parameter required for save action", IsError: true}, nil
+		}
+		return t.saveMemory(in)
+	case "update":
+		if in.Name == "" {
+			return &Result{Content: "Name parameter required for update action", IsError: true}, nil
+		}
+		if in.Content == "" {
+			return &Result{Content: "Content parameter required for update action", IsError: true}, nil
+		}
+		return t.updateMemory(in)
+	case "delete":
+		if in.Name == "" {
+			return &Result{Content: "Name parameter required for delete action", IsError: true}, nil
+		}
+		return t.deleteMemory(in.Name)
 	default:
-		return &Result{Content: fmt.Sprintf("Unknown action: %s. Use: list, search, read", in.Action), IsError: true}, nil
+		return &Result{Content: fmt.Sprintf("Unknown action: %s. Use: list, search, read, save, update, delete", in.Action), IsError: true}, nil
 	}
 }
 
@@ -158,6 +205,110 @@ func (t *MemoryTool) readMemory(name string) (*Result, error) {
 	}
 
 	return &Result{Content: fmt.Sprintf("Memory %q not found. Use action=list to see available memories.", name), IsError: true}, nil
+}
+
+func (t *MemoryTool) saveMemory(in memoryInput) (*Result, error) {
+	// Check if memory with this name already exists
+	entries := t.Store.LoadAll()
+	for _, e := range entries {
+		if e.Name == in.Name {
+			return &Result{
+				Content: fmt.Sprintf("Memory '%s' already exists. Use action='update' to overwrite it.", in.Name),
+				IsError: true,
+			}, nil
+		}
+	}
+
+	// Validate and set defaults for type and scope
+	memType := in.Type
+	if memType == "" {
+		memType = memory.TypeProject
+	} else if memType != memory.TypeUser && memType != memory.TypeFeedback && memType != memory.TypeProject && memType != memory.TypeReference {
+		return &Result{
+			Content: fmt.Sprintf("Invalid type '%s'. Must be one of: user, feedback, project, reference", in.Type),
+			IsError: true,
+		}, nil
+	}
+
+	scope := in.Scope
+	if scope == "" {
+		scope = memory.ScopeProject
+	} else if scope != memory.ScopeProject && scope != memory.ScopeGlobal && scope != memory.ScopeAgent {
+		return &Result{
+			Content: fmt.Sprintf("Invalid scope '%s'. Must be one of: project, global, agent", in.Scope),
+			IsError: true,
+		}, nil
+	}
+
+	// Create and save entry
+	entry := &memory.Entry{
+		Name:        in.Name,
+		Content:     in.Content,
+		Description: in.Description,
+		Type:        memType,
+		Scope:       scope,
+	}
+
+	if err := t.Store.Save(entry); err != nil {
+		return &Result{
+			Content: fmt.Sprintf("Failed to save memory: %v", err),
+			IsError: true,
+		}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Memory '%s' saved successfully.", in.Name)}, nil
+}
+
+func (t *MemoryTool) updateMemory(in memoryInput) (*Result, error) {
+	// Validate and set defaults for type and scope
+	memType := in.Type
+	if memType == "" {
+		memType = memory.TypeProject
+	} else if memType != memory.TypeUser && memType != memory.TypeFeedback && memType != memory.TypeProject && memType != memory.TypeReference {
+		return &Result{
+			Content: fmt.Sprintf("Invalid type '%s'. Must be one of: user, feedback, project, reference", in.Type),
+			IsError: true,
+		}, nil
+	}
+
+	scope := in.Scope
+	if scope == "" {
+		scope = memory.ScopeProject
+	} else if scope != memory.ScopeProject && scope != memory.ScopeGlobal && scope != memory.ScopeAgent {
+		return &Result{
+			Content: fmt.Sprintf("Invalid scope '%s'. Must be one of: project, global, agent", in.Scope),
+			IsError: true,
+		}, nil
+	}
+
+	// Create and save entry (overwrites if exists)
+	entry := &memory.Entry{
+		Name:        in.Name,
+		Content:     in.Content,
+		Description: in.Description,
+		Type:        memType,
+		Scope:       scope,
+	}
+
+	if err := t.Store.Save(entry); err != nil {
+		return &Result{
+			Content: fmt.Sprintf("Failed to update memory: %v", err),
+			IsError: true,
+		}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Memory '%s' updated successfully.", in.Name)}, nil
+}
+
+func (t *MemoryTool) deleteMemory(name string) (*Result, error) {
+	if err := t.Store.Remove(name); err != nil {
+		return &Result{
+			Content: fmt.Sprintf("Failed to delete memory: %v", err),
+			IsError: true,
+		}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Memory '%s' deleted.", name)}, nil
 }
 
 func formatMemoryFull(e *memory.Entry) string {
