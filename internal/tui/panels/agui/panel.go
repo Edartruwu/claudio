@@ -189,8 +189,11 @@ func (p *Panel) Help() string {
 // a tick if any agents are still running.
 func (p *Panel) HandleRefresh() tea.Cmd {
 	p.tick++
+	wasEmpty := len(p.entries) == 0
 	p.refresh()
-	if p.hasRunning() {
+	// Keep ticking while agents are running OR the list just became populated
+	// (so a newly-spawned agent triggers one more refresh cycle).
+	if p.hasRunning() || wasEmpty && len(p.entries) > 0 {
 		return ScheduleRefresh()
 	}
 	return nil
@@ -201,19 +204,21 @@ func (p *Panel) HandleRefresh() tea.Cmd {
 // HandleTeammateEvent processes real-time agent events for the selected agent.
 // Updates the detail view live as new conversation entries arrive.
 func (p *Panel) HandleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
-	// Only update if this event is for the selected agent
-	if event.AgentID != p.selectedID {
-		return nil
+	// Always refresh the left list — a new agent may have just appeared.
+	p.refresh()
+
+	// Update the detail view if the event is for the currently-selected agent.
+	if event.AgentID == p.selectedID {
+		p.loadConversation()
+		if p.atBottom {
+			p.detailVP.GotoBottom()
+		}
 	}
 
-	// Rebuild the detail content from fresh state
-	p.loadConversation()
-
-	// Auto-scroll to bottom if user hasn't manually scrolled up
-	if p.atBottom {
-		p.detailVP.GotoBottom()
+	// Keep the auto-refresh ticker alive while any agent is running.
+	if p.hasRunning() {
+		return ScheduleRefresh()
 	}
-
 	return nil
 }
 

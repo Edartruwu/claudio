@@ -4500,9 +4500,36 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 			Type:    MsgSystem,
 			Content: fmt.Sprintf("◐ %s started — %s", name, task),
 		})
+		// Refresh both the team panel and the AGUI panel so the new agent appears immediately.
+		var cmds []tea.Cmd
 		if event.Background {
-			return teampanel.ScheduleRefresh()
+			cmds = append(cmds, teampanel.ScheduleRefresh())
 		}
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*agui.Panel); ok {
+				ap.HandleRefresh()
+				cmds = append(cmds, agui.ScheduleRefresh())
+			}
+		}
+		if len(cmds) > 0 {
+			return tea.Batch(cmds...)
+		}
+	case "complete":
+		result := event.Text
+		if result == "" {
+			result = "done"
+		}
+		m.addMessage(ChatMessage{
+			Type:    MsgSystem,
+			Content: fmt.Sprintf("● %s finished — %s", name, result),
+		})
+		// Refresh AGUI panel so completed agents update their status immediately.
+		if m.activePanel != nil {
+			if ap, ok := m.activePanel.(*agui.Panel); ok {
+				ap.HandleRefresh()
+			}
+		}
+		return nil
 	case "tool_start":
 		// Wire tool_start into the agent detail overlay if it's currently open
 		if m.agentDetail != nil && m.agentDetail.state.Identity.AgentID == event.AgentID {
@@ -4543,15 +4570,6 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 				ap.HandleTeammateEvent(event)
 			}
 		}
-	case "complete":
-		result := event.Text
-		if result == "" {
-			result = "done"
-		}
-		m.addMessage(ChatMessage{
-			Type:    MsgSystem,
-			Content: fmt.Sprintf("● %s finished — %s", name, result),
-		})
 	case "warning":
 		m.addMessage(ChatMessage{
 			Type:    MsgSystem,

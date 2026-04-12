@@ -4,243 +4,84 @@ templ PickerPage(agents []AgentOption, teams []TeamOption) {
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Start Session</title>
-		<link rel="stylesheet" href="/static/main.css" />
+		<meta charset="UTF-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<title>Start Session — Claudio</title>
 		<style>
-			/* Picker Page - Gruvbox Colors */
-			:root {
-				--bg-hard: #1d2021;
-				--bg-soft: #32302f;
-				--bg1: #3c3836;
-				--bg2: #504945;
-				--bg3: #665c54;
-				--fg: #ebdbb2;
-				--fg3: #928374;
-				--fg4: #7c6f64;
-				--accent: #b8bb26;
-				--accent-red: #fb4934;
-				--space-2: 8px;
-				--space-3: 12px;
-				--space-4: 16px;
-				--space-6: 24px;
-				--font-size-sm: 14px;
-				--font-size-base: 16px;
-			}
-
-			body {
-				margin: 0;
-				padding: 0;
-				background-color: var(--bg-hard);
-				color: var(--fg);
-				font-family: system-ui, -apple-system, sans-serif;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				min-height: 100vh;
-			}
-
-			.picker-container {
-				max-width: 520px;
-				width: 100%;
-				margin: 0 auto;
-				padding: var(--space-4);
-			}
-
-			.picker-card {
-				background-color: var(--bg1);
-				border: 1px solid var(--bg2);
-				border-radius: 6px;
-				padding: var(--space-6);
-			}
-
-			.picker-title {
-				font-size: var(--font-size-sm);
-				font-weight: 600;
-				letter-spacing: 0.05em;
-				text-transform: uppercase;
-				color: var(--fg3);
-				margin-bottom: var(--space-4);
-				margin-top: 0;
-			}
-
-			.option-group {
-				margin-bottom: var(--space-4);
-			}
-
-			.option-group-label {
-				font-size: var(--font-size-sm);
-				font-weight: 600;
-				color: var(--fg);
-				margin-bottom: var(--space-3);
-				margin-top: var(--space-4);
-			}
-
-			.option-card {
-				display: flex;
-				align-items: center;
-				padding: var(--space-3);
-				background-color: var(--bg-soft);
-				border: 1px solid var(--bg2);
-				border-radius: 4px;
-				margin-bottom: var(--space-2);
-				cursor: pointer;
-				transition: all 150ms ease;
-			}
-
-			.option-card:hover {
-				background-color: var(--bg1);
-				border-color: var(--bg3);
-			}
-
-			.option-card input[type="radio"] {
-				margin-right: var(--space-3);
-				cursor: pointer;
-				accent-color: var(--accent);
-			}
-
-			.option-card.selected {
-				border-color: var(--accent);
-				background-color: var(--bg-soft);
-			}
-
-			.option-content {
-				flex: 1;
-				min-width: 0;
-			}
-
-			.option-name {
-				font-weight: 600;
-				font-size: var(--font-size-base);
-				color: var(--fg);
-				margin: 0;
-			}
-
-			.option-desc {
-				font-size: var(--font-size-sm);
-				color: var(--fg3);
-				margin: var(--space-2) 0 0 0;
-				line-height: 1.4;
-			}
-
-			.picker-form {
-				margin-top: var(--space-6);
-			}
-
-			.submit-btn {
-				width: 100%;
-				padding: var(--space-3);
-				background-color: var(--accent);
-				color: var(--bg-hard);
-				border: none;
-				border-radius: 4px;
-				font-weight: 600;
-				font-size: var(--font-size-base);
-				font-family: system-ui, -apple-system, sans-serif;
-				cursor: pointer;
-				transition: all 150ms ease;
-			}
-
-			.submit-btn:hover {
-				background-color: var(--accent-red);
-				box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-			}
-
-			.submit-btn:active {
-				transform: scale(0.98);
-			}
+			*{box-sizing:border-box;margin:0;padding:0;}
+			body{background:#1d2021;color:#ebdbb2;font-family:monospace;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;}
+			.card{background:#32302f;border:1px solid #504945;border-radius:6px;padding:24px;width:100%;max-width:560px;}
+			h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#928374;margin-bottom:20px;}
+			.group-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#928374;margin:20px 0 8px;}
+			.opt{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;background:#3c3836;border:2px solid #504945;border-radius:4px;cursor:pointer;margin-bottom:6px;transition:border-color 100ms,background 100ms;user-select:none;}
+			.opt:hover{border-color:#665c54;}
+			.opt.selected{border-color:#fe8019;background:#282828;}
+			.dot{width:14px;height:14px;border:2px solid #665c54;border-radius:50%;flex-shrink:0;margin-top:2px;transition:all 100ms;}
+			.opt.selected .dot{border-color:#fe8019;background:#fe8019;}
+			.opt-name{font-size:13px;font-weight:700;color:#ebdbb2;}
+			.opt-desc{font-size:11px;color:#928374;margin-top:3px;line-height:1.4;}
+			.list{max-height:200px;overflow-y:auto;}
+			.submit{width:100%;padding:10px;background:#fe8019;color:#1d2021;border:none;border-radius:4px;font-weight:700;font-size:14px;font-family:monospace;cursor:pointer;margin-top:20px;}
+			.submit:hover{background:#fabd2f;}
 		</style>
 	</head>
 	<body>
-		<div class="picker-container">
-			<form class="picker-form" hx-post="/api/sessions/create" hx-swap="none">
-				<div class="picker-card">
-					<h2 class="picker-title">start a session</h2>
+		<div class="card">
+			<h2>start a session</h2>
+			<form method="POST" action="/api/sessions/create" id="picker-form">
+				<input type="hidden" name="agent_type" id="val-agent" value=""/>
+				<input type="hidden" name="team_template" id="val-team" value=""/>
 
-					<!-- Plain Chat Option -->
-					<div class="option-group">
-						<div class="option-card" onclick="selectOption(this, 'agent_type', '')">
-							<input type="radio" name="agent_type" value="" id="opt-plain" />
-							<div class="option-content">
-								<p class="option-name">chat</p>
-								<p class="option-desc">start fresh, no agent</p>
-							</div>
-						</div>
-					</div>
-
-					<!-- Agent Options -->
-					if len(agents) > 0 {
-						<div class="option-group">
-							<div class="option-group-label">with agent</div>
-							for _, agent := range agents {
-								<div class="option-card" onclick="selectOption(this, 'agent_type', { agent.ID | templ.JSExpression })">
-									<input
-										type="radio"
-										name="agent_type"
-										value={ agent.ID }
-										id={ "opt-agent-" + agent.ID }
-									/>
-									<div class="option-content">
-										<p class="option-name">{ agent.Name }</p>
-										<p class="option-desc">{ agent.Description }</p>
-									</div>
-								</div>
-							}
-						</div>
-					}
-
-					<!-- Team Options -->
-					if len(teams) > 0 {
-						<div class="option-group">
-							<div class="option-group-label">with team</div>
-							for _, team := range teams {
-								<div class="option-card" onclick="selectOption(this, 'team_template', { team.ID | templ.JSExpression })">
-									<input
-										type="radio"
-										name="team_template"
-										value={ team.ID }
-										id={ "opt-team-" + team.ID }
-									/>
-									<div class="option-content">
-										<p class="option-name">{ team.Name }</p>
-										<p class="option-desc">{ team.Description }</p>
-									</div>
-								</div>
-							}
-						</div>
-					}
-
-					<!-- Hidden fields for form submission -->
-					<input type="hidden" name="agent_type" id="hidden-agent-type" value="" />
-					<input type="hidden" name="team_template" id="hidden-team-template" value="" />
-
-					<!-- Submit Button -->
-					<button type="submit" class="submit-btn">start →</button>
+				<div class="opt selected" data-agent="" data-team="">
+					<span class="dot"></span>
+					<span>
+						<div class="opt-name">plain chat</div>
+						<div class="opt-desc">no agent, just chat</div>
+					</span>
 				</div>
+
+				if len(agents) > 0 {
+					<div class="group-label">with agent</div>
+					<div class="list">
+						for _, a := range agents {
+							<div class="opt" data-agent={ a.ID } data-team="">
+								<span class="dot"></span>
+								<span>
+									<div class="opt-name">{ a.Name }</div>
+									<div class="opt-desc">{ a.Description }</div>
+								</span>
+							</div>
+						}
+					</div>
+				}
+
+				if len(teams) > 0 {
+					<div class="group-label">with team</div>
+					<div class="list">
+						for _, t := range teams {
+							<div class="opt" data-agent="" data-team={ t.ID }>
+								<span class="dot"></span>
+								<span>
+									<div class="opt-name">{ t.Name }</div>
+									<div class="opt-desc">{ t.Description }</div>
+								</span>
+							</div>
+						}
+					</div>
+				}
+
+				<button type="submit" class="submit">start →</button>
 			</form>
 		</div>
-
 		<script>
-			function selectOption(cardEl, fieldName, value) {
-				// Find all cards in the same group and deselect them
-				const parentGroup = cardEl.parentElement;
-				const cards = parentGroup.querySelectorAll('.option-card');
-				cards.forEach(card => card.classList.remove('selected'));
-
-				// Select the clicked card
-				cardEl.classList.add('selected');
-
-				// Update the hidden field and radio button
-				const radioInput = cardEl.querySelector('input[type="radio"]');
-				radioInput.checked = true;
-
-				// Update hidden field
-				const hiddenField = document.getElementById('hidden-' + fieldName);
-				if (hiddenField) {
-					hiddenField.value = value;
-				}
-			}
+			document.querySelectorAll('.opt').forEach(function(el) {
+				el.addEventListener('click', function() {
+					document.querySelectorAll('.opt').forEach(function(o){ o.classList.remove('selected'); });
+					el.classList.add('selected');
+					document.getElementById('val-agent').value = el.dataset.agent || '';
+					document.getElementById('val-team').value  = el.dataset.team  || '';
+				});
+			});
 		</script>
 	</body>
 	</html>

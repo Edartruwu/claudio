@@ -286,7 +286,7 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 	}
 
 	if background {
-		msg := fmt.Sprintf("Teammate %q spawned in team %q\nRole: %s\nOpen the Agents panel (space a) to monitor progress.",
+		msg := fmt.Sprintf("Teammate %q spawned in team %q\nRole: %s\nOpen the Agents panel (space oa) to monitor progress.",
 			resolvedName, teamName, agentDef.Type)
 		if resolvedName != in.Name {
 			msg += fmt.Sprintf("\nNote: %q was already running — spawned as %q instead. Use %q for SendMessage.", in.Name, resolvedName, resolvedName)

@@ -71,7 +71,7 @@ type Settings struct {
 	OutputFilter bool `json:"outputFilter,omitempty"`
 
 	// CodeFilterLevel controls comment-stripping when reading source files
-	// longer than 500 lines. Values: "none", "minimal" (default), "aggressive".
+	// longer than 500 lines. Values: "none" (default), "minimal", "aggressive".
 	CodeFilterLevel string `json:"codeFilterLevel,omitempty"`
 
 	// Snippet expansion (AI writes shorthand, expander fills boilerplate)
@@ -232,7 +232,7 @@ func DefaultSettings() *Settings {
 		HookProfile:          "standard",
 		APIBaseURL:           "https://api.anthropic.com",
 		AgentAutoDeleteAfter: 3,
-		CodeFilterLevel:      "minimal",
+		CodeFilterLevel:      "none",
 	}
 }
 

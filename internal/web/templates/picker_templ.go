@@ -29,151 +29,121 @@ func PickerPage(agents []AgentOption, teams []TeamOption) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Start Session</title><link rel=\"stylesheet\" href=\"/static/main.css\"><style>\n\t\t\t/* Picker Page - Gruvbox Colors */\n\t\t\t:root {\n\t\t\t\t--bg-hard: #1d2021;\n\t\t\t\t--bg-soft: #32302f;\n\t\t\t\t--bg1: #3c3836;\n\t\t\t\t--bg2: #504945;\n\t\t\t\t--bg3: #665c54;\n\t\t\t\t--fg: #ebdbb2;\n\t\t\t\t--fg3: #928374;\n\t\t\t\t--fg4: #7c6f64;\n\t\t\t\t--accent: #b8bb26;\n\t\t\t\t--accent-red: #fb4934;\n\t\t\t\t--space-2: 8px;\n\t\t\t\t--space-3: 12px;\n\t\t\t\t--space-4: 16px;\n\t\t\t\t--space-6: 24px;\n\t\t\t\t--font-size-sm: 14px;\n\t\t\t\t--font-size-base: 16px;\n\t\t\t}\n\n\t\t\tbody {\n\t\t\t\tmargin: 0;\n\t\t\t\tpadding: 0;\n\t\t\t\tbackground-color: var(--bg-hard);\n\t\t\t\tcolor: var(--fg);\n\t\t\t\tfont-family: system-ui, -apple-system, sans-serif;\n\t\t\t\tdisplay: flex;\n\t\t\t\talign-items: center;\n\t\t\t\tjustify-content: center;\n\t\t\t\tmin-height: 100vh;\n\t\t\t}\n\n\t\t\t.picker-container {\n\t\t\t\tmax-width: 520px;\n\t\t\t\twidth: 100%;\n\t\t\t\tmargin: 0 auto;\n\t\t\t\tpadding: var(--space-4);\n\t\t\t}\n\n\t\t\t.picker-card {\n\t\t\t\tbackground-color: var(--bg1);\n\t\t\t\tborder: 1px solid var(--bg2);\n\t\t\t\tborder-radius: 6px;\n\t\t\t\tpadding: var(--space-6);\n\t\t\t}\n\n\t\t\t.picker-title {\n\t\t\t\tfont-size: var(--font-size-sm);\n\t\t\t\tfont-weight: 600;\n\t\t\t\tletter-spacing: 0.05em;\n\t\t\t\ttext-transform: uppercase;\n\t\t\t\tcolor: var(--fg3);\n\t\t\t\tmargin-bottom: var(--space-4);\n\t\t\t\tmargin-top: 0;\n\t\t\t}\n\n\t\t\t.option-group {\n\t\t\t\tmargin-bottom: var(--space-4);\n\t\t\t}\n\n\t\t\t.option-group-label {\n\t\t\t\tfont-size: var(--font-size-sm);\n\t\t\t\tfont-weight: 600;\n\t\t\t\tcolor: var(--fg);\n\t\t\t\tmargin-bottom: var(--space-3);\n\t\t\t\tmargin-top: var(--space-4);\n\t\t\t}\n\n\t\t\t.option-card {\n\t\t\t\tdisplay: flex;\n\t\t\t\talign-items: center;\n\t\t\t\tpadding: var(--space-3);\n\t\t\t\tbackground-color: var(--bg-soft);\n\t\t\t\tborder: 1px solid var(--bg2);\n\t\t\t\tborder-radius: 4px;\n\t\t\t\tmargin-bottom: var(--space-2);\n\t\t\t\tcursor: pointer;\n\t\t\t\ttransition: all 150ms ease;\n\t\t\t}\n\n\t\t\t.option-card:hover {\n\t\t\t\tbackground-color: var(--bg1);\n\t\t\t\tborder-color: var(--bg3);\n\t\t\t}\n\n\t\t\t.option-card input[type=\"radio\"] {\n\t\t\t\tmargin-right: var(--space-3);\n\t\t\t\tcursor: pointer;\n\t\t\t\taccent-color: var(--accent);\n\t\t\t}\n\n\t\t\t.option-card.selected {\n\t\t\t\tborder-color: var(--accent);\n\t\t\t\tbackground-color: var(--bg-soft);\n\t\t\t}\n\n\t\t\t.option-content {\n\t\t\t\tflex: 1;\n\t\t\t\tmin-width: 0;\n\t\t\t}\n\n\t\t\t.option-name {\n\t\t\t\tfont-weight: 600;\n\t\t\t\tfont-size: var(--font-size-base);\n\t\t\t\tcolor: var(--fg);\n\t\t\t\tmargin: 0;\n\t\t\t}\n\n\t\t\t.option-desc {\n\t\t\t\tfont-size: var(--font-size-sm);\n\t\t\t\tcolor: var(--fg3);\n\t\t\t\tmargin: var(--space-2) 0 0 0;\n\t\t\t\tline-height: 1.4;\n\t\t\t}\n\n\t\t\t.picker-form {\n\t\t\t\tmargin-top: var(--space-6);\n\t\t\t}\n\n\t\t\t.submit-btn {\n\t\t\t\twidth: 100%;\n\t\t\t\tpadding: var(--space-3);\n\t\t\t\tbackground-color: var(--accent);\n\t\t\t\tcolor: var(--bg-hard);\n\t\t\t\tborder: none;\n\t\t\t\tborder-radius: 4px;\n\t\t\t\tfont-weight: 600;\n\t\t\t\tfont-size: var(--font-size-base);\n\t\t\t\tfont-family: system-ui, -apple-system, sans-serif;\n\t\t\t\tcursor: pointer;\n\t\t\t\ttransition: all 150ms ease;\n\t\t\t}\n\n\t\t\t.submit-btn:hover {\n\t\t\t\tbackground-color: var(--accent-red);\n\t\t\t\tbox-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);\n\t\t\t}\n\n\t\t\t.submit-btn:active {\n\t\t\t\ttransform: scale(0.98);\n\t\t\t}\n\t\t</style></head><body><div class=\"picker-container\"><form class=\"picker-form\" hx-post=\"/api/sessions/create\" hx-swap=\"none\"><div class=\"picker-card\"><h2 class=\"picker-title\">start a session</h2><!-- Plain Chat Option --><div class=\"option-group\"><div class=\"option-card\" onclick=\"selectOption(this, 'agent_type', '')\"><input type=\"radio\" name=\"agent_type\" value=\"\" id=\"opt-plain\"><div class=\"option-content\"><p class=\"option-name\">chat</p><p class=\"option-desc\">start fresh, no agent</p></div></div></div><!-- Agent Options -->")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Start Session — Claudio</title><style>\n\t\t\t*{box-sizing:border-box;margin:0;padding:0;}\n\t\t\tbody{background:#1d2021;color:#ebdbb2;font-family:monospace;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;}\n\t\t\t.card{background:#32302f;border:1px solid #504945;border-radius:6px;padding:24px;width:100%;max-width:560px;}\n\t\t\th2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#928374;margin-bottom:20px;}\n\t\t\t.group-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#928374;margin:20px 0 8px;}\n\t\t\t.opt{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;background:#3c3836;border:2px solid #504945;border-radius:4px;cursor:pointer;margin-bottom:6px;transition:border-color 100ms,background 100ms;user-select:none;}\n\t\t\t.opt:hover{border-color:#665c54;}\n\t\t\t.opt.selected{border-color:#fe8019;background:#282828;}\n\t\t\t.dot{width:14px;height:14px;border:2px solid #665c54;border-radius:50%;flex-shrink:0;margin-top:2px;transition:all 100ms;}\n\t\t\t.opt.selected .dot{border-color:#fe8019;background:#fe8019;}\n\t\t\t.opt-name{font-size:13px;font-weight:700;color:#ebdbb2;}\n\t\t\t.opt-desc{font-size:11px;color:#928374;margin-top:3px;line-height:1.4;}\n\t\t\t.list{max-height:200px;overflow-y:auto;}\n\t\t\t.submit{width:100%;padding:10px;background:#fe8019;color:#1d2021;border:none;border-radius:4px;font-weight:700;font-size:14px;font-family:monospace;cursor:pointer;margin-top:20px;}\n\t\t\t.submit:hover{background:#fabd2f;}\n\t\t</style></head><body><div class=\"card\"><h2>start a session</h2><form method=\"POST\" action=\"/api/sessions/create\" id=\"picker-form\"><input type=\"hidden\" name=\"agent_type\" id=\"val-agent\" value=\"\"> <input type=\"hidden\" name=\"team_template\" id=\"val-team\" value=\"\"><div class=\"opt selected\" data-agent=\"\" data-team=\"\"><span class=\"dot\"></span> <span><div class=\"opt-name\">plain chat</div><div class=\"opt-desc\">no agent, just chat</div></span></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(agents) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"option-group\"><div class=\"option-group-label\">with agent</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"group-label\">with agent</div><div class=\"list\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			for _, agent := range agents {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"option-card\" onclick=\"selectOption(this, 'agent_type', { agent.ID | templ.JSExpression })\"><input type=\"radio\" name=\"agent_type\" value=\"")
+			for _, a := range agents {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"opt\" data-agent=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var2 string
-				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(agent.ID)
+				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(a.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 181, Col: 26}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 47, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" id=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" data-team=\"\"><span class=\"dot\"></span> <span><div class=\"opt-name\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
-				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs("opt-agent-" + agent.ID)
+				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 182, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 50, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"><div class=\"option-content\"><p class=\"option-name\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><div class=\"opt-desc\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Name)
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(a.Description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 185, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 51, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p><p class=\"option-desc\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div></span></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if len(teams) > 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"group-label\">with team</div><div class=\"list\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for _, t := range teams {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"opt\" data-agent=\"\" data-team=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var5 string
-				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Description)
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(t.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 186, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 62, Col: 54}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p></div></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<!-- Team Options -->")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if len(teams) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"option-group\"><div class=\"option-group-label\">with team</div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, team := range teams {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div class=\"option-card\" onclick=\"selectOption(this, 'team_template', { team.ID | templ.JSExpression })\"><input type=\"radio\" name=\"team_template\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\"><span class=\"dot\"></span> <span><div class=\"opt-name\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var6 string
-				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(team.ID)
+				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 202, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 65, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" id=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div><div class=\"opt-desc\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
-				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("opt-team-" + team.ID)
+				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t.Description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 203, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 66, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\"><div class=\"option-content\"><p class=\"option-name\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var8 string
-				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(team.Name)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 206, Col: 44}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</p><p class=\"option-desc\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var9 string
-				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(team.Description)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/picker.templ`, Line: 207, Col: 51}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</p></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div></span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<!-- Hidden fields for form submission --><input type=\"hidden\" name=\"agent_type\" id=\"hidden-agent-type\" value=\"\"> <input type=\"hidden\" name=\"team_template\" id=\"hidden-team-template\" value=\"\"><!-- Submit Button --><button type=\"submit\" class=\"submit-btn\">start →</button></div></form></div><script>\n\t\t\tfunction selectOption(cardEl, fieldName, value) {\n\t\t\t\t// Find all cards in the same group and deselect them\n\t\t\t\tconst parentGroup = cardEl.parentElement;\n\t\t\t\tconst cards = parentGroup.querySelectorAll('.option-card');\n\t\t\t\tcards.forEach(card => card.classList.remove('selected'));\n\n\t\t\t\t// Select the clicked card\n\t\t\t\tcardEl.classList.add('selected');\n\n\t\t\t\t// Update the hidden field and radio button\n\t\t\t\tconst radioInput = cardEl.querySelector('input[type=\"radio\"]');\n\t\t\t\tradioInput.checked = true;\n\n\t\t\t\t// Update hidden field\n\t\t\t\tconst hiddenField = document.getElementById('hidden-' + fieldName);\n\t\t\t\tif (hiddenField) {\n\t\t\t\t\thiddenField.value = value;\n\t\t\t\t}\n\t\t\t}\n\t\t</script></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<button type=\"submit\" class=\"submit\">start →</button></form></div><script>\n\t\t\tdocument.querySelectorAll('.opt').forEach(function(el) {\n\t\t\t\tel.addEventListener('click', function() {\n\t\t\t\t\tdocument.querySelectorAll('.opt').forEach(function(o){ o.classList.remove('selected'); });\n\t\t\t\t\tel.classList.add('selected');\n\t\t\t\t\tdocument.getElementById('val-agent').value = el.dataset.agent || '';\n\t\t\t\t\tdocument.getElementById('val-team').value  = el.dataset.team  || '';\n\t\t\t\t});\n\t\t\t});\n\t\t</script></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

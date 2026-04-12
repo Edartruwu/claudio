@@ -626,23 +626,39 @@ Toggle it in the TUI config panel (`<Space>ic`) or set it in `settings.json`:
 }
 ```
 
-**How it works:** after a command runs, the output passes through two filter layers:
+**How it works:** after a command runs, the output passes through three filter layers in order:
 
-1. **Command-specific filters** — recognizes the command and strips noise particular to that tool:
+1. **TOML filter engine** — a declarative 8-stage pipeline checked first. Matches by command name and applies stages in order:
+   - `strip_ansi` — remove ANSI/OSC escape sequences
+   - `replace` — chainable regex substitutions applied line-by-line
+   - `match_output` — short-circuit: if the full output matches a pattern, emit a single summary message (with optional `unless` guard to skip when errors are present)
+   - `strip_lines_matching` / `keep_lines_matching` — blacklist or whitelist lines by regex (mutually exclusive)
+   - `truncate_lines_at` — cap individual line length
+   - `head_lines` / `tail_lines` — keep only the first or last N lines
+   - `max_lines` — hard cap on total output lines after all other stages
+   - `on_empty` — fallback message when filtering produces empty output
 
-   | Command | What gets filtered |
-   |---------|-------------------|
-   | `git push/pull/fetch/clone` | Transfer progress (enumerating, counting, compressing objects, percentages), keeps branch results and errors |
-   | `go test` | Keeps only failures + summary line, supports both plain and JSON (`-json`) output |
-   | `go build/vet` | Keeps only error/issue lines with file locations, adds count |
-   | `cargo build/test/clippy` | Strips compile progress, keeps errors/warnings/failures |
-   | `npm/pnpm/yarn install` | Strips download progress, keeps "added N packages" and vulnerability warnings |
-   | `pip install` | Strips download/collection lines, keeps success/error |
-   | `docker build` | Strips layer download progress, keeps step headers and final result |
-   | `docker pull/push` | Strips per-layer progress, keeps digest and status |
-   | `make` | For long successful builds, applies generic filtering |
+2. **Built-in command filters** — 38 hardcoded filters for the most common tools:
 
-2. **Generic filters** (applied to all commands, or as fallback):
+   | Category | Commands |
+   |----------|----------|
+   | Go | `go test` (JSON + plain), `go build`, `go vet` |
+   | Rust | `cargo build`, `cargo test`, `cargo clippy` |
+   | JavaScript | `npm/pnpm/yarn install`, `nx`, `turbo`, `biome`, `oxlint`, `vitest`, `eslint`, `tsc` |
+   | Python | `pip install`, `poetry`, `uv`, `pre-commit` |
+   | JVM | `gradle`, `maven` |
+   | .NET | `dotnet build/restore/test` |
+   | Swift | `swift build`, `xcodebuild` |
+   | Ruby/Elixir/PHP | `mix`, `composer install` |
+   | DevOps | `helm`, `gcloud`, `tofu`, `ansible-playbook` |
+   | Containers | `docker build`, `docker pull/push` |
+   | Linting | `shellcheck`, `hadolint`, `yamllint`, `markdownlint` |
+   | System | `systemctl`, `rsync`, `ssh`, `jq`, `ollama` |
+   | Build | `make`, `just`, `task` |
+   | Package managers | `mise` |
+   | SCM/tools | `jira` |
+
+3. **Generic filters** (applied to all commands, or as fallback):
    - Strips ANSI escape codes
    - Collapses 3+ consecutive blank lines to 1
    - Deduplicates 3+ identical consecutive lines → `line (repeated N times)`
@@ -682,6 +698,94 @@ Go build: 2 errors
 1. pkg/foo.go:10:5: undefined: bar
 2. pkg/foo.go:15:2: cannot use x (type int) as type string
 ```
+
+#### Custom TOML filters
+
+You can add your own filters or override built-ins without recompiling. Claudio loads filter files from three locations in priority order:
+
+| Priority | Path | Notes |
+|----------|------|-------|
+| 1 (highest) | `.claudio/filters.toml` | Project-local overrides |
+| 2 | `~/.config/claudio/filters.toml` | User-global overrides |
+| 3 (lowest) | Built-in | Embedded at compile time |
+
+Example filter file:
+
+```toml
+schema_version = 1
+
+[filters.my-tool]
+description    = "Strip noisy progress from my-tool"
+match_command  = "^my-tool$"
+strip_ansi     = true
+max_lines      = 50
+on_empty       = "my-tool: ok"
+
+strip_lines_matching = [
+  "^Downloading",
+  "^Resolving",
+  "\\[=+>?\\s*\\]",   # progress bars
+]
+
+[[match_output]]
+pattern = "Success"
+message = "my-tool: completed successfully"
+unless  = "error|warn"
+```
+
+Set `CLAUDIO_NO_FILTER=1` to bypass all filtering, or `CLAUDIO_FILTER_DEBUG=1` to log which filter matched each command.
+
+#### Plugin tool filtering
+
+Plugin tools (e.g. `claudio-tmux`) pass through the same TOML filter pipeline as Bash when `outputFilter: true`. The filter key is the plugin's `command` field — e.g. `"run"`, `"cat"`, `"lsp"` for claudio-tmux.
+
+This means you can add entries in `.claudio/filters.toml` to filter any plugin's output:
+
+```toml
+[filters.tmux-run]
+description   = "Trim verbose output from tmux run calls"
+match_command = "^run$"
+max_lines     = 100
+strip_lines_matching = ["^npm warn", "^\\s*$"]
+
+[filters.tmux-cat]
+description   = "Cap raw pane captures"
+match_command = "^cat$"
+max_lines     = 50
+```
+
+Any plugin added in the future automatically inherits this support — no code changes needed, just add a filter block matching its command name.
+
+**claudio-tmux also has its own low-level filter layer** (independent of claudio's config) that strips terminal garbage before claudio ever sees the output: OSC escape sequences, shell prompt lines, braille spinners, progress bars. This runs unconditionally on all tmux output. You can add project-local overrides in `.claudio-tmux/filters.toml` using the same TOML schema. Set `CLAUDIO_TMUX_NO_FILTER=1` to bypass it.
+
+The two layers are complementary:
+```
+tmux raw → claudio-tmux filter (terminal garbage) → claudio outputFilter (semantic noise) → context
+```
+
+#### Source-code filter (`codeFilterLevel`)
+
+When Claudio reads source files via the `Read` tool, it can strip comments and boilerplate before the content enters the context window — reducing token usage on large files without losing the information that matters.
+
+Configure it in the TUI config panel (`<Space>ic`) or in `settings.json`:
+
+```json
+{
+  "codeFilterLevel": "minimal"
+}
+```
+
+| Level | What it does |
+|-------|-------------|
+| `none` *(default)* | Raw file content, no filtering applied |
+| `minimal` | Strips line and block comments, preserves doc comments (`///`, `/** */`), collapses blank lines |
+| `aggressive` | Keeps only function/type signatures and imports; replaces bodies with `// ...` |
+
+**When filtering applies:** only on full-file reads (no `offset`/`limit` specified) of files longer than 500 lines. Files over 2000 lines also get `SmartTruncate` — a structurally-aware truncation that preserves function signatures and imports even when cutting.
+
+**Per-project override:** set `codeFilterLevel` in `.claudio/settings.json` to use a different level for comment-heavy repos (e.g. `"aggressive"` for auto-generated code).
+
+> **Cache caveat:** the read cache key is `(filePath, offset, limit)` — it does not include `codeFilterLevel`. If you change the filter level mid-session, previously cached file reads will return the old filtered content until the file is modified on disk or the session restarts. In practice this rarely matters since the level is set once per project, but be aware when toggling it interactively.
 
 ### CavemanMode
 
@@ -727,7 +831,11 @@ Infrequently-used tools (web, LSP, notebooks, tasks, teams, etc.) are sent with 
 | Duplicate read cache | `internal/tools/readcache/` | Eliminates redundant file read tokens |
 | Image compression | `internal/tui/images.go` | Reduces image payloads to ≤500 KB |
 | Message merging | `internal/query/engine.go` | Reduces per-message overhead |
-| Output filtering | `internal/tools/outputfilter/` | 60-90% reduction on noisy command outputs |
+| Output filtering (38 commands) | `internal/tools/outputfilter/` | 60-90% reduction on noisy command outputs |
+| TOML filter engine | `internal/tools/outputfilter/tomlfilter/` | User-customizable declarative filters, no recompile |
+| Plugin output filtering | `internal/plugins/proxy.go` | Same TOML pipeline applied to all plugin tool results |
+| Source-code filter | `internal/tools/outputfilter/codefilter/` | Strips comments from large files before context entry |
+| claudio-tmux terminal filter | `claudio-tmux/internal/tomlfilter/` | Strips OSC/spinner/prompt noise before output reaches claudio |
 | Deferred tool schemas | `internal/tools/registry.go` | Saves full schema cost for unused tools |
 | Snippet expansion | `internal/snippets/` | Reduces AI output tokens for repetitive boilerplate |
 
