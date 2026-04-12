@@ -66,13 +66,35 @@ func (o *Ollama) supportsTools(model string) bool {
 	return true
 }
 
+// ollamaHistoryFunctionCall uses json.RawMessage for arguments because Ollama's
+// native /api/chat expects an object, not a JSON-encoded string (OpenAI format).
+type ollamaHistoryFunctionCall struct {
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+type ollamaHistoryToolCall struct {
+	ID       string                     `json:"id,omitempty"`
+	Type     string                     `json:"type"`
+	Index    int                        `json:"index,omitempty"`
+	Function ollamaHistoryFunctionCall  `json:"function"`
+}
+
+type ollamaHistoryMessage struct {
+	Role       string                  `json:"role"`
+	Content    any                     `json:"content"`
+	ToolCalls  []ollamaHistoryToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string                  `json:"tool_call_id,omitempty"`
+	Name       string                  `json:"name,omitempty"`
+}
+
 // ollamaRequest is the wire format for Ollama's /api/chat endpoint.
 type ollamaRequest struct {
-	Model    string          `json:"model"`
-	Messages []openAIMessage `json:"messages"`
-	Stream   bool            `json:"stream"`
-	Tools    []openAITool    `json:"tools,omitempty"`
-	Options  map[string]any  `json:"options,omitempty"`
+	Model    string                 `json:"model"`
+	Messages []ollamaHistoryMessage `json:"messages"`
+	Stream   bool                   `json:"stream"`
+	Tools    []openAITool           `json:"tools,omitempty"`
+	Options  map[string]any         `json:"options,omitempty"`
 }
 
 // ollamaStreamChunk is one line of the NDJSON stream returned by /api/chat.
@@ -109,17 +131,36 @@ func (o *Ollama) buildRequestBody(req *api.MessagesRequest) ([]byte, error) {
 		return nil, err
 	}
 
-	// Ollama's native API doesn't use reasoning_content round-tripping
-	// (unlike MiniMax/OpenRouter). Strip it to avoid confusing models
-	// that lack strong tool-calling fine-tuning.
-	for i := range oaiReq.Messages {
-		oaiReq.Messages[i].ReasoningContent = ""
-		oaiReq.Messages[i].ReasoningDetails = nil
+	// Convert OpenAI message format to Ollama history message format.
+	// Tool call arguments must be json.RawMessage (objects) not strings.
+	historyMsgs := make([]ollamaHistoryMessage, len(oaiReq.Messages))
+	for i, m := range oaiReq.Messages {
+		historyMsgs[i] = ollamaHistoryMessage{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCallID: m.ToolCallID,
+			Name:       m.Name,
+		}
+		for _, tc := range m.ToolCalls {
+			args := json.RawMessage(tc.Function.Arguments)
+			if !json.Valid(args) {
+				args = json.RawMessage("{}")
+			}
+			historyMsgs[i].ToolCalls = append(historyMsgs[i].ToolCalls, ollamaHistoryToolCall{
+				ID:    tc.ID,
+				Type:  tc.Type,
+				Index: tc.Index,
+				Function: ollamaHistoryFunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: args,
+				},
+			})
+		}
 	}
 
 	body := ollamaRequest{
 		Model:    oaiReq.Model,
-		Messages: oaiReq.Messages,
+		Messages: historyMsgs,
 		Stream:   oaiReq.Stream,
 	}
 
