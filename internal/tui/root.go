@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,6 +56,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
 	"github.com/Abraxas-365/claudio/internal/tui/teampanel"
 	"github.com/Abraxas-365/claudio/internal/teams"
+	"github.com/Abraxas-365/claudio/internal/web"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
@@ -186,6 +189,10 @@ type Model struct {
 
 	// Welcome screen logo animation
 	logoFrame int // increments on each logoTickMsg to drive the color-wave animation
+
+	// Embedded web server (started by /web command)
+	webServer     *web.Server // nil if not started
+	webServerAddr string      // e.g. "http://localhost:8080"
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -2668,6 +2675,79 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 			sb.WriteString(fmt.Sprintf("  %-12s  %-28s  %s\n", b.KeySeq, string(b.Action.ID), b.Action.Description))
 		}
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: sb.String()})
+		m.refreshViewport()
+		return m, nil
+	}
+
+	// /web [port] → start embedded web server in same process
+	if name == "web" {
+		// Already running? Show URL again.
+		if m.webServer != nil {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Web server already running at %s", m.webServerAddr)})
+			m.refreshViewport()
+			return m, nil
+		}
+
+		// Parse port (default 8080)
+		port := 8080
+		if a := strings.TrimSpace(args); a != "" {
+			p, err := strconv.Atoi(a)
+			if err != nil || p < 1 || p > 65535 {
+				m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Invalid port: %s", a)})
+				m.refreshViewport()
+				return m, nil
+			}
+			port = p
+		}
+
+		// Probe ports: try port..port+9
+		var listener net.Listener
+		var boundPort int
+		for try := 0; try < 10; try++ {
+			candidate := port + try
+			ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", candidate))
+			if err == nil {
+				listener = ln
+				boundPort = candidate
+				break
+			}
+		}
+		if listener == nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Could not bind to ports %d–%d", port, port+9)})
+			m.refreshViewport()
+			return m, nil
+		}
+
+		// Get current session ID
+		sessionID := ""
+		if m.session != nil && m.session.Current() != nil {
+			sessionID = m.session.Current().ID
+		}
+
+		// Create web server — no password needed for local TUI-embedded use
+		srv := web.New(web.Config{
+			Host: "127.0.0.1",
+			Port: boundPort,
+		}, m.skills)
+		if sessionID != "" {
+			srv.SessionID = sessionID
+		}
+
+		m.webServer = srv
+		m.webServerAddr = fmt.Sprintf("http://localhost:%d", boundPort)
+
+		// Start server in background goroutine (non-blocking)
+		go func() {
+			if err := srv.StartOnListener(listener); err != nil {
+				// Server stopped — nothing to do; TUI continues
+			}
+		}()
+
+		msg := fmt.Sprintf("Web server at %s", m.webServerAddr)
+		if sessionID != "" {
+			msg += fmt.Sprintf(" (session: %s)", sessionID[:min(8, len(sessionID))])
+		}
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: msg})
 		m.refreshViewport()
 		return m, nil
 	}

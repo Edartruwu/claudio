@@ -707,6 +707,14 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 			return fmt.Sprintf("Opened %s in your browser.", url), nil
 		},
 	})
+
+	r.Register(&Command{
+		Name:        "web",
+		Description: "Start web server to access session from browser/phone",
+		Execute: func(args string) (string, error) {
+			return "", nil // handled directly in TUI root
+		},
+	})
 }
 
 func openBrowser(url string) error {

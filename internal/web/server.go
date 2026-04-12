@@ -88,23 +88,34 @@ func (s *Server) Start() error {
 		return err
 	}
 	
+	return s.StartOnListener(listener)
+}
+
+// StartOnListener starts the web server on a pre-bound listener.
+// This allows callers (e.g. the TUI /web command) to probe for a free port
+// before handing the listener to the server.
+func (s *Server) StartOnListener(listener net.Listener) error {
 	// Get the actual port that was assigned
 	actualPort := listener.Addr().(*net.TCPAddr).Port
 	
-	// Auto-create the single session for this server instance
-	sess, err := s.sessions.Create(s.ProjectPath, "Session 1")
-	if err != nil {
-		listener.Close()
-		return err
-	}
-	s.SessionID = sess.ID
-	
-	// Store agent/team info on the session if provided
-	if s.AgentType != "" {
-		sess.AgentType = s.AgentType
-	}
-	if s.TeamTemplate != "" {
-		sess.TeamTemplate = s.TeamTemplate
+	// If SessionID is already set (e.g. by TUI embedding), skip auto-create
+	// and just ensure the session is loadable by the SessionManager.
+	if s.SessionID == "" {
+		// Auto-create the single session for this server instance
+		sess, err := s.sessions.Create(s.ProjectPath, "Session 1")
+		if err != nil {
+			listener.Close()
+			return err
+		}
+		s.SessionID = sess.ID
+		
+		// Store agent/team info on the session if provided
+		if s.AgentType != "" {
+			sess.AgentType = s.AgentType
+		}
+		if s.TeamTemplate != "" {
+			sess.TeamTemplate = s.TeamTemplate
+		}
 	}
 	
 	srv := &http.Server{
