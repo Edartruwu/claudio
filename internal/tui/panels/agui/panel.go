@@ -1010,7 +1010,9 @@ func (p *Panel) updateRight(key string) (tea.Cmd, bool) {
 		if p.runner != nil && p.selectedID != "" {
 			if state, ok := p.runner.GetState(p.selectedID); ok {
 				content := p.plainTextDetail(state)
-				return panels.ActionMsg{Type: "open_in_editor", Payload: content}, true
+				return func() tea.Msg {
+					return panels.ActionMsg{Type: "open_in_editor", Payload: content}
+				}, true
 			}
 		}
 		return nil, true

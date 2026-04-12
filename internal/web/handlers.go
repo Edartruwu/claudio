@@ -608,7 +608,23 @@ func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 	case "tasks":
 		templates.TasksPanel(data).Render(r.Context(), w)
 	case "agents":
-		templates.AgentsPanelContent().Render(r.Context(), w)
+		// Get all available agents
+		allAgents := agents.AllAgents()
+		agentList := make([]templates.AgentInfo, len(allAgents))
+		for i, a := range allAgents {
+			// Mock statuses for now
+			status := "idle"
+			if i%3 == 0 && len(allAgents) > 1 {
+				status = "running"
+			}
+			agentList[i] = templates.AgentInfo{
+				ID:     a.Type,
+				Name:   a.Type,
+				Model:  a.Model,
+				Status: status,
+			}
+		}
+		templates.AgentsPanelContent(agentList).Render(r.Context(), w)
 	case "tools":
 		data.SessionID = sessionID
 		data.Tools = collectToolInfos(sess)
@@ -1377,6 +1393,48 @@ func (s *Server) handlePickerSpawnTeam(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// handleAgentsList renders the agents panel with live agent list.
+func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
+	// Get all available agents
+	allAgents := agents.AllAgents()
+	
+	// Build agent list with mock status data
+	// In production, this would read from s.teams.Runner() or similar
+	agentList := make([]templates.AgentInfo, len(allAgents))
+	for i, a := range allAgents {
+		// Mock statuses for now - in a real implementation,
+		// these would come from TeammateRunner state tracking
+		status := "idle"
+		if i%3 == 0 && len(allAgents) > 1 {
+			status = "running"
+		}
+		
+		agentList[i] = templates.AgentInfo{
+			ID:     a.Type,
+			Name:   a.Type,
+			Model:  a.Model,
+			Status: status,
+		}
+	}
+	
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Render just the inner HTML (without outer panel-section wrapper)
+	// to work with hx-swap="innerHTML"
+	if len(agentList) == 0 {
+		fmt.Fprintf(w, `<div style="color:var(--fg4);padding:8px 0;font-size:var(--font-size-xs);">No agents running</div>`)
+	} else {
+		for _, a := range agentList {
+			fmt.Fprintf(w, `<div class="agent-card">`)
+			fmt.Fprintf(w, `<div class="agent-card-header">`)
+			fmt.Fprintf(w, `<span class="agent-name">%s</span>`, escapeHTML(a.Name))
+			fmt.Fprintf(w, `<span class="agent-badge agent-badge-%s">%s</span>`, escapeHTML(a.Status), escapeHTML(a.Status))
+			fmt.Fprintf(w, `</div>`)
+			fmt.Fprintf(w, `<div class="agent-model">%s</div>`, escapeHTML(a.Model))
+			fmt.Fprintf(w, `</div>`)
+		}
+	}
 }
 
 // escapeHTML escapes HTML special characters.

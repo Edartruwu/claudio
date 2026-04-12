@@ -63,3 +63,11 @@ type TaskInfo struct {
 	Status      string // "pending", "running", "done", "failed"
 	Description string
 }
+
+// AgentInfo represents an active agent in the agents panel.
+type AgentInfo struct {
+	ID    string // agent type/name
+	Name  string // display name
+	Model string // model name
+	Status string // "running", "idle", "done", "error"
+}
