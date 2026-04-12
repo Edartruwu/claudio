@@ -1,0 +1,27 @@
+schema_version = 1
+
+[filters.jira]
+description = "jira CLI: cap output"
+match_command = "^jira\\b"
+strip_ansi = true
+max_lines = 50
+
+[filters.just]
+description = "just (justfile runner): strip just command lines, keep output"
+match_command = "^just\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^just ",
+]
+max_lines = 100
+on_empty = "just: ok"
+
+[filters.task]
+description = "task (Taskfile runner): strip task command lines, keep output"
+match_command = "^task\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^task: ",
+]
+max_lines = 100
+on_empty = "task: ok"

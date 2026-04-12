@@ -1,0 +1,61 @@
+schema_version = 1
+
+[filters.helm]
+description = "helm: strip chart template noise, keep names and status"
+match_command = "^helm\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^#",
+  "^\\s*$",
+]
+max_lines = 50
+on_empty = "helm: ok"
+
+[filters.gcloud]
+description = "gcloud: strip spinner progress characters"
+match_command = "^gcloud\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^[|/\\\\-]$",
+  "^\\s*[|/\\\\-]\\s*$",
+  "^\\s*$",
+]
+max_lines = 80
+on_empty = "gcloud: ok"
+
+[filters.tofu]
+description = "tofu (OpenTofu): strip refresh noise, keep plan and apply results"
+match_command = "^tofu\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^data\\.",
+  "^module\\..*: Still",
+  "^module\\..*: Refreshing",
+  "^\\s*$",
+]
+max_lines = 100
+on_empty = "tofu: no changes"
+
+[filters.ansible-playbook]
+description = "ansible-playbook: strip ok and facts tasks, keep changes, failures and recap"
+match_command = "^ansible-playbook\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^ok: \\[",
+  "^TASK \\[Gathering Facts\\]",
+  "^\\*+\\s*$",
+  "^\\s*$",
+]
+max_lines = 150
+on_empty = "ansible-playbook: ok"
+
+[filters.ansible]
+description = "ansible: strip ok tasks, keep changes and failures"
+match_command = "^ansible\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^ok: \\[",
+  "^\\s*$",
+]
+max_lines = 100
+on_empty = "ansible: ok"

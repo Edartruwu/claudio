@@ -1,0 +1,34 @@
+schema_version = 1
+
+[filters.gradle]
+description = "gradle/gradlew: strip download noise, keep build results"
+match_command = "^(\\./)?gradlew?\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^Download ",
+  "^Downloading https://",
+  "^\\s+\\d+%",
+  "^Progress",
+  "^\\s*$",
+]
+max_lines = 100
+on_empty = "gradle: build finished"
+
+[filters.maven]
+description = "maven/mvn: strip info noise, keep errors and build status"
+match_command = "^mvn\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "ERROR",
+  "WARNING",
+  "BUILD",
+  "\\[ERROR\\]",
+  "\\[WARNING\\]",
+  "FAILURE",
+  "SUCCESS",
+  "Tests run",
+  "\\[INFO\\] BUILD",
+  "T E S T S",
+]
+max_lines = 100
+on_empty = "mvn: build finished"

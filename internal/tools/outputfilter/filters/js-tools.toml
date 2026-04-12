@@ -1,0 +1,69 @@
+schema_version = 1
+
+[filters.nx]
+description = "nx: strip verbose task output, keep summaries and errors"
+match_command = "^nx\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^> nx run ",
+  "^\\s+>\\s",
+  "^—+$",
+]
+max_lines = 100
+on_empty = "nx: tasks finished"
+
+[filters.turbo]
+description = "turbo: keep task summaries and errors, strip progress"
+match_command = "^turbo\\b"
+strip_ansi = true
+keep_lines_matching = [
+  ">>> FULL TURBO",
+  "ERROR",
+  "error",
+  "Tasks:",
+  "Cached:",
+  "Time:",
+  "FAIL",
+  "WARN",
+]
+max_lines = 100
+on_empty = "turbo: tasks finished"
+
+[filters.biome]
+description = "biome: strip file scan lines, keep lint errors"
+match_command = "^biome\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^Checked \\d+ file",
+]
+max_lines = 150
+on_empty = "biome: no issues found"
+
+[filters.oxlint]
+description = "oxlint: keep lint errors and warnings"
+match_command = "^oxlint\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "error",
+  "warning",
+  "Error",
+  "Warning",
+  "\\./.*:\\d+",
+  "Found \\d+",
+]
+max_lines = 150
+on_empty = "oxlint: no issues found"
+
+[filters.vitest]
+description = "vitest: strip passing test lines, keep failures and summary"
+match_command = "^vitest\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s+✓ ",
+  "^\\s+√ ",
+  "^RUN ",
+  "^\\s+↓ skip",
+  "^\\s*$",
+]
+max_lines = 150
+on_empty = "vitest: all tests passed"

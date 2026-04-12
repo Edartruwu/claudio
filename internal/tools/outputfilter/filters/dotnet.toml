@@ -1,0 +1,15 @@
+schema_version = 1
+
+[filters.dotnet]
+description = "dotnet: strip restore noise, keep errors and warnings"
+match_command = "^dotnet\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s+Determining projects to restore",
+  "^\\s+Restored ",
+  "^\\s+All projects are up-to-date",
+  "^\\s+No assets file",
+  "^\\s*$",
+]
+max_lines = 80
+on_empty = "dotnet: build finished"

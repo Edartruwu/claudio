@@ -1,0 +1,30 @@
+schema_version = 1
+
+[filters.mix]
+description = "mix (Elixir): strip compile noise, keep errors and warnings"
+match_command = "^mix\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^Compiling \\d+ files",
+  "^Generated ",
+  "^==> ",
+]
+max_lines = 80
+on_empty = "mix: ok"
+
+[filters.composer]
+description = "composer (PHP): strip download noise, keep errors"
+match_command = "^composer\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^  - Downloading ",
+  "^  - Installing ",
+  "^Loading composer",
+  "^Generating autoload files",
+  "^\\d+ packages",
+  "^Package operations:",
+  "^Lock file operations:",
+  "^Writing lock file",
+]
+max_lines = 60
+on_empty = "composer: ok"

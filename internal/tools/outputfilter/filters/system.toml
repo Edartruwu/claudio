@@ -1,0 +1,56 @@
+schema_version = 1
+
+[filters.systemctl]
+description = "systemctl: strip noise, keep service status lines"
+match_command = "^systemctl\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^-",
+  "^\\s*$",
+]
+max_lines = 50
+on_empty = "systemctl: ok"
+
+[filters.rsync]
+description = "rsync: strip file-by-file output, keep summary"
+match_command = "^rsync\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\./",
+  "^\\./$",
+  "^sending incremental file list",
+  "^receiving incremental file list",
+  "^\\s*$",
+]
+max_lines = 40
+on_empty = "rsync: sync complete"
+
+[filters.ssh]
+description = "ssh: emit friendly message on new host key"
+match_command = "^ssh\\b"
+strip_ansi = true
+max_lines = 50
+
+[[filters.ssh.match_output]]
+pattern = "^Warning: Permanently added"
+message = "ssh: connected (new host added to known_hosts)"
+
+[filters.jq]
+description = "jq: strip ansi, cap output"
+match_command = "^jq\\b"
+strip_ansi = true
+max_lines = 200
+
+[filters.ollama]
+description = "ollama: strip pull progress, keep final status"
+match_command = "^ollama\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^pulling ",
+  "^\\d+%",
+  "^verifying ",
+  "^writing ",
+  "^\\s*$",
+]
+max_lines = 30
+on_empty = "ollama: ok"

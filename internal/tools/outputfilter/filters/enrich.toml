@@ -1,0 +1,30 @@
+schema_version = 1
+
+[filters.eslint]
+description = "eslint: keep error and warning lines with file references"
+match_command = "^(npx )?eslint\\b"
+strip_ansi = true
+keep_lines_matching = [
+  ".+:\\d+:\\d+",
+  "error",
+  "warning",
+  "✖",
+  "✗",
+  "problems",
+  "^\\s*\\d+ ",
+]
+max_lines = 200
+on_empty = "eslint: no issues found"
+
+[filters.tsc]
+description = "tsc: keep TypeScript compile errors, cap output"
+match_command = "^(npx )?tsc\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "error TS",
+  "warning TS",
+  ".+\\.ts\\(\\d+",
+  "Found \\d+",
+]
+head_lines = 200
+on_empty = "tsc: no type errors"

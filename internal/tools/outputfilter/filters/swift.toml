@@ -1,0 +1,31 @@
+schema_version = 1
+
+[filters.swift-build]
+description = "swift build: strip compile lines, keep errors and warnings"
+match_command = "^swift build\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "error:",
+  "warning:",
+  "note:",
+  "Build complete",
+  "FAILED",
+  "^\\*\\* BUILD",
+]
+max_lines = 60
+on_empty = "swift build: ok"
+
+[filters.xcodebuild]
+description = "xcodebuild: strip compile noise, keep errors, warnings, and build status"
+match_command = "^xcodebuild\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "error:",
+  "warning:",
+  "\\*\\* BUILD",
+  "SUCCEEDED",
+  "FAILED",
+  "note:",
+]
+max_lines = 80
+on_empty = "xcodebuild: build finished"

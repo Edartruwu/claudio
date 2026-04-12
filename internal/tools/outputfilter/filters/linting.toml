@@ -1,0 +1,46 @@
+schema_version = 1
+
+[filters.shellcheck]
+description = "shellcheck: keep warning and error lines"
+match_command = "^shellcheck\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "SC\\d+",
+  "error",
+  "warning",
+  "note",
+  "In ",
+  "^\\s+\\^",
+  "\\d+:\\d+",
+]
+max_lines = 100
+on_empty = "shellcheck: no issues found"
+
+[filters.hadolint]
+description = "hadolint: keep Dockerfile lint warnings and errors"
+match_command = "^hadolint\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "DL\\d+",
+  "SC\\d+",
+  "error",
+  "warning",
+  "info",
+  "style",
+]
+max_lines = 100
+on_empty = "hadolint: no issues found"
+
+[filters.yamllint]
+description = "yamllint: cap output and strip ansi"
+match_command = "^yamllint\\b"
+strip_ansi = true
+max_lines = 100
+on_empty = "yamllint: no issues found"
+
+[filters.markdownlint]
+description = "markdownlint: cap output and strip ansi"
+match_command = "^markdownlint\\b"
+strip_ansi = true
+max_lines = 100
+on_empty = "markdownlint: no issues found"

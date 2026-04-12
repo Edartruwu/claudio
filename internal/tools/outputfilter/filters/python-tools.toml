@@ -1,0 +1,41 @@
+schema_version = 1
+
+[filters.poetry]
+description = "poetry: strip dependency resolution noise, keep installs and errors"
+match_command = "^poetry\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^Updating dependencies",
+  "^Resolving dependencies",
+  "^Looking for ",
+  "^\\s+•\\s",
+]
+max_lines = 60
+on_empty = "poetry: ok"
+
+[filters.uv]
+description = "uv: strip resolve noise, keep installs and errors"
+match_command = "^uv\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "^Installed ",
+  "^Uninstalled ",
+  "^error",
+  "Error",
+  "warning",
+  "^Audited",
+  "^Downloaded",
+]
+max_lines = 60
+on_empty = "uv: ok"
+
+[filters.pre-commit]
+description = "pre-commit: strip info lines, keep hook results"
+match_command = "^pre-commit\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\[INFO\\]",
+  "^\\s*$",
+]
+max_lines = 100
+on_empty = "pre-commit: all hooks passed"

@@ -1,0 +1,14 @@
+schema_version = 1
+
+[filters.mise]
+description = "mise: strip download and install progress, keep final results"
+match_command = "^mise\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\[\\d{4}",
+  "^installing ",
+  "^Downloading ",
+  "^\\s*$",
+]
+max_lines = 40
+on_empty = "mise: ok"
