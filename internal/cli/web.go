@@ -14,6 +14,8 @@ var (
 	flagWebPort     int
 	flagWebHost     string
 	flagWebPassword string
+	flagWebAgent    string
+	flagWebTeam     string
 )
 
 var webCmd = &cobra.Command{
@@ -32,20 +34,21 @@ var webCmd = &cobra.Command{
 
 		srv := web.New(web.Config{
 			Port:     flagWebPort,
-			Host:     flagWebHost,
 			Password: flagWebPassword,
 			Version:  Version,
+			Agent:    flagWebAgent,
+			Team:     flagWebTeam,
 		}, skillsRegistry)
 
-		fmt.Printf("Starting Claudio Web UI on http://%s:%d\n", flagWebHost, flagWebPort)
-		fmt.Println("Use --password flag value to log in.")
 		return srv.Start()
 	},
 }
 
 func init() {
-	webCmd.Flags().IntVar(&flagWebPort, "port", 8080, "Port to listen on")
-	webCmd.Flags().StringVar(&flagWebHost, "host", "0.0.0.0", "Host/IP to bind to")
+	webCmd.Flags().IntVar(&flagWebPort, "port", 0, "Port to listen on (0 = random)")
+	webCmd.Flags().StringVar(&flagWebHost, "host", "127.0.0.1", "Host/IP to bind to")
 	webCmd.Flags().StringVar(&flagWebPassword, "password", "", "Password for web UI access (required)")
+	webCmd.Flags().StringVar(&flagWebAgent, "agent", "", "Agent type to start with (optional)")
+	webCmd.Flags().StringVar(&flagWebTeam, "team", "", "Team template to start with (optional)")
 	rootCmd.AddCommand(webCmd)
 }

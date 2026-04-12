@@ -46,6 +46,8 @@ type ProjectSession struct {
 	CreatedAt   time.Time
 	LastUsed    time.Time
 	State       SessionState
+	AgentType   string // e.g. "general-purpose", "Explore"
+	TeamTemplate string // e.g. "backend-team", optional template name
 
 	// Analytics (accumulated across messages)
 	TotalInputTokens  int

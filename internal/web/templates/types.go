@@ -97,3 +97,17 @@ type ConfigItem struct {
 	Key   string
 	Value string
 }
+
+// AgentOption represents an agent type option in the picker.
+type AgentOption struct {
+	ID          string
+	Name        string
+	Description string
+}
+
+// TeamOption represents a team template option in the picker.
+type TeamOption struct {
+	ID          string
+	Name        string
+	Description string
+}

@@ -108,6 +108,40 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleHome renders the sessions browser.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
+	// If agent/team flags were provided at startup, skip picker and go straight to chat
+	if s.AgentType != "" || s.TeamTemplate != "" {
+		if s.SessionID != "" {
+			http.Redirect(w, r, "/chat/"+s.SessionID, http.StatusSeeOther)
+			return
+		}
+	}
+
+	// Show agent/team picker page
+	agentDefs := agents.AllAgents(agents.GetCustomDirs()...)
+	agentOptions := make([]templates.AgentOption, len(agentDefs))
+	for i, a := range agentDefs {
+		agentOptions[i] = templates.AgentOption{
+			ID:          a.Type,
+			Name:        a.Type,
+			Description: a.WhenToUse,
+		}
+	}
+
+	teamTemplates := s.teams.ListTemplates()
+	teamOptions := make([]templates.TeamOption, len(teamTemplates))
+	for i, t := range teamTemplates {
+		teamOptions[i] = templates.TeamOption{
+			ID:          t.Name,
+			Name:        t.Name,
+			Description: t.Description,
+		}
+	}
+
+	templates.PickerPage(agentOptions, teamOptions).Render(r.Context(), w)
+}
+
+// handleSessions shows all sessions (old home page behavior, now at /sessions)
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	// Collect all sessions across all projects
 	var allSessions []templates.SessionInfo
 	for _, projectPath := range s.sessions.ListProjects() {
@@ -253,6 +287,17 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Parse and store optional agent_type and team_template from form
+	agentType := r.FormValue("agent_type")
+	if agentType != "" {
+		sess.AgentType = agentType
+	}
+
+	teamTemplate := r.FormValue("team_template")
+	if teamTemplate != "" {
+		sess.TeamTemplate = teamTemplate
 	}
 
 	w.Header().Set("HX-Redirect", "/chat/"+sess.ID)

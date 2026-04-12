@@ -175,6 +175,8 @@ func (db *DB) migrate() error {
 		)`,
 		// 19 — index for filter savings queries grouped by command
 		`CREATE INDEX IF NOT EXISTS idx_filter_savings_command ON filter_savings(command)`,
+		// 20 — add team_template column to sessions for team selection tracking
+		`ALTER TABLE sessions ADD COLUMN team_template TEXT NOT NULL DEFAULT ''`,
 	}
 
 	for i, m := range migrations {
@@ -249,7 +251,11 @@ func (db *DB) detectExistingSchemaVersion() int {
 
 	switch {
 	case hasTable("filter_savings"):
-		return 19
+		// Check if team_template column exists; if not, we're at version 19
+		if !hasColumn("sessions", "team_template") {
+			return 19
+		}
+		return 20
 	case hasTable("instincts"):
 		return 13
 	case hasTable("audit_log"):

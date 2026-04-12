@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -25,6 +26,8 @@ type Config struct {
 	Host     string // bind address, default "127.0.0.1"
 	Password string
 	Version  string
+	Agent    string // optional agent type to start with
+	Team     string // optional team template to start with
 }
 
 // Server is the web UI server.
@@ -38,6 +41,9 @@ type Server struct {
 	tokens      map[string]time.Time // auth token -> expiry
 	mu          sync.RWMutex
 	ProjectPath string
+	SessionID   string // the one session this server instance owns
+	AgentType   string // optional agent type from CLI flag
+	TeamTemplate string // optional team template from CLI flag
 }
 
 // New creates a new web UI server.
@@ -54,14 +60,16 @@ func New(cfg Config, skillsRegistry *skills.Registry) *Server {
 	projectPath, _ := os.Getwd()
 
 	s := &Server{
-		config:      cfg,
-		mux:         http.NewServeMux(),
-		sessions:    NewSessionManager(db),
-		skills:      skillsRegistry,
-		db:          db,
-		teams:       teamMgr,
-		tokens:      make(map[string]time.Time),
-		ProjectPath: projectPath,
+		config:       cfg,
+		mux:          http.NewServeMux(),
+		sessions:     NewSessionManager(db),
+		skills:       skillsRegistry,
+		db:           db,
+		teams:        teamMgr,
+		tokens:       make(map[string]time.Time),
+		ProjectPath:  projectPath,
+		AgentType:    cfg.Agent,
+		TeamTemplate: cfg.Team,
 	}
 	s.registerRoutes()
 	return s
@@ -73,16 +81,41 @@ func (s *Server) Start() error {
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	addr := fmt.Sprintf("%s:%d", host, s.config.Port)
+	
+	// Use net.Listen to get actual bound port when port is 0 (random)
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, s.config.Port))
+	if err != nil {
+		return err
+	}
+	
+	// Get the actual port that was assigned
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+	
+	// Auto-create the single session for this server instance
+	sess, err := s.sessions.Create(s.ProjectPath, "Session 1")
+	if err != nil {
+		listener.Close()
+		return err
+	}
+	s.SessionID = sess.ID
+	
+	// Store agent/team info on the session if provided
+	if s.AgentType != "" {
+		sess.AgentType = s.AgentType
+	}
+	if s.TeamTemplate != "" {
+		sess.TeamTemplate = s.TeamTemplate
+	}
+	
 	srv := &http.Server{
-		Addr:         addr,
 		Handler:      s.mux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 0, // SSE needs no write timeout
 		IdleTimeout:  120 * time.Second,
 	}
-	log.Printf("Claudio Web UI running at http://%s", addr)
-	return srv.ListenAndServe()
+	
+	fmt.Printf("claudio web → http://localhost:%d\n", actualPort)
+	return srv.Serve(listener)
 }
 
 func (s *Server) registerRoutes() {
@@ -96,6 +129,7 @@ func (s *Server) registerRoutes() {
 
 	// Pages
 	s.mux.HandleFunc("GET /", s.requireAuth(s.handleHome))
+	s.mux.HandleFunc("GET /sessions", s.requireAuth(s.handleSessions))
 	s.mux.HandleFunc("GET /chat", s.requireAuth(s.handleChatPage))
 
 	// Project API

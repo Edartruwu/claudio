@@ -224,8 +224,9 @@ func TestHome_RendersProjectList(t *testing.T) {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "Claudio") {
-		t.Error("home page should contain 'Claudio'")
+	// Home page is now a picker, so check for picker elements
+	if !strings.Contains(body, "start a session") {
+		t.Error("home page should contain 'start a session'")
 	}
 }
 
@@ -728,8 +729,9 @@ func TestFullE2E_LoginAndBrowse(t *testing.T) {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "Projects") {
-		t.Error("home page should contain 'Projects'")
+	// Home page is now a picker, so check for picker elements
+	if !strings.Contains(string(body), "start a session") {
+		t.Error("home page should contain 'start a session'")
 	}
 }
 
@@ -781,20 +783,17 @@ func TestTemplates_LoginPage(t *testing.T) {
 
 func TestTemplates_HomePage(t *testing.T) {
 	w := httptest.NewRecorder()
-	projects := []templates.ProjectInfo{
-		{Name: "proj1", Path: "/path/to/proj1", Initialized: true},
-		{Name: "proj2", Path: "/path/to/proj2", Initialized: false},
+	sessions := []templates.SessionInfo{
+		{ID: "sess1", Title: "Session 1", State: "idle", MsgCount: 5, Active: false},
+		{ID: "sess2", Title: "Session 2", State: "streaming", MsgCount: 10, Active: false},
 	}
-	templates.HomePage(projects, "v1.0").Render(context.Background(), w)
+	templates.HomePage(sessions, "v1.0").Render(context.Background(), w)
 	body := w.Body.String()
-	if !strings.Contains(body, "proj1") {
-		t.Error("home page should contain project name")
+	if !strings.Contains(body, "Session 1") {
+		t.Error("home page should contain session title")
 	}
-	if !strings.Contains(body, "/path/to/proj1") {
-		t.Error("home page should contain project path")
-	}
-	if !strings.Contains(body, "v1.0") {
-		t.Error("home page should contain version")
+	if !strings.Contains(body, "Sessions") {
+		t.Error("home page should contain 'Sessions'")
 	}
 }
 
