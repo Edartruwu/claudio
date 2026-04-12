@@ -99,6 +99,75 @@ html, body {
   scrollbar-width: thin;
 }
 
+/* Agent Cards */
+.agent-card {
+  background: var(--bg1);
+  border: 1px solid var(--bg2);
+  border-radius: 4px;
+  padding: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.agent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-1);
+  gap: var(--space-2);
+}
+
+.agent-name {
+  font-weight: bold;
+  color: var(--fg);
+  font-size: var(--font-size-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.agent-badge {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.agent-badge-running {
+  background: var(--green-bright);
+  color: var(--bg-hard);
+}
+
+.agent-badge-idle {
+  background: var(--bg2);
+  color: var(--fg4);
+}
+
+.agent-badge-error {
+  background: var(--danger);
+  color: var(--bg-hard);
+}
+
+.agent-badge-done {
+  background: var(--bg3);
+  color: var(--fg1);
+}
+
+.agent-model {
+  font-size: var(--font-size-xs);
+  color: var(--fg4);
+  text-align: right;
+}
+
+.agents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

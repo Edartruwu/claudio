@@ -160,11 +160,31 @@ templ toolRow(t ToolInfo, sessionID string) {
 	</div>
 }
 
-templ AgentsPanelContent() {
+templ AgentsPanelContent(agents []AgentInfo) {
 	<div class="panel-section">
-		<div class="panel-section-title">agents</div>
-		<div id="agents-list" class="agents-list">
-			<div style="color:var(--fg4);padding:8px 0;">no active agents</div>
+		<div class="panel-section-title">Active Agents</div>
+		<div 
+			id="agents-list" 
+			class="agents-list"
+			hx-get="/web/agents"
+			hx-trigger="every 3s"
+			hx-swap="innerHTML"
+		>
+			if len(agents) == 0 {
+				<div style="color:var(--fg4);padding:8px 0;font-size:var(--font-size-xs);">No agents running</div>
+			} else {
+				for _, a := range agents {
+					<div class="agent-card">
+						<div class="agent-card-header">
+							<span class="agent-name">{ a.Name }</span>
+							<span class={ "agent-badge agent-badge-" + a.Status }>
+								{ a.Status }
+							</span>
+						</div>
+						<div class="agent-model">{ a.Model }</div>
+					</div>
+				}
+			}
 		</div>
 	</div>
 }

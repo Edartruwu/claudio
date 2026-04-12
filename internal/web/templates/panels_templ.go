@@ -549,7 +549,7 @@ func toolRow(t ToolInfo, sessionID string) templ.Component {
 	})
 }
 
-func AgentsPanelContent() templ.Component {
+func AgentsPanelContent(agents []AgentInfo) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -570,7 +570,85 @@ func AgentsPanelContent() templ.Component {
 			templ_7745c5c3_Var23 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"panel-section\"><div class=\"panel-section-title\">agents</div><div id=\"agents-list\" class=\"agents-list\"><div style=\"color:var(--fg4);padding:8px 0;\">no active agents</div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"panel-section\"><div class=\"panel-section-title\">Active Agents</div><div id=\"agents-list\" class=\"agents-list\" hx-get=\"/web/agents\" hx-trigger=\"every 3s\" hx-swap=\"innerHTML\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if len(agents) == 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div style=\"color:var(--fg4);padding:8px 0;font-size:var(--font-size-xs);\">No agents running</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			for _, a := range agents {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"agent-card\"><div class=\"agent-card-header\"><span class=\"agent-name\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var24 string
+				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/panels.templ`, Line: 179, Col: 40}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</span> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var25 = []any{"agent-badge agent-badge-" + a.Status}
+				templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var25...)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span class=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var26 string
+				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var25).String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/panels.templ`, Line: 1, Col: 0}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var27 string
+				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(a.Status)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/panels.templ`, Line: 181, Col: 18}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</span></div><div class=\"agent-model\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var28 string
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(a.Model)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/panels.templ`, Line: 184, Col: 40}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -594,38 +672,38 @@ func PanelTabs(activeTab string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var24 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var24 == nil {
-			templ_7745c5c3_Var24 = templ.NopComponent
+		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var29 == nil {
+			templ_7745c5c3_Var29 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div style=\"display:flex;gap:var(--space-4);border-bottom:1px solid var(--bg2);padding:0;margin-bottom:var(--space-3);\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<div style=\"display:flex;gap:var(--space-4);border-bottom:1px solid var(--bg2);padding:0;margin-bottom:var(--space-3);\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if activeTab == "agents" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:calc(var(--space-2) - 2px);\" hx-get=\"/api/panel/agents\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\">agents</button> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:calc(var(--space-2) - 2px);\" hx-get=\"/api/panel/agents\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\">agents</button> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg4);\" hx-get=\"/api/panel/agents\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\" onmouseover=\"this.style.color='var(--fg2)'\" onmouseout=\"this.style.color='var(--fg4)'\">agents</button> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg4);\" hx-get=\"/api/panel/agents\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\" onmouseover=\"this.style.color='var(--fg2)'\" onmouseout=\"this.style.color='var(--fg4)'\">agents</button> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if activeTab == "tasks" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:calc(var(--space-2) - 2px);\" hx-get=\"/api/panel/tasks\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\">tasks</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:calc(var(--space-2) - 2px);\" hx-get=\"/api/panel/tasks\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\">tasks</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg4);\" hx-get=\"/api/panel/tasks\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\" onmouseover=\"this.style.color='var(--fg2)'\" onmouseout=\"this.style.color='var(--fg4)'\">tasks</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<button style=\"padding:var(--space-2) var(--space-3);border:none;background:none;cursor:pointer;font-family:var(--font-mono);font-size:var(--font-size-sm);transition:all 150ms ease;color:var(--fg4);\" hx-get=\"/api/panel/tasks\" hx-target=\"#panel-content\" hx-swap=\"innerHTML\" onmouseover=\"this.style.color='var(--fg2)'\" onmouseout=\"this.style.color='var(--fg4)'\">tasks</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
