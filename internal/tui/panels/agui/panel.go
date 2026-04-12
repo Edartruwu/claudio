@@ -261,9 +261,16 @@ func (p *Panel) refresh() {
 	// Use manager as source of truth (survives inactivity eviction from runner).
 	// Fall back to runner-only if no manager is available.
 	if p.manager != nil {
+		activeTeam := ""
+		if p.runner != nil {
+			activeTeam = p.runner.ActiveTeamName()
+		}
 		allTeams := p.manager.ListTeams()
 		entries := make([]*agentEntry, 0)
 		for _, team := range allTeams {
+			if activeTeam != "" && team.Name != activeTeam {
+				continue
+			}
 			for _, mem := range team.Members {
 				if mem.Identity.IsLead {
 					continue // skip the synthetic team-lead placeholder
