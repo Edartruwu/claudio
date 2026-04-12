@@ -71,3 +71,29 @@ type AgentInfo struct {
 	Model string // model name
 	Status string // "running", "idle", "done", "error"
 }
+
+// ToolCatalogInfo represents a tool for the tools catalog page.
+type ToolCatalogInfo struct {
+	Name        string
+	Description string
+	Category    string // "core", "deferred", "optional", etc.
+}
+
+// MemoryEntryInfo represents a memory entry for the memory page.
+type MemoryEntryInfo struct {
+	Key   string // memory name
+	Value string // content preview (truncated)
+	Scope string // "session", "agent", "global"
+}
+
+// ConfigDisplaySection represents a section of config for display.
+type ConfigDisplaySection struct {
+	Name  string // "Model", "Permissions", "Storage"
+	Items []ConfigItem
+}
+
+// ConfigItem represents a single config key-value pair.
+type ConfigItem struct {
+	Key   string
+	Value string
+}
