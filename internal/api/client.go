@@ -771,6 +771,44 @@ func filterWhitespaceAssistantMessages(msgs []Message) []Message {
 	return out
 }
 
+// stripUnsignedThinkingBlocks removes thinking blocks without a signature from
+// assistant messages. Anthropic's API requires a valid signature on every
+// thinking block sent back; blocks from non-Anthropic providers (e.g. Ollama)
+// never receive a signature and will cause a 400 "thinking.signature: Field required".
+func stripUnsignedThinkingBlocks(msgs []Message) []Message {
+	result := make([]Message, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg.Role != "assistant" {
+			result = append(result, msg)
+			continue
+		}
+		var blocks []ContentBlock
+		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
+			result = append(result, msg)
+			continue
+		}
+		var filtered []ContentBlock
+		changed := false
+		for _, block := range blocks {
+			if block.Type == "thinking" && block.Signature == "" {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, block)
+		}
+		if !changed {
+			result = append(result, msg)
+			continue
+		}
+		if len(filtered) == 0 {
+			continue // drop empty assistant messages
+		}
+		content, _ := json.Marshal(filtered)
+		result = append(result, Message{Role: msg.Role, Content: content})
+	}
+	return result
+}
+
 // StreamMessages sends a streaming messages request and returns a channel of events.
 // When using OAuth, it proxies through the official claude CLI to bypass third-party restrictions.
 func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-chan StreamEvent, <-chan error) {
@@ -796,6 +834,7 @@ func (c *Client) StreamMessages(ctx context.Context, req *MessagesRequest) (<-ch
 	c.applyAttribution(req)
 	c.applyContextManagement(req)
 	c.applyMessageCacheBreakpoints(req)
+	req.Messages = stripUnsignedThinkingBlocks(req.Messages)
 
 	eventCh := make(chan StreamEvent, 64)
 	errCh := make(chan error, 1)
