@@ -205,18 +205,10 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		return &Result{Content: "Team system not available", IsError: true}, nil
 	}
 
-	// Auto-create a default team if none is active.
+	// Require an active team — no implicit default.
 	teamName := t.Runner.ActiveTeamName()
 	if teamName == "" {
-		if t.Manager == nil {
-			return &Result{Content: "Team manager not available — call TeamCreate first", IsError: true}, nil
-		}
-		teamName = "default-team"
-		if _, err := t.Manager.CreateTeam(teamName, "Auto-created default team", t.SessionID, ""); err != nil {
-			// Team may already exist; proceed anyway.
-			_ = err
-		}
-		t.Runner.SetActiveTeam(teamName)
+		return &Result{Content: "No active team. Use TeamCreate or InstantiateTeam to create one first.", IsError: true}, nil
 	}
 
 	agentDef := agents.GetAgent(in.SubagentType)
