@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,14 +29,15 @@ type Config struct {
 
 // Server is the web UI server.
 type Server struct {
-	config   Config
-	mux      *http.ServeMux
-	sessions *SessionManager
-	skills   *skills.Registry
-	db       *storage.DB
-	teams    *teams.Manager
-	tokens   map[string]time.Time // auth token -> expiry
-	mu       sync.RWMutex
+	config      Config
+	mux         *http.ServeMux
+	sessions    *SessionManager
+	skills      *skills.Registry
+	db          *storage.DB
+	teams       *teams.Manager
+	tokens      map[string]time.Time // auth token -> expiry
+	mu          sync.RWMutex
+	ProjectPath string
 }
 
 // New creates a new web UI server.
@@ -49,14 +51,17 @@ func New(cfg Config, skillsRegistry *skills.Registry) *Server {
 	paths := config.GetPaths()
 	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
 
+	projectPath, _ := os.Getwd()
+
 	s := &Server{
-		config:   cfg,
-		mux:      http.NewServeMux(),
-		sessions: NewSessionManager(db),
-		skills:   skillsRegistry,
-		db:       db,
-		teams:    teamMgr,
-		tokens:   make(map[string]time.Time),
+		config:      cfg,
+		mux:         http.NewServeMux(),
+		sessions:    NewSessionManager(db),
+		skills:      skillsRegistry,
+		db:          db,
+		teams:       teamMgr,
+		tokens:      make(map[string]time.Time),
+		ProjectPath: projectPath,
 	}
 	s.registerRoutes()
 	return s

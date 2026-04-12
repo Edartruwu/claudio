@@ -239,11 +239,10 @@ func (s *Server) handleProjectInit(w http.ResponseWriter, r *http.Request) {
 // handleSessionCreate creates a new session for a project.
 func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	projectPath := r.FormValue("project")
-	title := r.FormValue("title")
 	if projectPath == "" {
-		http.Error(w, "missing project", http.StatusBadRequest)
-		return
+		projectPath = s.ProjectPath
 	}
+	title := r.FormValue("title")
 	if title == "" {
 		// Auto-generate title
 		existing := s.sessions.ListByProject(projectPath)
@@ -256,8 +255,8 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(sess.Info())
+	w.Header().Set("HX-Redirect", "/chat/"+sess.ID)
+	w.WriteHeader(http.StatusOK)
 }
 
 // handleSessionList returns all sessions for a project.
