@@ -9,6 +9,8 @@ import (
 	"github.com/Abraxas-365/claudio-plugin-caido/cmd"
 )
 
+var version = "dev"
+
 const (
 	description = "Caido proxy control — query HTTP history, replay requests, manage findings, intercept traffic"
 
