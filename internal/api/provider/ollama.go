@@ -109,6 +109,14 @@ func (o *Ollama) buildRequestBody(req *api.MessagesRequest) ([]byte, error) {
 		return nil, err
 	}
 
+	// Ollama's native API doesn't use reasoning_content round-tripping
+	// (unlike MiniMax/OpenRouter). Strip it to avoid confusing models
+	// that lack strong tool-calling fine-tuning.
+	for i := range oaiReq.Messages {
+		oaiReq.Messages[i].ReasoningContent = ""
+		oaiReq.Messages[i].ReasoningDetails = nil
+	}
+
 	body := ollamaRequest{
 		Model:    oaiReq.Model,
 		Messages: oaiReq.Messages,
