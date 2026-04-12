@@ -140,6 +140,14 @@ func (o *Ollama) buildRequestBody(req *api.MessagesRequest) ([]byte, error) {
 	if req.Temperature != nil {
 		opts["temperature"] = *req.Temperature
 	}
+
+	// Disable thinking when tools are present — qwen3 models with think:true
+	// produce text narration of tool calls instead of structured tool_calls.
+	// For models that don't support the think option this is a no-op.
+	if len(body.Tools) > 0 {
+		opts["think"] = false
+	}
+
 	if len(opts) > 0 {
 		body.Options = opts
 	}
