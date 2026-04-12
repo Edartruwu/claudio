@@ -172,7 +172,7 @@ func (p *Panel) Help() string {
 		return "type to filter · esc clear"
 	}
 	if p.focusedPane == 1 {
-		return "j/k scroll · ctrl+d/u half-page · G bottom · g top · h/tab/esc back"
+		return "j/k scroll · ctrl+d/u half-page · G bottom · g top · e editor · h/tab/esc back"
 	}
 	hints := "j/k navigate · enter/l select · tab panel · x delete"
 	if p.hasRunning() {
@@ -251,10 +251,19 @@ func (p *Panel) refresh() {
 		return
 	}
 	states := p.runner.AllStates()
+	// Build a set of all tracked agent IDs so we can identify depth-2+ sub-agents.
+	trackedIDs := make(map[string]struct{}, len(states))
+	for _, s := range states {
+		trackedIDs[s.Identity.AgentID] = struct{}{}
+	}
 	entries := make([]*agentEntry, 0, len(states))
 	for _, s := range states {
+		// Hide depth-2+ sub-agents: those whose parent is itself a tracked teammate.
+		// Agents spawned by the TUI session (parent not in the runner) are shown.
 		if s.ParentAgentID != "" {
-			continue
+			if _, parentIsTeammate := trackedIDs[s.ParentAgentID]; parentIsTeammate {
+				continue
+			}
 		}
 		e := &agentEntry{
 			id:     s.Identity.AgentID,
@@ -730,6 +739,81 @@ func (p *Panel) formatConversation(state *teams.TeammateState, rw int) string {
 	return b.String()
 }
 
+// plainTextDetail builds a plain-text (no ANSI) snapshot of the agent detail
+// suitable for opening in an external editor.
+func (p *Panel) plainTextDetail(state *teams.TeammateState) string {
+	var b strings.Builder
+
+	// Header
+	b.WriteString("# Agent: " + state.Identity.AgentName + "\n")
+	b.WriteString("Status: " + string(state.Status) + "\n")
+	if state.Model != "" {
+		b.WriteString("Model: " + state.Model + "\n")
+	}
+	if !state.StartedAt.IsZero() {
+		b.WriteString("Started: " + state.StartedAt.Format("2006-01-02 15:04:05") + "\n")
+		if !state.FinishedAt.IsZero() {
+			b.WriteString("Finished: " + state.FinishedAt.Format("2006-01-02 15:04:05") + "\n")
+			b.WriteString("Duration: " + smartDuration(state.FinishedAt.Sub(state.StartedAt).Truncate(1e9)) + "\n")
+		}
+	}
+	if state.Prompt != "" {
+		b.WriteString("\n## Task\n" + state.Prompt + "\n")
+	}
+	if state.Error != "" {
+		b.WriteString("\n## Error\n" + state.Error + "\n")
+	}
+	if state.Result != "" {
+		b.WriteString("\n## Result\n" + state.Result + "\n")
+	}
+
+	// Tool calls
+	entries := state.GetConversation()
+	var hasTools bool
+	for _, e := range entries {
+		if e.Type == "tool_start" {
+			hasTools = true
+			break
+		}
+	}
+	if hasTools {
+		b.WriteString("\n## Tools\n")
+		for _, e := range entries {
+			switch e.Type {
+			case "tool_start":
+				b.WriteString("→ " + e.ToolName)
+				if e.Content != "" {
+					b.WriteString("  " + e.Content)
+				}
+				b.WriteString("\n")
+			case "tool_end":
+				if e.Content != "" {
+					b.WriteString("← " + e.Content + "\n")
+				}
+			}
+		}
+	}
+
+	// Full conversation
+	b.WriteString("\n## Conversation\n")
+	for _, e := range entries {
+		switch e.Type {
+		case "message_in":
+			b.WriteString("\n[IN]\n" + e.Content + "\n")
+		case "text":
+			b.WriteString("\n[ASSISTANT]\n" + e.Content + "\n")
+		case "message_out":
+			b.WriteString("\n[OUT]\n" + e.Content + "\n")
+		case "complete":
+			b.WriteString("\n[COMPLETE]\n" + e.Content + "\n")
+		case "error":
+			b.WriteString("\n[ERROR]\n" + e.Content + "\n")
+		}
+	}
+
+	return b.String()
+}
+
 // wrapContent wraps long lines to maxWidth without truncating content.
 func wrapContent(content string, maxWidth int) string {
 	if maxWidth < 4 {
@@ -921,6 +1005,14 @@ func (p *Panel) updateRight(key string) (tea.Cmd, bool) {
 	case "g":
 		p.detailVP.GotoTop()
 		p.atBottom = false
+		return nil, true
+	case "e":
+		if p.runner != nil && p.selectedID != "" {
+			if state, ok := p.runner.GetState(p.selectedID); ok {
+				content := p.plainTextDetail(state)
+				return panels.ActionMsg{Type: "open_in_editor", Payload: content}, true
+			}
+		}
 		return nil, true
 	case "h", "esc", "tab":
 		p.focusedPane = 0

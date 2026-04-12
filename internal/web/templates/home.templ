@@ -2,48 +2,260 @@ package templates
 
 import "fmt"
 
-templ HomePage(projects []ProjectInfo, version string) {
-	@Layout("Projects") {
-		<div class="app-container">
-			<header class="app-header">
-				<div class="header-left">
-					<h1>claudio</h1>
-					<span class="version">{ version }</span>
-				</div>
-				<div class="header-right">
-					<form method="POST" action="/logout">
-						<button type="submit" class="btn btn-ghost">Logout</button>
-					</form>
-				</div>
-			</header>
-			<main class="home-main">
-				<section class="init-section">
-					<h2>Open or Create Project</h2>
-					<form
-						hx-post="/api/projects/init"
-						hx-target="#project-list"
-						hx-swap="innerHTML"
-						class="init-form"
-					>
-						<input
-							type="text"
-							name="path"
-							placeholder="/path/to/your/project"
-							required
-							class="input input-lg"
-						/>
-						<button type="submit" class="btn btn-primary">Init &amp; Open</button>
-					</form>
-				</section>
-				<section class="projects-section">
-					<h2>Projects</h2>
-					<div id="project-list">
-						@ProjectList(projects)
-					</div>
-				</section>
-			</main>
-		</div>
+templ HomePage(sessions []SessionInfo, version string) {
+	@Layout("Sessions") {
+		@AppShell("", "Sessions", "", sessions, HomeContent(sessions))
 	}
+}
+
+templ HomeContent(sessions []SessionInfo) {
+	<style>
+		/* Sessions List Gruvbox Styling */
+		.sessions-container {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			gap: var(--space-4);
+			padding: var(--space-4);
+		}
+
+		.sessions-header {
+			display: flex;
+			gap: var(--space-3);
+			flex-shrink: 0;
+		}
+
+		.btn-new-session {
+			flex: 1;
+			padding: var(--space-3);
+			background: var(--accent);
+			color: var(--bg-hard);
+			border: none;
+			border-radius: 4px;
+			font-weight: 600;
+			font-size: var(--font-size-base);
+			cursor: pointer;
+			transition: all 150ms ease;
+			font-family: var(--font-mono);
+		}
+
+		.btn-new-session:hover {
+			background: var(--accent-red);
+			box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+		}
+
+		#sessions-list {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			gap: var(--space-3);
+			overflow-y: auto;
+		}
+
+		/* Session Card */
+		.session-card {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: var(--space-3);
+			background: var(--bg1);
+			border: 1px solid var(--bg2);
+			border-radius: 4px;
+			transition: all 150ms ease;
+			cursor: pointer;
+			min-height: 60px;
+		}
+
+		.session-card:hover {
+			background: var(--bg-soft);
+			border-color: var(--bg3);
+		}
+
+		.session-card-active {
+			border-left: 3px solid var(--accent);
+			background: var(--bg-soft);
+			padding-left: calc(var(--space-3) - 2px);
+		}
+
+		.session-card-content {
+			flex: 1;
+			min-width: 0;
+			display: flex;
+			flex-direction: column;
+			gap: var(--space-2);
+		}
+
+		.session-title {
+			color: var(--fg);
+			font-weight: 600;
+			font-size: var(--font-size-base);
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.session-timestamp {
+			color: var(--fg4);
+			font-size: var(--font-size-sm);
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.session-model-badge {
+			display: inline-block;
+			background: var(--bg2);
+			color: var(--accent);
+			font-size: var(--font-size-xs);
+			font-family: var(--font-mono);
+			padding: var(--space-1) var(--space-2);
+			border-radius: 2px;
+			width: fit-content;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			max-width: 150px;
+		}
+
+		.session-card-actions {
+			display: flex;
+			gap: var(--space-2);
+			flex-shrink: 0;
+			opacity: 0.6;
+			transition: opacity 150ms ease;
+		}
+
+		.session-card:hover .session-card-actions {
+			opacity: 1;
+		}
+
+		.btn-delete-session {
+			width: 28px;
+			height: 28px;
+			padding: 0;
+			background: transparent;
+			color: var(--accent-red);
+			border: 1px solid transparent;
+			border-radius: 4px;
+			font-size: var(--font-size-lg);
+			font-weight: 600;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: all 150ms ease;
+			font-family: var(--font-mono);
+		}
+
+		.btn-delete-session:hover {
+			background: var(--bg2);
+			border-color: var(--accent-red);
+		}
+
+		/* Empty State */
+		.sessions-empty {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			flex: 1;
+			min-height: 200px;
+			color: var(--fg4);
+			font-size: var(--font-size-base);
+			text-align: center;
+		}
+
+		.sessions-empty p {
+			margin: 0;
+		}
+
+		.sessions-empty a {
+			color: var(--accent);
+			text-decoration: none;
+			transition: color 150ms ease;
+		}
+
+		.sessions-empty a:hover {
+			color: var(--accent-red);
+		}
+
+		/* Scrollbar */
+		#sessions-list::-webkit-scrollbar {
+			width: 8px;
+		}
+
+		#sessions-list::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		#sessions-list::-webkit-scrollbar-thumb {
+			background: var(--bg3);
+			border-radius: 4px;
+		}
+
+		#sessions-list::-webkit-scrollbar-thumb:hover {
+			background: var(--fg3);
+		}
+	</style>
+
+	<div class="sessions-container">
+		<!-- NEW SESSION BUTTON -->
+		<div class="sessions-header">
+			<button
+				hx-post="/api/sessions/create"
+				hx-target="#sessions-list"
+				hx-swap="innerHTML"
+				class="btn-new-session"
+				title="Create new session"
+			>
+				+ New Session
+			</button>
+		</div>
+
+		<!-- SESSIONS LIST -->
+		<div id="sessions-list">
+			if len(sessions) == 0 {
+				<div class="sessions-empty">
+					<p>no sessions yet. <a href="#" onclick="event.preventDefault()">start one →</a></p>
+				</div>
+			} else {
+				for _, sess := range sessions {
+					<div
+						class={ "session-card", templ.KV("session-card-active", sess.Active) }
+						id={ "session-" + sess.ID }
+						data-session-id={ sess.ID }
+					>
+						<!-- Card Left Content -->
+						<div class="session-card-content">
+							<!-- Title -->
+							<div class="session-title">{ sess.Title }</div>
+
+							<!-- Timestamp (placeholder) -->
+							<div class="session-timestamp">Session</div>
+
+							<!-- Model Badge -->
+							if sess.State != "" {
+								<div class="session-model-badge">{ sess.State }</div>
+							}
+						</div>
+
+						<!-- Card Right Actions -->
+						<div class="session-card-actions">
+							<button
+								hx-delete={ "/api/sessions/" + sess.ID }
+								hx-target={ "#session-" + sess.ID }
+								hx-swap="outerHTML swap:1s"
+								hx-confirm="Delete this session?"
+								class="btn-delete-session"
+								title="Delete session"
+							>
+								×
+							</button>
+						</div>
+					</div>
+				}
+			}
+		</div>
+	</div>
 }
 
 templ ErrorMessage(msg string) {

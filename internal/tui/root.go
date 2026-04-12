@@ -603,6 +603,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Gen != m.leaderSeqGen {
 			return m, nil
 		}
+		// If the sequence was already fully dispatched, don't show the popup.
+		if m.leaderSeq == "" {
+			return m, nil
+		}
 		// Show which-key popup based on current leader sequence, reading from keymap.
 		prefix := m.leaderSeq
 		if prefix == "" {
@@ -1486,6 +1490,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if text, ok := msg.Payload.(string); ok {
 				m.addMessage(ChatMessage{Type: MsgSystem, Content: text})
 				m.refreshViewport()
+			}
+		case "open_in_editor":
+			if content, ok := msg.Payload.(string); ok {
+				return m, openInEditor(content, true)
 			}
 		}
 		return m, nil

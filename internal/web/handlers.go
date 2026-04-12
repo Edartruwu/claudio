@@ -104,10 +104,23 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-// handleHome renders the project browser.
+// handleHome renders the sessions browser.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	projects := s.listKnownProjects()
-	templates.HomePage(projects, s.config.Version).Render(r.Context(), w)
+	// Collect all sessions across all projects
+	var allSessions []templates.SessionInfo
+	for _, projectPath := range s.sessions.ListProjects() {
+		projectSessions := s.sessions.ListByProject(projectPath)
+		for _, sess := range projectSessions {
+			allSessions = append(allSessions, templates.SessionInfo{
+				ID:       sess.ID,
+				Title:    sess.Title,
+				State:    string(sess.State),
+				MsgCount: sess.MsgCount,
+				Active:   false, // no session is "active" on home page
+			})
+		}
+	}
+	templates.HomePage(allSessions, s.config.Version).Render(r.Context(), w)
 }
 
 // handleChatPage renders the chat page for a project.
