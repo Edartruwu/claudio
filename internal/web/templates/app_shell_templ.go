@@ -30,14 +30,14 @@ func AppShell(projectPath string, sessionTitle string, modelBadge string, sessio
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"app-shell\"><!-- LEFT SIDEBAR ZONE --><div class=\"sidebar\"><!-- Sidebar Header: App Logo --><div class=\"sidebar-header\"><h1>claudio</h1></div><!-- Sidebar Nav --><nav class=\"sidebar-nav\"><!-- Sessions (Active) --><a href=\"#\" class=\"nav-item active\"><span>Sessions</span></a><!-- Agents (Placeholder) --><a href=\"#\" class=\"nav-item placeholder\"><span>Agents</span></a><!-- Tasks (Placeholder) --><a href=\"#\" class=\"nav-item placeholder\"><span>Tasks</span></a></nav><!-- Sidebar Footer: Settings --><div class=\"sidebar-footer\"><a href=\"/settings\" title=\"Settings\">⚙</a></div></div><!-- MAIN AREA ZONE --><div class=\"main-area\"><!-- Main Header: Session Title + Model Badge --><header class=\"main-header\"><div class=\"session-title\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"app-shell\"><!-- LEFT SIDEBAR ZONE --><div class=\"sidebar\"><!-- Sidebar Header: App Logo --><div class=\"sidebar-header\"><h1>claudio</h1></div><!-- Sidebar Nav --><nav class=\"sidebar-nav\"><!-- Sessions --><a href=\"/\" class=\"nav-item\"><span>Sessions</span></a><!-- Tools --><a href=\"/web/tools\" class=\"nav-item\"><span>Tools</span></a><!-- Memory --><a href=\"/web/memory\" class=\"nav-item\"><span>Memory</span></a><!-- Config --><a href=\"/web/config\" class=\"nav-item\"><span>Config</span></a></nav><!-- Sidebar Footer: Settings --><div class=\"sidebar-footer\"><a href=\"/settings\" title=\"Settings\">⚙</a></div></div><!-- MAIN AREA ZONE --><div class=\"main-area\"><!-- Main Header: Session Title + Model Badge --><header class=\"main-header\"><div class=\"session-title\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(sessionTitle)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/app_shell.templ`, Line: 39, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/app_shell.templ`, Line: 43, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -55,7 +55,7 @@ func AppShell(projectPath string, sessionTitle string, modelBadge string, sessio
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(modelBadge)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/app_shell.templ`, Line: 41, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/app_shell.templ`, Line: 45, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {

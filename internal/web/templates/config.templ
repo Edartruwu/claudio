@@ -1,0 +1,115 @@
+package templates
+
+templ ConfigPage(sections []ConfigDisplaySection) {
+	@Layout("Config") {
+		@AppShell("", "Config", "", []SessionInfo{}, ConfigContent(sections))
+	}
+}
+
+templ ConfigContent(sections []ConfigDisplaySection) {
+	<style>
+		.config-container {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			gap: var(--space-4);
+			padding: var(--space-4);
+			overflow-y: auto;
+		}
+
+		.config-section {
+			display: flex;
+			flex-direction: column;
+			gap: var(--space-2);
+		}
+
+		.config-section-title {
+			color: var(--fg3);
+			font-size: var(--font-size-xs);
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+			font-family: var(--font-mono);
+		}
+
+		.config-table {
+			display: flex;
+			flex-direction: column;
+			gap: 0;
+			border: 1px solid var(--bg2);
+			border-radius: 4px;
+			overflow: hidden;
+		}
+
+		.config-row {
+			display: grid;
+			grid-template-columns: 250px 1fr;
+			gap: 0;
+			border-bottom: 1px solid var(--bg2);
+			transition: background 150ms ease;
+		}
+
+		.config-row:last-child {
+			border-bottom: none;
+		}
+
+		.config-row:nth-child(even) {
+			background: var(--bg-soft);
+		}
+
+		.config-row:hover {
+			background: var(--bg1);
+		}
+
+		.config-key {
+			padding: var(--space-2) var(--space-3);
+			color: var(--fg3);
+			font-family: var(--font-mono);
+			font-size: var(--font-size-sm);
+			font-weight: 500;
+			border-right: 1px solid var(--bg2);
+			word-break: break-word;
+		}
+
+		.config-value {
+			padding: var(--space-2) var(--space-3);
+			color: var(--fg);
+			font-family: var(--font-mono);
+			font-size: var(--font-size-sm);
+			word-break: break-all;
+		}
+
+		.config-container::-webkit-scrollbar {
+			width: 8px;
+		}
+
+		.config-container::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		.config-container::-webkit-scrollbar-thumb {
+			background: var(--bg3);
+			border-radius: 4px;
+		}
+
+		.config-container::-webkit-scrollbar-thumb:hover {
+			background: var(--fg3);
+		}
+	</style>
+
+	<div class="config-container">
+		for _, section := range sections {
+			<div class="config-section">
+				<div class="config-section-title">{ section.Name }</div>
+				<div class="config-table">
+					for _, item := range section.Items {
+						<div class="config-row">
+							<div class="config-key">{ item.Key }</div>
+							<div class="config-value">{ item.Value }</div>
+						</div>
+					}
+				</div>
+			</div>
+		}
+	</div>
+}

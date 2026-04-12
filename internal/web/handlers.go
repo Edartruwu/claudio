@@ -14,6 +14,8 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/config"
+	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/web/templates"
 )
@@ -1460,4 +1462,146 @@ func escapeHTMLAttr(s string) string {
 		`"`, "&quot;",
 		"'", "&#39;",
 	).Replace(s)
+}
+
+// ── Info Pages ──
+
+// handleTools renders the tools catalog page.
+func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	
+	// Build tool catalog from all sessions' registries (use first available)
+	var toolCatalog []templates.ToolCatalogInfo
+	for _, projectPath := range s.sessions.ListProjects() {
+		sessions := s.sessions.ListByProject(projectPath)
+		if len(sessions) > 0 {
+			sess := s.sessions.Get(sessions[0].ID)
+			if sess != nil && sess.Registry != nil {
+				for _, toolName := range sess.Registry.Names() {
+					t, err := sess.Registry.Get(toolName)
+					if err != nil {
+						continue
+					}
+					// Determine category: deferred or core
+					category := "core"
+					if sess.Registry.IsDeferred(toolName) {
+						category = "deferred"
+					}
+					toolCatalog = append(toolCatalog, templates.ToolCatalogInfo{
+						Name:        toolName,
+						Description: t.Description(),
+						Category:    category,
+					})
+				}
+				break
+			}
+		}
+	}
+	
+	// Filter by search query
+	if query != "" {
+		var filtered []templates.ToolCatalogInfo
+		lowerQ := strings.ToLower(query)
+		for _, tool := range toolCatalog {
+			if strings.Contains(strings.ToLower(tool.Name), lowerQ) ||
+				strings.Contains(strings.ToLower(tool.Description), lowerQ) {
+				filtered = append(filtered, tool)
+			}
+		}
+		toolCatalog = filtered
+	}
+	
+	// If HTMX request, render just the list partial
+	if r.Header.Get("HX-Request") == "true" {
+		templates.ToolsList(toolCatalog).Render(r.Context(), w)
+		return
+	}
+	
+	// Full page render
+	templates.ToolsPage(toolCatalog, query).Render(r.Context(), w)
+}
+
+// handleMemory renders the memory browser page.
+func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
+	var entries []templates.MemoryEntryInfo
+	
+	// Try to load memories from the default location
+	paths := config.GetPaths()
+	memStore := memory.NewStore(paths.Memory)
+	if memStore != nil {
+		memories := memStore.LoadAll()
+		for _, m := range memories {
+			// Truncate value to 120 chars for preview
+			value := m.Content
+			if len(value) > 120 {
+				value = value[:120] + "..."
+			}
+			// Determine scope (default to global, could parse from Type field)
+			scope := "global"
+			if m.Type == "user" {
+				scope = "session"
+			}
+			entries = append(entries, templates.MemoryEntryInfo{
+				Key:   m.Name,
+				Value: value,
+				Scope: scope,
+			})
+		}
+	}
+	
+	templates.MemoryPage(entries).Render(r.Context(), w)
+}
+
+// handleConfig renders the config display page.
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	var sections []templates.ConfigDisplaySection
+	
+	// Load settings from a project, or use defaults
+	var globalSettings *config.Settings
+	projects := s.sessions.ListProjects()
+	if len(projects) > 0 {
+		loaded, err := config.Load(projects[0])
+		if err == nil {
+			globalSettings = loaded
+		}
+	}
+	if globalSettings == nil {
+		globalSettings = config.DefaultSettings()
+	}
+	
+	// Model section
+	modelItems := []templates.ConfigItem{
+		{Key: "model", Value: globalSettings.Model},
+		{Key: "smallModel", Value: globalSettings.SmallModel},
+		{Key: "thinkingMode", Value: globalSettings.ThinkingMode},
+	}
+	sections = append(sections, templates.ConfigDisplaySection{
+		Name:  "Model",
+		Items: modelItems,
+	})
+	
+	// Permissions section
+	permItems := []templates.ConfigItem{
+		{Key: "permissionMode", Value: globalSettings.PermissionMode},
+		{Key: "autoCompact", Value: fmt.Sprintf("%v", globalSettings.AutoCompact)},
+		{Key: "autoMemoryExtract", Value: fmt.Sprintf("%v", globalSettings.AutoMemoryExtract)},
+	}
+	sections = append(sections, templates.ConfigDisplaySection{
+		Name:  "Permissions",
+		Items: permItems,
+	})
+	
+	// Storage section (display paths safely, no secrets)
+	paths := config.GetPaths()
+	storageItems := []templates.ConfigItem{
+		{Key: "home", Value: paths.Home},
+		{Key: "settings", Value: paths.Settings},
+		{Key: "db", Value: paths.DB},
+	}
+	sections = append(sections, templates.ConfigDisplaySection{
+		Name:  "Storage",
+		Items: storageItems,
+	})
+	
+	templates.ConfigPage(sections).Render(r.Context(), w)
 }
