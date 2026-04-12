@@ -188,6 +188,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	if read, err := registry.Get("Read"); err == nil {
 		if rt, ok := read.(*tools.FileReadTool); ok {
 			rt.Security = sec
+			rt.Config = settings
 		}
 	}
 	if write, err := registry.Get("Write"); err == nil {

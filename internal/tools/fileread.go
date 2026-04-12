@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/tools/outputfilter/codefilter"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
@@ -18,6 +19,7 @@ import (
 type FileReadTool struct {
 	Security  SecurityChecker
 	ReadCache *readcache.Cache
+	Config    *config.Settings
 }
 
 type fileReadInput struct {
@@ -136,18 +138,40 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	// Apply comment-stripping filter for large files — but only when the caller
 	// did not specify an explicit offset or limit (i.e. they want the default
 	// full-file view).  When a range is requested the caller needs exact content.
-	if originalOffset == 0 && originalLimit == 0 && len(allLines) > 500 {
+	filterLevel := "minimal"
+	if t.Config != nil && t.Config.CodeFilterLevel != "" {
+		filterLevel = t.Config.CodeFilterLevel
+	}
+	if originalOffset == 0 && originalLimit == 0 && len(allLines) > 500 && filterLevel != "none" {
 		lang := codefilter.DetectLanguage(
 			strings.TrimPrefix(filepath.Ext(in.FilePath), "."),
 		)
 		rawContent := strings.Join(allLines, "\n")
-		filtered := codefilter.MinimalFilter(rawContent, lang)
+		var filtered string
+		switch filterLevel {
+		case "aggressive":
+			filtered = codefilter.AggressiveFilter(rawContent, lang)
+		default: // "minimal" or any unrecognised value
+			filtered = codefilter.MinimalFilter(rawContent, lang)
+		}
 		if len(allLines) > 2000 {
 			filtered = codefilter.SmartTruncate(filtered, 2000, lang)
 		}
 		allLines = strings.Split(filtered, "\n")
 		// strings.Split on a newline-terminated string produces a trailing
 		// empty element — drop it so line counts stay accurate.
+		if len(allLines) > 0 && allLines[len(allLines)-1] == "" {
+			allLines = allLines[:len(allLines)-1]
+		}
+	} else if originalOffset == 0 && originalLimit == 0 && len(allLines) > 2000 {
+		// Even with filterLevel "none", apply SmartTruncate as a safety net for
+		// very long files to avoid token-budget explosions.
+		lang := codefilter.DetectLanguage(
+			strings.TrimPrefix(filepath.Ext(in.FilePath), "."),
+		)
+		rawContent := strings.Join(allLines, "\n")
+		truncated := codefilter.SmartTruncate(rawContent, 2000, lang)
+		allLines = strings.Split(truncated, "\n")
 		if len(allLines) > 0 && allLines[len(allLines)-1] == "" {
 			allLines = allLines[:len(allLines)-1]
 		}

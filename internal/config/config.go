@@ -70,6 +70,10 @@ type Settings struct {
 	// Output filter (RTK-style token reduction for command output)
 	OutputFilter bool `json:"outputFilter,omitempty"`
 
+	// CodeFilterLevel controls comment-stripping when reading source files
+	// longer than 500 lines. Values: "none", "minimal" (default), "aggressive".
+	CodeFilterLevel string `json:"codeFilterLevel,omitempty"`
+
 	// Snippet expansion (AI writes shorthand, expander fills boilerplate)
 	Snippets *snippets.Config `json:"snippets,omitempty"`
 
@@ -228,6 +232,7 @@ func DefaultSettings() *Settings {
 		HookProfile:          "standard",
 		APIBaseURL:           "https://api.anthropic.com",
 		AgentAutoDeleteAfter: 3,
+		CodeFilterLevel:      "minimal",
 	}
 }
 
@@ -330,6 +335,9 @@ func mergeFromFile(settings *Settings, path string) {
 	}
 	if overlay.OutputStyle != "" {
 		settings.OutputStyle = overlay.OutputStyle
+	}
+	if overlay.CodeFilterLevel != "" {
+		settings.CodeFilterLevel = overlay.CodeFilterLevel
 	}
 	if overlay.EditorCmd != "" {
 		settings.EditorCmd = overlay.EditorCmd

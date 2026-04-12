@@ -166,6 +166,8 @@ func (p *Panel) buildEntries() {
 		addE("outputStyle", "normal", "cycle", ScopeGlobal)
 	}
 
+	addE("codeFilterLevel", valOrDefault(m.CodeFilterLevel, "minimal"), "cycle", p.source("codeFilterLevel"))
+
 	if len(m.DenyTools) > 0 {
 		addR("denyTools", strings.Join(m.DenyTools, ", "), p.source("denyTools"))
 	} else {
@@ -276,6 +278,10 @@ func (p *Panel) source(key string) Scope {
 		}
 	case "outputStyle":
 		if p.project.OutputStyle != "" {
+			return ScopeProject
+		}
+	case "codeFilterLevel":
+		if p.project.CodeFilterLevel != "" {
 			return ScopeProject
 		}
 	case "providers":
@@ -417,6 +423,10 @@ func (p *Panel) toggleEntry(idx int) (string, string) {
 		}
 		target.OutputStyle = cycleValue(current, modes, "normal")
 		newVal = target.OutputStyle
+	case "codeFilterLevel":
+		levels := []string{"none", "minimal", "aggressive"}
+		target.CodeFilterLevel = cycleValue(p.merged.CodeFilterLevel, levels, "minimal")
+		newVal = target.CodeFilterLevel
 	}
 
 	p.saveProjectSetting(e.Key, newVal)
