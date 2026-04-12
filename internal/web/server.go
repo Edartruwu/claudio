@@ -130,6 +130,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/panel/config/update", s.requireAuth(s.handleConfigUpdate))
 	s.mux.HandleFunc("POST /api/panel/tools/toggle", s.requireAuth(s.handleToolDeferToggle))
 	s.mux.HandleFunc("GET /web/agents", s.requireAuth(s.handleAgentsList))
+	s.mux.HandleFunc("GET /web/agents/stream", s.requireAuth(s.handleAgentsStream))
 
 	// Model selector
 	s.mux.HandleFunc("GET /api/sessions/model", s.requireAuth(s.handleGetModel))

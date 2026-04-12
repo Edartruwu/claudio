@@ -1441,6 +1441,75 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleAgentsStream is the SSE endpoint for real-time agent status updates.
+func (s *Server) handleAgentsStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher.Flush()
+
+	ctx := r.Context()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Get all available agents
+			allAgents := agents.AllAgents()
+
+			// Build agent list with mock status data
+			agentList := make([]templates.AgentInfo, len(allAgents))
+			for i, a := range allAgents {
+				// Mock statuses for now - in a real implementation,
+				// these would come from TeammateRunner state tracking
+				status := "idle"
+				if i%3 == 0 && len(allAgents) > 1 {
+					status = "running"
+				}
+
+				agentList[i] = templates.AgentInfo{
+					ID:     a.Type,
+					Name:   a.Type,
+					Model:  a.Model,
+					Status: status,
+				}
+			}
+
+			// Render the agents list HTML and send as SSE event
+			var html strings.Builder
+			if len(agentList) == 0 {
+				html.WriteString(`<div style="color:var(--fg4);padding:8px 0;font-size:var(--font-size-xs);">No agents running</div>`)
+			} else {
+				for _, a := range agentList {
+					html.WriteString(`<div class="agent-card">`)
+					html.WriteString(`<div class="agent-card-header">`)
+					html.WriteString(fmt.Sprintf(`<span class="agent-name">%s</span>`, escapeHTML(a.Name)))
+					html.WriteString(fmt.Sprintf(`<span class="agent-badge agent-badge-%s">%s</span>`, escapeHTML(a.Status), escapeHTML(a.Status)))
+					html.WriteString(`</div>`)
+					html.WriteString(fmt.Sprintf(`<div class="agent-model">%s</div>`, escapeHTML(a.Model)))
+					html.WriteString(`</div>`)
+				}
+			}
+
+			// Send SSE event with HTML content
+			data := html.String()
+			data = strings.ReplaceAll(data, "\n", "\ndata: ")
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
 // escapeHTML escapes HTML special characters.
 func escapeHTML(s string) string {
 	return strings.NewReplacer(

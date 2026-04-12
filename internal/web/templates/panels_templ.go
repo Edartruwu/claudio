@@ -570,7 +570,7 @@ func AgentsPanelContent(agents []AgentInfo) templ.Component {
 			templ_7745c5c3_Var23 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"panel-section\"><div class=\"panel-section-title\">Active Agents</div><div id=\"agents-list\" class=\"agents-list\" hx-get=\"/web/agents\" hx-trigger=\"every 3s\" hx-swap=\"innerHTML\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"panel-section\"><div class=\"panel-section-title\">Active Agents</div><div id=\"agents-list\" class=\"agents-list\" hx-ext=\"sse\" sse-connect=\"/web/agents/stream\" sse-swap=\"innerHTML\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
