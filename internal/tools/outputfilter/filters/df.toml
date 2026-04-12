@@ -1,0 +1,7 @@
+schema_version = 1
+
+[filters.df]
+description = "df: keep filesystem rows, strip header noise"
+match_command = "^df\\b"
+strip_ansi = true
+max_lines = 30

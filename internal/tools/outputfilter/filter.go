@@ -3,7 +3,15 @@
 // command-specific filters, then applies generic filters on top.
 package outputfilter
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/tools/outputfilter/tomlfilter"
+)
+
+func init() {
+	tomlfilter.SetBuiltinFS(BuiltinFiltersFS())
+}
 
 // Filter applies output filtering to a command's combined stdout+stderr.
 // It detects the command type and applies the most specific filter available,
@@ -14,6 +22,11 @@ func Filter(command, output string) string {
 	}
 
 	cmd := normalizeCommand(command)
+
+	// Try TOML-defined filters first (before hardcoded Go dispatch)
+	if filtered, ok := tomlfilter.DefaultRegistry().Apply(cmd, output); ok {
+		return filtered
+	}
 
 	// Try command-specific filters first
 	if filtered, ok := filterByCommand(cmd, output); ok {

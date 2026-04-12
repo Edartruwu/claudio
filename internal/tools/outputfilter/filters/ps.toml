@@ -1,0 +1,7 @@
+schema_version = 1
+
+[filters.ps]
+description = "ps: cap output"
+match_command = "^ps\\b"
+strip_ansi = true
+max_lines = 50
