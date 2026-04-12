@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/tools/outputfilter/codefilter"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
 
@@ -75,6 +77,11 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		}
 	}
 
+	// Remember whether the caller explicitly provided offset / limit so we can
+	// decide later whether to apply comment-stripping filters.
+	originalOffset := in.Offset
+	originalLimit := in.Limit
+
 	if in.Limit == 0 {
 		in.Limit = 2000
 	}
@@ -113,20 +120,52 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	}
 	defer file.Close()
 
-	var output strings.Builder
+	// Read all lines into memory so we can apply comment-stripping filters
+	// before formatting with line numbers.
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB line buffer
 
-	lineNum := 0
+	var allLines []string
+	for scanner.Scan() {
+		allLines = append(allLines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return &Result{Content: fmt.Sprintf("Error reading file: %v", err), IsError: true}, nil
+	}
+
+	// Apply comment-stripping filter for large files — but only when the caller
+	// did not specify an explicit offset or limit (i.e. they want the default
+	// full-file view).  When a range is requested the caller needs exact content.
+	if originalOffset == 0 && originalLimit == 0 && len(allLines) > 500 {
+		lang := codefilter.DetectLanguage(
+			strings.TrimPrefix(filepath.Ext(in.FilePath), "."),
+		)
+		rawContent := strings.Join(allLines, "\n")
+		filtered := codefilter.MinimalFilter(rawContent, lang)
+		if len(allLines) > 2000 {
+			filtered = codefilter.SmartTruncate(filtered, 2000, lang)
+		}
+		allLines = strings.Split(filtered, "\n")
+		// strings.Split on a newline-terminated string produces a trailing
+		// empty element — drop it so line counts stay accurate.
+		if len(allLines) > 0 && allLines[len(allLines)-1] == "" {
+			allLines = allLines[:len(allLines)-1]
+		}
+	}
+
+	totalLines := len(allLines)
+
+	// Build the cat-n style output, honouring offset / limit.
+	var output strings.Builder
 	linesRead := 0
 
-	for scanner.Scan() {
-		lineNum++
+	for i, line := range allLines {
+		lineNum := i + 1
 		if lineNum < in.Offset {
 			continue
 		}
 		if linesRead >= in.Limit {
-			// Return an error instead of silent truncation so the model knows
+			// Return a notice instead of silent truncation so the model knows
 			// it only got a partial view and must use offset/limit to read more.
 			output.WriteString(fmt.Sprintf(
 				"\n[truncated at line %d — file has more content. Use offset=%d with limit to read the next section, or use Grep to search for specific content.]",
@@ -134,19 +173,15 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 			))
 			break
 		}
-		fmt.Fprintf(&output, "%d\t%s\n", lineNum, scanner.Text())
+		fmt.Fprintf(&output, "%d\t%s\n", lineNum, line)
 		linesRead++
 	}
 
-	if err := scanner.Err(); err != nil {
-		return &Result{Content: fmt.Sprintf("Error reading file: %v", err), IsError: true}, nil
-	}
-
 	if linesRead == 0 {
-		if lineNum == 0 {
+		if totalLines == 0 {
 			return &Result{Content: "(empty file)"}, nil
 		}
-		return &Result{Content: fmt.Sprintf("No lines in range (file has %d lines)", lineNum), IsError: true}, nil
+		return &Result{Content: fmt.Sprintf("No lines in range (file has %d lines)", totalLines), IsError: true}, nil
 	}
 
 	content := output.String()
