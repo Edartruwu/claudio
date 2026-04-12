@@ -1090,6 +1090,8 @@ const appJSContent = `
   var lastSeq=0,isStreaming=false,reconnecting=false;
 
   function $(id){return document.getElementById(id);}
+  function $set(id,prop,val){var el=$(id);if(el)el[prop]=val;}
+  function $cls(id,cls){var el=$(id);if(el)el.className=cls;}
   function mk(t,c){var e=document.createElement(t);e.className=c;return e;}
   function sb(){$('messages').scrollTop=$('messages').scrollHeight;}
   function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -1115,7 +1117,7 @@ const appJSContent = `
 
   function setConn(state){
     var dot=$('conn-dot');
-    dot.className='connection-dot'+(state==='ok'?'':state==='disconnected'?' disconnected':' reconnecting');
+    if(dot)dot.className='connection-dot'+(state==='ok'?'':state==='disconnected'?' disconnected':' reconnecting');
     var banner=$('reconnect-banner');
     if(banner){
       if(state==='ok')banner.classList.remove('visible');
@@ -1128,8 +1130,8 @@ const appJSContent = `
     isStreaming=false;
     if(rd){var c=rd.querySelector('.cursor');if(c)c.remove();$('messages').appendChild(rd);$('stream-area').innerHTML='';}
     rd=null;
-    $('send-btn').disabled=false;$('chat-input').disabled=false;$('chat-input').focus();
-    $('status-state').textContent='Ready';$('status-state').className='status-ok';
+    var sb2=$('send-btn'),ci=$('chat-input');if(sb2)sb2.disabled=false;if(ci){ci.disabled=false;ci.focus();}
+    var ss=$('status-state');if(ss){ss.textContent='Ready';ss.className='status-ok';}
     setConn('ok');sb();
     updateSidebarState(SESSION,'idle');
   }
@@ -1229,7 +1231,7 @@ const appJSContent = `
       if(!isStreaming)return fin();
       es.close();es=null;
       setConn('disconnected');
-      $('status-state').textContent='Reconnecting...';$('status-state').className='status-value yellow';
+      $set('status-state','textContent','Reconnecting...');$cls('status-state','status-value yellow');
       tryReconnect();
     };
   }
@@ -1466,8 +1468,8 @@ const appJSContent = `
     .then(function(data){
       if(data.status==='streaming'){
         isStreaming=true;lastSeq=0;
-        $('send-btn').disabled=true;$('chat-input').disabled=true;
-        $('status-state').textContent='Streaming...';$('status-state').className='status-value yellow';
+        var sb3=$('send-btn'),ci2=$('chat-input');if(sb3)sb3.disabled=true;if(ci2)ci2.disabled=true;
+        $set('status-state','textContent','Streaming...');$cls('status-state','status-value yellow');
         $('stream-area').innerHTML='';
         rd=null;txt='';think='';
         ensureStreamDiv();
@@ -1509,6 +1511,7 @@ const appJSContent = `
   /* ── Detect which autocomplete mode to activate ── */
   function acDetect(){
     var ta=$('chat-input');
+    if(!ta)return;
     var val=ta.value;
     var cur=ta.selectionStart;
     var before=val.substring(0,cur);
@@ -1631,6 +1634,7 @@ const appJSContent = `
 
   /* ── Render popup ── */
   function acRender(title){
+    if(!ac.popup)return;
     if(!ac.items.length){
       ac.popup.innerHTML='<div class="ac-empty">No matches</div>';
       ac.popup.classList.add('visible');
@@ -1821,7 +1825,7 @@ const appJSContent = `
     fetch('/api/sessions/model',{method:'POST',body:fd})
     .then(checkAuth).then(function(r){return r.json();})
     .then(function(data){
-      if(data.model){$('status-model').textContent=data.model;}
+      if(data.model){$set('status-model','textContent',data.model);}
       closeModelSelector();
       // Refresh config panel if open
       if(currentPanel==='config'){togglePanel('config');togglePanel('config');}
@@ -1990,13 +1994,14 @@ const appJSContent = `
   /* ── Model display: fetch from server ── */
   fetch('/api/sessions/model?session='+encodeURIComponent(SESSION))
   .then(checkAuth).then(function(r){return r.json();})
-  .then(function(d){if(d.model)$('status-model').textContent=d.model;})
-  .catch(function(){$('status-model').textContent='claude-sonnet-4-6';});
+  .then(function(d){if(d.model)$set('status-model','textContent',d.model);})
+  .catch(function(){$set('status-model','textContent','claude-sonnet-4-6');});
 
   /* ── iOS keyboard: adjust layout when visualViewport changes ── */
   if(window.visualViewport){
-    var inputBar=document.querySelector('.chat-input-bar');
+    var inputBar=document.querySelector('.chat-input-form,.chat-input-bar');
     window.visualViewport.addEventListener('resize',function(){
+      if(!inputBar)return;
       var vv=window.visualViewport;
       var offset=window.innerHeight-vv.height-vv.offsetTop;
       if(offset>0){

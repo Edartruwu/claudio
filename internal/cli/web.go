@@ -46,7 +46,7 @@ var webCmd = &cobra.Command{
 
 func init() {
 	webCmd.Flags().IntVar(&flagWebPort, "port", 0, "Port to listen on (0 = random)")
-	webCmd.Flags().StringVar(&flagWebHost, "host", "127.0.0.1", "Host/IP to bind to")
+	webCmd.Flags().StringVar(&flagWebHost, "host", "0.0.0.0", "Host/IP to bind to")
 	webCmd.Flags().StringVar(&flagWebPassword, "password", "", "Password for web UI access (required)")
 	webCmd.Flags().StringVar(&flagWebAgent, "agent", "", "Agent type to start with (optional)")
 	webCmd.Flags().StringVar(&flagWebTeam, "team", "", "Team template to start with (optional)")

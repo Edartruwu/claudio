@@ -8,7 +8,7 @@ package templates
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// AppShell wraps the 3-zone layout: sidebar + main-area
+// AppShell wraps the chat layout: full-width, no sidebar
 func AppShell(projectPath string, sessionTitle string, modelBadge string, sessions []SessionInfo, children templ.Component) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -30,43 +30,7 @@ func AppShell(projectPath string, sessionTitle string, modelBadge string, sessio
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"app-shell\"><!-- LEFT SIDEBAR ZONE --><div class=\"sidebar\"><!-- Sidebar Header: App Logo --><div class=\"sidebar-header\"><h1>claudio</h1></div><!-- Sidebar Nav --><nav class=\"sidebar-nav\"><!-- Sessions --><a href=\"/\" class=\"nav-item\"><span>Sessions</span></a><!-- Tools --><a href=\"/web/tools\" class=\"nav-item\"><span>Tools</span></a><!-- Memory --><a href=\"/web/memory\" class=\"nav-item\"><span>Memory</span></a><!-- Config --><a href=\"/web/config\" class=\"nav-item\"><span>Config</span></a></nav><!-- Sidebar Footer: Settings --><div class=\"sidebar-footer\"><a href=\"/settings\" title=\"Settings\">⚙</a></div></div><!-- MAIN AREA ZONE --><div class=\"main-area\"><!-- Main Header: Session Title + Model Badge --><header class=\"main-header\"><button class=\"sidebar-toggle\" onclick=\"toggleSidebar()\" style=\"display: none; background: none; border: none; color: var(--fg); cursor: pointer; font-size: 16px; padding: var(--space-2);\">☰</button><div class=\"session-title\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(sessionTitle)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/app_shell.templ`, Line: 44, Col: 45}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if modelBadge != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"model-badge\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(modelBadge)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/app_shell.templ`, Line: 46, Col: 42}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</header><!-- Main Content (Scrollable) --><div class=\"main-content\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"app-shell\"><!-- MAIN AREA: full width --><div class=\"main-area\" style=\"width: 100%; display: flex; flex-direction: column; height: 100vh;\"><!-- Main Content (Scrollable) --><div class=\"main-content\" style=\"flex: 1; overflow-y: auto;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -74,7 +38,7 @@ func AppShell(projectPath string, sessionTitle string, modelBadge string, sessio
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><!-- Main Input Zone (for prompts, etc.) --><div class=\"main-input\" id=\"input-zone\"><div id=\"chat-form\" class=\"chat-input-form\" style=\"display: flex; gap: var(--space-2); align-items: flex-end;\"><button type=\"button\" class=\"btn-icon\" id=\"attach-btn\" title=\"Attach image\" style=\"background: none; border: none; color: var(--fg3); cursor: pointer; padding: var(--space-2); flex-shrink: 0;\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48\"></path></svg></button> <input type=\"file\" id=\"image-input\" accept=\"image/*\" multiple style=\"display:none\"> <textarea placeholder=\"Type / for commands, @ for files, >> for agents...\" autocomplete=\"off\" class=\"chat-input-textarea\" id=\"chat-input\" rows=\"1\" style=\"flex: 1; background: var(--bg1); border: 1px solid var(--bg3); color: var(--fg); font-family: var(--font-mono); padding: var(--space-2); border-radius: 4px; resize: vertical; transition: border-color 150ms ease;\" hx-post=\"/api/send-message\" hx-target=\"#messages\" hx-swap=\"beforeend\" hx-trigger=\"keydown[ctrlKey&&key=='Enter']\"></textarea> <button type=\"button\" class=\"btn btn-primary\" id=\"send-btn\" style=\"background: var(--accent); color: var(--bg-hard); font-weight: 700; border: none; padding: var(--space-2) var(--space-4); border-radius: 4px; cursor: pointer; flex-shrink: 0;\">Send</button></div></div></div></div><!-- Mobile overlay (closes sidebar when clicked) --><div id=\"sidebar-overlay\" style=\"display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99; background: rgba(0,0,0,0.5);\" onclick=\"closeSidebar()\"></div><!-- Sidebar Toggle for Mobile --><script>\n\t\tfunction toggleSidebar() {\n\t\t\tconst sidebar = document.querySelector('.sidebar');\n\t\t\tconst overlay = document.getElementById('sidebar-overlay');\n\t\t\tsidebar.classList.toggle('open');\n\t\t\toverlay.style.display = sidebar.classList.contains('open') ? 'block' : 'none';\n\t\t}\n\n\t\tfunction closeSidebar() {\n\t\t\tconst sidebar = document.querySelector('.sidebar');\n\t\t\tconst overlay = document.getElementById('sidebar-overlay');\n\t\t\tsidebar.classList.remove('open');\n\t\t\toverlay.style.display = 'none';\n\t\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div><!-- Input Zone --><div class=\"main-input\" id=\"input-zone\" style=\"padding: var(--space-3); background: var(--bg); border-top: 1px solid var(--bg2);\"><div id=\"chat-form\" class=\"chat-input-form\" style=\"display: flex; gap: var(--space-2); align-items: flex-end; max-width: 900px; margin: 0 auto;\"><input type=\"file\" id=\"image-input\" accept=\"image/*\" multiple style=\"display:none\"> <textarea placeholder=\"Message...\" autocomplete=\"off\" class=\"chat-input-textarea\" id=\"chat-input\" rows=\"1\" style=\"flex: 1; background: var(--bg1); border: 1px solid var(--bg3); color: var(--fg); font-family: var(--font-mono); padding: var(--space-2); border-radius: 4px; resize: vertical; transition: border-color 150ms ease; font-size: 15px;\" hx-post=\"/api/send-message\" hx-target=\"#messages\" hx-swap=\"beforeend\" hx-trigger=\"keydown[ctrlKey&&key=='Enter']\"></textarea> <button type=\"button\" class=\"btn btn-primary\" id=\"send-btn\" style=\"background: var(--accent); color: var(--bg-hard); font-weight: 700; border: none; padding: var(--space-2) var(--space-4); border-radius: 4px; cursor: pointer; flex-shrink: 0;\">Send</button></div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

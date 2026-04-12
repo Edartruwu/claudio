@@ -108,12 +108,11 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleHome renders the sessions browser.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	// If agent/team flags were provided at startup, skip picker and go straight to chat
-	if s.AgentType != "" || s.TeamTemplate != "" {
-		if s.SessionID != "" {
-			http.Redirect(w, r, "/chat/"+s.SessionID, http.StatusSeeOther)
-			return
-		}
+	// If session already created, redirect straight to chat
+	if s.SessionID != "" {
+		url := "/chat?project=" + s.ProjectPath + "&session=" + s.SessionID
+		http.Redirect(w, r, url, http.StatusSeeOther)
+		return
 	}
 
 	// Show agent/team picker page
@@ -163,6 +162,9 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 // Creates or resumes a session and renders the full multi-session layout.
 func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 	projectPath := r.URL.Query().Get("project")
+	if projectPath == "" {
+		projectPath = s.ProjectPath
+	}
 	if projectPath == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -300,8 +302,13 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		sess.TeamTemplate = teamTemplate
 	}
 
-	w.Header().Set("HX-Redirect", "/chat/"+sess.ID)
-	w.WriteHeader(http.StatusOK)
+	redirectURL := "/chat?project=" + sess.ProjectPath + "&session=" + sess.ID
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", redirectURL)
+		w.WriteHeader(http.StatusOK)
+	} else {
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+	}
 }
 
 // handleSessionList returns all sessions for a project.

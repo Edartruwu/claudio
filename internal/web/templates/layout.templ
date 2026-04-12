@@ -61,11 +61,9 @@ templ Layout(title string) {
 					line-height: 1.6;
 				}
 
-				/* 3-Zone Grid Shell */
+				/* App Shell */
 				.app-shell {
-					display: grid;
-					grid-template-columns: 240px 1fr;
-					grid-template-rows: 1fr;
+					display: flex;
 					height: 100vh;
 					width: 100%;
 					overflow: hidden;
@@ -221,16 +219,8 @@ templ Layout(title string) {
 				}
 
 				@media (max-width: 900px) {
-					.app-shell {
-						grid-template-columns: 56px 1fr;
-					}
-
 					.sidebar {
 						width: 56px;
-					}
-
-					.app-shell.sidebar-collapsed {
-						grid-template-columns: 56px 1fr;
 					}
 
 					.sidebar-header h1 {
