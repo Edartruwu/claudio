@@ -84,13 +84,14 @@ type group struct {
 	startIdx int // index of first entry in filteredEntries()
 }
 
-// New creates a new AGUI panel with the given teammate runner.
-func New(runner *teams.TeammateRunner) *Panel {
+// New creates a new AGUI panel with the given teammate runner and manager.
+func New(runner *teams.TeammateRunner, manager *teams.Manager) *Panel {
 	fi := textinput.New()
 	fi.Placeholder = "filter agents…"
 	fi.CharLimit = 40
 	return &Panel{
 		runner:         runner,
+		manager:        manager,
 		collapsedTeams: make(map[string]bool),
 		filterInput:    fi,
 		atBottom:       true,
@@ -252,25 +253,49 @@ func (p *Panel) twoLineMode() bool {
 }
 
 func (p *Panel) refresh() {
-	if p.runner == nil {
+	if p.runner == nil && p.manager == nil {
 		p.entries = nil
 		return
 	}
-	states := p.runner.AllStates()
-	// Build a lookup so we can check if a parent is itself a non-lead agent.
-	stateByID := make(map[string]*teams.TeammateState, len(states))
-	for _, s := range states {
-		stateByID[s.Identity.AgentID] = s
-	}
-	entries := make([]*agentEntry, 0, len(states))
-	for _, s := range states {
-		// Hide depth-3+ agents: those spawned by a non-lead tracked teammate.
-		// Principal agents (IsLead=true) and their direct children are always shown.
-		if s.ParentAgentID != "" {
-			if parent, ok := stateByID[s.ParentAgentID]; ok && !parent.Identity.IsLead {
-				continue
+
+	// Use manager as source of truth (survives inactivity eviction from runner).
+	// Fall back to runner-only if no manager is available.
+	if p.manager != nil {
+		allTeams := p.manager.ListTeams()
+		entries := make([]*agentEntry, 0)
+		for _, team := range allTeams {
+			for _, mem := range team.Members {
+				if mem.Identity.IsLead {
+					continue // skip the synthetic team-lead placeholder
+				}
+				e := &agentEntry{
+					id:     mem.Identity.AgentID,
+					name:   mem.Identity.AgentName,
+					team:   team.Name,
+					status: mem.Status,
+				}
+				// Enrich with live runner state when available.
+				if p.runner != nil {
+					if state, ok := p.runner.GetState(mem.Identity.AgentID); ok {
+						e.state = state
+						e.status = state.GetStatus()
+					}
+				}
+				entries = append(entries, e)
 			}
 		}
+		p.entries = entries
+		p.clampCursor()
+		if p.selectedID != "" && p.ready {
+			p.loadConversation()
+		}
+		return
+	}
+
+	// Fallback: no manager, use runner directly.
+	states := p.runner.AllStates()
+	entries := make([]*agentEntry, 0, len(states))
+	for _, s := range states {
 		e := &agentEntry{
 			id:     s.Identity.AgentID,
 			name:   s.Identity.AgentName,

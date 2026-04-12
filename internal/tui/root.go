@@ -5224,10 +5224,12 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 		}
 	case PanelAgentGUI:
 		var runner *teams.TeammateRunner
+		var manager *teams.Manager
 		if m.appCtx != nil {
 			runner = m.appCtx.TeamRunner
+			manager = m.appCtx.TeamManager
 		}
-		return agui.New(runner)
+		return agui.New(runner, manager)
 	}
 	return nil
 }
