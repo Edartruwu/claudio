@@ -168,6 +168,74 @@ html, body {
   gap: 0;
 }
 
+/* Mobile: <768px */
+@media (max-width: 767px) {
+  .app-shell {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: -240px;
+    top: 0;
+    height: 100vh;
+    z-index: 100;
+    width: 240px;
+    transition: left 0.2s ease;
+  }
+
+  .sidebar.open {
+    left: 0;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+  }
+
+  .right-panel {
+    display: none !important;
+  }
+
+  .sidebar-toggle {
+    display: flex !important;
+  }
+
+  .main-content {
+    padding: var(--space-2);
+  }
+
+  .nav-item {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Tablet: 768px–900px */
+@media (min-width: 768px) and (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 56px 1fr;
+  }
+
+  .sidebar {
+    width: 56px;
+  }
+
+  .sidebar-nav span,
+  .sidebar-header h1 span {
+    display: none;
+  }
+
+  .nav-item {
+    justify-content: center;
+    padding: var(--space-2);
+  }
+}
+
+/* Touch targets */
+.nav-item {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
