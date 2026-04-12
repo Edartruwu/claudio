@@ -16,6 +16,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/config"
+	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/web/templates"
@@ -954,7 +955,7 @@ var webCommands = []webCommand{
 	{Name: "help", Description: "Show available commands", ClientOnly: true},
 	{Name: "clear", Description: "Clear conversation history"},
 	{Name: "model", Description: "Show or change the AI model"},
-	{Name: "compact", Description: "Compact conversation to save context"},
+	{Name: "compact", Description: "Compact conversation history (optional: focus prompt)"},
 	{Name: "cost", Description: "Show session cost and token usage", ClientOnly: true},
 	{Name: "new", Description: "Start a new session"},
 	{Name: "rename", Description: "Rename the current session"},
@@ -1125,28 +1126,41 @@ func (s *Server) handleCommandExecute(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "compact":
-		keepLast := 20
-		if args != "" {
-			if _, err := fmt.Sscanf(args, "%d", &keepLast); err != nil || keepLast < 1 {
-				result = cmdResult{Status: "error", Message: "Usage: /compact [number-of-messages-to-keep]"}
-				break
-			}
-		}
-		sess.mu.Lock()
-		n := len(sess.Messages)
-		if n <= keepLast {
-			sess.mu.Unlock()
-			result = cmdResult{Status: "ok", Message: fmt.Sprintf("Nothing to compact (%d messages, threshold is %d).", n, keepLast)}
+		if sess.engine == nil {
+			result = cmdResult{Status: "error", Message: "No active conversation to compact."}
 			break
 		}
-		sess.Messages = sess.Messages[n-keepLast:]
-		// Reset engine so it rebuilds from the trimmed message list
-		if sess.engine != nil {
-			sess.engine = nil
+		sess.mu.Lock()
+		msgs := sess.engine.Messages()
+		if len(msgs) == 0 {
+			sess.mu.Unlock()
+			result = cmdResult{Status: "ok", Message: "Nothing to compact (no messages)."}
+			break
 		}
-		kept := len(sess.Messages)
 		sess.mu.Unlock()
-		result = cmdResult{Status: "ok", Action: "clear_messages", Message: fmt.Sprintf("Compacted conversation to last %d messages.", kept)}
+
+		compacted, summary, err := compact.Compact(context.Background(), sess.Client, msgs, 10, args)
+		if err != nil {
+			result = cmdResult{Status: "error", Message: "Usage: /compact [focus prompt]\nCompact failed: " + err.Error()}
+			break
+		}
+
+		// Convert compacted api.Messages → display ChatMessages for the UI
+		chatMsgs := make([]templates.ChatMessage, 0, len(compacted))
+		for _, m := range compacted {
+			text := apiMessageText(m.Content)
+			if text == "" {
+				continue
+			}
+			chatMsgs = append(chatMsgs, templates.ChatMessage{Role: m.Role, Content: text})
+		}
+
+		sess.mu.Lock()
+		sess.engine.SetMessages(compacted)
+		sess.Messages = chatMsgs
+		sess.mu.Unlock()
+
+		result = cmdResult{Status: "ok", Action: "clear_messages", Message: summary}
 
 	case "diff":
 		gitCmd := exec.Command("git", "diff")
@@ -1849,4 +1863,33 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	})
 	
 	templates.ConfigPage(sections).Render(r.Context(), w)
+}
+
+// apiMessageText extracts plain text from an api.Message Content field.
+// Content is a json.RawMessage that is either a JSON string or an array of
+// content blocks (e.g. [{"type":"text","text":"..."}]).
+func apiMessageText(content json.RawMessage) string {
+	// Try plain string first
+	var s string
+	if err := json.Unmarshal(content, &s); err == nil {
+		return s
+	}
+	// Try array of content blocks
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(content, &blocks); err != nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, b := range blocks {
+		if b.Type == "text" && b.Text != "" {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(b.Text)
+		}
+	}
+	return sb.String()
 }
