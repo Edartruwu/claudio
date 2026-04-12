@@ -15,14 +15,17 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/tools"
+	"github.com/Abraxas-365/claudio/internal/tools/outputfilter"
 )
 
 // PluginProxyTool wraps a plugin executable as a tools.Tool implementation.
 type PluginProxyTool struct {
-	PluginName string
-	PluginPath string
-	Desc       string
-	schema     json.RawMessage
+	PluginName          string
+	PluginPath          string
+	Desc                string
+	schema              json.RawMessage
+	OutputFilterEnabled bool
+	FilterRecorder      func(cmd string, bytesIn, bytesOut int)
 	deferrable
 }
 
@@ -144,6 +147,11 @@ func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*
 	}
 
 	result := string(output)
+
+	// Apply output filter to reduce token usage when enabled.
+	if t.OutputFilterEnabled && result != "" {
+		result = outputfilter.FilterAndRecord(in.Command, result, t.FilterRecorder)
+	}
 
 	// Detect if the output is a path to an image file.
 	trimmed := strings.TrimSpace(result)

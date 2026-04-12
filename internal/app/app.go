@@ -277,7 +277,14 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	pluginReg.LoadDir(paths.Plugins)
 	pluginReg.LoadDir(cwd + "/.claudio/plugins")
 	for _, p := range pluginReg.All() {
-		registry.Register(plugins.NewProxyTool(p))
+		pt := plugins.NewProxyTool(p)
+		pt.OutputFilterEnabled = settings.OutputFilter
+		if settings.OutputFilter {
+			pt.FilterRecorder = func(cmd string, bytesIn, bytesOut int) {
+				_ = filterSvc.Record(context.Background(), cmd, bytesIn, bytesOut)
+			}
+		}
+		registry.Register(pt)
 	}
 
 	// Cron store
