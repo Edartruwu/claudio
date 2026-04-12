@@ -34,7 +34,8 @@ func ScheduleRefresh() tea.Cmd {
 
 // Panel is the AGUI split-view agent inspector implementing panels.Panel.
 type Panel struct {
-	runner *teams.TeammateRunner
+	runner  *teams.TeammateRunner
+	manager *teams.Manager
 
 	entries    []*agentEntry  // flat list of all agents, populated on refresh
 	cursor     int            // list cursor: index into filteredEntries()
@@ -157,7 +158,7 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 // View renders the panel with split layout.
 func (p *Panel) View() string {
-	if !p.active || !p.ready {
+	if !p.active {
 		return ""
 	}
 	return p.renderSplitView()
