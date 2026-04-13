@@ -112,6 +112,22 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	})
 
 	r.Register(&Command{
+		Name:        "dream",
+		Description: "Consolidate session learnings into memory — reviews conversation, updates, creates, and removes memories.",
+		Execute: func(args string) (string, error) {
+			if deps.RunDream == nil {
+				return "Dream consolidation not available.", nil
+			}
+			hint := strings.TrimSpace(args)
+			result, err := deps.RunDream(hint)
+			if err != nil {
+				return fmt.Sprintf("Dream consolidation failed: %v", err), nil
+			}
+			return result, nil
+		},
+	})
+
+	r.Register(&Command{
 		Name:        "session",
 		Aliases:     []string{"sessions"},
 		Description: "List or manage sessions",

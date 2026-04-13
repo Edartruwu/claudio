@@ -29,6 +29,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/storage"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/agentselector"
 	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
@@ -463,6 +464,65 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			}
 			count := memory.ExtractFromMessages(m.apiClient, m.appCtx.Memory, msgs)
 			return count, nil
+		},
+		RunDream: func(hint string) (string, error) {
+			if sess == nil {
+				return "", fmt.Errorf("no session manager")
+			}
+			if m.appCtx == nil || m.appCtx.TaskRuntime == nil {
+				return "", fmt.Errorf("task runtime not available")
+			}
+			// Get all session messages
+			msgs, err := sess.GetMessages()
+			if err != nil {
+				return "", fmt.Errorf("failed to get messages: %w", err)
+			}
+			// Filter to user and assistant text messages only (skip tool_use, tool_result)
+			var conversation strings.Builder
+			for _, msg := range msgs {
+				if msg.Type != "" {
+					continue // skip tool_use and tool_result
+				}
+				if msg.Role == "user" {
+					conversation.WriteString("User: ")
+					conversation.WriteString(msg.Content)
+					conversation.WriteString("\n\n")
+				} else if msg.Role == "assistant" {
+					conversation.WriteString("Assistant: ")
+					conversation.WriteString(msg.Content)
+					conversation.WriteString("\n\n")
+				}
+			}
+			if conversation.Len() == 0 {
+				return "No conversation to consolidate.", nil
+			}
+			// Get project/memory dirs
+			cwd, _ := os.Getwd()
+			projectRoot := config.FindGitRoot(cwd)
+			memDir := config.ProjectMemoryDir(projectRoot)
+			// Spawn dream task
+			taskState, err := tasks.SpawnDreamTask(m.appCtx.TaskRuntime, tasks.DreamTaskInput{
+				SessionSummary: conversation.String(),
+				ProjectDir:     cwd,
+				MemoryDir:      memDir,
+				RunDream: func(ctx context.Context, prompt string) (string, error) {
+					if m.appCtx == nil || m.appCtx.TaskRuntime == nil {
+						return "", fmt.Errorf("app context not available")
+					}
+					handler := &query.StdoutHandler{Verbose: false}
+					engine := query.NewEngine(m.apiClient, m.registry, handler)
+					engine.SetSystem("You are a memory consolidation agent. You have access to the Memory tool.")
+					var result strings.Builder
+					if runErr := engine.Run(ctx, prompt); runErr != nil {
+						return "", runErr
+					}
+					return result.String(), nil
+				},
+			})
+			if err != nil {
+				return "", fmt.Errorf("failed to spawn dream: %w", err)
+			}
+			return fmt.Sprintf("Dream consolidation started (ID: %s). Consolidating memories in background.", taskState.ID), nil
 		},
 		ListSkills: func() []commands.SkillInfo {
 			if m.skills == nil {
