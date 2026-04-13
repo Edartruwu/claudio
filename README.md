@@ -38,7 +38,7 @@ Built-in orchestration with mailbox messaging, parallel execution, and hierarchi
 <td width="33%" valign="top">
 
 ### 🧠 Persistent Memory
-Project, agent, and global scopes. AI-powered selection, background extraction, learned instincts, and dream consolidation.
+Facts-based entries across project/agent/global scopes. Cache-safe index injection, Recall semantic search, background extraction, and `/dream` consolidation.
 
 </td>
 <td width="33%" valign="top">
@@ -218,7 +218,7 @@ Claudio is built ground-up in Go for engineers who want **more control, more age
 | 🏗️ **Runtime** | Single Go binary, no runtime | Node.js / TypeScript |
 | 🤝 **Multi-agent teams** | Built-in orchestration, mailbox messaging | ❌ |
 | 💎 **Session-as-agent** | Crystallize sessions into reusable personas | ❌ |
-| 🧠 **Memory** | Scoped (project/agent/global), AI-selected, dream consolidation | Single directory |
+| 🧠 **Memory** | Scoped (project/agent/global), facts-based, Recall semantic search, `/dream` consolidation, cache-safe injection | Single directory |
 | 🗜️ **Token efficiency** | 11-layer optimization stack | Basic prompt caching |
 | ✂️ **Snippet expansion** | `~name(args)` shorthand → full code templates | ❌ |
 | 🎯 **Learned instincts** | Confidence-scored patterns replayed across sessions | ❌ |
@@ -843,94 +843,111 @@ Infrequently-used tools (web, LSP, notebooks, tasks, teams, etc.) are sent with 
 
 ## Memory System
 
-Three-layer memory architecture:
+Three-scope, facts-based memory architecture. No system prompt pollution — cache stays intact.
 
-### Persistent Memory (file-based)
-
-Markdown files with YAML frontmatter across three scopes:
+### Scopes
 
 | Scope | Path | Purpose |
 |-------|------|---------|
-| **Project** | `~/.claudio/projects/<project-slug>/memory/` | Project-specific knowledge |
-| **Global** | `~/.claudio/memory/` | Cross-project user preferences |
-| **Agent** | `~/.claudio/agents/<name>/memory/` | Per-crystallized-agent knowledge |
+| **Project** | `~/.claudio/projects/<project-slug>/memory/` | This repo's conventions, decisions, architecture |
+| **Global** | `~/.claudio/memory/` | Cross-project user preferences and personal style |
+| **Agent** | `~/.claudio/agents/<name>/memory/` | Per-crystallized-agent accumulated knowledge |
 
-Resolution priority: **Agent > Project > Global** — on name conflicts, the higher-priority scope wins. All three are merged and injected into the system prompt at session start.
+Resolution priority: **Agent > Project > Global** — name conflicts use the higher-priority scope.
 
-Default write target follows the same priority: project if you're in a project dir, otherwise global.
+**Scope decision rule:** ask *"would this be true in a completely different project?"*
+- Yes → `global` (e.g. "always use table-driven tests")
+- No → `project` (e.g. "JWT secret is in .env.local")
+- Persona-specific → `agent`
 
-Memory types: `user`, `feedback`, `project`, `reference`.
+### Entry format
+
+Memories are markdown files with YAML frontmatter. Content is stored as discrete **facts** — one sentence each — not prose:
 
 ```markdown
 ---
-name: prefers-table-driven-tests
-description: User prefers Go table-driven test pattern
-type: feedback
+name: jwt-config
+description: JWT token configuration for this API
+type: project
+scope: project
+tags: [auth, jwt, token]
+updated_at: 2026-04-12T10:00:00Z
+facts:
+  - JWT tokens expire in 24h
+  - Refresh threshold is 20h — issue new token if TTL < 4h
+  - Secret stored in .env.local under JWT_SECRET
+  - Signing algorithm is RS256
 ---
-
-User pushed back twice when I wrote function-per-case tests.
-Always use t.Run with a slice of test cases for Go tests in this project.
 ```
 
-### Proactive memory writing (agent-driven)
+Memory types: `user`, `feedback`, `project`, `reference`.
 
-Every session gets a `# Auto Memory` block injected into the system prompt that instructs the agent to actively save, update, and delete memories using its normal tools — matching Anthropic's own Claude Code memory pattern.
+### How the agent uses memory
 
-**The agent writes memories in two steps:**
+At session start, a **lean memory index** is injected into the first human turn (not the system prompt — cache is never broken):
 
-1. Write a markdown file with YAML frontmatter to the memory directory using the `Write` tool:
-   ```
-   ~/.claudio/projects/<slug>/memory/prefers-table-driven-tests.md
-   ```
-2. Update `MEMORY.md` (the index) in the same directory by reading it and adding a one-line pointer. If `MEMORY.md` doesn't exist, create it.
+```
+## Your Memory Index
 
-**When the agent saves a memory:**
-- User explicitly asks to remember or forget something — done immediately
-- User corrects the agent or rejects an approach
-- Non-obvious project fact discovered (architecture, conventions, constraints)
-- Recurring pattern, false positive, or trap worth avoiding next run
+### Global Memories
+- prefer-table-tests [testing,go]: User's Go testing style — "Always use t.Run" | "Never write single-case tests"
 
-**What the agent does NOT save:**
-- Things obvious from reading the codebase
-- Standard best practices already known
-- Ephemeral task state (plans/todos are for that)
-- Secrets or sensitive data
+### Project Memories
+- jwt-config [auth,jwt,token]: JWT configuration — "Expires in 24h" | "RS256 signing"
+- no-orm [db,sql]: DB rules — "Never use GORM" | "Raw SQL via modernc.org/sqlite"
+```
 
-**Editing and deleting memories:**
+The agent sees what exists without loading full content (~10 tokens per entry). It then:
 
-Memories are plain markdown files — the agent can maintain them over time:
-- **Update** with the `Edit` tool when a fact changes or a preference is refined. Prefer updating over creating near-duplicates (check first with `Memory` tool's `search`).
-- **Delete** with `rm` (Bash tool) when a memory becomes wrong, obsolete, or the user asks to forget it. Also remove its line from `MEMORY.md`.
+- **`Memory(action="read", name="...")`** — load full facts for a specific entry
+- **`Recall(context="...")`** — semantic search across all scopes using the configured small model
+- **`Memory(action="append", name="...", fact="...")`** — add one fact to an existing entry (no full rewrite)
+- **`Memory(action="save", ...)`** — create a new entry with `facts[]`
+- **`Memory(action="delete-fact", name="...", index=N)`** — remove a specific fact
+- **`Memory(action="delete", name="...")`** — remove an entire entry
 
-This loop makes the agent meaningfully smarter per session without any manual curation. It is particularly valuable for [crystallized agents](#agent-crystallization) that are reused across many sessions or inside teams.
+### Memory tool actions
 
-### Memory selection strategies
+| Action | Description |
+|--------|-------------|
+| `list` | List all entries (name + description + scope) |
+| `search` | Keyword search across name, description, tags, facts |
+| `read` | Load full facts for a named entry |
+| `save` | Create new entry with `facts[]`, `tags[]`, `type`, `scope` |
+| `append` | Add one fact to existing entry — preferred over full rewrites |
+| `replace-fact` | Replace a fact at a specific index |
+| `delete-fact` | Remove a fact at a specific index |
+| `delete` | Delete entire entry |
 
-| Strategy | Setting | Description |
-|----------|---------|-------------|
-| `ai` | `"memorySelection": "ai"` | Haiku selects top 5 most relevant memories (default) |
-| `keyword` | `"memorySelection": "keyword"` | Fast substring matching |
-| `none` | `"memorySelection": "none"` | Don't load memories into system prompt |
+### Recall tool
+
+`Recall(context="...")` uses the configured small model to semantically match your context against the full memory index and return the most relevant entries — across all scopes automatically. Unlike `Memory(search)` which does keyword matching, Recall understands intent.
+
+Use it before starting significant tasks or when you're unsure what relevant context might exist.
 
 ### Background extraction
 
-After 4+ turns, a background agent (Haiku) reviews the conversation and automatically extracts memories. Disable with `"autoMemoryExtract": false`.
+After 4+ turns, a background agent (Haiku) reviews the conversation and automatically extracts memories into the project scope. Disable with `"autoMemoryExtract": false`.
 
-Manual extraction: `/memory extract`
+### Dream consolidation (`/dream`)
+
+`/dream` runs a consolidation agent that reviews the current session conversation (user and assistant messages only — no tool noise) and:
+
+1. Lists all existing memories
+2. Detects contradictions — deletes or updates stale facts
+3. Appends new facts to existing entries where relevant
+4. Creates new memories for genuinely new learnings
+5. Promotes project-scope entries to global when they reflect universal user preferences
+
+Run `/dream` at the end of a productive session to keep the memory store accurate and contradiction-free.
 
 ### Memory in teams
 
-Memory access differs by teammate type when a team is running:
-
 | Role | Scopes visible | Can write? |
 |------|---------------|------------|
-| **Orchestrator** (harness / parent session) | Global + Project + own Agent (if crystallized) | ✅ To project or global |
-| **Ephemeral teammate** (no `MemoryDir`) | None — blank slate every run | ❌ |
-| **Crystallized teammate** (has `MemoryDir`) | Own agent memory only | ✅ To their agent dir |
-
-Crystallized teammates do **not** inherit project or global memory — they operate from their own private accumulated knowledge. If a teammate needs project-level context, the harness should include it explicitly in the spawn prompt.
-
-Because agent memory lives at `~/.claudio/agents/<name>/memory/` and survives `TeamDelete`, a crystallized agent that learns something during a team run will carry that knowledge into every future session — solo or team.
+| **Orchestrator** | Global + Project + own Agent (if crystallized) | ✅ |
+| **Ephemeral teammate** (no `MemoryDir`) | None | ❌ |
+| **Crystallized teammate** (has `MemoryDir`) | Own agent scope | ✅ to their agent dir |
 
 ### Memory panel (`<Space>im`)
 
@@ -946,10 +963,6 @@ Because agent memory lives at `~/.claudio/agents/<name>/memory/` and survives `T
 ### Learned Instincts
 
 Stored in `~/.claudio/instincts.json`. Patterns with confidence scoring that decays after 30 days. Categories: `debugging`, `workflow`, `convention`, `workaround`.
-
-### Dream Consolidation
-
-A background "dream" agent reviews accumulated sessions (24h + 5 sessions) and extracts cross-session patterns into persistent memories.
 
 ---
 
