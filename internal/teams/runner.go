@@ -730,21 +730,42 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			// Agent completed successfully and has commits — auto-merge into main.
 			cwd, _ := os.Getwd()
 			mainRepo := git.NewRepo(cwd)
-			mergeErr := mainRepo.MergeFFOnly(state.WorktreeBranch)
+			mergedBranch := state.WorktreeBranch
+			mergeErr := mainRepo.MergeFFOnly(mergedBranch)
 			if mergeErr == nil {
 				// Merged cleanly — remove worktree and branch.
 				_ = mainRepo.WorktreeRemove(state.WorktreePath, true)
-				_ = mainRepo.DeleteBranch(state.WorktreeBranch)
+				_ = mainRepo.DeleteBranch(mergedBranch)
+				mergeNote := fmt.Sprintf("[Worktree branch %s auto-merged into main and cleaned up.]", mergedBranch)
 				state.mu.Lock()
-				state.Result += fmt.Sprintf("\n\n[Worktree branch %s auto-merged into main and cleaned up.]", state.WorktreeBranch)
+				state.Result += "\n\n" + mergeNote
 				state.WorktreePath = ""
 				state.WorktreeBranch = ""
 				state.mu.Unlock()
+				r.EmitEvent(TeammateEvent{
+					TeamName:  cfg.TeamName,
+					AgentID:   state.Identity.AgentID,
+					AgentName: cfg.AgentName,
+					Type:      "merged",
+					Text:      mergeNote,
+					Color:     state.Identity.Color,
+				})
 			} else {
 				// Fast-forward not possible (diverged) — keep worktree, warn team lead.
+				mergeNote := fmt.Sprintf("[Auto-merge failed (not fast-forwardable). Manual merge required: git merge %s — worktree kept at: %s]", mergedBranch, state.WorktreePath)
 				state.mu.Lock()
-				state.Result += fmt.Sprintf("\n\n[Auto-merge failed (not fast-forwardable). Manual merge required: git merge %s\nWorktree kept at: %s]", state.WorktreeBranch, state.WorktreePath)
+				state.Result += "\n\n" + mergeNote
 				state.mu.Unlock()
+				r.EmitEvent(TeammateEvent{
+					TeamName:       cfg.TeamName,
+					AgentID:        state.Identity.AgentID,
+					AgentName:      cfg.AgentName,
+					Type:           "merge_failed",
+					Text:           mergeNote,
+					Color:          state.Identity.Color,
+					WorktreePath:   state.WorktreePath,
+					WorktreeBranch: mergedBranch,
+				})
 			}
 		} else {
 			// Failed or waiting for input — keep worktree for inspection/resumption.

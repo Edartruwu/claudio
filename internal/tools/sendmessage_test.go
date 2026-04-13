@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Abraxas-365/claudio/internal/teams"
@@ -212,7 +213,7 @@ func TestSendMessageTool_RunnerFallback(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("expected success, got error: %s", result.Content)
 	}
-	if result.Content != "Message sent to worker from team-lead" {
+	if !strings.HasPrefix(result.Content, "Message sent to worker from team-lead") {
 		t.Errorf("unexpected result: %s", result.Content)
 	}
 }

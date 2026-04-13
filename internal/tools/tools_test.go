@@ -26,7 +26,7 @@ func TestRegistry(t *testing.T) {
 		"TaskStop", "TaskOutput",
 		"TeamCreate", "TeamDelete", "SendMessage",
 		"SpawnTeammate", "SaveTeamTemplate", "InstantiateTeam",
-		"Memory",
+		"Memory", "Recall",
 		"CronCreate", "CronDelete", "CronList",
 		"AskUser",
 	}
@@ -61,7 +61,7 @@ func TestRegistry(t *testing.T) {
 		"TaskCreate": true, "TaskList": true, "TaskGet": true, "TaskUpdate": true,
 		"EnterWorktree": true, "ExitWorktree": true,
 		"TaskStop": true, "TaskOutput": true, "TeamCreate": true, "TeamDelete": true, "SendMessage": true,
-		"Memory": true,
+		"Memory": true, "Recall": true,
 		"CronCreate": true, "CronDelete": true, "CronList": true,
 		"AskUser": true,
 	}

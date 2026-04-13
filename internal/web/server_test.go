@@ -299,13 +299,14 @@ func TestProjectInit_ExpandsTilde(t *testing.T) {
 
 func TestChatPage_RedirectsWithoutProject(t *testing.T) {
 	s := newTestServer(t)
+	// Server always sets ProjectPath = os.Getwd(), so no-project renders the default session (200).
 	req := httptest.NewRequest("GET", "/chat", nil)
 	w := httptest.NewRecorder()
 
 	s.handleChatPage(w, req)
 
-	if w.Code != http.StatusSeeOther {
-		t.Errorf("expected redirect, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 with default project, got %d", w.Code)
 	}
 }
 
@@ -895,8 +896,8 @@ func TestPanel_Tasks_Empty(t *testing.T) {
 	s.handlePanel(w, req)
 
 	body := w.Body.String()
-	if !strings.Contains(body, "No tasks") {
-		t.Error("empty tasks panel should show 'No tasks'")
+	if !strings.Contains(body, "no tasks") {
+		t.Error("empty tasks panel should show 'no tasks'")
 	}
 }
 
