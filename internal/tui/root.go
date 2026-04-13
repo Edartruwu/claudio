@@ -2107,15 +2107,7 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 	if m.appCtx != nil && m.appCtx.Memory != nil {
 		idx := m.appCtx.Memory.BuildIndex()
 		if idx != "" {
-			memIndexMsg := "## Your Memory Index\n\n" +
-				"The following memories are available across all scopes.\n" +
-				"- Use **Memory(action=\"read\", name=\"...\")** to load full facts for a specific entry\n" +
-				"- Use **Recall(context=\"...\")** to semantically search when unsure which entry is relevant\n" +
-				"- Use **Memory(action=\"save\")** or **Memory(action=\"append\")** to persist new learnings during this session\n\n" +
-				idx + "\n\n" +
-				"---\n" +
-				"This index reflects memories at session start. Use Memory(action=\"list\") to see current state."
-			m.engine.SetMemoryIndex(memIndexMsg)
+			m.engine.SetMemoryIndex("## Your Memory Index\n\n" + idx)
 		}
 	}
 	if m.systemContext != "" {
@@ -4137,15 +4129,7 @@ func (m *Model) doSwitchSession(id string) {
 			if m.appCtx != nil && m.appCtx.Memory != nil {
 				idx := m.appCtx.Memory.BuildIndex()
 				if idx != "" {
-					memIndexMsg := "## Your Memory Index\n\n" +
-						"The following memories are available across all scopes.\n" +
-						"- Use **Memory(action=\"read\", name=\"...\")** to load full facts for a specific entry\n" +
-						"- Use **Recall(context=\"...\")** to semantically search when unsure which entry is relevant\n" +
-						"- Use **Memory(action=\"save\")** or **Memory(action=\"append\")** to persist new learnings during this session\n\n" +
-						idx + "\n\n" +
-						"---\n" +
-						"This index reflects memories at session start. Use Memory(action=\"list\") to see current state."
-					m.engine.SetMemoryIndex(memIndexMsg)
+					m.engine.SetMemoryIndex("## Your Memory Index\n\n" + idx)
 				}
 			}
 			if m.systemContext != "" {
