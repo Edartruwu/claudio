@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+// InstructionsProvider is an interface for tools that provide detailed instructions
+// for lazy delivery via ToolSearch instead of system prompt injection.
+type InstructionsProvider interface {
+	PluginInstructions() string
+}
+
 // ToolSearchTool is a meta-tool that lets the model fetch full schemas for deferred tools.
 type ToolSearchTool struct {
 	registry *Registry
@@ -140,6 +146,15 @@ func (t *ToolSearchTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		sb.WriteString(fmt.Sprintf("<function>%s</function>\n", string(defJSON)))
 	}
 	sb.WriteString("</functions>")
+
+	// Append instructions for any matched tool that implements InstructionsProvider
+	for _, tool := range matched {
+		if provider, ok := tool.(InstructionsProvider); ok {
+			if instructions := provider.PluginInstructions(); instructions != "" {
+				sb.WriteString(fmt.Sprintf("\n\n## Plugin Instructions: %s\n%s", tool.Name(), instructions))
+			}
+		}
+	}
 
 	return &Result{Content: sb.String()}, nil
 }

@@ -206,8 +206,7 @@ type PluginInfo struct {
 }
 
 // PluginsSection returns a system prompt section for installed plugins.
-// If a plugin provides --instructions, that markdown is injected verbatim.
-// Otherwise a generic entry is generated from --describe.
+// Plugin instructions are delivered lazily via ToolSearch instead of here.
 func PluginsSection(plugins []PluginInfo) string {
 	if len(plugins) == 0 {
 		return ""
@@ -219,17 +218,12 @@ func PluginsSection(plugins []PluginInfo) string {
 
 	for _, p := range plugins {
 		fmt.Fprintf(&sb, "\n## plugin_%s\n", p.Name)
-		if p.Instructions != "" {
-			sb.WriteString(p.Instructions)
-			sb.WriteString("\n")
-		} else {
-			desc := p.Description
-			if desc == "" {
-				desc = "(no description)"
-			}
-			sb.WriteString(desc)
-			sb.WriteString("\n")
+		desc := p.Description
+		if desc == "" {
+			desc = "(no description)"
 		}
+		sb.WriteString(desc)
+		sb.WriteString("\n")
 	}
 	return sb.String()
 }

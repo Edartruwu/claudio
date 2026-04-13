@@ -23,6 +23,7 @@ type PluginProxyTool struct {
 	PluginName          string
 	PluginPath          string
 	Desc                string
+	Instructions        string
 	schema              json.RawMessage
 	OutputFilterEnabled bool
 	FilterRecorder      func(cmd string, bytesIn, bytesOut int)
@@ -36,11 +37,12 @@ func NewProxyTool(p *Plugin) *PluginProxyTool {
 		hint = p.Description
 	}
 	return &PluginProxyTool{
-		PluginName: p.Name,
-		PluginPath: p.Path,
-		Desc:       p.Description,
-		schema:     p.Schema,
-		deferrable: deferrable{hint: hint},
+		PluginName:   p.Name,
+		PluginPath:   p.Path,
+		Desc:         p.Description,
+		Instructions: p.Instructions,
+		schema:       p.Schema,
+		deferrable:   deferrable{hint: hint},
 	}
 }
 
@@ -77,6 +79,11 @@ func (t *PluginProxyTool) InputSchema() json.RawMessage {
 func (t *PluginProxyTool) IsReadOnly() bool { return false }
 
 func (t *PluginProxyTool) RequiresApproval(_ json.RawMessage) bool { return true }
+
+// PluginInstructions returns the plugin's markdown instructions for lazy delivery via ToolSearch.
+func (t *PluginProxyTool) PluginInstructions() string {
+	return t.Instructions
+}
 
 // resizeImage uses nearest-neighbor scaling to resize an image to a maximum width.
 func resizeImage(src image.Image, maxWidth int) image.Image {
