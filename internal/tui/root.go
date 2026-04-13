@@ -2105,10 +2105,22 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 		m.engine.SetUserContext(m.userContext)
 	}
 	if m.appCtx != nil && m.appCtx.Memory != nil {
-		idx := m.appCtx.Memory.BuildIndex()
+		ttl := 0 // default: no TTL filtering
+		if m.appCtx.Config != nil {
+			ttl = m.appCtx.Config.GetMemoryIndexTTLDays()
+		}
+		idx := m.appCtx.Memory.BuildIndex(ttl)
 		if idx != "" {
 			m.engine.SetMemoryIndex("## Your Memory Index\n\n" + idx)
 		}
+		// Wire up the refresh function for post-compaction updates
+		m.engine.SetMemoryRefreshFunc(func() string {
+			ttl := 0 // default: no TTL filtering
+			if m.appCtx.Config != nil {
+				ttl = m.appCtx.Config.GetMemoryIndexTTLDays()
+			}
+			return m.appCtx.Memory.BuildIndex(ttl)
+		})
 	}
 	if m.systemContext != "" {
 		m.engine.SetSystemContext(m.systemContext)
@@ -4127,10 +4139,22 @@ func (m *Model) doSwitchSession(id string) {
 				m.engine.SetUserContext(m.userContext)
 			}
 			if m.appCtx != nil && m.appCtx.Memory != nil {
-				idx := m.appCtx.Memory.BuildIndex()
+				ttl := 0 // default: no TTL filtering
+				if m.appCtx.Config != nil {
+					ttl = m.appCtx.Config.GetMemoryIndexTTLDays()
+				}
+				idx := m.appCtx.Memory.BuildIndex(ttl)
 				if idx != "" {
 					m.engine.SetMemoryIndex("## Your Memory Index\n\n" + idx)
 				}
+				// Wire up the refresh function for post-compaction updates
+				m.engine.SetMemoryRefreshFunc(func() string {
+					ttl := 0 // default: no TTL filtering
+					if m.appCtx.Config != nil {
+						ttl = m.appCtx.Config.GetMemoryIndexTTLDays()
+					}
+					return m.appCtx.Memory.BuildIndex(ttl)
+				})
 			}
 			if m.systemContext != "" {
 				m.engine.SetSystemContext(m.systemContext)

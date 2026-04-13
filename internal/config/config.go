@@ -29,8 +29,10 @@ type Settings struct {
 	SessionPersist bool   `json:"sessionPersist,omitempty"`
 
 	// Memory settings
-	AutoMemoryExtract *bool  `json:"autoMemoryExtract,omitempty"` // auto-extract memories on turn end (default: false)
-	MemorySelection   string `json:"memorySelection,omitempty"`   // "ai" (Haiku), "keyword", "none" (default: "none")
+	AutoMemoryExtract       *bool  `json:"autoMemoryExtract,omitempty"`       // auto-extract memories on turn end (default: false)
+	MemorySelection         string `json:"memorySelection,omitempty"`         // "ai" (Haiku), "keyword", "none" (default: "none")
+	MemoryIndexTTLDays      *int   `json:"memoryIndexTTLDays,omitempty"`      // filter out entries older than N days from inline index (default: 30)
+	MemoryRefreshOnCompact  *bool  `json:"memoryRefreshOnCompact,omitempty"`  // rebuild memory index after compaction (default: true)
 
 	// Security settings
 	DenyPaths  []string `json:"denyPaths,omitempty"`
@@ -351,6 +353,12 @@ func mergeFromFile(settings *Settings, path string) {
 	if overlay.MemorySelection != "" {
 		settings.MemorySelection = overlay.MemorySelection
 	}
+	if overlay.MemoryIndexTTLDays != nil {
+		settings.MemoryIndexTTLDays = overlay.MemoryIndexTTLDays
+	}
+	if overlay.MemoryRefreshOnCompact != nil {
+		settings.MemoryRefreshOnCompact = overlay.MemoryRefreshOnCompact
+	}
 	if len(overlay.DenyTools) > 0 {
 		settings.DenyTools = append(settings.DenyTools, overlay.DenyTools...)
 	}
@@ -467,6 +475,24 @@ func (s *Settings) GetMemorySelection() string {
 		return "none" // default
 	}
 	return s.MemorySelection
+}
+
+// GetMemoryIndexTTLDays returns the number of days before memory entries are excluded
+// from the inline index. Defaults to 30 days if not configured.
+func (s *Settings) GetMemoryIndexTTLDays() int {
+	if s.MemoryIndexTTLDays != nil {
+		return *s.MemoryIndexTTLDays
+	}
+	return 30
+}
+
+// GetMemoryRefreshOnCompact returns whether to rebuild the memory index after compaction.
+// Defaults to true if not configured.
+func (s *Settings) GetMemoryRefreshOnCompact() bool {
+	if s.MemoryRefreshOnCompact != nil {
+		return *s.MemoryRefreshOnCompact
+	}
+	return true
 }
 
 func ProjectMemoryDir(projectRoot string) string {

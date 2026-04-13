@@ -121,7 +121,8 @@ func (s *ScopedStore) LoadIndex() string {
 
 // BuildIndex returns a rich index across all scopes with scope headers.
 // Format per entry: - name [tags]: description — "fact1" | "fact2"
-func (s *ScopedStore) BuildIndex() string {
+// ttlDays filters out entries older than N days (ttlDays <= 0 means no filtering).
+func (s *ScopedStore) BuildIndex(ttlDays int) string {
 	var sb strings.Builder
 
 	type scopeInfo struct {
@@ -139,7 +140,7 @@ func (s *ScopedStore) BuildIndex() string {
 		if scope.store == nil {
 			continue
 		}
-		lines := scope.store.BuildIndexLines()
+		lines := scope.store.BuildIndexLines(ttlDays)
 		if lines == "" {
 			continue
 		}
