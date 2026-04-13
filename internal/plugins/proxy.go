@@ -127,10 +127,10 @@ func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*
 
 	var args []string
 	if in.Command != "" {
-		args = append(args, in.Command)
+		args = append(args, shellSplit(in.Command)...)
 	}
 	if in.Args != "" {
-		args = append(args, strings.Fields(in.Args)...)
+		args = append(args, shellSplit(in.Args)...)
 	}
 
 	cmd := exec.CommandContext(ctx, t.PluginPath, args...)
@@ -180,6 +180,51 @@ func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*
 	}
 
 	return &tools.Result{Content: result}, nil
+}
+
+// shellSplit splits s into tokens the same way a POSIX shell would, respecting
+// single-quoted and double-quoted strings so that multi-word flag values like
+// --subject "Hello World" are kept as a single token.
+func shellSplit(s string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			} else {
+				cur.WriteByte(c)
+			}
+		case inDouble:
+			if c == '"' {
+				inDouble = false
+			} else if c == '\\' && i+1 < len(s) {
+				i++
+				cur.WriteByte(s[i])
+			} else {
+				cur.WriteByte(c)
+			}
+		case c == '\'':
+			inSingle = true
+		case c == '"':
+			inDouble = true
+		case c == ' ' || c == '\t' || c == '\n':
+			if cur.Len() > 0 {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	if cur.Len() > 0 {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens
 }
 
 // deferrable implements tools.DeferrableTool so plugin tools are deferred by default.
