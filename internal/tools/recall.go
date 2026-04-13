@@ -195,7 +195,7 @@ func formatEntries(entries []*memory.Entry) string {
 	var parts []string
 	for _, e := range entries {
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Memory: %s\n", e.Name))
+		sb.WriteString(fmt.Sprintf("Memory: %s [scope: %s]\n", e.Name, e.Scope))
 		if len(e.Tags) > 0 {
 			sb.WriteString(fmt.Sprintf("Tags: %s\n", strings.Join(e.Tags, ", ")))
 		}

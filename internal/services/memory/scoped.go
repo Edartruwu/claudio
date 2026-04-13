@@ -64,10 +64,11 @@ func (s *ScopedStore) LoadAll() []*Entry {
 	seen := make(map[string]bool)
 	var result []*Entry
 
-	for _, store := range s.orderedStores() {
-		for _, entry := range store.LoadAll() {
+	for _, ss := range s.orderedScopedStores() {
+		for _, entry := range ss.store.LoadAll() {
 			if !seen[entry.Name] {
 				seen[entry.Name] = true
+				entry.Scope = ss.scope
 				result = append(result, entry)
 			}
 		}
@@ -80,10 +81,11 @@ func (s *ScopedStore) FindRelevant(context string) []*Entry {
 	seen := make(map[string]bool)
 	var result []*Entry
 
-	for _, store := range s.orderedStores() {
-		for _, entry := range store.FindRelevant(context) {
+	for _, ss := range s.orderedScopedStores() {
+		for _, entry := range ss.store.FindRelevant(context) {
 			if !seen[entry.Name] {
 				seen[entry.Name] = true
+				entry.Scope = ss.scope
 				result = append(result, entry)
 			}
 		}
@@ -216,6 +218,26 @@ func (s *ScopedStore) orderedStores() []*Store {
 	}
 	if s.global != nil {
 		stores = append(stores, s.global)
+	}
+	return stores
+}
+
+type scopedEntry struct {
+	store *Store
+	scope string
+}
+
+// orderedScopedStores returns stores paired with their scope label, in priority order.
+func (s *ScopedStore) orderedScopedStores() []scopedEntry {
+	var stores []scopedEntry
+	if s.agent != nil {
+		stores = append(stores, scopedEntry{s.agent, ScopeAgent})
+	}
+	if s.project != nil {
+		stores = append(stores, scopedEntry{s.project, ScopeProject})
+	}
+	if s.global != nil {
+		stores = append(stores, scopedEntry{s.global, ScopeGlobal})
 	}
 	return stores
 }
