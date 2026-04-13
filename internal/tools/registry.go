@@ -363,6 +363,7 @@ func DefaultRegistry() *Registry {
 
 	// Memory access (Store injected later)
 	r.Register(&MemoryTool{deferrable: newDeferrable("memory search read list persistent context")})
+	r.Register(&RecallTool{deferrable: newDeferrable("recall memory semantic context relevant search")})
 
 	// Cron/scheduled tasks (Store injected later)
 	r.Register(&CronCreateTool{})

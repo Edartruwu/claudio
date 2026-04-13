@@ -491,6 +491,20 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		}
 	}
 
+	// Wire memory store into MemoryTool and RecallTool
+	if memTool, err := registry.Get("Memory"); err == nil {
+		if mt, ok := memTool.(*tools.MemoryTool); ok {
+			mt.Store = memoryStore
+		}
+	}
+	if recallTool, err := registry.Get("Recall"); err == nil {
+		if rt, ok := recallTool.(*tools.RecallTool); ok {
+			rt.Store = memoryStore
+			rt.Client = apiClient
+			rt.Model = settings.SmallModel
+		}
+	}
+
 	// Inject cron store into cron tools
 	if cc, err := registry.Get("CronCreate"); err == nil {
 		if tool, ok := cc.(*tools.CronCreateTool); ok {
@@ -608,6 +622,11 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		if memTool, err := subRegistry.Get("Memory"); err == nil {
 			if mt, ok := memTool.(*tools.MemoryTool); ok {
 				mt.Store.SetAgentStore(memoryDir)
+			}
+		}
+		if recallTool, err := subRegistry.Get("Recall"); err == nil {
+			if rt, ok := recallTool.(*tools.RecallTool); ok && rt.Store != nil {
+				rt.Store.SetAgentStore(memoryDir)
 			}
 		}
 	}

@@ -104,6 +104,10 @@ type Engine struct {
 	userContextInjected bool
 	systemContext       string // git status appended to system (dynamic)
 
+	// memory index injection (session-start memory index as second user message)
+	memoryIndexMsg      string
+	memoryIndexInjected bool
+
 	// lifecycle hook tracking
 	sessionStartFired bool
 	lastCwd           string
@@ -255,6 +259,13 @@ func (e *Engine) SetUserContext(msg string) {
 	e.userContextInjected = false
 }
 
+// SetMemoryIndex sets the memory index to inject as the second user message at session start.
+// The index is injected once per session, after the user context (CLAUDE.md) message.
+func (e *Engine) SetMemoryIndex(index string) {
+	e.memoryIndexMsg = index
+	e.memoryIndexInjected = false
+}
+
 // SetSystemContext sets dynamic context (e.g. git status) to append to the system prompt.
 func (e *Engine) SetSystemContext(ctx string) {
 	e.systemContext = ctx
@@ -327,6 +338,16 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			Content: ctxContent,
 		})
 		e.userContextInjected = true
+	}
+
+	// Inject memory index as a user turn, once per session.
+	if !e.memoryIndexInjected && e.memoryIndexMsg != "" {
+		idxContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.memoryIndexMsg)})
+		e.messages = append(e.messages, api.Message{
+			Role:    "user",
+			Content: idxContent,
+		})
+		e.memoryIndexInjected = true
 	}
 
 	content, _ := json.Marshal(blocks)
