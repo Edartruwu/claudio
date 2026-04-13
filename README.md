@@ -1114,7 +1114,9 @@ pip install pyright
 
 ### Custom agents
 
-Create markdown files in `~/.claudio/agents/` or `.claudio/agents/`:
+Agents can be defined in two forms — a **flat file** or a **directory**. The directory form is preferred when you need agent-specific plugins or skills.
+
+**Flat file** — `~/.claudio/agents/<name>.md`:
 
 ```markdown
 ---
@@ -1125,6 +1127,24 @@ model: opus
 
 You are an expert Go backend developer...
 ```
+
+**Directory form** — `~/.claudio/agents/<name>/`:
+
+```
+agents/
+  my-agent/
+    AGENT.md          ← same front-matter + body as the flat .md form
+    plugins/          ← executables loaded only for this agent
+      my-plugin       ← binary plugin (e.g. claudio-assistant-os)
+    skills/           ← skills loaded only for this agent
+      my-skill/
+        SKILL.md      ← skill instructions + front-matter
+        references/   ← optional reference docs consumed by the skill
+          <category>/
+            *.md
+```
+
+`AGENT.md` uses the same front-matter schema as the flat file form. Plugins placed in `agents/<name>/plugins/` are injected into the agent's tool list automatically — they are **not** available to other agents. Skills placed in `agents/<name>/skills/<skill-name>/` are prepended to the agent's system prompt when a session starts.
 
 #### Example: built-in agent roster (`~/.claudio/agents/`)
 
@@ -2963,10 +2983,20 @@ claudio --headless
   instincts.json               # Learned patterns
   memory/                      # Global memories
   agents/                      # Custom agent definitions
+    <name>/                    # Directory-form agent (preferred)
+      AGENT.md                 # Agent persona (same front-matter as .md form)
+      plugins/                 # Agent-specific plugin executables
+        <plugin-name>          # Executable (e.g. claudio-assistant-os)
+      skills/                  # Agent-specific skills
+        <skill-name>/          # One dir per skill
+          SKILL.md             # Skill instructions (front-matter: name, description, allowed-tools…)
+          references/          # Optional reference material
+            <category>/        # Categorised reference docs (.md files)
+    <name>.md                  # Flat-file form (still supported)
   skills/                      # User skills
   rules/                       # User rules
   contexts/                    # Context profiles
-  plugins/                     # Executable plugins
+  plugins/                     # Executable plugins (global, all agents)
   plans/                       # Plan mode files
   cache/                       # Model capabilities cache
   cron.json                    # Scheduled task definitions
@@ -2978,7 +3008,7 @@ claudio --headless
   settings.json                # Project settings (overrides global)
   rules/                       # Project rules
   skills/                      # Project skills
-  agents/                      # Project agents
+  agents/                      # Project agents (same directory-form supported)
   memory/                      # Project memories
 CLAUDIO.md                     # Project instructions
 ```
