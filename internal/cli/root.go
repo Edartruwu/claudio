@@ -18,10 +18,12 @@ import (
 	"github.com/Abraxas-365/claudio/internal/app"
 	"github.com/Abraxas-365/claudio/internal/auth/refresh"
 	"github.com/Abraxas-365/claudio/internal/config"
+	"github.com/Abraxas-365/claudio/internal/plugins"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/rules"
 	"github.com/Abraxas-365/claudio/internal/session"
+	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
@@ -280,6 +282,47 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string) {
 	for _, name := range agentDef.DisallowedTools {
 		filtered.Remove(name)
 	}
+
+	// Merge per-agent extra skills (additive — global skills remain available)
+	if agentDef.ExtraSkillsDir != "" {
+		if skillToolRaw, err := filtered.Get("Skill"); err == nil {
+			if st, ok := skillToolRaw.(*tools.SkillTool); ok {
+				// Clone the existing skills registry so we don't mutate the global one
+				mergedReg := skills.NewRegistry()
+				for _, s := range st.SkillsRegistry.All() {
+					mergedReg.Register(s)
+				}
+				// Load extra skills from the agent's skills dir and merge in
+				extraReg := skills.LoadAll("", agentDef.ExtraSkillsDir)
+				for _, s := range extraReg.All() {
+					mergedReg.Register(s)
+				}
+				// Replace the SkillTool with a fresh instance using the merged registry
+				filtered.Remove("Skill")
+				filtered.Register(&tools.SkillTool{SkillsRegistry: mergedReg})
+			}
+		}
+	}
+
+	// Register per-agent extra plugins (additive)
+	if agentDef.ExtraPluginsDir != "" {
+		extraPluginReg := plugins.NewRegistry()
+		extraPluginReg.LoadDir(agentDef.ExtraPluginsDir)
+		// Mirror OutputFilterEnabled from existing proxy tools in the registry
+		outputFilterEnabled := false
+		for _, t := range filtered.All() {
+			if pt, ok := t.(*plugins.PluginProxyTool); ok {
+				outputFilterEnabled = pt.OutputFilterEnabled
+				break
+			}
+		}
+		for _, p := range extraPluginReg.All() {
+			pt := plugins.NewProxyTool(p)
+			pt.OutputFilterEnabled = outputFilterEnabled
+			filtered.Register(pt)
+		}
+	}
+
 	model := agentDef.Model
 	if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
 		model = resolved
