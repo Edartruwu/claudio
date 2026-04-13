@@ -58,6 +58,12 @@ type AgentDefinition struct {
 	// MemoryDir is the agent's own memory directory (for crystallized session-agents).
 	MemoryDir string
 
+	// ExtraSkillsDir is the agent-specific skills directory (merged on top of global skills).
+	ExtraSkillsDir string
+
+	// ExtraPluginsDir is the agent-specific plugins directory (merged on top of global plugins).
+	ExtraPluginsDir string
+
 	// SourceSession is the session ID this agent was crystallized from.
 	SourceSession string
 
@@ -302,8 +308,89 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 			continue
 		}
 
+		// Track agent types loaded via directory-form to avoid double-loading.
+		// Directory-form wins over flat-file when both exist for the same agent name.
+		dirFormLoaded := make(map[string]bool)
+
 		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			if entry.IsDir() {
+				// Directory-form agent: look for the definition markdown inside the dir.
+				agentType := entry.Name()
+				agentDir := filepath.Join(dir, agentType)
+
+				// Priority order: AGENT.md > agent.md > <dirname>.md
+				candidates := []string{
+					filepath.Join(agentDir, "AGENT.md"),
+					filepath.Join(agentDir, "agent.md"),
+					filepath.Join(agentDir, agentType+".md"),
+				}
+
+				var data []byte
+				var found bool
+				for _, candidate := range candidates {
+					d, err := os.ReadFile(candidate)
+					if err == nil {
+						data = d
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+
+				fm, body := utils.ParseFrontmatter(string(data))
+				if body == "" {
+					continue
+				}
+
+				whenToUse := fm.Get("description")
+				if whenToUse == "" {
+					whenToUse = fm.Get("name")
+				}
+
+				def := AgentDefinition{
+					Type:            agentType,
+					WhenToUse:       whenToUse,
+					SystemPrompt:    body,
+					Tools:           fm.GetList("tools"),
+					DisallowedTools: fm.GetList("disallowedTools"),
+					Model:           fm.Get("model"),
+					SourceSession:   fm.Get("sourceSession"),
+					SourceProject:   fm.Get("sourceProject"),
+				}
+
+				if len(def.Tools) == 0 {
+					def.Tools = []string{"*"}
+				}
+
+				// Detect subdirs: memory/, skills/, plugins/
+				memDir := filepath.Join(agentDir, "memory")
+				if info, err := os.Stat(memDir); err == nil && info.IsDir() {
+					def.MemoryDir = memDir
+				}
+				skillsDir := filepath.Join(agentDir, "skills")
+				if info, err := os.Stat(skillsDir); err == nil && info.IsDir() {
+					def.ExtraSkillsDir = skillsDir
+				}
+				pluginsDir := filepath.Join(agentDir, "plugins")
+				if info, err := os.Stat(pluginsDir); err == nil && info.IsDir() {
+					def.ExtraPluginsDir = pluginsDir
+				}
+
+				dirFormLoaded[agentType] = true
+				custom = append(custom, def)
+				continue
+			}
+
+			if !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+
+			agentType := strings.TrimSuffix(entry.Name(), ".md")
+
+			// Skip flat-file if a directory-form agent with the same name was already loaded.
+			if dirFormLoaded[agentType] {
 				continue
 			}
 
@@ -318,31 +405,39 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 				continue
 			}
 
-			agentType := strings.TrimSuffix(entry.Name(), ".md")
 			whenToUse := fm.Get("description")
 			if whenToUse == "" {
 				whenToUse = fm.Get("name")
 			}
 
 			def := AgentDefinition{
-				Type:         agentType,
-				WhenToUse:    whenToUse,
-				SystemPrompt: body,
-				Tools:        fm.GetList("tools"),
+				Type:            agentType,
+				WhenToUse:       whenToUse,
+				SystemPrompt:    body,
+				Tools:           fm.GetList("tools"),
 				DisallowedTools: fm.GetList("disallowedTools"),
-				Model:         fm.Get("model"),
-				SourceSession: fm.Get("sourceSession"),
-				SourceProject: fm.Get("sourceProject"),
+				Model:           fm.Get("model"),
+				SourceSession:   fm.Get("sourceSession"),
+				SourceProject:   fm.Get("sourceProject"),
 			}
 
 			if len(def.Tools) == 0 {
 				def.Tools = []string{"*"}
 			}
 
-			// Check for sibling memory directory: <name>/memory/
-			memDir := filepath.Join(dir, agentType, "memory")
+			// Check for sibling subdirs: <name>/memory/, <name>/skills/, <name>/plugins/
+			siblingDir := filepath.Join(dir, agentType)
+			memDir := filepath.Join(siblingDir, "memory")
 			if info, err := os.Stat(memDir); err == nil && info.IsDir() {
 				def.MemoryDir = memDir
+			}
+			skillsDir := filepath.Join(siblingDir, "skills")
+			if info, err := os.Stat(skillsDir); err == nil && info.IsDir() {
+				def.ExtraSkillsDir = skillsDir
+			}
+			pluginsDir := filepath.Join(siblingDir, "plugins")
+			if info, err := os.Stat(pluginsDir); err == nil && info.IsDir() {
+				def.ExtraPluginsDir = pluginsDir
 			}
 
 			custom = append(custom, def)
