@@ -509,14 +509,24 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 					if m.appCtx == nil || m.appCtx.TaskRuntime == nil {
 						return "", fmt.Errorf("app context not available")
 					}
-					handler := &query.StdoutHandler{Verbose: false}
-					engine := query.NewEngine(m.apiClient, m.registry, handler)
-					engine.SetSystem("You are a memory consolidation agent. You have access to the Memory tool.")
-					var result strings.Builder
+					smallModel := "claude-haiku-4-5-20251001"
+					if m.appCtx != nil && m.appCtx.Config != nil && m.appCtx.Config.SmallModel != "" {
+						smallModel = m.appCtx.Config.SmallModel
+					}
+					var output strings.Builder
+					handler := &query.CollectHandler{Builder: &output}
+					cwd, _ := os.Getwd()
+					engine := query.NewEngineWithConfig(m.apiClient, m.registry, handler, query.EngineConfig{
+						Model: smallModel,
+					})
+					engine.SetSystem("You are a memory consolidation agent for the claudio project at " + cwd + ". " +
+						"You have access to the Memory tool (save/append/replace-fact/delete-fact/delete/read/list/search) " +
+						"and the Recall tool for semantic search. " +
+						"Your job is to review the conversation and keep the memory store accurate, current, and contradiction-free.")
 					if runErr := engine.Run(ctx, prompt); runErr != nil {
 						return "", runErr
 					}
-					return result.String(), nil
+					return output.String(), nil
 				},
 			})
 			if err != nil {

@@ -1366,6 +1366,22 @@ type toolImageSource struct {
 }
 
 // StdoutHandler is a simple event handler that prints to stdout.
+// CollectHandler captures all text deltas into a strings.Builder.
+// Use this when you need the agent's output as a string rather than streaming it.
+type CollectHandler struct {
+	Builder *strings.Builder
+}
+
+func (h *CollectHandler) OnTextDelta(text string)                              { h.Builder.WriteString(text) }
+func (h *CollectHandler) OnThinkingDelta(string)                               {}
+func (h *CollectHandler) OnToolUseStart(tools.ToolUse)                         {}
+func (h *CollectHandler) OnToolUseEnd(tools.ToolUse, *tools.Result)            {}
+func (h *CollectHandler) OnTurnComplete(api.Usage)                             {}
+func (h *CollectHandler) OnError(error)                                        {}
+func (h *CollectHandler) OnRetry([]tools.ToolUse)                              {}
+func (h *CollectHandler) OnToolApprovalNeeded(tools.ToolUse) bool              { return true }
+func (h *CollectHandler) OnCostConfirmNeeded(_, _ float64) bool                { return true }
+
 type StdoutHandler struct {
 	Verbose bool
 }
