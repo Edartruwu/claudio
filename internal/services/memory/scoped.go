@@ -1,6 +1,9 @@
 package memory
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	ScopeProject = "project"
@@ -95,6 +98,78 @@ func (s *ScopedStore) LoadIndex() string {
 		return ""
 	}
 	return target.LoadIndex()
+}
+
+// BuildIndex returns a rich index across all scopes with scope headers.
+// Format per entry: - name [tags]: description — "fact1" | "fact2"
+func (s *ScopedStore) BuildIndex() string {
+	var sb strings.Builder
+
+	type scopeInfo struct {
+		name  string
+		store *Store
+	}
+
+	scopes := []scopeInfo{
+		{"Global", s.global},
+		{"Project", s.project},
+		{"Agent", s.agent},
+	}
+
+	for _, scope := range scopes {
+		if scope.store == nil {
+			continue
+		}
+		lines := scope.store.BuildIndexLines()
+		if lines == "" {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("### %s Memories\n", scope.name))
+		sb.WriteString(lines)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// Load returns a single entry by name from any scope.
+func (s *ScopedStore) Load(name string) (*Entry, error) {
+	for _, store := range s.orderedStores() {
+		if entry, err := store.Load(name); err == nil {
+			return entry, nil
+		}
+	}
+	return nil, fmt.Errorf("memory %q not found", name)
+}
+
+// AppendFact appends a fact to an existing entry.
+func (s *ScopedStore) AppendFact(name, fact string) error {
+	for _, store := range s.orderedStores() {
+		if _, err := store.Load(name); err == nil {
+			return store.AppendFact(name, fact)
+		}
+	}
+	return fmt.Errorf("memory %q not found", name)
+}
+
+// RemoveFact removes a fact by index from an existing entry.
+func (s *ScopedStore) RemoveFact(name string, factIndex int) error {
+	for _, store := range s.orderedStores() {
+		if _, err := store.Load(name); err == nil {
+			return store.RemoveFact(name, factIndex)
+		}
+	}
+	return fmt.Errorf("memory %q not found", name)
+}
+
+// ReplaceFact replaces a fact by index in an existing entry.
+func (s *ScopedStore) ReplaceFact(name string, factIndex int, newFact string) error {
+	for _, store := range s.orderedStores() {
+		if _, err := store.Load(name); err == nil {
+			return store.ReplaceFact(name, factIndex, newFact)
+		}
+	}
+	return fmt.Errorf("memory %q not found", name)
 }
 
 // ProjectStore returns the project-scoped store (for direct access if needed).

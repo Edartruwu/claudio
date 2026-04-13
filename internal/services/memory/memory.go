@@ -25,9 +25,10 @@ const (
 type Entry struct {
 	Name        string
 	Description string
-	Type        string // user, feedback, project, reference
-	Scope       string // project, global, agent (controls where Save writes)
-	Content     string
+	Type        string   // user, feedback, project, reference
+	Scope       string   // project, global, agent (controls where Save writes)
+	Facts       []string // PRIMARY: discrete one-liner facts
+	Content     string   // COMPAT: populated from Facts on render, or from body for old entries
 	FilePath    string
 	Tags        []string
 	UpdatedAt   time.Time
@@ -48,16 +49,30 @@ func NewStore(dir string) *Store {
 func (s *Store) Dir() string { return s.dir }
 
 // Save writes a memory entry to disk and updates the index.
+// If Facts is empty but Content is set, Content is split into Facts (one fact per non-empty line).
 func (s *Store) Save(entry *Entry) error {
 	if entry.Name == "" {
 		return fmt.Errorf("memory name required")
 	}
 
+	// If Facts is empty but Content is set, split Content into Facts
+	if len(entry.Facts) == 0 && entry.Content != "" {
+		for _, line := range strings.Split(entry.Content, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				entry.Facts = append(entry.Facts, line)
+			}
+		}
+	}
+
+	// Populate Content from Facts for compat
+	entry.Content = strings.Join(entry.Facts, "\n")
+
 	// Sanitize filename
 	filename := sanitizeName(entry.Name) + ".md"
 	path := filepath.Join(s.dir, filename)
 
-	// Build content with frontmatter
+	// Build content with frontmatter — facts stored as YAML list, no body
 	var content strings.Builder
 	content.WriteString("---\n")
 	content.WriteString(fmt.Sprintf("name: %s\n", entry.Name))
@@ -70,8 +85,13 @@ func (s *Store) Save(entry *Entry) error {
 	}
 	entry.UpdatedAt = time.Now()
 	content.WriteString(fmt.Sprintf("updated_at: %s\n", entry.UpdatedAt.Format(time.RFC3339)))
-	content.WriteString("---\n\n")
-	content.WriteString(entry.Content)
+	if len(entry.Facts) > 0 {
+		content.WriteString("facts:\n")
+		for _, fact := range entry.Facts {
+			content.WriteString(fmt.Sprintf("  - %q\n", fact))
+		}
+	}
+	content.WriteString("---\n")
 
 	if err := os.WriteFile(path, []byte(content.String()), 0644); err != nil {
 		return fmt.Errorf("writing memory: %w", err)
@@ -81,6 +101,63 @@ func (s *Store) Save(entry *Entry) error {
 
 	// Update index
 	return s.updateIndex(entry)
+}
+
+// Load returns a single entry by name, or an error if not found.
+func (s *Store) Load(name string) (*Entry, error) {
+	entries := s.LoadAll()
+	lowerName := strings.ToLower(name)
+
+	// Exact match first
+	for _, e := range entries {
+		if e.Name == name {
+			return e, nil
+		}
+	}
+	// Case-insensitive match
+	for _, e := range entries {
+		if strings.ToLower(e.Name) == lowerName {
+			return e, nil
+		}
+	}
+
+	return nil, fmt.Errorf("memory %q not found", name)
+}
+
+// AppendFact loads an entry, appends a fact, and saves.
+func (s *Store) AppendFact(name, fact string) error {
+	entry, err := s.Load(name)
+	if err != nil {
+		return err
+	}
+	entry.Facts = append(entry.Facts, fact)
+	return s.Save(entry)
+}
+
+// RemoveFact loads an entry, removes the fact at the given index, and saves.
+func (s *Store) RemoveFact(name string, factIndex int) error {
+	entry, err := s.Load(name)
+	if err != nil {
+		return err
+	}
+	if factIndex < 0 || factIndex >= len(entry.Facts) {
+		return fmt.Errorf("fact index %d out of range (entry has %d facts)", factIndex, len(entry.Facts))
+	}
+	entry.Facts = append(entry.Facts[:factIndex], entry.Facts[factIndex+1:]...)
+	return s.Save(entry)
+}
+
+// ReplaceFact loads an entry, replaces the fact at the given index, and saves.
+func (s *Store) ReplaceFact(name string, factIndex int, newFact string) error {
+	entry, err := s.Load(name)
+	if err != nil {
+		return err
+	}
+	if factIndex < 0 || factIndex >= len(entry.Facts) {
+		return fmt.Errorf("fact index %d out of range (entry has %d facts)", factIndex, len(entry.Facts))
+	}
+	entry.Facts[factIndex] = newFact
+	return s.Save(entry)
 }
 
 // Remove deletes a memory entry.
@@ -121,14 +198,15 @@ func (s *Store) LoadAll() []*Entry {
 }
 
 // FindRelevant returns memories relevant to the given context string.
-// Matches against name, description, content, and tags.
+// Matches against name, description, facts, and tags.
 func (s *Store) FindRelevant(context string) []*Entry {
 	all := s.LoadAll()
 	lower := strings.ToLower(context)
 
 	var relevant []*Entry
 	for _, entry := range all {
-		searchable := strings.ToLower(entry.Name + " " + entry.Description + " " + entry.Content + " " + strings.Join(entry.Tags, " "))
+		factsStr := strings.Join(entry.Facts, " ")
+		searchable := strings.ToLower(entry.Name + " " + entry.Description + " " + factsStr + " " + entry.Content + " " + strings.Join(entry.Tags, " "))
 		if strings.Contains(searchable, lower) || containsAnyWord(lower, searchable) {
 			relevant = append(relevant, entry)
 		}
@@ -143,6 +221,54 @@ func (s *Store) LoadIndex() string {
 		return ""
 	}
 	return string(data)
+}
+
+// BuildIndexLines returns a compact index with one line per entry.
+// Format: - name [tags]: description — "fact1" | "fact2"
+func (s *Store) BuildIndexLines() string {
+	entries := s.LoadAll()
+	if len(entries) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, e := range entries {
+		sb.WriteString("- ")
+		sb.WriteString(e.Name)
+
+		if len(e.Tags) > 0 {
+			sb.WriteString(" [")
+			sb.WriteString(strings.Join(e.Tags, ","))
+			sb.WriteString("]")
+		}
+
+		sb.WriteString(": ")
+		sb.WriteString(e.Description)
+
+		// Show first 2 facts, each truncated at 60 chars
+		if len(e.Facts) > 0 {
+			sb.WriteString(" — ")
+			limit := len(e.Facts)
+			if limit > 2 {
+				limit = 2
+			}
+			for i := 0; i < limit; i++ {
+				if i > 0 {
+					sb.WriteString(" | ")
+				}
+				fact := e.Facts[i]
+				if len(fact) > 60 {
+					fact = fact[:57] + "..."
+				}
+				sb.WriteString(`"`)
+				sb.WriteString(fact)
+				sb.WriteString(`"`)
+			}
+		}
+
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 func (s *Store) updateIndex(entry *Entry) error {
@@ -202,6 +328,7 @@ func (s *Store) rebuildIndex() error {
 }
 
 // ParseEntry parses a memory markdown file (with optional YAML frontmatter) into an Entry.
+// Supports both new facts-based format and legacy body-content format.
 func ParseEntry(content, path string) *Entry {
 	lines := strings.Split(content, "\n")
 	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
@@ -220,11 +347,29 @@ func ParseEntry(content, path string) *Entry {
 	}
 
 	entry := &Entry{FilePath: path}
+
+	// Parse frontmatter including facts
+	inFacts := false
 	for _, line := range lines[1:endIdx] {
-		line = strings.TrimSpace(line)
-		if idx := strings.Index(line, ":"); idx > 0 {
-			key := strings.TrimSpace(line[:idx])
-			val := strings.TrimSpace(line[idx+1:])
+		trimmed := strings.TrimSpace(line)
+
+		// Handle facts list items (indented "- ..." lines)
+		if inFacts {
+			if strings.HasPrefix(trimmed, "- ") {
+				fact := strings.TrimPrefix(trimmed, "- ")
+				fact = strings.Trim(fact, `"'`)
+				if fact != "" {
+					entry.Facts = append(entry.Facts, fact)
+				}
+				continue
+			}
+			// Non-list line ends the facts block
+			inFacts = false
+		}
+
+		if idx := strings.Index(trimmed, ":"); idx > 0 {
+			key := strings.TrimSpace(trimmed[:idx])
+			val := strings.TrimSpace(trimmed[idx+1:])
 			val = strings.Trim(val, `"'`)
 			switch key {
 			case "name":
@@ -246,11 +391,22 @@ func ParseEntry(content, path string) *Entry {
 				if t, err := time.Parse(time.RFC3339, val); err == nil {
 					entry.UpdatedAt = t
 				}
+			case "facts":
+				// Start parsing facts list on subsequent lines
+				inFacts = true
 			}
 		}
 	}
 
-	entry.Content = strings.TrimSpace(strings.Join(lines[endIdx+1:], "\n"))
+	// Backwards compat: if no facts parsed from frontmatter, use body content
+	bodyContent := strings.TrimSpace(strings.Join(lines[endIdx+1:], "\n"))
+	if len(entry.Facts) == 0 && bodyContent != "" {
+		entry.Facts = []string{bodyContent}
+	}
+
+	// Populate Content from Facts for compat
+	entry.Content = strings.Join(entry.Facts, "\n")
+
 	if entry.Name == "" {
 		entry.Name = strings.TrimSuffix(filepath.Base(path), ".md")
 	}
@@ -296,5 +452,3 @@ func containsAnyWord(haystack, needleStr string) bool {
 	}
 	return false
 }
-
-

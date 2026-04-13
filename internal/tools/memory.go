@@ -9,45 +9,65 @@ import (
 	"github.com/Abraxas-365/claudio/internal/services/memory"
 )
 
-// MemoryTool lets the agent search, list, and read memories.
+// MemoryTool lets the agent persist and manage facts across sessions.
 type MemoryTool struct {
 	deferrable
 	Store *memory.ScopedStore
 }
 
 type memoryInput struct {
-	Action      string `json:"action"` // "list", "search", "read", "save", "update", "delete"
-	Query       string `json:"query,omitempty"`
-	Name        string `json:"name,omitempty"`
-	Content     string `json:"content,omitempty"`
-	Description string `json:"description,omitempty"`
-	Type        string `json:"type,omitempty"`
-	Scope       string `json:"scope,omitempty"`
+	Action      string   `json:"action"`
+	Name        string   `json:"name,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	Scope       string   `json:"scope,omitempty"`
+	Facts       []string `json:"facts,omitempty"`
+	Fact        string   `json:"fact,omitempty"`
+	FactIndex   int      `json:"fact_index,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Query       string   `json:"query,omitempty"`
 }
 
 func (t *MemoryTool) Name() string { return "Memory" }
 
 func (t *MemoryTool) Description() string {
-	return `Access and manage persistent memories from previous sessions.
+	return `Persist and manage facts that survive across sessions. Use Memory to remember decisions, project conventions, user preferences, architecture patterns, and anything worth recalling later.
 
-Memories contain user preferences, project decisions, feedback, and references that were saved across sessions.
+Facts are discrete, one-sentence, specific statements — not prose. Each memory entry has a name, description, tags, and a list of facts.
 
 ## Actions
 
-- **list**: List all available memories with their names, types, and descriptions.
-- **search**: Search memories by keyword (matches name, description, and content). Use the "query" parameter.
-- **read**: Read the full content of a specific memory by name. Use the "name" parameter.
-- **save**: Save a new memory. Required: name, content. Optional: description, type, scope. Returns error if name already exists.
-- **update**: Update an existing memory. Required: name, content. Optional: description, type, scope. Overwrites existing.
-- **delete**: Delete a memory by name. Required: name.
+- **save** — Create a new memory entry with initial facts. Returns error if name already exists (use append or replace-fact instead).
+  Required: name, description, facts (array of strings), tags (array of strings). Optional: type, scope.
+
+- **append** — Add one fact to an existing memory. Fastest way to update — no full rewrite needed.
+  Required: name, fact (single string).
+
+- **replace-fact** — Replace a specific fact by its index. Use after Memory(read) to see fact indices.
+  Required: name, fact_index (int, 0-based), fact (string — the replacement).
+
+- **delete-fact** — Remove a specific fact by its index. Use after Memory(read) to see fact indices.
+  Required: name, fact_index (int, 0-based).
+
+- **delete** — Remove an entire memory entry permanently.
+  Required: name.
+
+- **read** — Load a full entry with all facts numbered (0-based). Use before replace-fact or delete-fact to see indices.
+  Required: name.
+
+- **list** — Show all memory entries with name, tags, description, and first fact. No parameters needed.
+
+- **search** — Keyword search across name, description, tags, and facts. Returns matching entries.
+  Required: query.
 
 ## When to Use
 
-- When you need context about the user, project, or past decisions
-- When the user references something from a previous conversation
-- When you want to check if relevant guidance exists before making a decision
-- Before starting work on a project you haven't seen recently
-- To save important insights or decisions for future sessions`
+- Call Memory(list) or Memory(search) at the start of a task to recall relevant context.
+- Call Memory(save) when you learn something worth remembering: a decision, a convention, a gotcha.
+- Call Memory(append) to add a new fact to an existing entry (e.g., a new convention for a known topic).
+- Call Memory(read) before replace-fact or delete-fact to see current facts with their indices.
+- Facts should be discrete, one-sentence, specific. Good: "JWT tokens expire in 24h". Bad: "The JWT configuration is complex and involves many settings...".
+- Use the Recall tool for semantic/fuzzy search across memories.`
 }
 
 func (t *MemoryTool) InputSchema() json.RawMessage {
@@ -56,34 +76,48 @@ func (t *MemoryTool) InputSchema() json.RawMessage {
 		"properties": {
 			"action": {
 				"type": "string",
-				"enum": ["list", "search", "read", "save", "update", "delete"],
-				"description": "The action to perform: list, search, read, save, update, or delete a memory"
-			},
-			"query": {
-				"type": "string",
-				"description": "Search query (for action=search). Matches against name, description, and content."
+				"enum": ["save", "append", "replace-fact", "delete-fact", "delete", "read", "list", "search"],
+				"description": "The action to perform."
 			},
 			"name": {
 				"type": "string",
-				"description": "Memory name (for actions: read, save, update, delete)"
-			},
-			"content": {
-				"type": "string",
-				"description": "Memory content (required for save/update)"
+				"description": "Memory entry name. Required for: save, append, replace-fact, delete-fact, delete, read."
 			},
 			"description": {
 				"type": "string",
-				"description": "One-line description (optional, for save/update)"
+				"description": "One-line description of the memory entry. Required for save."
+			},
+			"facts": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Array of discrete one-sentence facts. Required for save."
+			},
+			"fact": {
+				"type": "string",
+				"description": "A single fact string. Required for append and replace-fact."
+			},
+			"fact_index": {
+				"type": "integer",
+				"description": "0-based index of the fact to replace or delete. Required for replace-fact and delete-fact."
+			},
+			"tags": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Tags for categorization. Required for save."
 			},
 			"type": {
 				"type": "string",
 				"enum": ["user", "feedback", "project", "reference"],
-				"description": "Memory type (optional, default: project). One of: user, feedback, project, reference"
+				"description": "Memory type (optional, default: project)."
 			},
 			"scope": {
 				"type": "string",
 				"enum": ["project", "global", "agent"],
-				"description": "Memory scope (optional, default: project). One of: project, global, agent"
+				"description": "Memory scope (optional, default: project)."
+			},
+			"query": {
+				"type": "string",
+				"description": "Search query string. Required for search."
 			}
 		},
 		"required": ["action"]
@@ -104,42 +138,162 @@ func (t *MemoryTool) Execute(ctx context.Context, input json.RawMessage) (*Resul
 	}
 
 	switch in.Action {
+	case "save":
+		return t.saveMemory(in)
+	case "append":
+		return t.appendFact(in)
+	case "replace-fact":
+		return t.replaceFact(in)
+	case "delete-fact":
+		return t.deleteFact(in)
+	case "delete":
+		return t.deleteMemory(in.Name)
+	case "read":
+		return t.readMemory(in.Name)
 	case "list":
 		return t.listMemories()
 	case "search":
-		if in.Query == "" {
-			return &Result{Content: "Query parameter required for search action", IsError: true}, nil
-		}
 		return t.searchMemories(in.Query)
-	case "read":
-		if in.Name == "" {
-			return &Result{Content: "Name parameter required for read action", IsError: true}, nil
-		}
-		return t.readMemory(in.Name)
-	case "save":
-		if in.Name == "" {
-			return &Result{Content: "Name parameter required for save action", IsError: true}, nil
-		}
-		if in.Content == "" {
-			return &Result{Content: "Content parameter required for save action", IsError: true}, nil
-		}
-		return t.saveMemory(in)
-	case "update":
-		if in.Name == "" {
-			return &Result{Content: "Name parameter required for update action", IsError: true}, nil
-		}
-		if in.Content == "" {
-			return &Result{Content: "Content parameter required for update action", IsError: true}, nil
-		}
-		return t.updateMemory(in)
-	case "delete":
-		if in.Name == "" {
-			return &Result{Content: "Name parameter required for delete action", IsError: true}, nil
-		}
-		return t.deleteMemory(in.Name)
 	default:
-		return &Result{Content: fmt.Sprintf("Unknown action: %s. Use: list, search, read, save, update, delete", in.Action), IsError: true}, nil
+		return &Result{
+			Content: fmt.Sprintf("Unknown action: %s. Use: save, append, replace-fact, delete-fact, delete, read, list, search", in.Action),
+			IsError: true,
+		}, nil
 	}
+}
+
+func (t *MemoryTool) saveMemory(in memoryInput) (*Result, error) {
+	if in.Name == "" {
+		return &Result{Content: "name is required for save", IsError: true}, nil
+	}
+	if len(in.Facts) == 0 {
+		return &Result{Content: "facts[] is required for save (array of one-sentence fact strings)", IsError: true}, nil
+	}
+
+	// Check if already exists
+	if _, err := t.Store.Load(in.Name); err == nil {
+		return &Result{
+			Content: fmt.Sprintf("Memory '%s' already exists. Use action='append' to add facts or action='replace-fact' to update a fact.", in.Name),
+			IsError: true,
+		}, nil
+	}
+
+	memType := in.Type
+	if memType == "" {
+		memType = memory.TypeProject
+	}
+	scope := in.Scope
+	if scope == "" {
+		scope = memory.ScopeProject
+	}
+
+	entry := &memory.Entry{
+		Name:        in.Name,
+		Description: in.Description,
+		Type:        memType,
+		Scope:       scope,
+		Facts:       in.Facts,
+		Tags:        in.Tags,
+	}
+
+	if err := t.Store.Save(entry); err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to save: %v", err), IsError: true}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Memory '%s' saved with %d facts.", in.Name, len(in.Facts))}, nil
+}
+
+func (t *MemoryTool) appendFact(in memoryInput) (*Result, error) {
+	if in.Name == "" {
+		return &Result{Content: "name is required for append", IsError: true}, nil
+	}
+	if in.Fact == "" {
+		return &Result{Content: "fact is required for append (single fact string)", IsError: true}, nil
+	}
+
+	if err := t.Store.AppendFact(in.Name, in.Fact); err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to append fact: %v", err), IsError: true}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Fact appended to '%s'.", in.Name)}, nil
+}
+
+func (t *MemoryTool) replaceFact(in memoryInput) (*Result, error) {
+	if in.Name == "" {
+		return &Result{Content: "name is required for replace-fact", IsError: true}, nil
+	}
+	if in.Fact == "" {
+		return &Result{Content: "fact is required for replace-fact (the replacement text)", IsError: true}, nil
+	}
+
+	if err := t.Store.ReplaceFact(in.Name, in.FactIndex, in.Fact); err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to replace fact: %v", err), IsError: true}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Fact %d replaced in '%s'.", in.FactIndex, in.Name)}, nil
+}
+
+func (t *MemoryTool) deleteFact(in memoryInput) (*Result, error) {
+	if in.Name == "" {
+		return &Result{Content: "name is required for delete-fact", IsError: true}, nil
+	}
+
+	if err := t.Store.RemoveFact(in.Name, in.FactIndex); err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to delete fact: %v", err), IsError: true}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Fact %d deleted from '%s'.", in.FactIndex, in.Name)}, nil
+}
+
+func (t *MemoryTool) deleteMemory(name string) (*Result, error) {
+	if name == "" {
+		return &Result{Content: "name is required for delete", IsError: true}, nil
+	}
+
+	if err := t.Store.Remove(name); err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to delete memory: %v", err), IsError: true}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Memory '%s' deleted.", name)}, nil
+}
+
+func (t *MemoryTool) readMemory(name string) (*Result, error) {
+	if name == "" {
+		return &Result{Content: "name is required for read", IsError: true}, nil
+	}
+
+	entry, err := t.Store.Load(name)
+	if err != nil {
+		return &Result{
+			Content: fmt.Sprintf("Memory %q not found. Use action=list to see available memories.", name),
+			IsError: true,
+		}, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s\n\n", entry.Name))
+	if entry.Description != "" {
+		sb.WriteString(fmt.Sprintf("**Description:** %s\n", entry.Description))
+	}
+	sb.WriteString(fmt.Sprintf("**Type:** %s\n", entry.Type))
+	if entry.Scope != "" {
+		sb.WriteString(fmt.Sprintf("**Scope:** %s\n", entry.Scope))
+	}
+	if len(entry.Tags) > 0 {
+		sb.WriteString(fmt.Sprintf("**Tags:** %s\n", strings.Join(entry.Tags, ", ")))
+	}
+	sb.WriteString(fmt.Sprintf("**Updated:** %s\n", entry.UpdatedAt.Format("2006-01-02 15:04")))
+
+	sb.WriteString("\n## Facts\n\n")
+	if len(entry.Facts) == 0 {
+		sb.WriteString("(no facts)\n")
+	} else {
+		for i, fact := range entry.Facts {
+			sb.WriteString(fmt.Sprintf("%d. %s\n", i, fact))
+		}
+	}
+
+	return &Result{Content: sb.String()}, nil
 }
 
 func (t *MemoryTool) listMemories() (*Result, error) {
@@ -152,20 +306,38 @@ func (t *MemoryTool) listMemories() (*Result, error) {
 	sb.WriteString(fmt.Sprintf("Found %d memories:\n\n", len(entries)))
 
 	for _, e := range entries {
-		scope := ""
-		if e.Scope != "" {
-			scope = fmt.Sprintf(" [%s]", e.Scope)
-		}
-		sb.WriteString(fmt.Sprintf("- **%s** (%s)%s — %s\n", e.Name, e.Type, scope, e.Description))
+		sb.WriteString("- **")
+		sb.WriteString(e.Name)
+		sb.WriteString("**")
+
 		if len(e.Tags) > 0 {
-			sb.WriteString(fmt.Sprintf("  tags: %s\n", strings.Join(e.Tags, ", ")))
+			sb.WriteString(" [")
+			sb.WriteString(strings.Join(e.Tags, ", "))
+			sb.WriteString("]")
 		}
+
+		sb.WriteString(" — ")
+		sb.WriteString(e.Description)
+
+		if len(e.Facts) > 0 {
+			first := e.Facts[0]
+			if len(first) > 80 {
+				first = first[:77] + "..."
+			}
+			sb.WriteString(fmt.Sprintf(" · \"%s\"", first))
+		}
+
+		sb.WriteString("\n")
 	}
 
 	return &Result{Content: sb.String()}, nil
 }
 
 func (t *MemoryTool) searchMemories(query string) (*Result, error) {
+	if query == "" {
+		return &Result{Content: "query is required for search", IsError: true}, nil
+	}
+
 	matches := t.Store.FindRelevant(query)
 	if len(matches) == 0 {
 		return &Result{Content: fmt.Sprintf("No memories matching %q found.", query)}, nil
@@ -175,160 +347,20 @@ func (t *MemoryTool) searchMemories(query string) (*Result, error) {
 	sb.WriteString(fmt.Sprintf("Found %d memories matching %q:\n\n", len(matches), query))
 
 	for _, e := range matches {
-		content := e.Content
-		if len(content) > 200 {
-			content = content[:200] + "..."
+		sb.WriteString(fmt.Sprintf("## %s\n", e.Name))
+		if e.Description != "" {
+			sb.WriteString(e.Description)
+			sb.WriteString("\n")
 		}
-		sb.WriteString(fmt.Sprintf("## %s (%s)\n%s\n\n", e.Name, e.Type, e.Description))
 		if len(e.Tags) > 0 {
-			sb.WriteString(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(e.Tags, ", ")))
+			sb.WriteString(fmt.Sprintf("**Tags:** %s\n", strings.Join(e.Tags, ", ")))
 		}
-		sb.WriteString(fmt.Sprintf("%s\n\n", content))
+		sb.WriteString("\n**Facts:**\n")
+		for i, fact := range e.Facts {
+			sb.WriteString(fmt.Sprintf("%d. %s\n", i, fact))
+		}
+		sb.WriteString("\n")
 	}
 
 	return &Result{Content: sb.String()}, nil
-}
-
-func (t *MemoryTool) readMemory(name string) (*Result, error) {
-	entries := t.Store.LoadAll()
-
-	// Try exact match first, then case-insensitive
-	for _, e := range entries {
-		if e.Name == name {
-			return &Result{Content: formatMemoryFull(e)}, nil
-		}
-	}
-	lowerName := strings.ToLower(name)
-	for _, e := range entries {
-		if strings.ToLower(e.Name) == lowerName {
-			return &Result{Content: formatMemoryFull(e)}, nil
-		}
-	}
-	// Partial match
-	for _, e := range entries {
-		if strings.Contains(strings.ToLower(e.Name), lowerName) {
-			return &Result{Content: formatMemoryFull(e)}, nil
-		}
-	}
-
-	return &Result{Content: fmt.Sprintf("Memory %q not found. Use action=list to see available memories.", name), IsError: true}, nil
-}
-
-func (t *MemoryTool) saveMemory(in memoryInput) (*Result, error) {
-	// Check if memory with this name already exists
-	entries := t.Store.LoadAll()
-	for _, e := range entries {
-		if e.Name == in.Name {
-			return &Result{
-				Content: fmt.Sprintf("Memory '%s' already exists. Use action='update' to overwrite it.", in.Name),
-				IsError: true,
-			}, nil
-		}
-	}
-
-	// Validate and set defaults for type and scope
-	memType := in.Type
-	if memType == "" {
-		memType = memory.TypeProject
-	} else if memType != memory.TypeUser && memType != memory.TypeFeedback && memType != memory.TypeProject && memType != memory.TypeReference {
-		return &Result{
-			Content: fmt.Sprintf("Invalid type '%s'. Must be one of: user, feedback, project, reference", in.Type),
-			IsError: true,
-		}, nil
-	}
-
-	scope := in.Scope
-	if scope == "" {
-		scope = memory.ScopeProject
-	} else if scope != memory.ScopeProject && scope != memory.ScopeGlobal && scope != memory.ScopeAgent {
-		return &Result{
-			Content: fmt.Sprintf("Invalid scope '%s'. Must be one of: project, global, agent", in.Scope),
-			IsError: true,
-		}, nil
-	}
-
-	// Create and save entry
-	entry := &memory.Entry{
-		Name:        in.Name,
-		Content:     in.Content,
-		Description: in.Description,
-		Type:        memType,
-		Scope:       scope,
-	}
-
-	if err := t.Store.Save(entry); err != nil {
-		return &Result{
-			Content: fmt.Sprintf("Failed to save memory: %v", err),
-			IsError: true,
-		}, nil
-	}
-
-	return &Result{Content: fmt.Sprintf("Memory '%s' saved successfully.", in.Name)}, nil
-}
-
-func (t *MemoryTool) updateMemory(in memoryInput) (*Result, error) {
-	// Validate and set defaults for type and scope
-	memType := in.Type
-	if memType == "" {
-		memType = memory.TypeProject
-	} else if memType != memory.TypeUser && memType != memory.TypeFeedback && memType != memory.TypeProject && memType != memory.TypeReference {
-		return &Result{
-			Content: fmt.Sprintf("Invalid type '%s'. Must be one of: user, feedback, project, reference", in.Type),
-			IsError: true,
-		}, nil
-	}
-
-	scope := in.Scope
-	if scope == "" {
-		scope = memory.ScopeProject
-	} else if scope != memory.ScopeProject && scope != memory.ScopeGlobal && scope != memory.ScopeAgent {
-		return &Result{
-			Content: fmt.Sprintf("Invalid scope '%s'. Must be one of: project, global, agent", in.Scope),
-			IsError: true,
-		}, nil
-	}
-
-	// Create and save entry (overwrites if exists)
-	entry := &memory.Entry{
-		Name:        in.Name,
-		Content:     in.Content,
-		Description: in.Description,
-		Type:        memType,
-		Scope:       scope,
-	}
-
-	if err := t.Store.Save(entry); err != nil {
-		return &Result{
-			Content: fmt.Sprintf("Failed to update memory: %v", err),
-			IsError: true,
-		}, nil
-	}
-
-	return &Result{Content: fmt.Sprintf("Memory '%s' updated successfully.", in.Name)}, nil
-}
-
-func (t *MemoryTool) deleteMemory(name string) (*Result, error) {
-	if err := t.Store.Remove(name); err != nil {
-		return &Result{
-			Content: fmt.Sprintf("Failed to delete memory: %v", err),
-			IsError: true,
-		}, nil
-	}
-
-	return &Result{Content: fmt.Sprintf("Memory '%s' deleted.", name)}, nil
-}
-
-func formatMemoryFull(e *memory.Entry) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %s\n\n", e.Name))
-	sb.WriteString(fmt.Sprintf("- **Type:** %s\n", e.Type))
-	sb.WriteString(fmt.Sprintf("- **Description:** %s\n", e.Description))
-	if e.Scope != "" {
-		sb.WriteString(fmt.Sprintf("- **Scope:** %s\n", e.Scope))
-	}
-	if len(e.Tags) > 0 {
-		sb.WriteString(fmt.Sprintf("- **Tags:** %s\n", strings.Join(e.Tags, ", ")))
-	}
-	sb.WriteString(fmt.Sprintf("\n## Content\n\n%s\n", e.Content))
-	return sb.String()
 }
