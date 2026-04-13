@@ -29,6 +29,7 @@ type CommandDeps struct {
 	NewSession    func() error
 	// Memory
 	ExtractMemories func() (int, error) // manually trigger extraction, returns count of memories saved
+	RunDream        func(hint string) (string, error) // consolidate session memories, returns result
 	// Skills for dynamic registration
 	ListSkills    func() []SkillInfo
 	// Plugins

@@ -23,7 +23,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/rules"
 	"github.com/Abraxas-365/claudio/internal/session"
 	"github.com/Abraxas-365/claudio/internal/snippets"
-	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui"
@@ -649,9 +648,6 @@ func runInteractive() error {
 		return fmt.Errorf("TUI error: %w", err)
 	}
 
-	// Trigger dream task if enough activity has accumulated
-	triggerDreamIfNeeded(sess)
-
 	// Print cost summary to stderr on exit
 	printCostSummary()
 
@@ -661,69 +657,6 @@ func runInteractive() error {
 // isTerminal checks if stdout is connected to a terminal.
 func isTerminal() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
-}
-
-// triggerDreamIfNeeded spawns a background dream task if enough sessions have
-// accumulated since the last memory consolidation.
-func triggerDreamIfNeeded(sess *session.Session) {
-	if appInstance == nil || appInstance.TaskRuntime == nil {
-		return
-	}
-
-	paths := config.GetPaths()
-	dreamStatePath := paths.Home + "/dream-state.json"
-
-	state := tasks.LoadDreamState(dreamStatePath)
-	state.RecordSession()
-
-	if !state.ShouldDream() {
-		state.Save(dreamStatePath)
-		return
-	}
-
-	// Get session summary for the dream prompt
-	summary := ""
-	if sess != nil && sess.Current() != nil {
-		summary = sess.Current().Summary
-	}
-	if summary == "" {
-		summary, _, _ = sess.LastSessionSummary()
-	}
-	if summary == "" {
-		state.Save(dreamStatePath)
-		return
-	}
-
-	cwd, _ := os.Getwd()
-	projectRoot := config.FindGitRoot(cwd)
-	memDir := config.ProjectMemoryDir(projectRoot)
-
-	_, err := tasks.SpawnDreamTask(appInstance.TaskRuntime, tasks.DreamTaskInput{
-		SessionSummary: summary,
-		ProjectDir:     cwd,
-		MemoryDir:      memDir,
-		RunDream: func(ctx context.Context, prompt string) (string, error) {
-			if appInstance.API == nil || appInstance.Tools == nil {
-				return "", fmt.Errorf("API client not available for dream task")
-			}
-			handler := &query.StdoutHandler{Verbose: false}
-			engine := query.NewEngine(appInstance.API, appInstance.Tools, handler)
-			engine.SetSystem("You are a memory consolidation agent.")
-			var result strings.Builder
-			if runErr := engine.Run(ctx, prompt); runErr != nil {
-				return "", runErr
-			}
-			return result.String(), nil
-		},
-	})
-	if err != nil {
-		if flagVerbose {
-			fmt.Fprintf(os.Stderr, "Warning: failed to spawn dream task: %v\n", err)
-		}
-	} else {
-		state.RecordDream()
-	}
-	state.Save(dreamStatePath)
 }
 
 // printCostSummary prints session analytics to stderr on exit.
