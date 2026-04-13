@@ -341,7 +341,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 	}
 
 	// Inject memory index as a user turn, once per session.
-	if !e.memoryIndexInjected && e.memoryIndexMsg != "" {
+	// Only inject for fresh sessions: either no messages at all, or the only message
+	// is the userContext that was just injected this same call. Resumed sessions
+	// have len > 1 and userContextInjected == false, so neither condition is true.
+	if !e.memoryIndexInjected && e.memoryIndexMsg != "" && (len(e.messages) == 0 || e.userContextInjected) {
 		idxContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.memoryIndexMsg)})
 		e.messages = append(e.messages, api.Message{
 			Role:    "user",
