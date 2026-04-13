@@ -1153,7 +1153,18 @@ Claudio ships with a ready-to-use set of agents in `~/.claudio/agents/`. There a
 > **Product manager / team lead** — loaded with `/agent` to become the orchestrator for the session.
 > **Workers** — loaded by the PM via `SpawnTeammate` when a team template is instantiated.
 
-**`prab.md` — the product manager** (loaded with `/agent prab`):
+**`prab/` — the product manager** (loaded with `/agent prab`):
+
+```
+~/.claudio/agents/prab/
+  AGENT.md              ← persona definition (front-matter + system prompt)
+  plugins/
+    claudio-assistant-os  ← macOS productivity plugin (Reminders, Mail, Calendar, Notes)
+    claudio-tmux          ← tmux session control plugin
+  skills/
+    assistant-os/
+      SKILL.md          ← instructions for using the assistant-os plugin
+```
 
 ```markdown
 ---
@@ -1170,22 +1181,32 @@ delegating to the right agents.
 
 **Worker agents** (spawned by the PM — never invoked directly):
 
-| File | `subagent_type` | Model | Role |
-|------|-----------------|-------|------|
-| `backend-jr.md` | `backend-jr` | haiku | Simple CRUD, boilerplate, straightforward tests |
-| `backend-mid.md` | `backend-mid` | sonnet | Standard features, refactors, well-scoped work |
-| `backend-senior.md` | `backend-senior` | opus | Architecture, complex problem-solving, high-stakes changes |
-| `frontend-jr.md` | `frontend-jr` | haiku | Simple components, style fixes, copy changes |
-| `frontend-mid.md` | `frontend-mid` | sonnet | Component refactors, state wiring, UI tests |
-| `frontend-senior.md` | `frontend-senior` | opus | Design systems, rendering strategy, bundle optimization |
-| `go-htmx-frontend-jr.md` | `go-htmx-frontend-jr` | haiku | Go + htmx partials, style fixes, simple htmx wiring |
-| `go-htmx-frontend-mid.md` | `go-htmx-frontend-mid` | sonnet | Server-rendered UIs, htmx interactions, OOB swaps, SSE |
-| `go-htmx-frontend-senior.md` | `go-htmx-frontend-senior` | opus | Hypermedia architecture, template systems, rendering strategy |
-| `code-investigator.md` | `code-investigator` | haiku | Symbol tracing, call-graph analysis, codebase mapping |
-| `devops.md` | `devops` | sonnet | CI/CD pipelines, Dockerfiles, Kubernetes, cloud infra |
-| `qa.md` | `qa` | sonnet | E2E tests, API contract validation, OWASP security testing |
+All worker agents use the **directory form** (`~/.claudio/agents/<name>/AGENT.md`). Agents that need framework-specific skills ship those skills inside their own directory.
 
-Each worker file follows this format:
+| Directory | `subagent_type` | Model | Skills | Role |
+|-----------|-----------------|-------|--------|------|
+| `backend-jr/` | `backend-jr` | haiku | — | Simple CRUD, boilerplate, straightforward tests |
+| `backend-mid/` | `backend-mid` | sonnet | — | Standard features, refactors, well-scoped work |
+| `backend-senior/` | `backend-senior` | opus | — | Architecture, complex problem-solving, high-stakes changes |
+| `frontend-jr/` | `frontend-jr` | haiku | `tux-tui` | Simple components, style fixes, copy changes |
+| `frontend-mid/` | `frontend-mid` | sonnet | `tux-tui` | Component refactors, state wiring, UI tests |
+| `frontend-senior/` | `frontend-senior` | opus | `tux-tui` | Design systems, rendering strategy, bundle optimization |
+| `go-htmx-frontend-jr/` | `go-htmx-frontend-jr` | haiku | `go-htmx` | Go + htmx partials, style fixes, simple htmx wiring |
+| `go-htmx-frontend-mid/` | `go-htmx-frontend-mid` | sonnet | `go-htmx` | Server-rendered UIs, htmx interactions, OOB swaps, SSE |
+| `go-htmx-frontend-senior/` | `go-htmx-frontend-senior` | opus | `go-htmx` | Hypermedia architecture, template systems, rendering strategy |
+| `htmx-ux-jr/` | `htmx-ux-jr` | haiku | — | Simple UI/UX: color palettes, single components, quick notes |
+| `htmx-ux-mid/` | `htmx-ux-mid` | sonnet | — | Component sets, page layouts, interaction flows |
+| `htmx-ux-senior/` | `htmx-ux-senior` | opus | — | Design systems, cross-screen UX strategy, accessibility |
+| `code-investigator/` | `code-investigator` | haiku | — | Symbol tracing, call-graph analysis, codebase mapping |
+| `devops/` | `devops` | sonnet | — | CI/CD pipelines, Dockerfiles, Kubernetes, cloud infra |
+| `qa/` | `qa` | sonnet | — | E2E tests, API contract validation, OWASP security testing |
+| `research-jr/` | `research-jr` | haiku | — | Well-scoped research: competitor lookups, feature lists |
+| `research-mid/` | `research-mid` | sonnet | — | User research, competitive analysis, opportunity mapping |
+| `research-senior/` | `research-senior` | opus | — | Product discovery, go-to-market strategy, research synthesis |
+| `advisor-sr/` | `advisor-sr` | opus | — | Strategic advisor: validates plans and audits outcomes |
+| `pentest/` | `pentest` | haiku | — | Authorized web app penetration testing |
+
+Each agent directory contains at minimum an `AGENT.md`:
 
 ```markdown
 ---
@@ -1207,6 +1228,18 @@ write clean, correct code.
 4. **Run tests and linter** — fix all failures before reporting
 5. **Report** — summarize what changed, paste key test output, flag anything unexpected
 ```
+
+Agents with bundled skills (e.g. `frontend-jr`) look like:
+
+```
+~/.claudio/agents/frontend-jr/
+  AGENT.md
+  skills/
+    tux-tui/
+      SKILL.md
+```
+
+The `tux-tui` skill is injected into the agent's system prompt automatically at session start — it is not available to other agents.
 
 ### Agent crystallization
 
