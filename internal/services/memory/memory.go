@@ -264,8 +264,26 @@ func (s *Store) LoadIndex() string {
 
 // BuildIndexLines returns a compact index with one line per entry.
 // Format: - name [tags]: description — "fact1" | "fact2"
-func (s *Store) BuildIndexLines() string {
+// ttlDays filters out entries older than N days (ttlDays <= 0 means no filtering).
+func (s *Store) BuildIndexLines(ttlDays int) string {
 	entries := s.LoadAll()
+	if len(entries) == 0 {
+		return ""
+	}
+
+	// Filter by TTL: exclude entries older than ttlDays
+	if ttlDays > 0 {
+		var filtered []*Entry
+		now := time.Now()
+		for _, e := range entries {
+			ageInDays := now.Sub(e.UpdatedAt).Hours() / 24
+			if ageInDays <= float64(ttlDays) {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
+	}
+
 	if len(entries) == 0 {
 		return ""
 	}

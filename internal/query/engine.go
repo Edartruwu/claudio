@@ -107,6 +107,7 @@ type Engine struct {
 	// memory index injection (session-start memory index as second user message)
 	memoryIndexMsg      string
 	memoryIndexInjected bool
+	onMemoryRefresh     func() string // refresh func to rebuild memory index after compaction
 
 	// lifecycle hook tracking
 	sessionStartFired bool
@@ -266,6 +267,13 @@ func (e *Engine) SetMemoryIndex(index string) {
 	e.memoryIndexInjected = false
 }
 
+// SetMemoryRefreshFunc sets a callback to rebuild the memory index after compaction.
+// The callback should return the fresh index string. Called during the post-compaction
+// phase to get a lean index for the new conversation era.
+func (e *Engine) SetMemoryRefreshFunc(f func() string) {
+	e.onMemoryRefresh = f
+}
+
 // SetSystemContext sets dynamic context (e.g. git status) to append to the system prompt.
 func (e *Engine) SetSystemContext(ctx string) {
 	e.systemContext = ctx
@@ -396,6 +404,14 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 					}
 					e.fireHook(ctx, hooks.PostCompact, "", "")
 					prompts.ClearAllSections()
+					
+					// Refresh memory index for the new conversation era
+					if e.onMemoryRefresh != nil {
+						if freshIdx := e.onMemoryRefresh(); freshIdx != "" {
+							e.memoryIndexInjected = false
+							e.SetMemoryIndex("## Your Memory Index\n\n" + freshIdx)
+						}
+					}
 				}
 			} else if e.compactState.ShouldPartialCompact() {
 				// At 70% context usage, run an aggressive MicroCompact pass
