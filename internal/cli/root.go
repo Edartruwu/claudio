@@ -334,6 +334,14 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string, []p
 		}
 	}
 
+	// Re-wire ToolSearch so it sees the cloned registry (including any newly
+	// registered agent-specific plugins), not the original pre-clone registry.
+	if ts, err := filtered.Get("ToolSearch"); err == nil {
+		if tst, ok := ts.(*tools.ToolSearchTool); ok {
+			tst.SetRegistry(filtered)
+		}
+	}
+
 	model := agentDef.Model
 	if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
 		model = resolved

@@ -698,6 +698,14 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		}
 	}
 
+	// Re-wire ToolSearch so it sees the cloned registry (including any newly
+	// registered agent-specific plugins), not the original pre-clone registry.
+	if ts, err := subRegistry.Get("ToolSearch"); err == nil {
+		if tst, ok := ts.(*tools.ToolSearchTool); ok {
+			tst.SetRegistry(subRegistry)
+		}
+	}
+
 	// Depth tracking (via context) prevents infinite recursion — no need to
 	// remove the Agent tool entirely. Teammates can still spawn read-only
 	// exploration sub-agents (e.g. Explore) up to maxAgentDepth.
