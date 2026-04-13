@@ -682,6 +682,19 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 				pt.OutputFilterEnabled = outputFilterEnabled
 				subRegistry.Register(pt)
 			}
+			// Inject extra plugin instructions into the system prompt so the
+			// model knows the plugin commands and subcommands.
+			var pluginInfos []prompts.PluginInfo
+			for _, p := range extraPluginReg.All() {
+				pluginInfos = append(pluginInfos, prompts.PluginInfo{
+					Name:         p.Name,
+					Description:  p.Description,
+					Instructions: p.Instructions,
+				})
+			}
+			if section := prompts.PluginsSection(pluginInfos); section != "" {
+				system += "\n\n" + section
+			}
 		}
 	}
 

@@ -179,7 +179,7 @@ func runSinglePrompt(prompt string) error {
 	defer cancel()
 	defer appInstance.Close()
 
-	reg, modelOverride := applyAgentOverrides(appInstance.Tools)
+	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
@@ -220,7 +220,11 @@ func runSinglePrompt(prompt string) error {
 	})
 	principalEngine = engine // allow GetMessages closure to resolve
 
-	engine.SetSystem(buildFullSystemPrompt())
+	sys := buildFullSystemPrompt()
+	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
+		sys += "\n\n" + section
+	}
+	engine.SetSystem(sys)
 	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
 	engine.SetSystemContext(buildSystemContext())
 
@@ -272,10 +276,11 @@ func loadContextProfile(name string) (string, error) {
 }
 
 // applyAgentOverrides clones the registry filtered by the --agent flag's DisallowedTools,
-// and returns the model override string ("" if no agent or no model override).
-func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string) {
+// and returns the model override string ("" if no agent or no model override) plus any
+// extra plugin infos that should be appended to the system prompt.
+func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string, []prompts.PluginInfo) {
 	if flagAgent == "" {
-		return registry, ""
+		return registry, "", nil
 	}
 	agentDef := agents.GetAgent(flagAgent)
 	filtered := registry.Clone()
@@ -305,6 +310,7 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string) {
 	}
 
 	// Register per-agent extra plugins (additive)
+	var extraPluginInfos []prompts.PluginInfo
 	if agentDef.ExtraPluginsDir != "" {
 		extraPluginReg := plugins.NewRegistry()
 		extraPluginReg.LoadDir(agentDef.ExtraPluginsDir)
@@ -320,6 +326,11 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string) {
 			pt := plugins.NewProxyTool(p)
 			pt.OutputFilterEnabled = outputFilterEnabled
 			filtered.Register(pt)
+			extraPluginInfos = append(extraPluginInfos, prompts.PluginInfo{
+				Name:         p.Name,
+				Description:  p.Description,
+				Instructions: p.Instructions,
+			})
 		}
 	}
 
@@ -327,7 +338,7 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string) {
 	if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
 		model = resolved
 	}
-	return filtered, model
+	return filtered, model, extraPluginInfos
 }
 
 // buildFullSystemPrompt gathers all context (rules, context profiles, memory, output style)
@@ -583,10 +594,13 @@ func runInteractive() error {
 		// This avoids polluting the session list with empty sessions.
 	}
 
-	reg, modelOverride := applyAgentOverrides(appInstance.Tools)
+	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
+	}
+	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
+		systemPrompt += "\n\n" + section
 	}
 
 	// Inject advisor tool for the principal agent when configured.
