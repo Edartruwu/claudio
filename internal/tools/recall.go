@@ -68,24 +68,31 @@ func (t *RecallTool) Execute(ctx context.Context, input json.RawMessage) (*Resul
 		return &Result{Content: "context is required", IsError: true}, nil
 	}
 
-	entries := t.Store.LoadAll()
-	if len(entries) == 0 {
+	// Tier 1: FTS pre-filter (fast, free, no API call)
+	candidates := t.Store.FTSSearch(in.Context, 20)
+
+	// Tier 2: fall back to LoadAll if FTS returned nothing (FTS not ready or no match)
+	if len(candidates) == 0 {
+		candidates = t.Store.LoadAll()
+	}
+
+	if len(candidates) == 0 {
 		return &Result{Content: "No memories stored yet."}, nil
 	}
 
-	// For small sets, skip LLM and return everything.
-	if len(entries) <= 5 {
-		return &Result{Content: formatEntries(entries)}, nil
+	// Short-circuit: skip LLM for small sets.
+	if len(candidates) <= 5 {
+		return &Result{Content: formatEntries(candidates)}, nil
 	}
 
-	// Build compact index for the LLM.
-	index := buildCompactIndex(entries)
+	// Build compact index for the LLM (only FTS candidates, not all entries).
+	index := buildCompactIndex(candidates)
 
 	// Ask the small model to select relevant entries.
 	selectedNames, err := t.selectRelevant(ctx, in.Context, index)
 	if err != nil || len(selectedNames) == 0 {
-		// Graceful degradation: return all entries if LLM fails.
-		return &Result{Content: formatEntries(entries)}, nil
+		// Graceful degradation: return all candidates if LLM fails.
+		return &Result{Content: formatEntries(candidates)}, nil
 	}
 
 	// Load full entries for selected names.
@@ -95,7 +102,7 @@ func (t *RecallTool) Execute(ctx context.Context, input json.RawMessage) (*Resul
 	}
 
 	var matched []*memory.Entry
-	for _, e := range entries {
+	for _, e := range candidates {
 		if nameSet[e.Name] {
 			matched = append(matched, e)
 		}
