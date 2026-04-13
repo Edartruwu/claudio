@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/storage"
 )
 
 const (
@@ -31,12 +33,14 @@ type Entry struct {
 	Content     string   // COMPAT: populated from Facts on render, or from body for old entries
 	FilePath    string
 	Tags        []string
+	Concepts    []string  // semantic tags, broader than Tags, auto-extracted or user-provided
 	UpdatedAt   time.Time
 }
 
 // Store manages the memory directory.
 type Store struct {
 	dir string
+	fts *storage.FTSIndex // optional; nil = no FTS write-through
 }
 
 // NewStore creates a new memory store backed by the given directory.
@@ -47,6 +51,9 @@ func NewStore(dir string) *Store {
 
 // Dir returns the directory backing this store.
 func (s *Store) Dir() string { return s.dir }
+
+// SetFTS attaches an FTS index to this store for write-through indexing.
+func (s *Store) SetFTS(fts *storage.FTSIndex) { s.fts = fts }
 
 // Save writes a memory entry to disk and updates the index.
 // If Facts is empty but Content is set, Content is split into Facts (one fact per non-empty line).
@@ -91,6 +98,12 @@ func (s *Store) Save(entry *Entry) error {
 			content.WriteString(fmt.Sprintf("  - %q\n", fact))
 		}
 	}
+	if len(entry.Concepts) > 0 {
+		content.WriteString("concepts:\n")
+		for _, concept := range entry.Concepts {
+			content.WriteString(fmt.Sprintf("  - %q\n", concept))
+		}
+	}
 	content.WriteString("---\n")
 
 	if err := os.WriteFile(path, []byte(content.String()), 0644); err != nil {
@@ -98,6 +111,24 @@ func (s *Store) Save(entry *Entry) error {
 	}
 
 	entry.FilePath = path
+
+	// Best-effort FTS write-through (never fail the file write if FTS fails).
+	// Scope must be set on the entry for FTS to work; ScopedStore sets it.
+	if s.fts != nil && entry.Scope != "" {
+		if info, statErr := os.Stat(path); statErr == nil {
+			if ftsErr := s.fts.Upsert(
+				entry.Name,
+				entry.Scope,
+				entry.Description,
+				strings.Join(entry.Tags, " "),
+				strings.Join(entry.Facts, " "),
+				strings.Join(entry.Concepts, " "),
+				info.ModTime().Unix(),
+			); ftsErr != nil {
+				fmt.Fprintf(os.Stderr, "memory fts upsert warning (%s): %v\n", entry.Name, ftsErr)
+			}
+		}
+	}
 
 	// Update index
 	return s.updateIndex(entry)
@@ -165,6 +196,13 @@ func (s *Store) Remove(name string) error {
 	filename := sanitizeName(name) + ".md"
 	path := filepath.Join(s.dir, filename)
 	os.Remove(path)
+
+	// Best-effort FTS delete (uses name-only delete since Store doesn't hold scope).
+	if s.fts != nil {
+		if ftsErr := s.fts.DeleteByName(name); ftsErr != nil {
+			fmt.Fprintf(os.Stderr, "memory fts delete warning (%s): %v\n", name, ftsErr)
+		}
+	}
 
 	// Rebuild index without this entry
 	return s.rebuildIndex()
@@ -348,8 +386,9 @@ func ParseEntry(content, path string) *Entry {
 
 	entry := &Entry{FilePath: path}
 
-	// Parse frontmatter including facts
+	// Parse frontmatter including facts and concepts
 	inFacts := false
+	inConcepts := false
 	for _, line := range lines[1:endIdx] {
 		trimmed := strings.TrimSpace(line)
 
@@ -365,6 +404,20 @@ func ParseEntry(content, path string) *Entry {
 			}
 			// Non-list line ends the facts block
 			inFacts = false
+		}
+
+		// Handle concepts list items (indented "- ..." lines)
+		if inConcepts {
+			if strings.HasPrefix(trimmed, "- ") {
+				concept := strings.TrimPrefix(trimmed, "- ")
+				concept = strings.Trim(concept, `"'`)
+				if concept != "" {
+					entry.Concepts = append(entry.Concepts, concept)
+				}
+				continue
+			}
+			// Non-list line ends the concepts block
+			inConcepts = false
 		}
 
 		if idx := strings.Index(trimmed, ":"); idx > 0 {
@@ -394,6 +447,9 @@ func ParseEntry(content, path string) *Entry {
 			case "facts":
 				// Start parsing facts list on subsequent lines
 				inFacts = true
+			case "concepts":
+				// Start parsing concepts list on subsequent lines
+				inConcepts = true
 			}
 		}
 	}

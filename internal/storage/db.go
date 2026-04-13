@@ -177,6 +177,18 @@ func (db *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_filter_savings_command ON filter_savings(command)`,
 		// 20 — add team_template column to sessions for team selection tracking
 		`ALTER TABLE sessions ADD COLUMN team_template TEXT NOT NULL DEFAULT ''`,
+		// 21 — FTS5 virtual table for memory search pre-filtering
+		`CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+    name, scope, description, tags_text, facts_text, concepts_text,
+    tokenize='porter ascii'
+)`,
+		// 22 — metadata table for startup sync (tracks last-indexed mtime per entry)
+		`CREATE TABLE IF NOT EXISTS memory_fts_meta (
+    name       TEXT NOT NULL,
+    scope      TEXT NOT NULL,
+    file_mtime INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (name, scope)
+)`,
 	}
 
 	for i, m := range migrations {
@@ -250,6 +262,10 @@ func (db *DB) detectExistingSchemaVersion() int {
 	}
 
 	switch {
+	case hasTable("memory_fts_meta"):
+		return 22
+	case hasTable("memory_fts"):
+		return 21
 	case hasTable("filter_savings"):
 		// Check if team_template column exists; if not, we're at version 19
 		if !hasColumn("sessions", "team_template") {

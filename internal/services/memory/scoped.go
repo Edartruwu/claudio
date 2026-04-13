@@ -1,8 +1,13 @@
 package memory
 
 import (
+	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/storage"
 )
 
 const (
@@ -17,15 +22,24 @@ type ScopedStore struct {
 	project *Store // project-level memories (default write target)
 	global  *Store // global/user-level memories (fallback)
 	agent   *Store // agent-level memories (set when running as crystallized agent)
+	fts     *storage.FTSIndex // optional FTS index; nil = no FTS
 }
 
 // NewScopedStore creates a scoped memory store with project and global directories.
-func NewScopedStore(projectDir, globalDir string) *ScopedStore {
+// If db is non-nil, an FTS index is created and attached to all stores.
+func NewScopedStore(projectDir, globalDir string, db *sql.DB) *ScopedStore {
 	s := &ScopedStore{
 		global: NewStore(globalDir),
 	}
 	if projectDir != "" {
 		s.project = NewStore(projectDir)
+	}
+	if db != nil {
+		s.fts = storage.NewFTSIndex(db)
+		s.global.SetFTS(s.fts)
+		if s.project != nil {
+			s.project.SetFTS(s.fts)
+		}
 	}
 	return s
 }
@@ -34,6 +48,9 @@ func NewScopedStore(projectDir, globalDir string) *ScopedStore {
 func (s *ScopedStore) SetAgentStore(dir string) {
 	if dir != "" {
 		s.agent = NewStore(dir)
+		if s.fts != nil {
+			s.agent.SetFTS(s.fts)
+		}
 	}
 }
 
@@ -240,6 +257,114 @@ func (s *ScopedStore) orderedScopedStores() []scopedEntry {
 		stores = append(stores, scopedEntry{s.global, ScopeGlobal})
 	}
 	return stores
+}
+
+// SyncFTS reconciles each store's .md files against the FTS meta table on startup.
+// New/modified files are re-indexed; orphan FTS rows (file deleted) are removed.
+// This is a best-effort operation: per-store errors are logged but do not abort startup.
+func (s *ScopedStore) SyncFTS() error {
+	if s.fts == nil {
+		return nil
+	}
+	for _, ss := range s.orderedScopedStores() {
+		if ss.store == nil {
+			continue
+		}
+		if err := s.syncStore(ss.store, ss.scope); err != nil {
+			fmt.Fprintf(os.Stderr, "memory fts sync warning (%s): %v\n", ss.scope, err)
+		}
+	}
+	return nil
+}
+
+func (s *ScopedStore) syncStore(store *Store, scope string) error {
+	meta, err := s.fts.LoadMeta(scope)
+	if err != nil {
+		return err
+	}
+
+	// List all .md files in this store's directory
+	pattern := filepath.Join(store.Dir(), "*.md")
+	files, _ := filepath.Glob(pattern)
+
+	presentNames := make(map[string]bool)
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".md")
+		if name == "MEMORY" { // skip the index file
+			continue
+		}
+		presentNames[name] = true
+
+		info, err := os.Stat(f)
+		if err != nil {
+			continue
+		}
+		mtime := info.ModTime().Unix()
+
+		if indexedMtime, ok := meta[name]; !ok || mtime > indexedMtime {
+			// New or modified — re-index
+			entry, loadErr := store.Load(name)
+			if loadErr != nil {
+				continue
+			}
+			_ = s.fts.Upsert(
+				entry.Name, scope, entry.Description,
+				strings.Join(entry.Tags, " "),
+				strings.Join(entry.Facts, " "),
+				strings.Join(entry.Concepts, " "),
+				mtime,
+			)
+		}
+	}
+
+	// Remove stale FTS entries (file deleted)
+	for name := range meta {
+		if !presentNames[name] {
+			_ = s.fts.Delete(name, scope)
+		}
+	}
+	return nil
+}
+
+// FTSSearch returns entries ranked by FTS5 BM25 relevance for the given query.
+// Returns nil if FTS is not configured or the query yields no results.
+func (s *ScopedStore) FTSSearch(query string, limit int) []*Entry {
+	if s.fts == nil {
+		return nil
+	}
+	results, err := s.fts.Search(query, nil, limit)
+	if err != nil || len(results) == 0 {
+		return nil
+	}
+
+	var entries []*Entry
+	for _, ns := range results {
+		store := s.storeForScope(ns.Scope)
+		if store == nil {
+			continue
+		}
+		entry, err := store.Load(ns.Name)
+		if err != nil {
+			continue
+		}
+		entry.Scope = ns.Scope
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// storeForScope returns the Store responsible for the given scope string.
+func (s *ScopedStore) storeForScope(scope string) *Store {
+	switch scope {
+	case ScopeGlobal:
+		return s.global
+	case ScopeProject:
+		return s.project
+	case ScopeAgent:
+		return s.agent
+	default:
+		return s.project
+	}
 }
 
 

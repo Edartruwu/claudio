@@ -25,6 +25,7 @@ type memoryInput struct {
 	Fact        string   `json:"fact,omitempty"`
 	FactIndex   int      `json:"fact_index,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+	Concepts    []string `json:"concepts,omitempty"`
 	Query       string   `json:"query,omitempty"`
 }
 
@@ -104,6 +105,11 @@ func (t *MemoryTool) InputSchema() json.RawMessage {
 				"type": "array",
 				"items": {"type": "string"},
 				"description": "Tags for categorization. Required for save."
+			},
+			"concepts": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Optional semantic concept tags (broader than tags). Examples: ['token-lifecycle', 'session-management']. Auto-extracted by Dream if omitted."
 			},
 			"type": {
 				"type": "string",
@@ -194,6 +200,7 @@ func (t *MemoryTool) saveMemory(in memoryInput) (*Result, error) {
 		Scope:       scope,
 		Facts:       in.Facts,
 		Tags:        in.Tags,
+		Concepts:    in.Concepts,
 	}
 
 	if err := t.Store.Save(entry); err != nil {

@@ -254,7 +254,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	if projectRoot != "" {
 		projectMemDir = config.ProjectMemoryDir(projectRoot)
 	}
-	memoryStore := memory.NewScopedStore(projectMemDir, paths.Memory)
+	memoryStore := memory.NewScopedStore(projectMemDir, paths.Memory, db.Conn())
+	memoryStore.SyncFTS()
 
 	// Model capabilities cache (check for user-provided cache, fallback to defaults)
 	modelCache := models.LoadCache(filepath.Join(paths.Cache, "model-capabilities.json"))
