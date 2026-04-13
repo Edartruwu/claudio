@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -268,6 +269,11 @@ func (s *Store) BuildIndexLines() string {
 	if len(entries) == 0 {
 		return ""
 	}
+
+	// Most recently updated first — ensures enforceIndexLimits trims oldest, not arbitrary entries.
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].UpdatedAt.After(entries[j].UpdatedAt)
+	})
 
 	var sb strings.Builder
 	for _, e := range entries {
