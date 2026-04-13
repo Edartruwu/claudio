@@ -22,7 +22,7 @@ type RecallTool struct {
 func (t *RecallTool) Name() string { return "Recall" }
 
 func (t *RecallTool) Description() string {
-	return `Semantically searches your memory for entries relevant to your current context.
+	return `Semantically searches all memories (global, project, and agent) for entries relevant to your current context.
 Unlike Memory(search) which does keyword matching, Recall understands intent and meaning.
 
 Use this:
@@ -31,10 +31,8 @@ Use this:
 - Before architectural decisions: Recall(context="choosing between options A and B for caching")
 - When you're unsure what you might have learned before about a topic
 
-Recall uses a small language model to understand your context and pick the most
-relevant memories, even when the words don't match exactly.
-
-Returns the full facts of the most relevant memory entries.
+Recall searches across all scopes automatically — you do not need to specify a scope.
+Returns the full facts of the most relevant entries found anywhere in memory.
 For keyword search, use Memory(action="search") instead.
 For browsing all memories, use Memory(action="list").`
 }

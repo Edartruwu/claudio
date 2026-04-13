@@ -113,7 +113,7 @@ func (t *MemoryTool) InputSchema() json.RawMessage {
 			"scope": {
 				"type": "string",
 				"enum": ["project", "global", "agent"],
-				"description": "Memory scope (optional, default: project)."
+				"description": "Where this memory lives. Ask: would this be true in a completely different project? If yes → global (user preferences, personal style). If no → project (architecture, conventions, decisions for this repo). If it belongs to a specific agent persona → agent. Default: project."
 			},
 			"query": {
 				"type": "string",

@@ -90,7 +90,7 @@ The Memory tool manages facts across sessions. Each memory entry contains:
 - **facts** — array of discrete one-sentence facts (not prose paragraphs)
 - **tags** — labels for categorization
 - **type** — one of: user, feedback, project, reference
-- **scope** — almost always "project"
+- **scope** — ask: "would this be true in a completely different project?" → yes: "global" (user preferences, style). No: "project" (this repo's conventions, decisions). Persona-specific: "agent"
 
 Key actions:
 - **Memory(action="list")** — See all existing memories
