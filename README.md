@@ -877,10 +877,16 @@ facts:
   - Refresh threshold is 20h — issue new token if TTL < 4h
   - Secret stored in .env.local under JWT_SECRET
   - Signing algorithm is RS256
+concepts:
+  - token-lifecycle
+  - session-management
+  - authentication
 ---
 ```
 
 Memory types: `user`, `feedback`, `project`, `reference`.
+
+**Concepts** are optional semantic tags broader than `tags`. They improve FTS search recall by bridging vocabulary gaps — a query for "how do we handle login sessions?" can match a `concepts: [session-management]` entry even with no literal word overlap.
 
 ### How the agent uses memory
 
@@ -897,7 +903,7 @@ At session start, a **lean memory index** is injected into the first human turn 
 - no-orm [db,sql]: DB rules — "Never use GORM" | "Raw SQL via modernc.org/sqlite"
 ```
 
-The agent sees what exists without loading full content (~10 tokens per entry). It then:
+Entries are sorted by `updated_at DESC` — most recently active work appears first. If the index exceeds 200 lines or 25 KB, the oldest entries are trimmed (never the newest). The agent sees what exists without loading full content (~10 tokens per entry). It then:
 
 - **`Memory(action="read", name="...")`** — load full facts for a specific entry
 - **`Recall(context="...")`** — semantic search across all scopes using the configured small model
@@ -913,7 +919,7 @@ The agent sees what exists without loading full content (~10 tokens per entry). 
 | `list` | List all entries (name + description + scope) |
 | `search` | Keyword search across name, description, tags, facts |
 | `read` | Load full facts for a named entry |
-| `save` | Create new entry with `facts[]`, `tags[]`, `type`, `scope` |
+| `save` | Create new entry with `facts[]`, `tags[]`, `concepts[]`, `type`, `scope` |
 | `append` | Add one fact to existing entry — preferred over full rewrites |
 | `replace-fact` | Replace a fact at a specific index |
 | `delete-fact` | Remove a fact at a specific index |
@@ -921,9 +927,16 @@ The agent sees what exists without loading full content (~10 tokens per entry). 
 
 ### Recall tool
 
-`Recall(context="...")` uses the configured small model to semantically match your context against the full memory index and return the most relevant entries — across all scopes automatically. Unlike `Memory(search)` which does keyword matching, Recall understands intent.
+`Recall(context="...")` finds the most relevant memories for your current task using a two-tier search:
+
+1. **SQLite FTS5 pre-filter** — BM25-ranked full-text search across all facts, concepts, descriptions, and tags. Fast, free, no API call. Returns up to 20 candidates.
+2. **LLM ranking** — the configured small model picks the top 5 from those candidates. Only runs when there are more than 5 candidates.
+
+Recall searches all scopes automatically (global + project + agent). Unlike `Memory(search)` which does exact keyword matching, Recall understands intent and synonyms via the FTS porter stemmer and the `concepts` field.
 
 Use it before starting significant tasks or when you're unsure what relevant context might exist.
+
+**FTS sync:** The FTS index is rebuilt from `.md` files on every startup — files are always the source of truth. If a memory file is edited manually or the database is deleted, the index self-heals on next launch.
 
 ### Background extraction
 
