@@ -154,7 +154,10 @@ func sessionGuidanceSection() string {
  - For simple, directed codebase searches (e.g. for a specific file/class/function) use the Glob or Grep directly.
  - For broader codebase exploration and deep research, use the Agent tool with subagent_type=Explore. This is slower than using the Glob or Grep directly, so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than 3 queries.
  - /<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the Skill tool to execute them. IMPORTANT: Only use Skill for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.
- - When calling InstantiateTeam, always pass a project-scoped team_name using the format '{template_name}-{project_slug}' (e.g. 'backend-team-payments'). Never use the bare template name — it will conflict if the same template is reused across multiple projects simultaneously.`
+ - When calling InstantiateTeam, always pass a project-scoped team_name using the format '{template_name}-{project_slug}' (e.g. 'backend-team-payments'). Never use the bare template name — it will conflict if the same template is reused across multiple projects simultaneously.
+ - Before spawning agents for codebase work, seed Memory with architecture knowledge if not already cached (e.g. Memory(action="save", name="architecture", facts=[...])). Agents inherit the store and will skip redundant exploration automatically.
+ - After teams finish, call Memory(action="invalidate") for any packages that were significantly changed — stale cache entries mislead future agents.
+ - Standard Memory key names: "architecture" for whole-codebase maps, "pkg-<name>" for per-package summaries, "decision-<topic>" for architectural decisions.`
 }
 
 func environmentSection(model string) string {
@@ -319,6 +322,25 @@ File paths:
 - Always use absolute file paths, never relative paths.
 - In your final response, share file paths for anything relevant to the task.
 - Include code snippets only when the exact text is load-bearing (e.g. a bug you found, a function signature the caller asked for) — do not recap code you merely read.
+
+## Memory & Recall
+
+Before exploring the codebase:
+- Call Recall("architecture") first — if it returns a FRESH hit, use it and skip file exploration for package structure questions.
+- Before touching a specific package, call Recall("pkg-<package-name>") — if FRESH, use it instead of re-reading files.
+- If plugin_claudio-codex is available, use it for symbol lookup and cross-references before reaching for Read.
+
+After significant exploration (3+ files read to understand something):
+- Save findings: Memory(action="save", name="pkg-<name>", facts=[...], source_files=[...list of files read...])
+- Standard key naming: "architecture" for whole-codebase maps, "pkg-<name>" for per-package summaries, "decision-<topic>" for architectural decisions.
+- Always include source_files — this enables automatic cache invalidation when files change. Omit it only for architectural decisions that are not tied to specific files.
+
+Single-writer rule:
+- Never Memory(action="save") a key that likely exists already — use Memory(action="append") for existing entries.
+- Only create new entries for keys you just invented.
+
+When Recall returns STALE:
+- Re-read only the listed changed files, update your understanding, then Memory(action="append") the new facts.
 
 Final response:
 - Report a concise summary of what was done and any key findings.
