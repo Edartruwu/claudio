@@ -2,8 +2,11 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/api"
@@ -202,6 +205,13 @@ func formatEntries(entries []*memory.Entry) string {
 	var parts []string
 	for _, e := range entries {
 		var sb strings.Builder
+
+		// Prepend freshness annotation when the entry has source file hashes.
+		if len(e.SourceFiles) > 0 {
+			sb.WriteString(checkSourceFreshness(e.SourceFiles))
+			sb.WriteString("\n")
+		}
+
 		sb.WriteString(fmt.Sprintf("Memory: %s [scope: %s]\n", e.Name, e.Scope))
 		if len(e.Tags) > 0 {
 			sb.WriteString(fmt.Sprintf("Tags: %s\n", strings.Join(e.Tags, ", ")))
@@ -218,4 +228,37 @@ func formatEntries(entries []*memory.Entry) string {
 		parts = append(parts, sb.String())
 	}
 	return strings.Join(parts, "\n---\n\n")
+}
+
+// checkSourceFreshness compares stored content hashes against current file contents.
+// Returns a single-line status string: [FRESH], [STALE], or [MISSING].
+func checkSourceFreshness(sourceFiles map[string]string) string {
+	var stale, missing []string
+
+	for path, storedHash := range sourceFiles {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			// File cannot be read — treat as missing.
+			missing = append(missing, path)
+			continue
+		}
+		sum := sha256.Sum256(data)
+		currentHash := hex.EncodeToString(sum[:])
+		if currentHash != storedHash {
+			stale = append(stale, path)
+		}
+	}
+
+	if len(missing) > 0 && len(stale) == 0 {
+		return "[MISSING] Source files no longer exist: " + strings.Join(missing, ", ")
+	}
+	if len(stale) > 0 && len(missing) == 0 {
+		return "[STALE] Source files changed since saved: " + strings.Join(stale, ", ")
+	}
+	if len(stale) > 0 || len(missing) > 0 {
+		// Both stale and missing — report STALE with combined list.
+		combined := append(stale, missing...)
+		return "[STALE] Source files changed or missing since saved: " + strings.Join(combined, ", ")
+	}
+	return "[FRESH] All source files unchanged since saved."
 }
