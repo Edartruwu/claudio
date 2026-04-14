@@ -469,13 +469,14 @@ RULES:
 	var sb strings.Builder
 	sb.WriteString("---\n")
 	sb.WriteString("name: architecture\n")
-	sb.WriteString("description: Project architecture map — package roles, key files, wiring\n")
+	sb.WriteString("description: 'Project architecture map: package roles, key files, wiring'\n")
 	sb.WriteString("type: project\n")
 	sb.WriteString("tags: [architecture, packages, wiring]\n")
 	sb.WriteString(fmt.Sprintf("updated_at: %s\n", time.Now().Format(time.RFC3339)))
 	sb.WriteString("facts:\n")
 	for _, fact := range facts {
-		sb.WriteString(fmt.Sprintf("  - %q\n", fact))
+		escaped := strings.ReplaceAll(fact, "'", "''")
+		sb.WriteString(fmt.Sprintf("  - '%s'\n", escaped))
 	}
 	sb.WriteString("---\n")
 

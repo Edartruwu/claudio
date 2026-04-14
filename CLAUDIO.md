@@ -12,5 +12,14 @@ This file provides guidance to Claudio (github.com/Abraxas-365/claudio) when wor
 ## Key Constraints
 
 - No CGO — the project must remain pure Go (this is why we use `modernc.org/sqlite`)
-- Never alter existing migration files — only add new ones
+- Never alter existing migration SQL in `internal/storage/db.go` — append new versioned entries only
 - Architectural rules and code style are in @.claudio/rules/project.md
+
+## Web UI
+
+- Edit HTML templates in `internal/web/` — never edit `internal/web/static/vendor/tailwind.min.css` directly
+- Run `make dev` to develop the web UI (starts CSS watcher + server together); requires npm
+
+## Conventions
+
+- Commit messages follow Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, etc.
