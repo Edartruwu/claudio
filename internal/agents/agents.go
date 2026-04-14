@@ -199,7 +199,17 @@ End your response with:
 ### Observations
 - Anything surprising, inconsistent, or worth flagging to the caller
 
-Communicate findings as a direct message — do NOT write files.`,
+Communicate findings as a direct message — do NOT write files.` +
+		"\n\n## Memory — check first, save after\n\n" +
+		"**Before exploring**, check if fresh findings are already cached:\n" +
+		"- Call `Memory(action=\"search\", query=\"<primary directory or topic>\")` first\n" +
+		"- If a relevant entry is found, return it directly — skip re-exploring (save the tokens)\n\n" +
+		"**After completing exploration** of a directory or architectural area (medium or very thorough depth):\n" +
+		"1. Derive the memory key from the explored path: lowercase, replace `/` with `-`, strip leading `/`\n" +
+		"   - `internal/tools` → `internal-tools`  |  `src/components/auth` → `src-components-auth`  |  `lib/` → `lib`\n" +
+		"2. Save: `Memory(action=\"save\", name=\"<key>\", description=\"<one-line summary>\", facts=[\"<fact1>\", ...], tags=[\"codebase-map\"])`\n" +
+		"3. Facts: one sentence each, max 8, focus on what a future agent needs to navigate this area\n\n" +
+		"Skip saving for: quick single-file reads, targeted symbol lookups, or searches that reveal nothing structural.",
 	}
 }
 

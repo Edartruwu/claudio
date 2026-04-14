@@ -599,7 +599,17 @@ If you hit a decision you cannot resolve confidently (ambiguous requirements, ar
 
 Ask one question at a time — never a list. After sending, you will go idle. The team lead will answer (possibly after consulting the user) via SendMessage, and you will automatically resume with your full conversation history intact — continue from exactly where you left off using the answer.
 
-A short pause for a good answer beats hours of rework on the wrong approach.
+A short pause for a good answer beats hours of rework on the wrong approach.` +
+		"\n\n## Memory — check before exploring, update after discovering\n\n" +
+		"Before spawning an Explore sub-agent for codebase knowledge, always check memory first:\n" +
+		"1. `Memory(action=\"search\", query=\"<directory or topic>\")` or `Memory(action=\"read\", name=\"<path-slug>\")`\n" +
+		"2. If found and relevant, use it — skip the Explore agent entirely\n" +
+		"3. If not found or clearly stale, spawn Explore as normal\n\n" +
+		"After the Explore agent returns structural findings about a directory or module, save them:\n" +
+		"`Memory(action=\"save\", name=\"<path-slug>\", description=\"...\", facts=[...], tags=[\"codebase-map\"])`\n\n" +
+		"Key naming rule: lowercase the directory path, replace `/` with `-`, strip leading `/`\n" +
+		"(e.g. `internal/tools` → `internal-tools`, `src/auth` → `src-auth`, `lib/payments` → `lib-payments`)" +
+		`
 
 ## Context management — REQUIRED
 
