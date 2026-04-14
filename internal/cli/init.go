@@ -123,9 +123,8 @@ You will receive information about the project's codebase and must generate conf
 IMPORTANT RULES:
 - Only include information that would help an AI avoid mistakes when working on this project
 - Do NOT include generic advice — only project-specific, actionable instructions
-- Keep CLAUDIO.md concise (under 80 lines) — this goes into the system prompt every turn
-- For long reference material, suggest @path/to/file.md imports instead of inlining
-- Focus on: build/test commands, architecture patterns, naming conventions, gotchas, important constraints
+- CLAUDIO.md must be ultra-lean (max 20 lines): ONLY build/test/lint commands + hard constraints (3-5 lines) + @.claudio/rules/project.md reference. NO tech stack overview, NO architecture patterns, NO naming conventions — those go in rules/project.md
+- For long reference material, use @path/to/file.md imports instead of inlining
 - Do NOT include information that can be derived by reading the code (like "this is a Go project")
 - DO include non-obvious things: "tests must run against a real database", "never import from internal/legacy"
 
@@ -137,7 +136,33 @@ You will be asked to generate files one at a time. For each, output ONLY the fil
 		fmt.Println("\n  Generating CLAUDIO.md...")
 
 		prompt := fmt.Sprintf(`Based on the following project analysis, generate a CLAUDIO.md file.
-This file contains instructions for the AI coding assistant. Only include what the AI needs to avoid mistakes.
+This file is loaded into the AI's system prompt on EVERY turn — keep it ultra-lean (max 20 lines total).
+
+STRICT FORMAT — output exactly this structure, nothing more:
+
+# <ProjectName>
+
+## Build & Test
+- `+"`"+`<build command>`+"`"+`
+- `+"`"+`<test command>`+"`"+`
+- `+"`"+`<lint command if applicable>`+"`"+`
+
+## Hard Constraints
+- <non-obvious constraint 1 — things that MUST never be violated>
+- <non-obvious constraint 2>
+- <add up to 5 total, only if they exist>
+
+## Project Rules
+@.claudio/rules/project.md
+
+RULES:
+- NO tech stack overview
+- NO architecture section
+- NO naming conventions
+- NO patterns or examples
+- ONLY exact commands and hard constraints that are non-obvious
+- If you have nothing non-obvious to say in Hard Constraints, output only "- None" there
+- Max 20 lines total
 
 PROJECT INFO:
 - Directory: %s
@@ -243,7 +268,7 @@ Output valid JSON only. Available settings:
 		fmt.Println("\n  Generating .claudio/rules/project.md...")
 
 		prompt := fmt.Sprintf(`Generate a project rules file (.claudio/rules/project.md) for this project.
-Rules are injected into the AI's system prompt to enforce project conventions.
+This file carries the full architecture knowledge and coding conventions for the project.
 
 PROJECT:
 - Languages: %s
@@ -254,18 +279,55 @@ PROJECT:
 CODEBASE CONTEXT:
 %s
 
-The file should have YAML frontmatter with name and description, then markdown rules.
-Only include rules that are specific to THIS project — not generic coding advice.
-Focus on: naming conventions, error handling patterns, import restrictions, testing requirements, commit message format.
+The file MUST follow this exact structure:
+
+1. YAML frontmatter with name and description
+2. ## Rules section — project-specific coding conventions (NOT generic advice):
+   - Naming conventions
+   - Error handling patterns
+   - Import restrictions
+   - Testing requirements
+   - Commit message format
+3. ## Architecture section — NEW, must include all four subsections:
+   ### Package map
+   List each major package/directory and what it owns (one line each, e.g. "internal/cli — CLI commands and user interaction")
+   ### Key files
+   The most important entry points per domain (e.g. "main.go — binary entry point", "internal/api/client.go — HTTP client")
+   ### Wiring
+   How major pieces connect: what calls what, how layers interact, dependency direction
+   ### What lives where
+   Quick lookup table for common tasks (e.g. "Adding a new CLI command → internal/cli/", "Changing AI provider → internal/api/")
+
+Only include rules and architecture facts that are specific to THIS project.
+Do NOT include generic advice.
 
 Example format:
 ---
 name: project-conventions
-description: Coding standards for this project
+description: Coding standards and architecture guide for this project
 ---
+
+## Rules
 
 - Always use structured logging with slog
 - Error types must implement the Error interface from internal/errors
+
+## Architecture
+
+### Package map
+- internal/cli — CLI commands and cobra wiring
+- internal/api — AI provider HTTP client
+
+### Key files
+- main.go — binary entry point
+- internal/cli/root.go — root cobra command
+
+### Wiring
+CLI commands call internal/api.Client; settings loaded at startup in root.go
+
+### What lives where
+- New CLI command → internal/cli/
+- New AI provider feature → internal/api/
 `,
 			strings.Join(info.Languages, ", "),
 			strings.Join(info.Frameworks, ", "),
@@ -283,9 +345,76 @@ description: Coding standards for this project
 			os.WriteFile(rulesPath, []byte(final), 0644)
 			fmt.Println("  Wrote .claudio/rules/project.md")
 		}
+
+		// Always regenerate the index after rules generation (even if skipped, project.md may already exist)
+		indexPath := filepath.Join(claudioDir, "rules", "index.md")
+		if indexContent, err := buildRulesIndex(filepath.Join(claudioDir, "rules")); err == nil {
+			os.WriteFile(indexPath, []byte(indexContent), 0644)
+			fmt.Println("  Wrote .claudio/rules/index.md")
+		}
 	}
 
 	return nil
+}
+
+// buildRulesIndex reads all .md files in rulesDir, extracts their frontmatter description,
+// and returns a formatted index markdown string.
+func buildRulesIndex(rulesDir string) (string, error) {
+	entries, err := os.ReadDir(rulesDir)
+	if err != nil {
+		return "", err
+	}
+
+	var sb strings.Builder
+	sb.WriteString("# Rules Index\n\n")
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		if entry.Name() == "index.md" {
+			continue
+		}
+		description := extractFrontmatterDescription(filepath.Join(rulesDir, entry.Name()))
+		if description == "" {
+			description = "project rules"
+		}
+		sb.WriteString(fmt.Sprintf("- `%s` — %s\n", entry.Name(), description))
+	}
+
+	return sb.String(), nil
+}
+
+// extractFrontmatterDescription parses YAML frontmatter from a markdown file
+// and returns the value of the "description" field, or empty string if not found.
+func extractFrontmatterDescription(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	content := string(data)
+
+	// Frontmatter must start at the very beginning of the file
+	if !strings.HasPrefix(content, "---") {
+		return ""
+	}
+
+	// Find the closing ---
+	rest := content[3:]
+	end := strings.Index(rest, "\n---")
+	if end == -1 {
+		return ""
+	}
+	frontmatter := rest[:end]
+
+	for _, line := range strings.Split(frontmatter, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "description:") {
+			val := strings.TrimPrefix(line, "description:")
+			return strings.TrimSpace(val)
+		}
+	}
+	return ""
 }
 
 // callAI sends a single prompt to the API and returns the text response.
