@@ -26,14 +26,15 @@ type DismissMsg struct{}
 
 // Model is the agent picker component.
 type Model struct {
-	agents  []agents.AgentDefinition
-	filter  textinput.Model
-	cursor  int
-	offset  int // scroll offset for the list
-	active  bool
-	width   int
-	height  int
-	current string // currently active agent type
+	agents          []agents.AgentDefinition
+	filter          textinput.Model
+	cursor          int
+	offset          int // scroll offset for the list
+	active          bool
+	width           int
+	height          int
+	current         string // currently active agent type
+	confirmingReset bool   // true when user must press Enter again to confirm noneAgent
 }
 
 // noneAgent is a sentinel entry that clears the active persona.
@@ -118,9 +119,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		m.active = false
 		items := m.filtered()
 		if len(items) == 0 {
+			m.active = false
 			return m, func() tea.Msg { return DismissMsg{} }
 		}
 		cursor := m.cursor
@@ -128,6 +129,29 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			cursor = len(items) - 1
 		}
 		sel := items[cursor]
+		// noneAgent (Type == "") is destructive — require an explicit second Enter.
+		if sel.Type == "" {
+			if m.confirmingReset {
+				// Second Enter: user confirmed — emit the reset.
+				m.active = false
+				m.confirmingReset = false
+				return m, func() tea.Msg {
+					return AgentSelectedMsg{
+						AgentType:       sel.Type,
+						DisplayName:     sel.WhenToUse,
+						SystemPrompt:    sel.SystemPrompt,
+						Model:           sel.Model,
+						DisallowedTools: sel.DisallowedTools,
+					}
+				}
+			}
+			// First Enter on noneAgent: enter confirmation state, don't close.
+			m.confirmingReset = true
+			return m, nil
+		}
+		// Normal agent selected.
+		m.active = false
+		m.confirmingReset = false
 		return m, func() tea.Msg {
 			return AgentSelectedMsg{
 				AgentType:       sel.Type,
@@ -138,6 +162,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 	case "esc":
+		if m.confirmingReset {
+			// Cancel confirmation — return to normal selector state.
+			m.confirmingReset = false
+			return m, nil
+		}
 		m.active = false
 		return m, func() tea.Msg { return DismissMsg{} }
 	default:
@@ -147,12 +176,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.filter, cmd = m.filter.Update(msg)
 		// Clamp cursor and offset if filter narrowed the list
 		if m.filter.Value() != prevVal {
+			// Any filter change clears a pending reset confirmation.
+			m.confirmingReset = false
 			items := m.filtered()
 			if m.cursor >= len(items) && len(items) > 0 {
 				m.cursor = len(items) - 1
 			}
 			if len(items) == 0 {
 				m.cursor = 0
+			}
+			// If the cursor landed on noneAgent (index 0) but real agents exist,
+			// move it to the first real agent (index 1) to avoid accidental reset.
+			if m.cursor == 0 && len(items) > 1 && items[0].Type == "" {
+				m.cursor = 1
 			}
 			// Clamp offset so we don't scroll past the end of the filtered list
 			maxOffset := max(len(items)-listH, 0)
@@ -340,8 +376,13 @@ func (m Model) View() string {
 		Width(innerW).
 		Render(body)
 
-	hint := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true).
-		Render("  type to filter · j/k navigate · enter select · esc cancel")
+	var hintText string
+	if m.confirmingReset {
+		hintText = "  Reset to default agent? Press Enter to confirm · Esc to cancel"
+	} else {
+		hintText = "  type to filter · j/k navigate · enter select · esc cancel"
+	}
+	hint := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true).Render(hintText)
 
 	full := lipgloss.JoinVertical(lipgloss.Left, box, hint)
 
