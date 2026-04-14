@@ -85,6 +85,10 @@ type TeammateState struct {
 	// Set by Spawn() and used by the context decorator to inject the advisor tool.
 	AdvisorConfig *AdvisorConfig
 
+	// MergeStatus records the outcome of worktree cleanup after the agent finishes.
+	// One of: "auto-merged: ...", "merge-failed: ...", "no-changes: ...", or "" if no worktree.
+	MergeStatus string
+
 	// InactivityCount tracks how many human messages have been sent without
 	// this agent receiving any message. Incremented by IncrementInactivity;
 	// reset to 0 by SendMessage when a message is routed to this agent.
@@ -723,6 +727,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				}
 			}
 			state.mu.Lock()
+			state.MergeStatus = "no-changes: worktree cleaned up (nothing to merge)"
 			state.WorktreePath = ""
 			state.WorktreeBranch = ""
 			state.mu.Unlock()
@@ -739,6 +744,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				mergeNote := fmt.Sprintf("[Worktree branch %s auto-merged into main and cleaned up.]", mergedBranch)
 				state.mu.Lock()
 				state.Result += "\n\n" + mergeNote
+				state.MergeStatus = fmt.Sprintf("auto-merged: %s → main (cleaned up)", mergedBranch)
 				state.WorktreePath = ""
 				state.WorktreeBranch = ""
 				state.mu.Unlock()
@@ -755,6 +761,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				mergeNote := fmt.Sprintf("[Auto-merge failed (not fast-forwardable). Manual merge required: git merge %s — worktree kept at: %s]", mergedBranch, state.WorktreePath)
 				state.mu.Lock()
 				state.Result += "\n\n" + mergeNote
+				state.MergeStatus = fmt.Sprintf("merge-failed: manual merge required — git merge %s (worktree: %s)", mergedBranch, state.WorktreePath)
 				state.mu.Unlock()
 				r.EmitEvent(TeammateEvent{
 					TeamName:       cfg.TeamName,
@@ -829,7 +836,11 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				if err != nil {
 					summary = fmt.Sprintf("FAILED: %s", err.Error())
 				}
-				completionText := fmt.Sprintf("[%s] Task complete: %s\n\nResult:\n%s", state.Status, state.Prompt, summary)
+				mergeInfo := ""
+				if state.MergeStatus != "" {
+					mergeInfo = fmt.Sprintf("\nMerge status: %s", state.MergeStatus)
+				}
+				completionText := fmt.Sprintf("[%s] Task complete: %s%s\n\nResult:\n%s", state.Status, state.Prompt, mergeInfo, summary)
 				mb.Send(state.Identity.AgentName, "team-lead", Message{
 					Text:    completionText,
 					Summary: fmt.Sprintf("%s: %s", state.Identity.AgentName, state.Status),
