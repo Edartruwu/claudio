@@ -28,14 +28,15 @@ const (
 type Entry struct {
 	Name        string
 	Description string
-	Type        string   // user, feedback, project, reference
-	Scope       string   // project, global, agent (controls where Save writes)
-	Facts       []string // PRIMARY: discrete one-liner facts
-	Content     string   // COMPAT: populated from Facts on render, or from body for old entries
+	Type        string              // user, feedback, project, reference
+	Scope       string              // project, global, agent (controls where Save writes)
+	Facts       []string            // PRIMARY: discrete one-liner facts
+	Content     string              // COMPAT: populated from Facts on render, or from body for old entries
 	FilePath    string
 	Tags        []string
-	Concepts    []string  // semantic tags, broader than Tags, auto-extracted or user-provided
+	Concepts    []string            // semantic tags, broader than Tags, auto-extracted or user-provided
 	UpdatedAt   time.Time
+	SourceFiles map[string]string   // path → sha256 hex digest; used for cache freshness checks
 }
 
 // Store manages the memory directory.
@@ -103,6 +104,18 @@ func (s *Store) Save(entry *Entry) error {
 		content.WriteString("concepts:\n")
 		for _, concept := range entry.Concepts {
 			content.WriteString(fmt.Sprintf("  - %q\n", concept))
+		}
+	}
+	if len(entry.SourceFiles) > 0 {
+		content.WriteString("source_files:\n")
+		// Sort keys for deterministic output.
+		sfKeys := make([]string, 0, len(entry.SourceFiles))
+		for k := range entry.SourceFiles {
+			sfKeys = append(sfKeys, k)
+		}
+		sort.Strings(sfKeys)
+		for _, k := range sfKeys {
+			content.WriteString(fmt.Sprintf("  %s: %s\n", k, entry.SourceFiles[k]))
 		}
 	}
 	content.WriteString("---\n")
@@ -410,9 +423,10 @@ func ParseEntry(content, path string) *Entry {
 
 	entry := &Entry{FilePath: path}
 
-	// Parse frontmatter including facts and concepts
+	// Parse frontmatter including facts, concepts, and source_files
 	inFacts := false
 	inConcepts := false
+	inSourceFiles := false
 	for _, line := range lines[1:endIdx] {
 		trimmed := strings.TrimSpace(line)
 
@@ -442,6 +456,26 @@ func ParseEntry(content, path string) *Entry {
 			}
 			// Non-list line ends the concepts block
 			inConcepts = false
+		}
+
+		// Handle source_files map items (indented "path: hash" lines)
+		if inSourceFiles {
+			if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+				if idx := strings.Index(trimmed, ":"); idx > 0 {
+					sfKey := strings.TrimSpace(trimmed[:idx])
+					sfVal := strings.TrimSpace(trimmed[idx+1:])
+					sfVal = strings.Trim(sfVal, `"'`)
+					if sfKey != "" && sfVal != "" {
+						if entry.SourceFiles == nil {
+							entry.SourceFiles = make(map[string]string)
+						}
+						entry.SourceFiles[sfKey] = sfVal
+					}
+				}
+				continue
+			}
+			// Non-indented line ends the source_files block
+			inSourceFiles = false
 		}
 
 		if idx := strings.Index(trimmed, ":"); idx > 0 {
@@ -474,6 +508,9 @@ func ParseEntry(content, path string) *Entry {
 			case "concepts":
 				// Start parsing concepts list on subsequent lines
 				inConcepts = true
+			case "source_files":
+				// Start parsing source_files map on subsequent lines
+				inSourceFiles = true
 			}
 		}
 	}

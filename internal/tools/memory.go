@@ -2,8 +2,11 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/services/memory"
@@ -27,6 +30,7 @@ type memoryInput struct {
 	Tags        []string `json:"tags,omitempty"`
 	Concepts    []string `json:"concepts,omitempty"`
 	Query       string   `json:"query,omitempty"`
+	SourceFiles []string `json:"source_files,omitempty"`
 }
 
 func (t *MemoryTool) Name() string { return "Memory" }
@@ -53,6 +57,9 @@ Facts are discrete, one-sentence, specific statements — not prose. Each memory
 - **delete** — Remove an entire memory entry permanently.
   Required: name.
 
+- **invalidate** — Invalidate a cached memory entry so it will be re-investigated next time. Deletes the entry without implying permanent removal — use when source files have changed and the cached facts are stale.
+  Required: name.
+
 - **read** — Load a full entry with all facts numbered (0-based). Use before replace-fact or delete-fact to see indices.
   Required: name.
 
@@ -77,7 +84,7 @@ func (t *MemoryTool) InputSchema() json.RawMessage {
 		"properties": {
 			"action": {
 				"type": "string",
-				"enum": ["save", "append", "replace-fact", "delete-fact", "delete", "read", "list", "search"],
+				"enum": ["save", "append", "replace-fact", "delete-fact", "delete", "invalidate", "read", "list", "search"],
 				"description": "The action to perform."
 			},
 			"name": {
@@ -124,6 +131,11 @@ func (t *MemoryTool) InputSchema() json.RawMessage {
 			"query": {
 				"type": "string",
 				"description": "Search query string. Required for search."
+			},
+			"source_files": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Optional list of source file paths (absolute or relative) whose content hashes will be stored with the memory entry. On Recall, these are re-hashed to detect staleness. Use when saving facts derived from specific files."
 			}
 		},
 		"required": ["action"]
@@ -154,6 +166,8 @@ func (t *MemoryTool) Execute(ctx context.Context, input json.RawMessage) (*Resul
 		return t.deleteFact(in)
 	case "delete":
 		return t.deleteMemory(in.Name)
+	case "invalidate":
+		return t.invalidateMemory(in.Name)
 	case "read":
 		return t.readMemory(in.Name)
 	case "list":
@@ -162,7 +176,7 @@ func (t *MemoryTool) Execute(ctx context.Context, input json.RawMessage) (*Resul
 		return t.searchMemories(in.Query)
 	default:
 		return &Result{
-			Content: fmt.Sprintf("Unknown action: %s. Use: save, append, replace-fact, delete-fact, delete, read, list, search", in.Action),
+			Content: fmt.Sprintf("Unknown action: %s. Use: save, append, replace-fact, delete-fact, delete, invalidate, read, list, search", in.Action),
 			IsError: true,
 		}, nil
 	}
@@ -193,6 +207,20 @@ func (t *MemoryTool) saveMemory(in memoryInput) (*Result, error) {
 		scope = memory.ScopeProject
 	}
 
+	// Compute content hashes for any provided source files.
+	var sourceFileHashes map[string]string
+	if len(in.SourceFiles) > 0 {
+		sourceFileHashes = make(map[string]string, len(in.SourceFiles))
+		for _, p := range in.SourceFiles {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return &Result{Content: fmt.Sprintf("Failed to read source file %q: %v", p, err), IsError: true}, nil
+			}
+			sum := sha256.Sum256(data)
+			sourceFileHashes[p] = hex.EncodeToString(sum[:])
+		}
+	}
+
 	entry := &memory.Entry{
 		Name:        in.Name,
 		Description: in.Description,
@@ -201,13 +229,18 @@ func (t *MemoryTool) saveMemory(in memoryInput) (*Result, error) {
 		Facts:       in.Facts,
 		Tags:        in.Tags,
 		Concepts:    in.Concepts,
+		SourceFiles: sourceFileHashes,
 	}
 
 	if err := t.Store.Save(entry); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to save: %v", err), IsError: true}, nil
 	}
 
-	return &Result{Content: fmt.Sprintf("Memory '%s' saved with %d facts.", in.Name, len(in.Facts))}, nil
+	msg := fmt.Sprintf("Memory '%s' saved with %d facts.", in.Name, len(in.Facts))
+	if len(sourceFileHashes) > 0 {
+		msg += fmt.Sprintf(" Content hashes stored for %d source file(s).", len(sourceFileHashes))
+	}
+	return &Result{Content: msg}, nil
 }
 
 func (t *MemoryTool) appendFact(in memoryInput) (*Result, error) {
@@ -262,6 +295,20 @@ func (t *MemoryTool) deleteMemory(name string) (*Result, error) {
 	}
 
 	return &Result{Content: fmt.Sprintf("Memory '%s' deleted.", name)}, nil
+}
+
+// invalidateMemory removes the named entry so it will be re-investigated next time.
+// Semantically equivalent to delete but signals cache-busting intent rather than permanent removal.
+func (t *MemoryTool) invalidateMemory(name string) (*Result, error) {
+	if name == "" {
+		return &Result{Content: "name is required for invalidate", IsError: true}, nil
+	}
+
+	if err := t.Store.Remove(name); err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to invalidate memory: %v", err), IsError: true}, nil
+	}
+
+	return &Result{Content: fmt.Sprintf("Memory '%s' invalidated. Re-investigate and save again when ready.", name)}, nil
 }
 
 func (t *MemoryTool) readMemory(name string) (*Result, error) {
