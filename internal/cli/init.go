@@ -9,10 +9,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/config"
 )
 
 var initCmd = &cobra.Command{
@@ -344,6 +346,10 @@ CLI commands call internal/api.Client; settings loaded at startup in root.go
 		if final, accepted := proposeFile(reader, ".claudio/rules/project.md", content); accepted {
 			os.WriteFile(rulesPath, []byte(final), 0644)
 			fmt.Println("  Wrote .claudio/rules/project.md")
+
+			fmt.Println("\n  Seeding architecture memory...")
+			seedArchitectureMemory(ctx, projectDir, final)
+			fmt.Println("  Memory seeded — first agent skips re-investigation.")
 		}
 
 		// Always regenerate the index after rules generation (even if skipped, project.md may already exist)
@@ -415,6 +421,68 @@ func extractFrontmatterDescription(path string) string {
 		}
 	}
 	return ""
+}
+
+// seedArchitectureMemory extracts discrete architecture facts from the rules content
+// and writes them to the project memory directory so the first agent skips re-investigation.
+// Errors are non-fatal — a warning is printed and init continues.
+func seedArchitectureMemory(ctx context.Context, projectDir, rulesContent string) {
+	memDir := config.ProjectMemoryDir(projectDir)
+	if err := os.MkdirAll(memDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: could not create memory dir: %v\n", err)
+		return
+	}
+
+	archivePath := filepath.Join(memDir, "architecture.md")
+	if _, err := os.Stat(archivePath); err == nil {
+		// Already exists — skip
+		return
+	}
+
+	extractPrompt := fmt.Sprintf(`Extract 10-15 discrete, one-sentence facts about this project's architecture from the rules below.
+Each fact must be specific and actionable (e.g. "New CLI commands go in internal/cli/", "Migrations are appended-only in internal/storage/db.go").
+Output one fact per line. No bullets, no numbers, no blank lines.
+
+RULES:
+%s`, rulesContent)
+
+	response, err := callAI(ctx, "You are a technical documentation assistant. Extract precise, actionable facts.", extractPrompt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: could not extract architecture facts: %v\n", err)
+		return
+	}
+
+	// Parse facts: split by newline, trim, filter empty
+	var facts []string
+	for _, line := range strings.Split(response, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			facts = append(facts, line)
+		}
+	}
+	if len(facts) == 0 {
+		fmt.Fprintf(os.Stderr, "  Warning: no architecture facts extracted\n")
+		return
+	}
+
+	// Write in the format ParseEntry() expects (YAML frontmatter with facts list)
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	sb.WriteString("name: architecture\n")
+	sb.WriteString("description: Project architecture map — package roles, key files, wiring\n")
+	sb.WriteString("type: project\n")
+	sb.WriteString("tags: [architecture, packages, wiring]\n")
+	sb.WriteString(fmt.Sprintf("updated_at: %s\n", time.Now().Format(time.RFC3339)))
+	sb.WriteString("facts:\n")
+	for _, fact := range facts {
+		sb.WriteString(fmt.Sprintf("  - %q\n", fact))
+	}
+	sb.WriteString("---\n")
+
+	if err := os.WriteFile(archivePath, []byte(sb.String()), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: could not write architecture memory: %v\n", err)
+		return
+	}
 }
 
 // callAI sends a single prompt to the API and returns the text response.
