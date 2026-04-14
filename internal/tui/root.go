@@ -158,6 +158,7 @@ type Model struct {
 	pendingEngineMessages []api.Message
 	apiClient             *api.Client
 	registry     *tools.Registry
+	baseRegistry *tools.Registry // pristine registry with all tools; used to restore team tools on activation
 	cancelFunc   context.CancelFunc
 	eventCh      chan tuiEvent
 	approvalCh   chan bool
@@ -335,6 +336,16 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	// Apply options
 	for _, opt := range opts {
 		opt(&m)
+	}
+
+	// Keep a pristine base registry (includes team tools). Active registry starts
+	// without team tools — they are injected back only when a team template is activated.
+	if m.registry != nil {
+		m.baseRegistry = m.registry
+		m.registry = m.registry.Clone()
+		for _, name := range tools.TeamToolNames {
+			m.registry.Remove(name)
+		}
 	}
 
 	// Initialize docks (requires appCtx which is set by WithAppContext option above)
@@ -1779,6 +1790,19 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 // applyTeamContext appends a team-context block to the system prompt so the
 // active agent always knows which team template to use and what its roster is.
 func (m Model) applyTeamContext(msg teamselector.TeamSelectedMsg) Model {
+	// Inject team tools into the active registry now that a team context is active.
+	if m.baseRegistry != nil {
+		for _, name := range tools.TeamToolNames {
+			if _, err := m.registry.Get(name); err != nil { // skip if already present
+				if t, err2 := m.baseRegistry.Get(name); err2 == nil {
+					m.registry.Register(t)
+				}
+			}
+		}
+		if m.engine != nil {
+			m.engine.SetRegistry(m.registry)
+		}
+	}
 	var block string
 	if msg.IsEphemeral {
 		block = `## Active Team
@@ -1906,6 +1930,17 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 // Unlike applyTeamContext, it does NOT add a system message or refresh viewport (no engine yet).
 // The system prompt is still updated so it applies when the engine starts.
 func (m Model) ApplyTeamContextAtStartup(msg teamselector.TeamSelectedMsg, appCtx *AppContext) Model {
+	// Inject team tools into the active registry now that a team context is active.
+	if m.baseRegistry != nil {
+		for _, name := range tools.TeamToolNames {
+			if _, err := m.registry.Get(name); err != nil { // skip if already present
+				if t, err2 := m.baseRegistry.Get(name); err2 == nil {
+					m.registry.Register(t)
+				}
+			}
+		}
+		// No engine yet at startup — registry is picked up when the engine is created.
+	}
 	var block string
 	if msg.IsEphemeral {
 		block = `## Active Team

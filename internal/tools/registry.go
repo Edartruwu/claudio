@@ -296,6 +296,17 @@ func (r *Registry) Names() []string {
 	return result
 }
 
+// TeamToolNames lists the team collaboration tools that are only available
+// to the principal agent when a team template or ephemeral team is active.
+var TeamToolNames = []string{
+	"TeamCreate",
+	"TeamDelete",
+	"SendMessage",
+	"SpawnTeammate",
+	"SaveTeamTemplate",
+	"InstantiateTeam",
+}
+
 // DefaultRegistry creates a registry with all core tools.
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
