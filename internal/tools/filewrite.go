@@ -71,9 +71,9 @@ func (t *FileWriteTool) RequiresApproval(input json.RawMessage) bool {
 }
 
 // Validate runs pre-approval checks so errors surface before the user types "allow".
-// Note: Validate is called before Execute and does not have a context, so path
-// remapping cannot be applied here. The actual remapping happens in Execute.
-func (t *FileWriteTool) Validate(input json.RawMessage) *Result {
+// ctx carries worktree CWD/mainRoot values so the staleness check uses the
+// remapped (worktree) path, not the main-repo path the agent provided.
+func (t *FileWriteTool) Validate(ctx context.Context, input json.RawMessage) *Result {
 	var in fileWriteInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}
@@ -86,17 +86,20 @@ func (t *FileWriteTool) Validate(input json.RawMessage) *Result {
 			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}
 		}
 	}
+	// Remap into worktree before the staleness check so the ReadCache lookup
+	// matches the path used by the Read tool (which also remaps before storing).
+	checkPath := RemapPathForWorktree(ctx, in.FilePath)
 	// Staleness check: if the file exists and has content, it must have been read
 	// (or written) in this session. Empty files are skipped — there is nothing to
 	// review before overwriting. Files written earlier in the session are also
 	// skipped because the model already knows what it just wrote.
-	if !isPlanFilePath(in.FilePath) {
-		if info, err := os.Stat(in.FilePath); err == nil && info.Size() > 0 {
+	if !isPlanFilePath(checkPath) {
+		if info, err := os.Stat(checkPath); err == nil && info.Size() > 0 {
 			if t.ReadCache != nil {
-				if t.ReadCache.WrittenSince(in.FilePath) {
+				if t.ReadCache.WrittenSince(checkPath) {
 					return nil
 				}
-				key := readcache.Key{FilePath: in.FilePath, Offset: 1, Limit: 2000}
+				key := readcache.Key{FilePath: checkPath, Offset: 1, Limit: 2000}
 				if _, ok := t.ReadCache.Get(key); !ok {
 					return &Result{
 						Content: fmt.Sprintf(

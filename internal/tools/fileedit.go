@@ -98,7 +98,7 @@ func (t *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	const maxEditBytes = 1 * 1024 * 1024 // 1MB
 	if info, err := os.Stat(in.FilePath); err == nil && info.Size() > maxEditBytes {
 		return &Result{
-			Content: fmt.Sprintf("File too large to edit (%d KB). Use Bash with sed for targeted edits on large files.", info.Size()/1024),
+			Content: fmt.Sprintf("File too large to edit (%d KB). Use Read with offset+limit to find the exact lines, then re-try Edit with a smaller, more targeted old_string.", info.Size()/1024),
 			IsError: true,
 		}, nil
 	}

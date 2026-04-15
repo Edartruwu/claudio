@@ -68,8 +68,9 @@ type ToolResult struct {
 // tokens on an approval dialog for a tool call that will certainly fail.
 // Validate should only perform fast, non-destructive checks (e.g. cache
 // lookups, input parsing). Return nil if validation passes.
+// ctx carries worktree CWD/mainRoot values so path remapping works correctly.
 type Validatable interface {
-	Validate(input json.RawMessage) *Result
+	Validate(ctx context.Context, input json.RawMessage) *Result
 }
 
 // DeferrableTool is an optional interface tools can implement to support deferred loading.

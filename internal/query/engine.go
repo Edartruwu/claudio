@@ -910,7 +910,7 @@ func (e *Engine) executeTools(ctx context.Context, toolUses []tools.ToolUse) ([]
 
 		// Run pre-approval validation so errors surface before the user is prompted.
 		if v, ok := tool.(tools.Validatable); ok {
-			if vr := v.Validate(tu.Input); vr != nil && vr.IsError {
+			if vr := v.Validate(ctx, tu.Input); vr != nil && vr.IsError {
 				e.handler.OnToolUseEnd(tu, vr)
 				results[i] = toolResultBlock{Type: "tool_result", ToolUseID: tu.ID, Content: vr.Content, IsError: true}
 				continue

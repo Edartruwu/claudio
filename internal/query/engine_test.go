@@ -104,7 +104,7 @@ func (t *validatableMockTool) Execute(_ context.Context, _ json.RawMessage) (*to
 	return &tools.Result{Content: "executed"}, nil
 }
 
-func (t *validatableMockTool) Validate(input json.RawMessage) *tools.Result {
+func (t *validatableMockTool) Validate(_ context.Context, input json.RawMessage) *tools.Result {
 	return t.validateErr
 }
 

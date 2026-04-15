@@ -66,7 +66,7 @@ func cacheFile(t *testing.T, rc *readcache.Cache, path string) {
 
 func TestValidate_InvalidJSON(t *testing.T) {
 	tool := &FileWriteTool{}
-	result := tool.Validate(json.RawMessage(`{bad json`))
+	result := tool.Validate(context.Background(), json.RawMessage(`{bad json`))
 	if result == nil || !result.IsError {
 		t.Fatal("expected error for invalid JSON")
 	}
@@ -77,7 +77,7 @@ func TestValidate_InvalidJSON(t *testing.T) {
 
 func TestValidate_EmptyFilePath(t *testing.T) {
 	tool := &FileWriteTool{}
-	result := tool.Validate(writeInput("", "content"))
+	result := tool.Validate(context.Background(), writeInput("", "content"))
 	if result == nil || !result.IsError {
 		t.Fatal("expected error for empty file path")
 	}
@@ -90,7 +90,7 @@ func TestValidate_SecurityDeny(t *testing.T) {
 	tool := &FileWriteTool{
 		Security: &mockSecurity{denySubstring: "forbidden"},
 	}
-	result := tool.Validate(writeInput("/tmp/forbidden/file.txt", "x"))
+	result := tool.Validate(context.Background(), writeInput("/tmp/forbidden/file.txt", "x"))
 	if result == nil || !result.IsError {
 		t.Fatal("expected error for denied path")
 	}
@@ -104,7 +104,7 @@ func TestValidate_SecurityAllow(t *testing.T) {
 		Security: &mockSecurity{denySubstring: "forbidden"},
 	}
 	// Non-existent file, no ReadCache — should pass (new file creation).
-	result := tool.Validate(writeInput("/tmp/safe-nonexistent-"+fmt.Sprint(time.Now().UnixNano()), "x"))
+	result := tool.Validate(context.Background(), writeInput("/tmp/safe-nonexistent-"+fmt.Sprint(time.Now().UnixNano()), "x"))
 	if result != nil {
 		t.Errorf("expected nil for allowed path, got: %s", result.Content)
 	}
@@ -113,7 +113,7 @@ func TestValidate_SecurityAllow(t *testing.T) {
 func TestValidate_NilSecurity(t *testing.T) {
 	tool := &FileWriteTool{}
 	// Non-existent file, no ReadCache → pass.
-	result := tool.Validate(writeInput("/tmp/no-sec-"+fmt.Sprint(time.Now().UnixNano()), "x"))
+	result := tool.Validate(context.Background(), writeInput("/tmp/no-sec-"+fmt.Sprint(time.Now().UnixNano()), "x"))
 	if result != nil {
 		t.Errorf("expected nil, got: %s", result.Content)
 	}
@@ -124,7 +124,7 @@ func TestValidate_StalenessCheck_FileExistsNotRead(t *testing.T) {
 	rc := readcache.New(16)
 	tool := &FileWriteTool{ReadCache: rc}
 
-	result := tool.Validate(writeInput(path, "new content"))
+	result := tool.Validate(context.Background(), writeInput(path, "new content"))
 	if result == nil || !result.IsError {
 		t.Fatal("expected staleness error when file exists but not read")
 	}
@@ -139,7 +139,7 @@ func TestValidate_StalenessCheck_FileExistsAndRead(t *testing.T) {
 	cacheFile(t, rc, path)
 	tool := &FileWriteTool{ReadCache: rc}
 
-	result := tool.Validate(writeInput(path, "new content"))
+	result := tool.Validate(context.Background(), writeInput(path, "new content"))
 	if result != nil {
 		t.Errorf("expected nil when file was read, got: %s", result.Content)
 	}
@@ -157,7 +157,7 @@ func TestValidate_StalenessCheck_FileChangedAfterRead(t *testing.T) {
 	}
 
 	tool := &FileWriteTool{ReadCache: rc}
-	result := tool.Validate(writeInput(path, "overwrite"))
+	result := tool.Validate(context.Background(), writeInput(path, "overwrite"))
 	if result == nil || !result.IsError {
 		t.Fatal("expected staleness error when file changed after read")
 	}
@@ -172,7 +172,7 @@ func TestValidate_NewFile_NoReadCacheRequired(t *testing.T) {
 	rc := readcache.New(16)
 	tool := &FileWriteTool{ReadCache: rc}
 
-	result := tool.Validate(writeInput(newPath, "hello"))
+	result := tool.Validate(context.Background(), writeInput(newPath, "hello"))
 	if result != nil {
 		t.Errorf("new file should not require read cache, got: %s", result.Content)
 	}
@@ -184,7 +184,7 @@ func TestValidate_StalenessCheck_EmptyFileSkipped(t *testing.T) {
 	rc := readcache.New(16)
 	tool := &FileWriteTool{ReadCache: rc}
 
-	result := tool.Validate(writeInput(path, "new content"))
+	result := tool.Validate(context.Background(), writeInput(path, "new content"))
 	if result != nil {
 		t.Errorf("empty file should bypass staleness check, got: %s", result.Content)
 	}
@@ -194,7 +194,7 @@ func TestValidate_NilReadCache_SkipsStaleness(t *testing.T) {
 	path := tmpFile(t, "existing")
 	tool := &FileWriteTool{} // no ReadCache
 
-	result := tool.Validate(writeInput(path, "overwrite"))
+	result := tool.Validate(context.Background(), writeInput(path, "overwrite"))
 	if result != nil {
 		t.Errorf("without ReadCache, staleness should be skipped, got: %s", result.Content)
 	}
@@ -221,7 +221,7 @@ func TestValidate_PlanFile_BypassesStaleness(t *testing.T) {
 	// Don't cache it — normally this would fail staleness, but plan files are exempt.
 	tool := &FileWriteTool{ReadCache: rc}
 
-	result := tool.Validate(writeInput(planFile, "updated plan"))
+	result := tool.Validate(context.Background(), writeInput(planFile, "updated plan"))
 	if result != nil {
 		t.Errorf("plan files should bypass staleness, got: %s", result.Content)
 	}
@@ -236,7 +236,7 @@ func TestValidate_SecurityCheckedBeforeStaleness(t *testing.T) {
 		ReadCache: rc,
 	}
 
-	result := tool.Validate(writeInput(path, "x"))
+	result := tool.Validate(context.Background(), writeInput(path, "x"))
 	if result == nil || !result.IsError {
 		t.Fatal("expected error")
 	}
@@ -253,7 +253,7 @@ func TestValidate_PassReturnsNil(t *testing.T) {
 		Security:  &mockSecurity{},
 		ReadCache: readcache.New(16),
 	}
-	result := tool.Validate(writeInput(newPath, "content"))
+	result := tool.Validate(context.Background(), writeInput(newPath, "content"))
 	if result != nil {
 		t.Errorf("expected nil for valid input, got: %s", result.Content)
 	}
@@ -267,7 +267,7 @@ func TestValidate_EmptyContent(t *testing.T) {
 	// Empty content is valid — writing an empty file is allowed.
 	dir := t.TempDir()
 	tool := &FileWriteTool{}
-	result := tool.Validate(writeInput(filepath.Join(dir, "empty.txt"), ""))
+	result := tool.Validate(context.Background(), writeInput(filepath.Join(dir, "empty.txt"), ""))
 	if result != nil {
 		t.Errorf("empty content should be valid, got: %s", result.Content)
 	}
@@ -276,7 +276,7 @@ func TestValidate_EmptyContent(t *testing.T) {
 func TestValidate_MissingFieldsInJSON(t *testing.T) {
 	// JSON with only content but no file_path → empty file path error.
 	tool := &FileWriteTool{}
-	result := tool.Validate(json.RawMessage(`{"content":"hello"}`))
+	result := tool.Validate(context.Background(), json.RawMessage(`{"content":"hello"}`))
 	if result == nil || !result.IsError {
 		t.Fatal("expected error for missing file_path")
 	}
@@ -290,7 +290,7 @@ func TestValidate_ExtraFieldsInJSON(t *testing.T) {
 	tool := &FileWriteTool{}
 	dir := t.TempDir()
 	input := fmt.Sprintf(`{"file_path":"%s/x.txt","content":"y","extra":"z"}`, dir)
-	result := tool.Validate(json.RawMessage(input))
+	result := tool.Validate(context.Background(), json.RawMessage(input))
 	if result != nil {
 		t.Errorf("extra fields should not fail, got: %s", result.Content)
 	}
@@ -301,7 +301,7 @@ func TestValidate_NestedDirectory_NewFile(t *testing.T) {
 	dir := t.TempDir()
 	deep := filepath.Join(dir, "a", "b", "c", "file.txt")
 	tool := &FileWriteTool{ReadCache: readcache.New(16)}
-	result := tool.Validate(writeInput(deep, "deep"))
+	result := tool.Validate(context.Background(), writeInput(deep, "deep"))
 	if result != nil {
 		t.Errorf("non-existent nested path should pass validate, got: %s", result.Content)
 	}
@@ -313,6 +313,44 @@ func TestValidate_NestedDirectory_NewFile(t *testing.T) {
 
 func TestFileWriteTool_ImplementsValidatable(t *testing.T) {
 	var _ Validatable = (*FileWriteTool)(nil)
+}
+
+func TestValidate_WorktreeCwd_UsesMappedPathForStaleness(t *testing.T) {
+	// Simulates a worktree agent: the file exists in both main repo and worktree.
+	// The agent read it (cache populated with the worktree path).
+	// Validate must consult the worktree path, not the main-repo path.
+	mainRoot, worktreeRoot, relPath := setupWorktreeScenario(t)
+
+	rc := readcache.New(16)
+	wtPath := filepath.Join(worktreeRoot, relPath)
+	// Populate cache with the worktree-remapped path using the real mtime
+	// (as Read would have done via os.Stat).
+	cacheFile(t, rc, wtPath)
+
+	tool := &FileWriteTool{ReadCache: rc}
+	mainPath := filepath.Join(mainRoot, relPath)
+
+	ctx := WithCwd(context.Background(), worktreeRoot)
+	ctx = WithMainRoot(ctx, mainRoot)
+
+	// Validate with the main-repo path (as an agent would send it).
+	// It should PASS because the cache has the worktree-mapped version.
+	result := tool.Validate(ctx, writeInput(mainPath, "NEW CONTENT\n"))
+	if result != nil {
+		t.Errorf("expected nil (file was read via worktree path), got: %s", result.Content)
+	}
+}
+
+func TestValidate_WorktreeCwd_NoContext_StillRejectsUnread(t *testing.T) {
+	// Without worktree context, an existing unread file must still fail.
+	path := tmpFile(t, "existing content")
+	rc := readcache.New(16)
+	tool := &FileWriteTool{ReadCache: rc}
+
+	result := tool.Validate(context.Background(), writeInput(path, "overwrite"))
+	if result == nil || !result.IsError {
+		t.Fatal("expected staleness error for unread file without worktree context")
+	}
 }
 
 // ---------------------------------------------------------------------------
