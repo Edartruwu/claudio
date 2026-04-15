@@ -633,6 +633,19 @@ Only use Read/Grep/Glob directly when:
 - You are about to edit a specific file you already know the path to
 - The lookup is a single targeted read (one file, < 50 lines)
 
+## Tool discipline — REQUIRED
+
+**Never use bash to read or edit files.** Always use the dedicated tools:
+- Read a file: use Read (offset + limit for line ranges) — NEVER cat, head, tail, sed -n, grep -n "."
+- Edit a file: use Edit (exact string replacement) — NEVER sed, awk, or bash redirection
+- Create a file: use Write — NEVER echo > or cat <<EOF
+- Search content: use Grep — NEVER grep or rg directly
+- Find files: use Glob — NEVER find or ls
+
+**If Read returns "file not found":** the file does not yet exist — create it with Write. Do NOT conclude that Read/Edit/Write are broken and switch to bash.
+
+**Read supports line ranges:** use offset + limit parameters instead of sed -n 'X,Yp'. Example: to read lines 100-150, pass offset=100, limit=50.
+
 ## Retry discipline
 
 When running tests, builds, or validations:
@@ -673,6 +686,9 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			"Paths in conversation context from the parent agent refer to %s; translate them to your worktree root. "+
 			"Re-read files before editing if the parent may have modified them. "+
 			"Your changes stay in this worktree and will not affect the parent's files.\n\n"+
+			"WORKTREE TOOL USAGE: The Read, Edit, Write, Glob, and Grep tools are fully path-remapped into your worktree automatically — always use them. "+
+			"Do NOT use bash/sed/awk for file reading or editing even in a worktree. "+
+			"If Read returns 'file not found', the file does not exist in your worktree yet — create it with Write.\n\n"+
 			"IMPORTANT: When you have finished making changes, you MUST commit them with git before returning your final response. "+
 			"Stage all modified files and create a descriptive commit. This is required so your work can be reviewed and merged — "+
 			"uncommitted changes in a worktree cannot be diffed or merged by the team lead.", state.WorktreePath, cwd)
