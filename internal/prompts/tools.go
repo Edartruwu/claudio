@@ -22,7 +22,7 @@ IMPORTANT: Avoid using this tool to run ` + "`find`" + `, ` + "`grep`" + `, ` + 
 
  - File search: Use Glob (NOT find or ls)
  - Content search: Use Grep (NOT grep or rg)
- - Read files: Use Read (NOT cat/head/tail)
+ - Read files: Use Read (NOT cat/head/tail). Read supports ` + "`offset`" + ` and ` + "`limit`" + ` parameters for line ranges — use those instead of ` + "`sed -n`" + `
  - Edit files: Use Edit (NOT sed/awk)
  - Write files: Use Write (NOT echo >/cat <<EOF)
  - Communication: Output text directly (NOT echo/printf)

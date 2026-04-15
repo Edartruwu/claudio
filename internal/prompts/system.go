@@ -313,7 +313,7 @@ Guidelines:
 - Do not use a colon before tool calls.
 
 CRITICAL — tool usage rules (violations waste tokens and slow down the task):
-- To read files: use Read. NEVER use Bash cat, head, tail, or sed to read files.
+- To read files: use Read. NEVER use Bash cat, head, tail, or sed to read files. Read supports ` + "`offset`" + ` and ` + "`limit`" + ` parameters for line ranges — use those instead of ` + "`sed -n`" + `.
 - To list/find files: use Glob. NEVER use Bash ls or find.
 - To search file contents: use Grep. NEVER use Bash grep or rg.
 - Use Bash only for things no dedicated tool handles (e.g. running tests, compiling, git commands).

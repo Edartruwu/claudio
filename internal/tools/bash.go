@@ -85,9 +85,10 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 	// same file content to be re-sent to the model on every invocation.
 	if isCatFileCommand(in.Command) {
 		return &Result{
-			Content: "Use the Read tool instead of cat/head/tail to read files. " +
+			Content: "Use the Read tool instead of cat/head/tail/sed to read files. " +
 				"The Read tool caches results so unchanged files don't consume extra tokens, " +
-				"and enforces size limits. Call Read with the file path directly.",
+				"and enforces size limits. Call Read with the file path directly. " +
+				"Use the offset and limit parameters for line ranges instead of sed -n.",
 			IsError: true,
 		}, nil
 	}
@@ -209,7 +210,7 @@ func isCatFileCommand(command string) bool {
 	if strings.Contains(cmd, "|") || strings.Contains(cmd, ">") || strings.Contains(cmd, ";") || strings.Contains(cmd, "&&") {
 		return false
 	}
-	prefixes := []string{"cat ", "cat -n ", "head ", "head -n ", "tail ", "tail -n "}
+	prefixes := []string{"cat ", "cat -n ", "head ", "head -n ", "tail ", "tail -n ", "sed -n "}
 	for _, p := range prefixes {
 		if strings.HasPrefix(cmd, p) {
 			return true
