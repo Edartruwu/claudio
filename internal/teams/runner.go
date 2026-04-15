@@ -611,6 +611,14 @@ A short pause for a good answer beats hours of rework on the wrong approach.` +
 		"(e.g. `internal/tools` → `internal-tools`, `src/auth` → `src-auth`, `lib/payments` → `lib-payments`)" +
 		`
 
+## Skills — check at task start
+
+Before doing any work, check whether a skill matches your task. Skills provide domain-specific instructions, conventions, and step-by-step procedures that override default behavior.
+
+- Call Skill(skill="<name>") at the start of your task if a skill matches (e.g. "commit", "review", "caveman")
+- The Skill tool lists all available skills in its description — check it
+- If you are a specialized agent (e.g. go-htmx-frontend), proactively invoke any skill that matches your domain
+
 ## Context management — REQUIRED
 
 **Do NOT read files directly for exploration or investigation.** Instead, always spawn an Explore sub-agent via the Agent tool (subagent_type="Explore") and describe what you need to know.

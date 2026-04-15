@@ -14,7 +14,6 @@ import (
 
 // MemoryTool lets the agent persist and manage facts across sessions.
 type MemoryTool struct {
-	deferrable
 	Store *memory.ScopedStore
 }
 

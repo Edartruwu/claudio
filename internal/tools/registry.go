@@ -373,8 +373,8 @@ func DefaultRegistry() *Registry {
 	r.Register(&InstantiateTeamTool{deferrable: newDeferrable("instantiate team template load roster")})
 
 	// Memory access (Store injected later)
-	r.Register(&MemoryTool{deferrable: newDeferrable("memory search read list persistent context")})
-	r.Register(&RecallTool{deferrable: newDeferrable("recall memory semantic context relevant search")})
+	r.Register(&MemoryTool{})
+	r.Register(&RecallTool{})
 
 	// Cron/scheduled tasks (Store injected later)
 	r.Register(&CronCreateTool{})

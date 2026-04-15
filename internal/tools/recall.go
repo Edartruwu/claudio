@@ -16,7 +16,6 @@ import (
 // RecallTool semantically searches stored memories for entries relevant to a given context.
 // It uses a small model to understand intent and meaning rather than keyword matching.
 type RecallTool struct {
-	deferrable
 	Store  *memory.ScopedStore
 	Client *api.Client
 	Model  string
