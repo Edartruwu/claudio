@@ -209,7 +209,7 @@ func runSinglePrompt(prompt string) error {
 	}
 
 	handler := &query.StdoutHandler{Verbose: flagVerbose}
-	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, query.EngineConfig{
+	singleTurnCfg := query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,
 		TaskRuntime:     appInstance.TaskRuntime,
@@ -217,7 +217,13 @@ func runSinglePrompt(prompt string) error {
 		PermissionMode:  appInstance.Config.PermissionMode,
 		PermissionRules: appInstance.Config.PermissionRules,
 		OnTurnEnd:       appInstance.MemoryExtractor(),
-	})
+	}
+	if appInstance.Config.CavemanEnabled() {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			singleTurnCfg.CavemanMsg = "**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
+		}
+	}
+	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, singleTurnCfg)
 	principalEngine = engine // allow GetMessages closure to resolve
 
 	sys := buildFullSystemPrompt()
@@ -436,7 +442,7 @@ func buildFullSystemPrompt() string {
 	// Combine all additional context
 	additionalCtx := strings.Join(sections, "\n\n")
 
-	return prompts.BuildSystemPrompt(appInstance.Config.Model, additionalCtx, appInstance.Config.CavemanEnabled())
+	return prompts.BuildSystemPrompt(appInstance.Config.Model, additionalCtx)
 }
 
 // buildUserContext loads CLAUDE.md/CLAUDIO.md content (raw) for use in the user context message.
@@ -653,6 +659,11 @@ func runInteractive() error {
 				_ = sess.SaveSummary(summary)
 			}
 		},
+	}
+	if appInstance.Config.CavemanEnabled() {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			engineCfg.CavemanMsg = "**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
+		}
 	}
 	appCtx := &tui.AppContext{
 		Session:     sess,

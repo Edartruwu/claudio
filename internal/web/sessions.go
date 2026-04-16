@@ -19,6 +19,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/session"
+	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/web/templates"
@@ -54,6 +55,9 @@ type ProjectSession struct {
 	TotalOutputTokens int
 	CacheReadTokens   int
 	CacheCreateTokens int
+
+	// CavemanMsg is injected as user message at session start and after compaction.
+	CavemanMsg string
 
 	// currentHandler is set when a query is running; nil otherwise.
 	currentHandler *WebHandler
@@ -332,7 +336,7 @@ func (sm *SessionManager) loadDBSession(dbSess *storage.Session) (*ProjectSessio
 	// Build system prompt scoped to the project directory
 	oldDir, _ := os.Getwd()
 	os.Chdir(projectPath)
-	systemPrompt := prompts.BuildSystemPrompt(model, "", settings.CavemanEnabled())
+	systemPrompt := prompts.BuildSystemPrompt(model, "")
 	os.Chdir(oldDir)
 
 	_, cancel := context.WithCancel(context.Background())
@@ -454,7 +458,7 @@ func (sm *SessionManager) newSession(projectPath, title string) (*ProjectSession
 	// Build system prompt scoped to the project directory
 	oldDir, _ := os.Getwd()
 	os.Chdir(projectPath)
-	systemPrompt := prompts.BuildSystemPrompt(settings.Model, "", settings.CavemanEnabled())
+	systemPrompt := prompts.BuildSystemPrompt(settings.Model, "")
 	os.Chdir(oldDir)
 
 	_, cancel := context.WithCancel(context.Background())
@@ -484,6 +488,12 @@ func (sm *SessionManager) newSession(projectPath, title string) (*ProjectSession
 		title = "New Session"
 	}
 
+	var cavemanMsg string
+	if settings.CavemanEnabled() {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			cavemanMsg = "**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
+		}
+	}
 	return &ProjectSession{
 		ID:          id,
 		Title:       title,
@@ -491,6 +501,7 @@ func (sm *SessionManager) newSession(projectPath, title string) (*ProjectSession
 		Client:      client,
 		Registry:    registry,
 		System:      systemPrompt,
+		CavemanMsg:  cavemanMsg,
 		Messages:    []templates.ChatMessage{},
 		Active:      true,
 		CreatedAt:   time.Now(),
@@ -546,6 +557,7 @@ func (ps *ProjectSession) SendMessage(ctx context.Context, userMessage string, i
 		ps.engine = query.NewEngineWithConfig(ps.Client, ps.Registry, handler, query.EngineConfig{
 			SessionID:      ps.ID,
 			PermissionMode: "headless",
+			CavemanMsg:     ps.CavemanMsg,
 		})
 		ps.engine.SetSystem(ps.System)
 	} else {

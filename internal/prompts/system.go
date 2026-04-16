@@ -7,8 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/Abraxas-365/claudio/internal/services/skills"
 )
 
 // SystemPromptDynamicBoundary separates static (cacheable) content from
@@ -23,7 +21,7 @@ const SystemPromptDynamicBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"
 //     and suitable for cross-session prompt caching.
 //   - Everything after the boundary is dynamic — contains cwd, date, model,
 //     CLAUDE.md content, etc. that change per session.
-func BuildSystemPrompt(model string, additionalContext string, caveman bool) string {
+func BuildSystemPrompt(model string, additionalContext string) string {
 	staticSections := []string{
 		introSection(),
 		systemSection(),
@@ -54,16 +52,9 @@ func BuildSystemPrompt(model string, additionalContext string, caveman bool) str
 		}
 	}
 
-	result := strings.Join(staticParts, "\n\n") +
+	return strings.Join(staticParts, "\n\n") +
 		"\n\n" + SystemPromptDynamicBoundary + "\n\n" +
 		strings.Join(dynamicParts, "\n\n")
-
-	if caveman {
-		if c := skills.BundledSkillContent("caveman"); c != "" {
-			result = result + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
-		}
-	}
-	return result
 }
 
 func introSection() string {

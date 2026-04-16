@@ -109,7 +109,7 @@ type Model struct {
 	streaming      bool
 	streamText     *strings.Builder
 	pendingToolCount    int             // tools in-flight this turn (tool_start - tool_end)
-	pendingPostToolText strings.Builder // text_delta buffered while tools are in-flight
+	pendingPostToolText *strings.Builder // text_delta buffered while tools are in-flight
 	model          string
 	totalTokens    int
 	totalCost      float64
@@ -321,7 +321,8 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		systemPrompt:     systemPrompt,
 		baseSystemPrompt: systemPrompt,
 		baseModel:        apiClient.GetModel(),
-		streamText:     &strings.Builder{},
+		streamText:          &strings.Builder{},
+		pendingPostToolText: &strings.Builder{},
 		session:        sess,
 		expandedGroups:   make(map[int]bool),
 		thinkingExpanded: make(map[int]bool),
@@ -1643,6 +1644,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addMessage(ChatMessage{Type: MsgSystem, Content: "Nothing to compact (conversation too short)."})
 		} else {
 			m.engine.SetMessages(msg.compacted)
+			m.engine.ReInjectCaveman()
 			// Persist compacted messages to DB so they survive session resume
 			if m.session != nil {
 				if err := m.session.PersistCompacted(msg.compacted); err != nil {
@@ -5335,8 +5337,7 @@ func (m *Model) buildFullSystemPrompt() string {
 	}
 
 	additionalCtx := strings.Join(sections, "\n\n")
-	cavemanEnabled := m.appCtx != nil && m.appCtx.Config != nil && m.appCtx.Config.CavemanEnabled()
-	return prompts.BuildSystemPrompt(m.model, additionalCtx, cavemanEnabled)
+	return prompts.BuildSystemPrompt(m.model, additionalCtx)
 }
 
 // createPanel instantiates the appropriate panel for the given ID.

@@ -1157,6 +1157,7 @@ func (s *Server) handleCommandExecute(w http.ResponseWriter, r *http.Request) {
 
 		sess.mu.Lock()
 		sess.engine.SetMessages(compacted)
+		sess.engine.ReInjectCaveman()
 		sess.Messages = chatMsgs
 		sess.mu.Unlock()
 

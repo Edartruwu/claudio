@@ -66,6 +66,10 @@ type EngineConfig struct {
 
 	// Cost threshold for confirmation dialog (USD, 0 = disabled)
 	CostConfirmThreshold float64
+
+	// CavemanMsg is injected as the first user message at session start
+	// and re-prepended after compaction for better model compliance.
+	CavemanMsg string
 }
 
 const (
@@ -108,6 +112,10 @@ type Engine struct {
 	memoryIndexMsg      string
 	memoryIndexInjected bool
 	onMemoryRefresh     func() string // refresh func to rebuild memory index after compaction
+
+	// caveman mode injection (as user message at session start, re-injected after compaction)
+	cavemanMsg      string
+	cavemanInjected bool
 
 	// lifecycle hook tracking
 	sessionStartFired bool
@@ -223,6 +231,7 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	e.costConfirmThresh = cfg.CostConfirmThreshold
 	e.onTurnEnd = cfg.OnTurnEnd
 	e.onAutoCompact = cfg.OnAutoCompact
+	e.cavemanMsg = cfg.CavemanMsg
 	return e
 }
 
@@ -265,6 +274,24 @@ func (e *Engine) SetUserContext(msg string) {
 func (e *Engine) SetMemoryIndex(index string) {
 	e.memoryIndexMsg = index
 	e.memoryIndexInjected = false
+}
+
+// SetCavemanMsg sets the caveman mode instruction to inject as the first user message.
+// It will be prepended automatically on the first call to RunWithBlocks and after compaction.
+func (e *Engine) SetCavemanMsg(msg string) {
+	e.cavemanMsg = msg
+	e.cavemanInjected = false
+}
+
+// ReInjectCaveman prepends the caveman message to the current message history.
+// Call this after manual compaction (TUI /compact command, web compact handler)
+// so the caveman instruction survives the context reset.
+func (e *Engine) ReInjectCaveman() {
+	if e.cavemanMsg == "" {
+		return
+	}
+	cContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.cavemanMsg)})
+	e.messages = append([]api.Message{{Role: "user", Content: cContent}}, e.messages...)
 }
 
 // SetMemoryRefreshFunc sets a callback to rebuild the memory index after compaction.
@@ -361,6 +388,17 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		e.memoryIndexInjected = true
 	}
 
+	// Inject caveman mode instruction as a user message at session start, once per session.
+	// Condition mirrors memory index: inject on first turn of a fresh session only.
+	if !e.cavemanInjected && e.cavemanMsg != "" && (len(e.messages) == 0 || e.userContextInjected || e.memoryIndexInjected) {
+		cContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.cavemanMsg)})
+		e.messages = append(e.messages, api.Message{
+			Role:    "user",
+			Content: cContent,
+		})
+		e.cavemanInjected = true
+	}
+
 	content, _ := json.Marshal(blocks)
 	e.messages = append(e.messages, api.Message{
 		Role:    "user",
@@ -393,6 +431,11 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 				compacted, summary, err := compact.Compact(ctx, e.client, e.messages, 10, "")
 				if err == nil && summary != "" {
 					e.messages = compact.EnsureToolResultPairing(compacted)
+					// Re-inject caveman instruction as first message in the new era
+					if e.cavemanMsg != "" {
+						cContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.cavemanMsg)})
+						e.messages = append([]api.Message{{Role: "user", Content: cContent}}, e.messages...)
+					}
 					e.compactState.TotalTokens = 0
 					// Reset replacement state — compacted messages are new, no cached replacements apply
 					e.replacementState = compact.NewReplacementState()
