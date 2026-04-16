@@ -417,7 +417,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
 				if settings.CavemanEnabled() {
 					if c := skills.BundledSkillContent("caveman"); c != "" {
-						system = c + "\n\n" + system
+						system = c + "\n\nLevel: ultra.\n\n" + system
 					}
 				}
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
@@ -425,7 +425,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
 				if settings.CavemanEnabled() {
 					if c := skills.BundledSkillContent("caveman"); c != "" {
-						system = c + "\n\n" + system
+						system = c + "\n\nLevel: ultra.\n\n" + system
 					}
 				}
 				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)

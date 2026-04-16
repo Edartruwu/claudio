@@ -51,3 +51,32 @@ The codebase lives entirely under `internal/`. Key areas:
 
 - Agent teams run in isolated git worktrees under `.claudio-worktrees/` (gitignored).
 - Each worktree starts from the latest commit on main — never assume a worktree sees another's uncommitted changes.
+
+## Memory Policy
+
+Memory is for **durable architectural knowledge** — facts that remain true across sessions and help future agents avoid re-investigation. It is **not** a task tracker or session log.
+
+### Save these (they stay true):
+
+| What | Name pattern | Example fact |
+|---|---|---|
+| Package summary | `pkg-<name>` | "SessionStore.Save() is the only write path; reads go through query helpers" |
+| Architectural decision + rationale | `decision-<topic>` | "Chose in-process caching over Redis — no external infra dependency allowed" |
+| Non-obvious constraint discovered via investigation | `decision-<topic>` or `pkg-<name>` | "Interface PortalRepo has 14 methods — adding one requires updating mockrepo" |
+| Codebase-wide structure | `architecture` | "All tools implement the Tool interface in internal/tools/registry.go" |
+| Hard-won gotcha or pitfall | `pkg-<name>` | "modernc.org/sqlite panics on concurrent writes without WAL mode enabled" |
+
+### Never save these (they go stale immediately):
+
+- Task or subtask completion status → use `TaskCreate`/`TaskUpdate` instead
+- Which agents are currently running or their worktree branch names
+- Which DB migrations have been applied → query the DB directly
+- QA blocking issues or open bugs → they'll be fixed or re-discovered
+- PR/branch status, merge state
+- "Active team" names or session IDs
+- Any fact prefixed with "currently", "right now", or "this session"
+
+### The staleness test
+
+Before saving, ask: *"Would this fact still be true if someone ran `git clone` on this repo tomorrow?"*  
+If yes → save it. If no → don't.

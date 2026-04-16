@@ -60,7 +60,7 @@ func BuildSystemPrompt(model string, additionalContext string, caveman bool) str
 
 	if caveman {
 		if c := skills.BundledSkillContent("caveman"); c != "" {
-			result = c + "\n\n" + result
+			result = c + "\n\nLevel: ultra.\n\n" + result
 		}
 	}
 	return result
