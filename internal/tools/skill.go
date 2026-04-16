@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 
+	doublestar "github.com/bmatcuk/doublestar/v4"
+
+	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 )
@@ -36,12 +40,33 @@ func interpolateShellCommands(content string) string {
 // proactive use of project-specific and domain-specific skill instructions.
 type SkillTool struct {
 	SkillsRegistry *skills.Registry
+	HooksManager   *hooks.Manager // nil-safe — skip if not wired
+	ProjectRoot    string         // for paths: filtering; empty = no filtering
+
+	registeredHooks   map[string]bool
+	registeredHooksMu sync.Mutex
 
 	// cachedDescription is built once on first Description() call.
 	// Keeps the tool description byte-stable across turns so the Anthropic
 	// prompt cache is not busted every request.
 	cachedDescription     string
 	cachedDescriptionOnce sync.Once
+}
+
+// skillMatchesPaths returns true if any file under projectRoot matches any pattern.
+// Returns true if patterns is empty or projectRoot is unset.
+func skillMatchesPaths(projectRoot string, patterns []string) bool {
+	if len(patterns) == 0 || projectRoot == "" {
+		return true
+	}
+	fsys := os.DirFS(projectRoot)
+	for _, pattern := range patterns {
+		matches, _ := doublestar.Glob(fsys, pattern)
+		if len(matches) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 type skillInput struct {
@@ -96,6 +121,27 @@ func (t *SkillTool) Execute(_ context.Context, input json.RawMessage) (*Result, 
 		}, nil
 	}
 
+	// Register skill hooks on first invocation (idempotent).
+	if t.HooksManager != nil && len(skill.Hooks) > 0 {
+		t.registeredHooksMu.Lock()
+		if t.registeredHooks == nil {
+			t.registeredHooks = make(map[string]bool)
+		}
+		if !t.registeredHooks[skill.Name] {
+			for _, h := range skill.Hooks {
+				defs := []hooks.HookDef{{
+					Type:    "command",
+					Command: h.Command,
+					Timeout: h.Timeout,
+					Async:   h.Async,
+				}}
+				t.HooksManager.RegisterSkillHooks(h.Event, h.Matcher, defs)
+			}
+			t.registeredHooks[skill.Name] = true
+		}
+		t.registeredHooksMu.Unlock()
+	}
+
 	content := skill.Content
 	if skill.SkillDir != "" {
 		content = "Base directory for this skill: " + skill.SkillDir + "\n\n" + content
@@ -143,6 +189,9 @@ func (t *SkillTool) formatSkillList() string {
 	}
 	var lines []string
 	for _, s := range all {
+		if !skillMatchesPaths(t.ProjectRoot, s.Paths) {
+			continue
+		}
 		line := "- " + s.Name
 		if s.Description != "" {
 			line += ": " + s.Description

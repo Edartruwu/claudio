@@ -243,6 +243,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	if st, err := registry.Get("Skill"); err == nil {
 		if skillTool, ok := st.(*tools.SkillTool); ok {
 			skillTool.SkillsRegistry = skillsRegistry
+			skillTool.HooksManager = hooksMgr
+			skillTool.ProjectRoot = cwd
 		}
 	}
 
@@ -660,7 +662,11 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 					}
 					// Replace the SkillTool with a fresh instance using the merged registry
 					subRegistry.Remove("Skill")
-					subRegistry.Register(&tools.SkillTool{SkillsRegistry: mergedReg})
+					subRegistry.Register(&tools.SkillTool{
+						SkillsRegistry: mergedReg,
+						HooksManager:   st.HooksManager,
+						ProjectRoot:    st.ProjectRoot,
+					})
 				}
 			}
 		}
