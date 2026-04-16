@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/imageutil"
 )
 
 // FileAttachment represents a resolved @file mention.
@@ -22,6 +23,9 @@ type FileAttachment struct {
 	LineEnd     int // 0 = to end
 	TotalLines  int
 	Truncated   bool
+	IsImage   bool
+	MediaType string
+	ImageData string // base64-encoded, only set when IsImage=true
 }
 
 // Regex for @mentions:
@@ -106,6 +110,11 @@ func BuildContentBlocks(text string, attachments []FileAttachment, imageBlocks [
 
 	// File attachments as context blocks
 	for _, att := range attachments {
+		if att.IsImage {
+			blocks = append(blocks, api.NewImageBlock(att.MediaType, att.ImageData))
+			continue
+		}
+
 		var header string
 		if att.IsDir {
 			header = fmt.Sprintf("Directory listing of %s:", att.DisplayPath)
@@ -155,6 +164,18 @@ func readAttachment(absPath, rawPath, fullMatch string, lineStart, lineEnd int) 
 			return FileAttachment{}, err
 		}
 		att.Content = content
+		return att, nil
+	}
+
+	// Handle image files — send as image blocks, not text
+	if imageutil.IsImageFile(absPath) {
+		data, mt, err := imageutil.ReadImageFile(absPath)
+		if err != nil {
+			return FileAttachment{}, err
+		}
+		att.IsImage = true
+		att.MediaType = mt
+		att.ImageData = data
 		return att, nil
 	}
 

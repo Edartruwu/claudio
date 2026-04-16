@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/config"
+	imageutil "github.com/Abraxas-365/claudio/internal/imageutil"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/tools/outputfilter/codefilter"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
@@ -77,6 +78,18 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		if err := t.Security.CheckPath(in.FilePath); err != nil {
 			return &Result{Content: fmt.Sprintf("Access denied: %v", err), IsError: true}, nil
 		}
+	}
+
+	// Image files — return as vision content blocks instead of text
+	if imageutil.IsImageFile(in.FilePath) {
+		data, mt, err := imageutil.ReadImageFile(in.FilePath)
+		if err != nil {
+			return &Result{Content: fmt.Sprintf("Error reading image: %v", err), IsError: true}, nil
+		}
+		return &Result{
+			Content: fmt.Sprintf("[Image: %s]", filepath.Base(in.FilePath)),
+			Images:  []ImageData{{MediaType: mt, Data: data}},
+		}, nil
 	}
 
 	// Remember whether the caller explicitly provided offset / limit so we can
