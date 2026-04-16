@@ -108,6 +108,8 @@ type Model struct {
 	width, height  int
 	streaming      bool
 	streamText     *strings.Builder
+	pendingToolCount    int             // tools in-flight this turn (tool_start - tool_end)
+	pendingPostToolText strings.Builder // text_delta buffered while tools are in-flight
 	model          string
 	totalTokens    int
 	totalCost      float64
@@ -1593,6 +1595,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = false
 		m.spinText = ""
 		m.spinner.Stop()
+		m.pendingToolCount = 0
+		m.pendingPostToolText.Reset()
 		m.focus = FocusPrompt
 		m.prompt.Focus()
 		if msg.err != nil {
@@ -2201,11 +2205,19 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 	switch event.typ {
 	case "text_delta":
-		m.streamText.WriteString(event.text)
-		m.spinText = "Responding..."
-		m.spinner.SetText("Responding...")
-		m.updateStreamingMessage()
-		m.refreshViewport()
+		if m.pendingToolCount > 0 {
+			// Text arrived while a tool is still executing (Claude emitted text after
+			// a tool_use block in the same response). Buffer it and flush once all
+			// tool_end events for this turn have been received, so the MsgAssistant
+			// always lands AFTER the MsgToolResult instead of between use and result.
+			m.pendingPostToolText.WriteString(event.text)
+		} else {
+			m.streamText.WriteString(event.text)
+			m.spinText = "Responding..."
+			m.spinner.SetText("Responding...")
+			m.updateStreamingMessage()
+			m.refreshViewport()
+		}
 
 	case "thinking_delta":
 		m.spinText = "Thinking deeply..."
@@ -2241,6 +2253,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		return m, m.waitForEvent()
 
 	case "tool_start":
+		m.pendingToolCount++
 		m.finalizeStreamingMessage()
 		m.spinText = fmt.Sprintf("Using %s...", event.toolUse.Name)
 		m.spinner.SetText(m.spinText)
@@ -2313,8 +2326,21 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 				IsError:   event.result.IsError,
 				ToolUseID: event.toolUse.ID,
 			})
-			m.refreshViewport()
 		}
+
+		// Decrement after adding the result. When the last in-flight tool
+		// completes, flush any text that was buffered during execution so the
+		// MsgAssistant lands after MsgToolResult, not sandwiched between
+		// MsgToolUse and MsgToolResult.
+		if m.pendingToolCount > 0 {
+			m.pendingToolCount--
+		}
+		if m.pendingToolCount == 0 && m.pendingPostToolText.Len() > 0 {
+			m.streamText.WriteString(m.pendingPostToolText.String())
+			m.pendingPostToolText.Reset()
+			m.finalizeStreamingMessage()
+		}
+		m.refreshViewport()
 		// Track file operations for the files panel and sidebar.
 		if ops := filespanel.ExtractFileOps(event.toolUse.Name, event.toolUse.Input); len(ops) > 0 {
 			m.fileOps = append(m.fileOps, ops...)
@@ -2346,6 +2372,8 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		m.turns++
 
 	case "done":
+		m.pendingToolCount = 0
+		m.pendingPostToolText.Reset()
 		m.finalizeStreamingMessage()
 		m.streaming = false
 		m.spinText = ""
