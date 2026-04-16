@@ -147,6 +147,7 @@ func (p *Panel) buildEntries() {
 	addE("compactKeepN", fmt.Sprintf("%d", m.GetCompactKeepN()), "int", p.source("compactKeepN"))
 	addE("sessionPersist", fmt.Sprintf("%v", m.SessionPersist), "bool", p.source("sessionPersist"))
 	addR("hookProfile", valOrDefault(m.HookProfile, "standard"), p.source("hookProfile"))
+	addE("caveman", fmt.Sprintf("%v", m.CavemanEnabled()), "bool", p.source("caveman"))
 
 	// Memory settings
 	addE("autoMemoryExtract", fmt.Sprintf("%v", m.IsAutoMemoryExtract()), "bool", p.source("autoMemoryExtract"))
@@ -247,6 +248,10 @@ func (p *Panel) source(key string) Scope {
 		}
 	case "permissionMode":
 		if p.project.PermissionMode != "" {
+			return ScopeProject
+		}
+	case "caveman":
+		if p.project.Caveman != nil {
 			return ScopeProject
 		}
 	case "autoMemoryExtract":
@@ -384,6 +389,10 @@ func (p *Panel) toggleEntry(idx int) (string, string) {
 	case "sessionPersist":
 		target.SessionPersist = !p.merged.SessionPersist
 		newVal = fmt.Sprintf("%v", target.SessionPersist)
+	case "caveman":
+		val := !p.merged.CavemanEnabled()
+		target.Caveman = &val
+		newVal = fmt.Sprintf("%v", val)
 	case "autoMemoryExtract":
 		val := !p.merged.IsAutoMemoryExtract()
 		target.AutoMemoryExtract = &val
