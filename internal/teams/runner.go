@@ -705,7 +705,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	// Prepend caveman skill content when enabled.
 	if r.Settings != nil && r.Settings.CavemanEnabled() {
 		if c := skills.BundledSkillContent("caveman"); c != "" {
-			system = c + "\n\nLevel: ultra.\n\n" + system
+			system = "**CAVEMAN ULTRA MODE ACTIVE — respond like this for the entire session.**\n\n" + c + "\n\nLevel: ultra.\n\n" + system
 		}
 	}
 
