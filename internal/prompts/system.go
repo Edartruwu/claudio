@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/services/skills"
 )
 
 // SystemPromptDynamicBoundary separates static (cacheable) content from
@@ -21,7 +23,7 @@ const SystemPromptDynamicBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"
 //     and suitable for cross-session prompt caching.
 //   - Everything after the boundary is dynamic — contains cwd, date, model,
 //     CLAUDE.md content, etc. that change per session.
-func BuildSystemPrompt(model string, additionalContext string) string {
+func BuildSystemPrompt(model string, additionalContext string, caveman bool) string {
 	staticSections := []string{
 		introSection(),
 		systemSection(),
@@ -52,9 +54,16 @@ func BuildSystemPrompt(model string, additionalContext string) string {
 		}
 	}
 
-	return strings.Join(staticParts, "\n\n") +
+	result := strings.Join(staticParts, "\n\n") +
 		"\n\n" + SystemPromptDynamicBoundary + "\n\n" +
 		strings.Join(dynamicParts, "\n\n")
+
+	if caveman {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			result = c + "\n\n" + result
+		}
+	}
+	return result
 }
 
 func introSection() string {

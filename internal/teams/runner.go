@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/git"
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/services/skills"
 )
 
 // TeammateProgress tracks a teammate's work activity.
@@ -265,6 +267,7 @@ type TeammateRunner struct {
 	taskCompleter      TaskCompleter
 	activeTeam         string // explicitly set active team name
 	PluginsSection     string // injected into every sub-agent's system prompt
+	Settings           *config.Settings // optional; used to inject caveman prefix
 
 	childrenMu sync.Mutex
 	children   map[string][]string // parentAgentID → []childAgentID
@@ -697,6 +700,13 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	// Append advisor protocol section when an advisor is configured.
 	if cfg.AdvisorConfig != nil {
 		system += "\n\n" + prompts.AdvisorProtocolSection()
+	}
+
+	// Prepend caveman skill content when enabled.
+	if r.Settings != nil && r.Settings.CavemanEnabled() {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			system = c + "\n\n" + system
+		}
 	}
 
 	// Persist the resolved system prompt so revival can reuse it verbatim.

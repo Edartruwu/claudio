@@ -301,6 +301,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	teamRunner := teams.NewTeammateRunner(teamMgr, func(ctx context.Context, system, prompt string) (string, error) {
 		return runSubAgent(ctx, apiClient, registry, system, prompt)
 	})
+	teamRunner.Settings = settings
 	// Inject plugin instructions so sub-agents know to prefer plugin tools over Grep/Glob/Read.
 	if len(pluginReg.All()) > 0 {
 		var pluginInfos []prompts.PluginInfo
@@ -414,9 +415,19 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.AvailableModels = buildAvailableModels(apiClient)
 			// Wire real sub-agent execution
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
+				if settings.CavemanEnabled() {
+					if c := skills.BundledSkillContent("caveman"); c != "" {
+						system = c + "\n\n" + system
+					}
+				}
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
 			}
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
+				if settings.CavemanEnabled() {
+					if c := skills.BundledSkillContent("caveman"); c != "" {
+						system = c + "\n\n" + system
+					}
+				}
 				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
 			}
 		}

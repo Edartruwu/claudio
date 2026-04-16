@@ -5307,7 +5307,8 @@ func (m *Model) buildFullSystemPrompt() string {
 	}
 
 	additionalCtx := strings.Join(sections, "\n\n")
-	return prompts.BuildSystemPrompt(m.model, additionalCtx)
+	cavemanEnabled := m.appCtx != nil && m.appCtx.Config != nil && m.appCtx.Config.CavemanEnabled()
+	return prompts.BuildSystemPrompt(m.model, additionalCtx, cavemanEnabled)
 }
 
 // createPanel instantiates the appropriate panel for the given ID.

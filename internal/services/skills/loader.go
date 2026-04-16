@@ -204,6 +204,16 @@ func LoadBundled(r *Registry) {
 	}
 }
 
+// BundledSkillContent returns the content of a named bundled skill, or empty string if not found.
+func BundledSkillContent(name string) string {
+	for _, s := range bundledSkills() {
+		if s.Name == name {
+			return s.Content
+		}
+	}
+	return ""
+}
+
 func bundledSkills() []*Skill {
 	return []*Skill{
 		{

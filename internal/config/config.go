@@ -92,6 +92,9 @@ type Settings struct {
 	// a done agent to be removed from memory. Default: 3. Set to -1 to never
 	// auto-delete.
 	AgentAutoDeleteAfter int `json:"agent_auto_delete_after,omitempty"`
+
+	// Caveman enables ultra-compressed communication mode for all agents.
+	Caveman *bool `json:"caveman,omitempty"`
 }
 
 // SidebarConfig controls the persistent right-side panel.
@@ -412,6 +415,9 @@ func mergeFromFile(settings *Settings, path string) {
 			settings.Snippets.Snippets = append(settings.Snippets.Snippets, overlay.Snippets.Snippets...)
 		}
 	}
+	if overlay.Caveman != nil {
+		settings.Caveman = overlay.Caveman
+	}
 }
 
 func applyEnvOverrides(settings *Settings) {
@@ -423,6 +429,10 @@ func applyEnvOverrides(settings *Settings) {
 	}
 	if v := os.Getenv("CLAUDIO_HOOK_PROFILE"); v != "" {
 		settings.HookProfile = v
+	}
+	if v := os.Getenv("CLAUDIO_CAVEMAN"); v == "true" || v == "1" {
+		b := true
+		settings.Caveman = &b
 	}
 }
 
@@ -493,6 +503,11 @@ func (s *Settings) GetMemoryRefreshOnCompact() bool {
 		return *s.MemoryRefreshOnCompact
 	}
 	return true
+}
+
+// CavemanEnabled returns whether the caveman ultra-compressed mode is enabled.
+func (s *Settings) CavemanEnabled() bool {
+	return s.Caveman != nil && *s.Caveman
 }
 
 func ProjectMemoryDir(projectRoot string) string {
