@@ -6,16 +6,29 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Skill represents a loaded skill definition.
 type Skill struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Content     string `json:"content"` // The prompt/instruction content
-	Source      string `json:"source"`  // "bundled", "user", "project", "plugin"
-	FilePath    string `json:"file_path,omitempty"`
-	SkillDir    string `json:"skill_dir,omitempty"` // directory containing the skill file; empty for flat .md files
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Content     string     `json:"content"` // The prompt/instruction content
+	Source      string     `json:"source"`  // "bundled", "user", "project", "plugin"
+	FilePath    string     `json:"file_path,omitempty"`
+	SkillDir    string     `json:"skill_dir,omitempty"` // directory containing the skill file; empty for flat .md files
+	Paths       []string   `json:"paths,omitempty"`
+	Hooks       []SkillHook `json:"hooks,omitempty"`
+}
+
+// SkillHook defines a hook that auto-registers when the skill is invoked.
+type SkillHook struct {
+	Event   string `yaml:"event"`   // "PreToolUse", "PostToolUse", etc.
+	Matcher string `yaml:"matcher"` // tool name glob, e.g. "Write|Edit" or "*"
+	Command string `yaml:"command"` // shell command to run
+	Timeout int    `yaml:"timeout"` // ms, 0 = use default
+	Async   bool   `yaml:"async"`   // non-blocking
 }
 
 // Registry holds all loaded skills.
@@ -97,7 +110,7 @@ func loadFromDir(r *Registry, dir, source string) {
 			for _, fname := range []string{"SKILL.md", "skill.md", "index.md", "README.md"} {
 				path := filepath.Join(dir, entry.Name(), fname)
 				if content, err := os.ReadFile(path); err == nil {
-					name, desc, body := parseSkillFile(string(content))
+					name, desc, paths, hooks, body := parseSkillFile(string(content))
 					if name == "" {
 						name = entry.Name()
 					}
@@ -108,6 +121,8 @@ func loadFromDir(r *Registry, dir, source string) {
 						Source:      source,
 						FilePath:    path,
 						SkillDir:    filepath.Join(dir, entry.Name()),
+						Paths:       paths,
+						Hooks:       hooks,
 					})
 					break
 				}
@@ -118,7 +133,7 @@ func loadFromDir(r *Registry, dir, source string) {
 			if err != nil {
 				continue
 			}
-			name, desc, body := parseSkillFile(string(content))
+			name, desc, paths, hooks, body := parseSkillFile(string(content))
 			if name == "" {
 				name = strings.TrimSuffix(entry.Name(), ".md")
 			}
@@ -128,14 +143,24 @@ func loadFromDir(r *Registry, dir, source string) {
 				Content:     body,
 				Source:      source,
 				FilePath:    path,
+				Paths:       paths,
+				Hooks:       hooks,
 			})
 		}
 	}
 }
 
-// parseSkillFile extracts frontmatter (name, description) and body from a skill file.
-func parseSkillFile(content string) (name, description, body string) {
+// parseSkillFile extracts frontmatter (name, description, paths, hooks) and body from a skill file.
+func parseSkillFile(content string) (name, description string, paths []string, hooks []SkillHook, body string) {
 	lines := strings.Split(content, "\n")
+
+	// internal frontmatter struct for yaml unmarshalling
+	type frontmatterData struct {
+		Name        string      `yaml:"name"`
+		Description string      `yaml:"description"`
+		Paths       []string    `yaml:"paths"`
+		Hooks       []SkillHook `yaml:"hooks"`
+	}
 
 	// Check for YAML frontmatter
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
@@ -147,17 +172,13 @@ func parseSkillFile(content string) (name, description, body string) {
 			}
 		}
 		if endIdx > 0 {
-			// Parse frontmatter
-			for _, line := range lines[1:endIdx] {
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "name:") {
-					name = strings.TrimSpace(strings.TrimPrefix(line, "name:"))
-					name = strings.Trim(name, `"'`)
-				}
-				if strings.HasPrefix(line, "description:") {
-					description = strings.TrimSpace(strings.TrimPrefix(line, "description:"))
-					description = strings.Trim(description, `"'`)
-				}
+			// Parse frontmatter with yaml.v3
+			var fm frontmatterData
+			if err := yaml.Unmarshal([]byte(strings.Join(lines[1:endIdx], "\n")), &fm); err == nil {
+				name = fm.Name
+				description = fm.Description
+				paths = fm.Paths
+				hooks = fm.Hooks
 			}
 			body = strings.Join(lines[endIdx+1:], "\n")
 			return
