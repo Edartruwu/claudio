@@ -138,6 +138,31 @@ func NewManager(config HooksConfig) *Manager {
 	}
 }
 
+// RegisterSkillHooks appends skill-defined hooks to the manager at runtime.
+// eventType must match a HooksConfig field name: "PreToolUse", "PostToolUse",
+// "PostToolUseFailure", "PreCompact", "PostCompact", "SessionStart", "SessionEnd", "Stop".
+func (m *Manager) RegisterSkillHooks(eventType, matcher string, defs []HookDef) {
+	hm := HookMatcher{Matcher: matcher, Hooks: defs}
+	switch eventType {
+	case "PreToolUse":
+		m.config.PreToolUse = append(m.config.PreToolUse, hm)
+	case "PostToolUse":
+		m.config.PostToolUse = append(m.config.PostToolUse, hm)
+	case "PostToolUseFailure":
+		m.config.PostToolUseFailure = append(m.config.PostToolUseFailure, hm)
+	case "PreCompact":
+		m.config.PreCompact = append(m.config.PreCompact, hm)
+	case "PostCompact":
+		m.config.PostCompact = append(m.config.PostCompact, hm)
+	case "SessionStart":
+		m.config.SessionStart = append(m.config.SessionStart, hm)
+	case "SessionEnd":
+		m.config.SessionEnd = append(m.config.SessionEnd, hm)
+	case "Stop":
+		m.config.Stop = append(m.config.Stop, hm)
+	}
+}
+
 // LoadFromFile loads hooks configuration from a JSON file.
 func LoadFromFile(path string) (*Manager, error) {
 	data, err := os.ReadFile(path)
