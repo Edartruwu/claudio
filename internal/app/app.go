@@ -300,9 +300,17 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Team manager
 	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
 
+	// Build sub-agent engine config (caveman injection mirrors main agent path).
+	subAgentCfg := query.EngineConfig{}
+	if settings.CavemanEnabled() {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			subAgentCfg.CavemanMsg = "**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
+		}
+	}
+
 	// Team runner (uses the same runSubAgent callback)
 	teamRunner := teams.NewTeammateRunner(teamMgr, func(ctx context.Context, system, prompt string) (string, error) {
-		return runSubAgent(ctx, apiClient, registry, system, prompt)
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, "", subAgentCfg)
 	})
 	teamRunner.Settings = settings
 	// Inject plugin instructions so sub-agents know to prefer plugin tools over Grep/Glob/Read.
@@ -316,14 +324,6 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			})
 		}
 		teamRunner.PluginsSection = prompts.PluginsSection(pluginInfos)
-	}
-
-	// Build sub-agent engine config (caveman injection mirrors main agent path).
-	subAgentCfg := query.EngineConfig{}
-	if settings.CavemanEnabled() {
-		if c := skills.BundledSkillContent("caveman"); c != "" {
-			subAgentCfg.CavemanMsg = "**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
-		}
 	}
 
 	// Memory-aware runner: used when a teammate is backed by a crystallized
@@ -426,7 +426,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.AvailableModels = buildAvailableModels(apiClient)
 			// Wire real sub-agent execution
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
-				return runSubAgent(ctx, apiClient, registry, system, prompt)
+				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, "", subAgentCfg)
 			}
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
 				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir, subAgentCfg)
@@ -583,12 +583,6 @@ func (a *App) Close() error {
 		return a.DB.Close()
 	}
 	return nil
-}
-
-// runSubAgent creates a new query.Engine with the given system prompt and
-// runs a single prompt through it, capturing all text output.
-func runSubAgent(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt string) (string, error) {
-	return runSubAgentWithMemory(ctx, apiClient, parentRegistry, system, prompt, "", query.EngineConfig{})
 }
 
 // buildAvailableModels returns the list of model names the AI can pick from.
