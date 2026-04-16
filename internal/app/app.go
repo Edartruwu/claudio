@@ -318,11 +318,19 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		teamRunner.PluginsSection = prompts.PluginsSection(pluginInfos)
 	}
 
+	// Build sub-agent engine config (caveman injection mirrors main agent path).
+	subAgentCfg := query.EngineConfig{}
+	if settings.CavemanEnabled() {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			subAgentCfg.CavemanMsg = "**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
+		}
+	}
+
 	// Memory-aware runner: used when a teammate is backed by a crystallized
 	// agent with its own memory directory. Lets reusable agents carry their
 	// accumulated memory into team work.
 	teamRunner.SetRunAgentWithMemory(func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
-		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir, subAgentCfg)
 	})
 
 	// Revive callback: continues an existing agent conversation by restoring
@@ -330,7 +338,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// turn. Memory dir is honored if the state was backed by a crystallized agent.
 	teamRunner.SetRunAgentResume(func(ctx context.Context, system, memoryDir string, history []api.Message, newMessage string) (string, error) {
 		ctx = teams.WithResumeHistory(ctx, history)
-		return runSubAgentWithMemory(ctx, apiClient, registry, system, newMessage, memoryDir)
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, newMessage, memoryDir, subAgentCfg)
 	})
 
 	// Wire per-teammate context decorator: injects a SubAgentObserver that
@@ -421,7 +429,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
 			}
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
-				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
+				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir, subAgentCfg)
 			}
 		}
 	}
@@ -580,7 +588,7 @@ func (a *App) Close() error {
 // runSubAgent creates a new query.Engine with the given system prompt and
 // runs a single prompt through it, capturing all text output.
 func runSubAgent(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt string) (string, error) {
-	return runSubAgentWithMemory(ctx, apiClient, parentRegistry, system, prompt, "")
+	return runSubAgentWithMemory(ctx, apiClient, parentRegistry, system, prompt, "", query.EngineConfig{})
 }
 
 // buildAvailableModels returns the list of model names the AI can pick from.
@@ -620,7 +628,7 @@ func resolveModelAlias(alias string) string {
 }
 
 // runSubAgentWithMemory is like runSubAgent but also injects agent-scoped memories into the system prompt.
-func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string) (string, error) {
+func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string, cfg query.EngineConfig) (string, error) {
 	// Clone the registry so sub-agent has its own copy
 	subRegistry := parentRegistry.Clone()
 
@@ -763,7 +771,7 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		db:        subDB,
 		sessionID: subSessionID,
 	}
-	engine := query.NewEngine(apiClient, subRegistry, forwarder)
+	engine := query.NewEngineWithConfig(apiClient, subRegistry, forwarder, cfg)
 	engine.SetSystem(system)
 	if maxTurns := tools.MaxTurnsFromContext(ctx); maxTurns > 0 {
 		engine.SetMaxTurns(maxTurns)

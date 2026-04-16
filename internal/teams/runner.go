@@ -13,7 +13,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/git"
 	"github.com/Abraxas-365/claudio/internal/prompts"
-	"github.com/Abraxas-365/claudio/internal/services/skills"
 )
 
 // TeammateProgress tracks a teammate's work activity.
@@ -700,13 +699,6 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	// Append advisor protocol section when an advisor is configured.
 	if cfg.AdvisorConfig != nil {
 		system += "\n\n" + prompts.AdvisorProtocolSection()
-	}
-
-	// Append caveman skill content when enabled (appended last so it overrides all prior style instructions).
-	if r.Settings != nil && r.Settings.CavemanEnabled() {
-		if c := skills.BundledSkillContent("caveman"); c != "" {
-			system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
-		}
 	}
 
 	// Persist the resolved system prompt so revival can reuse it verbatim.
