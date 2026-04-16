@@ -42,6 +42,7 @@ type SkillTool struct {
 	SkillsRegistry *skills.Registry
 	HooksManager   *hooks.Manager // nil-safe — skip if not wired
 	ProjectRoot    string         // for paths: filtering; empty = no filtering
+	ExcludedNames  []string       // skill names to hide from listings (e.g. "caveman" when already injected)
 
 	registeredHooks   map[string]bool
 	registeredHooksMu sync.Mutex
@@ -167,16 +168,32 @@ func (t *SkillTool) Execute(_ context.Context, input json.RawMessage) (*Result, 
 }
 
 // findSkill looks up a skill by exact name, then falls back to case-insensitive match.
+// Returns nil for excluded skills so they cannot be invoked when already injected.
 func (t *SkillTool) findSkill(name string) *skills.Skill {
+	if t.isExcluded(name) {
+		return nil
+	}
 	if s, ok := t.SkillsRegistry.Get(name); ok {
 		return s
 	}
 	for _, s := range t.SkillsRegistry.All() {
 		if strings.EqualFold(s.Name, name) {
+			if t.isExcluded(s.Name) {
+				return nil
+			}
 			return s
 		}
 	}
 	return nil
+}
+
+func (t *SkillTool) isExcluded(name string) bool {
+	for _, n := range t.ExcludedNames {
+		if strings.EqualFold(n, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *SkillTool) formatSkillList() string {
@@ -189,6 +206,9 @@ func (t *SkillTool) formatSkillList() string {
 	}
 	var lines []string
 	for _, s := range all {
+		if t.isExcluded(s.Name) {
+			continue
+		}
 		if !skillMatchesPaths(t.ProjectRoot, s.Paths) {
 			continue
 		}
@@ -207,6 +227,9 @@ func (t *SkillTool) availableNames() string {
 	}
 	var names []string
 	for _, s := range t.SkillsRegistry.All() {
+		if t.isExcluded(s.Name) {
+			continue
+		}
 		names = append(names, s.Name)
 	}
 	return strings.Join(names, ", ")

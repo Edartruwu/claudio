@@ -702,10 +702,10 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		system += "\n\n" + prompts.AdvisorProtocolSection()
 	}
 
-	// Prepend caveman skill content when enabled.
+	// Append caveman skill content when enabled (appended last so it overrides all prior style instructions).
 	if r.Settings != nil && r.Settings.CavemanEnabled() {
 		if c := skills.BundledSkillContent("caveman"); c != "" {
-			system = "**CAVEMAN ULTRA MODE ACTIVE — respond like this for the entire session.**\n\n" + c + "\n\nLevel: ultra.\n\n" + system
+			system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra."
 		}
 	}
 

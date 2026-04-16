@@ -245,6 +245,9 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			skillTool.SkillsRegistry = skillsRegistry
 			skillTool.HooksManager = hooksMgr
 			skillTool.ProjectRoot = cwd
+			if settings.CavemanEnabled() {
+				skillTool.ExcludedNames = []string{"caveman"}
+			}
 		}
 	}
 
@@ -417,7 +420,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
 				if settings.CavemanEnabled() {
 					if c := skills.BundledSkillContent("caveman"); c != "" {
-						system = "**CAVEMAN ULTRA MODE ACTIVE — respond like this for the entire session.**\n\n" + c + "\n\nLevel: ultra.\n\n" + system
+						system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra."
 					}
 				}
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
@@ -425,7 +428,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
 				if settings.CavemanEnabled() {
 					if c := skills.BundledSkillContent("caveman"); c != "" {
-						system = "**CAVEMAN ULTRA MODE ACTIVE — respond like this for the entire session.**\n\n" + c + "\n\nLevel: ultra.\n\n" + system
+						system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra."
 					}
 				}
 				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)
@@ -677,6 +680,7 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 						SkillsRegistry: mergedReg,
 						HooksManager:   st.HooksManager,
 						ProjectRoot:    st.ProjectRoot,
+						ExcludedNames:  st.ExcludedNames,
 					})
 				}
 			}

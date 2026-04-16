@@ -304,7 +304,12 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string, []p
 				}
 				// Replace the SkillTool with a fresh instance using the merged registry
 				filtered.Remove("Skill")
-				filtered.Register(&tools.SkillTool{SkillsRegistry: mergedReg})
+				filtered.Register(&tools.SkillTool{
+						SkillsRegistry: mergedReg,
+						HooksManager:   st.HooksManager,
+						ProjectRoot:    st.ProjectRoot,
+						ExcludedNames:  st.ExcludedNames,
+					})
 			}
 		}
 	}

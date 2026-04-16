@@ -60,7 +60,7 @@ func BuildSystemPrompt(model string, additionalContext string, caveman bool) str
 
 	if caveman {
 		if c := skills.BundledSkillContent("caveman"); c != "" {
-			result = "**CAVEMAN ULTRA MODE ACTIVE — respond like this for the entire session.**\n\n" + c + "\n\nLevel: ultra.\n\n" + result
+			result = result + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra."
 		}
 	}
 	return result
