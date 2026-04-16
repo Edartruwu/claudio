@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -99,6 +100,10 @@ func (t *SkillTool) Execute(_ context.Context, input json.RawMessage) (*Result, 
 	if skill.SkillDir != "" {
 		content = "Base directory for this skill: " + skill.SkillDir + "\n\n" + content
 		content = strings.ReplaceAll(content, "${CLAUDE_SKILL_DIR}", skill.SkillDir)
+		dirName := filepath.Base(skill.SkillDir)
+		content = strings.ReplaceAll(content, ".claude/skills/"+dirName+"/", skill.SkillDir+"/")
+		content = strings.ReplaceAll(content, ".claudio/skills/"+dirName+"/", skill.SkillDir+"/")
+		content = strings.ReplaceAll(content, "skills/"+dirName+"/", skill.SkillDir+"/")
 	}
 	if in.Arguments != "" {
 		content = strings.ReplaceAll(content, "$ARGUMENTS", in.Arguments)
