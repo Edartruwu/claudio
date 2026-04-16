@@ -420,7 +420,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
 				if settings.CavemanEnabled() {
 					if c := skills.BundledSkillContent("caveman"); c != "" {
-						system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra."
+						system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
 					}
 				}
 				return runSubAgent(ctx, apiClient, registry, system, prompt)
@@ -428,7 +428,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
 				if settings.CavemanEnabled() {
 					if c := skills.BundledSkillContent("caveman"); c != "" {
-						system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra."
+						system = system + "\n\n**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
 					}
 				}
 				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir)

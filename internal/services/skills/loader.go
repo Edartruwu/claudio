@@ -1627,7 +1627,7 @@ Example — "Explain database connection pooling."
 
 ## Auto-Clarity
 
-Drop caveman for: security warnings, irreversible action confirmations, multi-step sequences where fragment order risks misread, user asks to clarify or repeats question. Resume caveman after clear part done.
+Drop caveman for: security warnings, irreversible action confirmations, multi-step sequences where fragment order risks misread, user asks to clarify or repeats question, **structured protocol output** (e.g. "### Done" completion reports — use exact header and all required fields, caveman style inside the fields is fine). Resume caveman after clear part done.
 
 Example — destructive op:
 > **Warning:** This will permanently delete all rows in the ` + "`users`" + ` table and cannot be undone.
