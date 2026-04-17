@@ -1,6 +1,6 @@
 {{define "session-row"}}
 <div class="swipe-row" data-session-id="{{.Session.ID}}"
-     style="position:relative;overflow:hidden;border-bottom:1px solid #2C2C2E;background:#000000;{{if ne .Session.Status "active"}}opacity:0.5;{{end}}">
+     style="position:relative;overflow:hidden;border-bottom:1px solid #2C2C2E;background:#161717;{{if ne .Session.Status "active"}}opacity:0.5;{{end}}">
   <div class="swipe-actions" aria-hidden="true"
        style="position:absolute;right:0;top:0;bottom:0;display:flex;width:160px;z-index:0;">
     <button hx-patch="/api/sessions/{{.Session.ID}}/archive" hx-target="closest .swipe-row" hx-swap="outerHTML"
@@ -15,7 +15,7 @@
     </button>
   </div>
   <div class="swipe-content"
-       style="position:relative;z-index:1;background:#000000;transform:translateX(0);transition:transform 0.2s ease;will-change:transform;" class="swipe-content">
+       style="position:relative;z-index:1;background:#161717;transform:translateX(0);transition:transform 0.2s ease;will-change:transform;" class="swipe-content">
     <div class="row-menu" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:10;">
       <button class="row-menu-trigger" onclick="ccToggleRowMenu(this,event)"
               style="width:32px;height:32px;border-radius:50%;background:rgba(44,44,46,0.92);border:none;cursor:pointer;color:#8E8E93;font-size:18px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.15s;font-family:inherit;">⋯</button>
