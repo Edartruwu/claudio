@@ -2,21 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#075E54">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/static/manifest.json">
   <title>ComandCenter</title>
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <style>
-    body { max-width: 480px; margin: 0 auto; background: #ECE5DD; }
+    body { max-width: 480px; margin: 0 auto; background: #ECE5DD; padding-top: env(safe-area-inset-top); }
     .whatsapp-green { background-color: #075E54; }
     .whatsapp-light-green { background-color: #25D366; }
     .msg-bubble-assistant { background: #fff; border-radius: 0 12px 12px 12px; }
-    .msg-bubble-user { background: #25D366; border-radius: 12px 0 12px 12px; color: #fff; }
+    .msg-bubble-user { background: #DCF8C6; border-radius: 12px 0 12px 12px; color: #303030; }
     .msg-bubble-tool { background: #e0e0e0; border-radius: 8px; font-style: italic; font-size: 0.75rem; }
     #messages { scroll-behavior: smooth; }
+    .chat-header { padding-top: env(safe-area-inset-top); }
+    .input-bar { padding-bottom: env(safe-area-inset-bottom); }
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline; }
   </style>
 </head>
 <body class="min-h-screen" {{if .SessionID}}data-session-id="{{.SessionID}}"{{end}}>

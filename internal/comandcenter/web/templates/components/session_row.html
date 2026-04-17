@@ -17,12 +17,18 @@
       <span class="text-xs text-gray-500 truncate">
         {{if .LastMessage}}{{.LastMessage}}{{else}}<em class="text-gray-400">No messages</em>{{end}}
       </span>
-      <!-- Status dot -->
-      {{if eq .Session.Status "active"}}
-      <span class="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0 ml-2"></span>
-      {{else}}
-      <span class="w-2.5 h-2.5 rounded-full bg-gray-300 flex-shrink-0 ml-2"></span>
-      {{end}}
+      <div class="flex items-center gap-1.5 flex-shrink-0 ml-2">
+        <!-- Unread badge -->
+        {{if .UnreadCount}}
+        <span class="bg-[#25D366] text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">{{.UnreadCount}}</span>
+        {{end}}
+        <!-- Status dot -->
+        {{if eq .Session.Status "active"}}
+        <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+        {{else}}
+        <span class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+        {{end}}
+      </div>
     </div>
   </div>
 </a>

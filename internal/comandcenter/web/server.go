@@ -229,8 +229,9 @@ func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 }
 
 type sessionRow struct {
-	Session     cc.Session
-	LastMessage string
+	Session      cc.Session
+	LastMessage  string
+	UnreadCount  int
 }
 
 func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {

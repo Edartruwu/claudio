@@ -2,9 +2,10 @@
 
 {{define "content"}}
 <div class="flex flex-col h-screen bg-white">
-  <!-- Header -->
-  <header class="whatsapp-green text-white px-4 py-3 flex items-center gap-3 shadow-md flex-shrink-0">
-    <a href="/" class="text-white opacity-80 hover:opacity-100 flex-shrink-0">
+  <!-- Header (chat-header adds safe-area-inset-top padding) -->
+  <header class="chat-header whatsapp-green text-white px-4 py-3 flex items-center gap-3 shadow-md flex-shrink-0">
+    <!-- Back arrow — touch target ≥44px -->
+    <a href="/" class="text-white min-w-[44px] min-h-[44px] flex items-center justify-center -ml-3 flex-shrink-0">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
       </svg>
@@ -13,11 +14,17 @@
     <div class="w-9 h-9 rounded-full bg-green-300 flex items-center justify-center font-bold text-green-900 text-sm flex-shrink-0">
       {{firstChar .Session.Name}}
     </div>
+    <!-- Name + status subtitle -->
     <div class="flex-1 min-w-0">
       <p class="font-semibold text-sm truncate">
         {{if .Session.Master}}★ {{end}}{{.Session.Name}}
       </p>
-      <p class="text-xs opacity-75 truncate">{{.Session.Path}}</p>
+      <!-- Typing indicator doubles as status subtitle; JS overrides text when typing -->
+      {{if eq .Session.Status "active"}}
+      <p id="typing-indicator" class="text-xs text-green-300">● online</p>
+      {{else}}
+      <p id="typing-indicator" class="text-xs text-gray-300">last seen recently</p>
+      {{end}}
     </div>
     <!-- Status dot -->
     {{if eq .Session.Status "active"}}
@@ -25,11 +32,16 @@
     {{else}}
     <span class="w-2.5 h-2.5 rounded-full bg-gray-400 flex-shrink-0"></span>
     {{end}}
-    <!-- Menu -->
-    <svg class="w-5 h-5 opacity-80 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-      <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
-    </svg>
+    <!-- Menu icon — touch target ≥44px -->
+    <button class="min-w-[44px] min-h-[44px] flex items-center justify-center -mr-3 flex-shrink-0 text-white opacity-80 bg-transparent border-none">
+      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+        <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+      </svg>
+    </button>
   </header>
+
+  <!-- WS reconnect banner (hidden by default, shown on disconnect) -->
+  <div id="ws-banner" class="hidden bg-yellow-600 text-white text-center text-xs py-1">Connecting...</div>
 
   <!-- Messages -->
   <div id="messages" class="flex-1 overflow-y-auto px-3 py-4 space-y-1" style="background: #ECE5DD;">
@@ -40,18 +52,19 @@
     {{end}}
   </div>
 
-  <!-- Input bar -->
-  <div class="bg-gray-100 px-3 py-2 flex items-center gap-2 flex-shrink-0 border-t border-gray-200">
+  <!-- Input bar (input-bar adds safe-area-inset-bottom padding) -->
+  <div class="input-bar bg-gray-100 px-3 py-2 flex items-center gap-2 flex-shrink-0 border-t border-gray-200">
     <input
       id="msg-input"
       type="text"
       placeholder="Message"
-      class="flex-1 bg-white rounded-full px-4 py-2 text-sm outline-none border border-gray-300 focus:border-green-500"
+      class="flex-1 bg-white rounded-full px-4 py-2 text-base outline-none border border-gray-300 focus:border-green-500"
       hx-on:keydown="if(event.key==='Enter'){document.getElementById('send-btn').click()}"
     >
+    <!-- Send button — min 44×44px touch target -->
     <button
       id="send-btn"
-      class="whatsapp-light-green text-white rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0 shadow"
+      class="whatsapp-light-green text-white rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0 shadow"
       hx-post="/api/sessions/{{.Session.ID}}/message"
       hx-vals="js:{content: document.getElementById('msg-input').value}"
       hx-swap="none"
