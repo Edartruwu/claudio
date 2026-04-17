@@ -236,10 +236,11 @@ type MessageView struct {
 
 // WebServer serves the browser UI for ComandCenter.
 type WebServer struct {
-	storage    *cc.Storage
-	hub        *cc.Hub
-	password   string
-	uploadsDir string
+	storage        *cc.Storage
+	hub            *cc.Hub
+	password       string
+	uploadsDir     string
+	vapidPublicKey string
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
@@ -294,7 +295,41 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Session management API.
 	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
 	mux.Handle("DELETE /api/sessions/{id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteSession)))
+<<<<<<< Updated upstream
 	mux.Handle("GET /api/sessions/{session_id}/browse", ws.uiAuth(http.HandlerFunc(ws.handleBrowseSession)))
+=======
+	mux.Handle("GET /api/push/vapid-public-key", ws.uiAuth(http.HandlerFunc(ws.handleVAPIDPublicKey)))
+	mux.Handle("POST /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushSubscribe)))
+}
+
+// SetVAPIDPublicKey stores the VAPID public key for the browser subscription flow.
+func (ws *WebServer) SetVAPIDPublicKey(key string) { ws.vapidPublicKey = key }
+
+// handleVAPIDPublicKey returns the VAPID public key for browser push subscription.
+func (ws *WebServer) handleVAPIDPublicKey(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"publicKey": ws.vapidPublicKey})
+}
+
+// handlePushSubscribe saves a browser push subscription (cookie-auth version).
+func (ws *WebServer) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Endpoint string `json:"endpoint"`
+		Keys     struct {
+			P256dh string `json:"p256dh"`
+			Auth   string `json:"auth"`
+		} `json:"keys"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := ws.storage.SavePushSubscription(cc.PushSubscription{Endpoint: body.Endpoint, P256dh: body.Keys.P256dh, Auth: body.Keys.Auth}); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+>>>>>>> Stashed changes
 }
 
 // uiAuth checks the "auth" HttpOnly cookie.

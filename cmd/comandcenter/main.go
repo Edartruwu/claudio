@@ -59,6 +59,9 @@ func main() {
 
 	// Mount browser UI (WhatsApp-style chat interface).
 	webSrv := web.NewWebServer(storage, hub, *password, *dataDir)
+	if pk, _, err := storage.GetOrCreateVAPIDKeys(); err == nil && pk != "" {
+		webSrv.SetVAPIDPublicKey(pk)
+	}
 	webSrv.RegisterRoutes(srv.Mux())
 
 	addr := fmt.Sprintf("0.0.0.0:%d", *port)

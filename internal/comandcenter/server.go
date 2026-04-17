@@ -72,8 +72,7 @@ func (s *Server) routes() {
 
 	// Push notification routes.
 	s.mux.Handle("GET /api/vapid-public-key", s.auth(http.HandlerFunc(s.handleVAPIDPublicKey)))
-	s.mux.Handle("POST /api/push/subscribe", s.auth(http.HandlerFunc(s.handlePushSubscribe)))
-	s.mux.Handle("DELETE /api/push/subscribe", s.auth(http.HandlerFunc(s.handlePushUnsubscribe)))
+
 }
 
 // auth is a middleware that checks the Authorization: Bearer <password> header.
