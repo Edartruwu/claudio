@@ -107,6 +107,8 @@ func (s *Storage) migrate() error {
 			current_task_id TEXT,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// 5
+		`ALTER TABLE cc_sessions ADD COLUMN last_read_at DATETIME`,
 	}
 
 	for i, m := range migrations {
@@ -305,6 +307,34 @@ func (s *Storage) UpsertAgent(agent Agent) error {
 		agent.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upsert agent: %w", err)
+	}
+	return nil
+}
+
+// UnreadCount returns the count of unread messages for a session.
+// Messages are unread if created_at > last_read_at (or all if last_read_at is NULL).
+func (s *Storage) UnreadCount(sessionID string) (int, error) {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM cc_messages
+		WHERE session_id = ? AND created_at > COALESCE(
+			(SELECT last_read_at FROM cc_sessions WHERE id = ?),
+			'1970-01-01'
+		)
+	`, sessionID, sessionID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("unread count: %w", err)
+	}
+	return count, nil
+}
+
+// MarkRead updates the last_read_at timestamp for a session to now.
+func (s *Storage) MarkRead(sessionID string) error {
+	_, err := s.db.Exec(
+		`UPDATE cc_sessions SET last_read_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		sessionID)
+	if err != nil {
+		return fmt.Errorf("mark read: %w", err)
 	}
 	return nil
 }

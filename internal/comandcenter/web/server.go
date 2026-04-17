@@ -254,6 +254,8 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+	// Mark as read when chat view opens.
+	_ = ws.storage.MarkRead(id)
 	msgs, err := ws.storage.ListMessages(id, 100)
 	if err != nil {
 		msgs = nil
@@ -387,7 +389,7 @@ func (ws *WebServer) removeClient(c *uiClient) {
 	ws.mu.Unlock()
 }
 
-// buildSessionRows fetches the last message for each session.
+// buildSessionRows fetches the last message for each session and unread count.
 func (ws *WebServer) buildSessionRows(sessions []cc.Session) []sessionRow {
 	rows := make([]sessionRow, 0, len(sessions))
 	for _, sess := range sessions {
@@ -400,6 +402,11 @@ func (ws *WebServer) buildSessionRows(sessions []cc.Session) []sessionRow {
 				content = string(r[:60]) + "…"
 			}
 			row.LastMessage = content
+		}
+		// Populate unread count.
+		count, err := ws.storage.UnreadCount(sess.ID)
+		if err == nil {
+			row.UnreadCount = count
 		}
 		rows = append(rows, row)
 	}
