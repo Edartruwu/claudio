@@ -61,7 +61,7 @@ func main() {
 	webSrv := web.NewWebServer(storage, hub, *password)
 	webSrv.RegisterRoutes(srv.Mux())
 
-	addr := fmt.Sprintf(":%d", *port)
+	addr := fmt.Sprintf("0.0.0.0:%d", *port)
 	httpSrv := &http.Server{
 		Addr:    addr,
 		Handler: srv,
