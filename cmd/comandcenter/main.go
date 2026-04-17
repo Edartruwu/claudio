@@ -18,6 +18,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/auth"
+	authstorage "github.com/Abraxas-365/claudio/internal/auth/storage"
 	"github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/comandcenter/web"
 	"github.com/Abraxas-365/claudio/internal/tasks"
@@ -106,36 +107,32 @@ func main() {
 		}
 		hub.Broadcast(sessionID, env)
 	}
-	// Wire background execution via Anthropic API using ANTHROPIC_API_KEY env var.
+	// Wire background execution via auth resolver (keychain + OAuth + env).
 	{
-		apiKey := os.Getenv("ANTHROPIC_API_KEY")
-		if apiKey == "" {
-			log.Println("[cron] warning: ANTHROPIC_API_KEY not set — background crons will not execute")
-		} else {
-			resolver := auth.NewResolver(nil)
-			apiClient := api.NewClient(resolver, api.WithPromptCaching(false))
-			cronRunner.RunBackgroundFn = func(ctx context.Context, modelID, systemPrompt, prompt string) (string, error) {
-				contentJSON, _ := json.Marshal([]map[string]string{{"type": "text", "text": prompt}})
-				req := &api.MessagesRequest{
-					Model:     modelID,
-					MaxTokens: 8192,
-					System:    systemPrompt,
-					Messages: []api.Message{
-						{Role: "user", Content: json.RawMessage(contentJSON)},
-					},
-				}
-				resp, err := apiClient.SendMessage(ctx, req)
-				if err != nil {
-					return "", fmt.Errorf("background cron API call: %w", err)
-				}
-				var parts []string
-				for _, block := range resp.Content {
-					if block.Type == "text" && block.Text != "" {
-						parts = append(parts, block.Text)
-					}
-				}
-				return strings.Join(parts, "\n"), nil
+		store := authstorage.NewDefaultStorage()
+		resolver := auth.NewResolver(store)
+		apiClient := api.NewClient(resolver, api.WithPromptCaching(false))
+		cronRunner.RunBackgroundFn = func(ctx context.Context, modelID, systemPrompt, prompt string) (string, error) {
+			contentJSON, _ := json.Marshal([]map[string]string{{"type": "text", "text": prompt}})
+			req := &api.MessagesRequest{
+				Model:     modelID,
+				MaxTokens: 8192,
+				System:    systemPrompt,
+				Messages: []api.Message{
+					{Role: "user", Content: json.RawMessage(contentJSON)},
+				},
 			}
+			resp, err := apiClient.SendMessage(ctx, req)
+			if err != nil {
+				return "", fmt.Errorf("background cron API call: %w", err)
+			}
+			var parts []string
+			for _, block := range resp.Content {
+				if block.Type == "text" && block.Text != "" {
+					parts = append(parts, block.Text)
+				}
+			}
+			return strings.Join(parts, "\n"), nil
 		}
 	}
 
