@@ -77,8 +77,8 @@ Cron-style recurring agent jobs: `@every 1h`, `@daily`, or `HH:MM`.
 </td>
 <td valign="top">
 
-### 🌐 Web UI
-`claudio web` launches a full browser chat with streaming, tool approval, plan mode, and AskUser.
+### 🌐 Command Center
+`comandcenter` — a WhatsApp-style browser/PWA for remote sessions, file uploads, push notifications, and multi-session management.
 
 </td>
 <td valign="top">
@@ -201,8 +201,8 @@ See [Model Configuration](#model-configuration) for the full reference.
 - [Snippet Expansion (Experimental)](#snippet-expansion-experimental)
 - [Keybinding Customization](#keybinding-customization)
 - [Per-Turn Diff Tracking](#per-turn-diff-tracking)
-- [Web UI](#web-ui)
-- [Headless / API Mode](#headless--api-mode)
+- [Command Center (Web / Mobile UI)](#command-center-web--mobile-ui)
+- [Headless Mode](#headless-mode)
 - [Filesystem Layout](#filesystem-layout)
 - [Architecture](#architecture)
 - [License](#license)
@@ -223,7 +223,7 @@ Claudio is built ground-up in Go for engineers who want **more control, more age
 | ✂️ **Snippet expansion** | `~name(args)` shorthand → full code templates | ❌ |
 | 🎯 **Learned instincts** | Confidence-scored patterns replayed across sessions | ❌ |
 | ⏰ **Cron tasks** | `@every 1h`, `@daily`, `HH:MM` | Feature-gated |
-| 🌐 **Web UI** | `claudio web` — full browser experience | ❌ |
+| 🌐 **Web / Mobile UI** | `comandcenter` — WhatsApp-style PWA, push notifications, file uploads, multi-session hub | ❌ |
 | 🌉 **Cross-session comms** | Unix-socket bridge for parallel worktrees | ❌ |
 | ⌨️ **Vim mode** | Full state machine + registers | Basic vi-mode |
 | 💾 **Persistence** | SQLite + file-based | File-based only |
@@ -248,7 +248,11 @@ Claudio is built ground-up in Go for engineers who want **more control, more age
 ### Option 1 — `go install` (fastest)
 
 ```bash
+# CLI / TUI
 go install github.com/Abraxas-365/claudio/cmd/claudio@latest
+
+# Command Center server (optional — for the web/mobile UI)
+go install github.com/Abraxas-365/claudio/cmd/comandcenter@latest
 ```
 
 Make sure `$GOPATH/bin` (or `$HOME/go/bin`) is on your `$PATH`.
@@ -260,6 +264,9 @@ git clone https://github.com/Abraxas-365/claudio
 cd claudio
 make build              # injects version via ldflags
 sudo mv claudio /usr/local/bin/
+# also build the command center server
+go build -o comandcenter ./cmd/comandcenter
+sudo mv comandcenter /usr/local/bin/
 ```
 
 ### Verify
@@ -278,8 +285,12 @@ claudio                                  # interactive TUI (default)
 claudio "explain this codebase"          # one-shot prompt
 echo "fix the bug in main.go" | claudio  # pipe mode
 claudio --resume                         # resume last session
-claudio --headless                       # API server mode
-claudio web                              # browser UI
+claudio --headless                       # headless one-shot (no TUI)
+
+# Command Center — browser/mobile UI + remote sessions
+comandcenter --password mysecret --port 8080  # start the server
+claudio --attach http://localhost:8080 \
+        --name "my-session" --master          # connect a Claudio session to it
 ```
 
 ---
@@ -441,12 +452,15 @@ Rules are evaluated in order; first match wins. Behaviors: `allow` (skip approva
 |------|-------|-------------|
 | `--model` | | AI model override (e.g., `claude-opus-4-6`) |
 | `--verbose` | `-v` | Enable verbose output |
-| `--headless` | | Run as HTTP API server (no TUI) |
+| `--headless` | | Run without TUI (one-shot or attach mode) |
 | `--context` | | Load context profile (`dev`, `review`, `research`, or a file path) |
 | `--budget` | | Session spend limit in USD (0 = unlimited) |
 | `--resume` | `-r` | Resume a previous session (no value = most recent, or pass session ID) |
 | `--print` | | Print-only mode (no TUI, clean stdout for piping) |
 | `--dangerously-skip-permissions` | `--yolo` | Skip all permission prompts |
+| `--attach` | | ComandCenter server URL to attach to (e.g. `http://localhost:8080`). Forces `--headless`. |
+| `--name` | | Session display name in ComandCenter |
+| `--master` | | Mark this session as the master — enables `SendToSession` and `SpawnSession` tools |
 
 ---
 
@@ -2134,16 +2148,41 @@ Hooks receive context via environment variables: `CLAUDIO_EVENT`, `CLAUDIO_TOOL_
 
 ## Scheduled Tasks (Cron)
 
-Schedule recurring agent tasks:
+Claudio supports recurring agent tasks via a lightweight cron runner. Tasks are stored in `~/.claudio/cron.json` and polled every 60 seconds.
 
-```json
-// Via the CronCreate tool or programmatically
-{"schedule": "@every 1h", "prompt": "Check for failing tests"}
-{"schedule": "@daily", "prompt": "Review open PRs"}
-{"schedule": "09:00", "prompt": "Summarize overnight changes"}
+### Creating a cron
+
+Use the `CronCreate` tool inside a session (requires approval):
+
+```
+CronCreate:
+  schedule: "@every 1h"
+  prompt:   "Check for failing tests and open a GitHub issue if any"
+  type:     "background"   # or "inline"
 ```
 
-Supported schedules: `@every <duration>` (e.g., `1h`, `30m`), `@daily`, `@hourly`, `HH:MM`. Due tasks execute as background agents at session start.
+Supported schedules: `@every <duration>` (e.g., `@every 30m`, `@every 2h`), `@hourly`, `@daily`, `HH:MM` (e.g., `09:00`).
+
+### Execution modes
+
+| Mode | How it runs |
+|------|-------------|
+| **inline** | Injects the prompt as a user message into the target session. The cron ID is embedded in the message (`[cron_id: xxx]`) so the AI can call `CronDelete` when the task is done. |
+| **background** | Spawns an isolated engine with no TUI attachment. Result is stored as an assistant message in the session history. Ideal for monitoring, summarization, or notification tasks. |
+
+### Managing crons
+
+| Tool | Description |
+|------|-------------|
+| `CronCreate` | Create a new scheduled task |
+| `CronList` | List all crons with schedule, type, and next-run time |
+| `CronDelete` | Delete a cron by ID |
+
+### ComandCenter integration
+
+When running `comandcenter`, crons are shared across all attached `claudio` sessions:
+- **Inline crons** are delivered to the target session via the hub WebSocket.
+- **Background crons** spawn an isolated engine, store the result in the ComandCenter DB, and broadcast it to all connected browser clients in real time.
 
 ---
 
@@ -2874,134 +2913,128 @@ Claudio tracks file changes per conversation turn:
 
 ---
 
-## Web UI
+## Command Center (Web / Mobile UI)
 
-Claudio ships a full browser-based chat interface — useful when you're on a remote machine, want to share access with a teammate, or just prefer a GUI over the terminal.
+**ComandCenter** is a separate server binary that provides a WhatsApp-style browser and mobile chat interface for Claudio sessions. It acts as a hub: one or more `claudio` processes attach to it over WebSocket, and browser/mobile clients interact with those sessions through the web UI.
 
-```bash
-claudio web --port 3000 --password mysecret
-# → http://127.0.0.1:3000
+```
+[ claudio --attach ]  ←→  [ comandcenter server ]  ←→  [ browser / PWA ]
+[ claudio --attach ]         (hub, storage, crons)
 ```
 
 ### Starting the server
 
+```bash
+comandcenter --password mysecret --port 8080
+# → http://localhost:8080
+```
+
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--port` | `3000` | Port to listen on |
-| `--host` | `127.0.0.1` | Bind address (`0.0.0.0` to expose on LAN) |
-| `--password` | _(required)_ | Password for the login page |
+| `--password` | _(required)_ | Shared password for browser login |
+| `--port` | `8080` | HTTP port |
+| `--db` | `~/.claudio/comandcenter.db` | SQLite database path |
+| `--data-dir` | `~/.claudio/uploads/` | File upload storage |
 
-The server uses a session cookie (24 h expiry) — no API key is ever sent to the browser.
-
-### Features
-
-#### Multi-session workspace
-- Open multiple independent sessions per project from the sidebar
-- Create, rename, and delete sessions without losing conversation history
-- Switch between sessions instantly; each keeps its own context and token counters
-
-#### Full chat streaming
-- AI responses stream token-by-token in real time via SSE
-- Thinking blocks (extended reasoning) rendered inline with a collapsible header
-- Tool calls shown with name + input as they execute, result shown when done
-- Markdown rendered with syntax-highlighted code blocks
-
-#### Tool approval (interactive)
-When the AI calls a tool that requires permission, an overlay appears mid-stream:
-
-```
-┌─────────────────────────────────────┐
-│ ⚠ Tool Requires Approval            │
-│  Bash                               │
-│  ┌───────────────────────────────┐  │
-│  │ rm -rf ./build                │  │
-│  └───────────────────────────────┘  │
-│                  [Deny]  [Approve]  │
-└─────────────────────────────────────┘
-```
-
-Approving or denying resumes the stream immediately.
-
-#### Plan mode approval (inline card)
-When the AI finishes planning (`ExitPlanMode`), an inline card appears in the chat:
-
-```
-┌─────────────────────────────────────┐  ← yellow border
-│ 📄 Plan Ready for Review            │
-│ The AI has finished planning.       │
-├─────────────────────────────────────┤
-│ [✓ Approve (auto-accept)]  [✓ Approve│
-│ [✗ Reject]  [✎ Feedback]            │
-└─────────────────────────────────────┘
-```
-
-- **Approve (auto-accept)** — proceed with implementation, auto-accept all file edits
-- **Approve** — proceed, manually approve each edit
-- **Reject** — ask the AI to revise the plan
-- **Feedback** — opens a text input; your note is sent as the next message
-
-#### AskUser (inline card)
-When the AI needs clarification (`AskUser`), an inline card appears:
-
-```
-┌─────────────────────────────────────┐  ← blue border
-│ ❓ Question from AI                  │
-│ Which database should I use?        │
-│ [PostgreSQL]  [SQLite]  [MongoDB]   │
-└─────────────────────────────────────┘
-```
-
-If the AI provides options, they appear as buttons. Otherwise a free-text input is shown. Your choice is sent as the next message.
-
-#### Model selector
-Click the **MODEL** badge in the status bar (or the model row in the Config panel) to open the model picker:
-
-- Lists all supported models (Opus 4.6, Sonnet 4.6, Haiku 4.5, and any configured external providers)
-- Highlights the currently active model
-- Takes effect immediately for the current session
-
-#### Config panel
-The right-side Config panel shows:
-- Current model (clickable — opens model selector)
-- Permission mode
-- Project path
-
-#### Analytics panel
-Live token counters per session:
-- Input / output tokens
-- Cache read / cache create tokens
-- Total token count
-
-#### Tasks panel
-Displays tasks created by the AI via the `TaskCreate` tool, with status badges (`pending`, `in_progress`, `done`).
-
-#### Autocomplete
-- `@filename` — file path autocomplete from the project tree
-- `/command` — slash command list
-- `@agent` — agent name list
-
-### Architecture notes
-
-- The server is a single Go binary — no Node.js, no build step
-- HTML is rendered server-side with [templ](https://templ.guide); no SPA framework
-- Streaming uses Server-Sent Events (SSE) with a replay buffer for reconnects
-- Each browser session maps 1:1 to a `query.Engine` instance, preserving full conversation context across messages
-- Auth uses a secure random token in an `HttpOnly` cookie — the Anthropic API key never leaves the server
-
----
-
-## Headless / API Mode
+### Attaching a Claudio session
 
 ```bash
-claudio --headless
+claudio --attach http://localhost:8080 \
+        --name "my-project" \
+        --master
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--attach <url>` | ComandCenter server URL. Forces `--headless`; engine runs in a persistent loop. |
+| `--name <name>` | Session display name in the web UI. Resumes an existing session of the same name on reconnect. |
+| `--master` | Marks this session as the master — enables the `SendToSession` and `SpawnSession` tools. |
+
+Auth for `--attach` is read from `COMANDCENTER_PASSWORD` environment variable.
+
+### Web UI features
+
+#### Chat list + session management
+- Sessions list with active/inactive status indicators
+- Create, archive, and delete sessions
+- Responsive layout: single column on mobile, two-panel on desktop
+
+#### Real-time messaging (WebSocket)
+- Messages stream from the attached Claudio engine to the browser in real time
+- Markdown rendered with GFM (tables, strikethrough, task lists, syntax highlighting)
+- Date dividers and typing indicator
+
+#### File uploads
+- WhatsApp-style file picker — select file, preview before sending
+- Uploaded files are forwarded to the Claudio engine and processed by the AI
+- Served back via `/api/uploads/...`
+
+#### @mentions — cross-session routing
+Messages prefixed with `@session-name` are routed to the named session. The reply appears in both the originating session and the target session (WhatsApp reply-quote style).
+
+#### Session info panel
+Slide-in panel (from header) with three tabs:
+- **Tasks** — tasks created by the AI (`TaskCreate`), with status badges and markdown detail view
+- **Team** — active agents and their status
+- **Crons** — list of scheduled tasks; delete crons from the UI
+
+#### Push notifications (PWA)
+- Progressive Web App — installable on iOS/Android
+- Push notifications when the AI finishes a response while the app is in the background
+- Subscription management via `/api/push/subscribe`
+
+#### Interrupt
+- Interrupt the running AI turn via the `+` menu → **Interrupt**, or `POST /api/sessions/{id}/interrupt`
+
+### API (Bearer auth)
+
+Machine-readable endpoints for scripting or integrations:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v1/messages` | POST | Send message (streaming via SSE) |
-| `/v1/tools` | GET | List available tools |
-| `/v1/health` | GET | Health check |
-| `/v1/status` | GET | Session status |
+| `/api/sessions` | GET | List sessions |
+| `/api/sessions/{id}/message` | POST | Send a message to a session |
+| `/api/sessions/by-name/{name}/message` | POST | Send to session by name (creates if missing) |
+| `/api/sessions/{id}/interrupt` | POST | Interrupt current turn |
+| `/api/sessions/{id}/archive` | PATCH | Archive a session |
+| `/api/sessions/{id}` | DELETE | Delete a session |
+| `/api/sessions/{id}/upload` | POST | Upload a file |
+| `/api/crons` | GET | List scheduled tasks |
+| `/api/crons/{id}` | DELETE | Delete a cron |
+| `/api/push/subscribe` | POST/DELETE | Manage push subscriptions |
+| `/api/push/vapid-public-key` | GET | VAPID public key for push |
+| `/ws/attach` | WebSocket | Claudio session attach endpoint |
+| `/ws/ui` | WebSocket | Browser real-time message stream |
+
+All `/api/*` endpoints require `Authorization: Bearer <password>`.
+
+### Architecture notes
+
+- Pure Go binary — no Node.js, no build step required
+- HTML rendered server-side with `html/template`; CSS via Tailwind (vendored)
+- WebSocket at `/ws/ui` pushes rendered message HTML to all connected browser clients
+- Sessions and messages stored in a dedicated SQLite DB (`comandcenter.db`) — separate from `~/.claudio/claudio.db`
+- Cron runner is embedded in the server; cron state is shared from `~/.claudio/cron.json`
+
+---
+
+## Headless Mode
+
+`--headless` disables the TUI and runs a single prompt non-interactively:
+
+```bash
+claudio --headless "run the tests and summarize failures"
+```
+
+It is also the engine mode used by `--attach`: when connecting to a ComandCenter server, `claudio` runs headless in a persistent loop, processing messages injected from the web UI.
+
+```bash
+# Persistent session attached to ComandCenter
+COMANDCENTER_PASSWORD=mysecret \
+  claudio --attach http://localhost:8080 --name "my-project" --master
+```
+
+The process stays alive, reconnects on drop, and resumes the same session by name.
 
 ---
 
@@ -3032,8 +3065,10 @@ claudio --headless
   plugins/                     # Executable plugins (global, all agents)
   plans/                       # Plan mode files
   cache/                       # Model capabilities cache
-  cron.json                    # Scheduled task definitions
+  cron.json                    # Scheduled task definitions (shared with ComandCenter)
   keybindings.json             # Custom keybindings (user-created)
+  comandcenter.db              # ComandCenter SQLite DB (sessions, messages, tasks, agents)
+  uploads/                     # Files uploaded via the web UI
   projects/                    # Per-project data
     <project-slug>/memory/     # Project-scoped memories
 
