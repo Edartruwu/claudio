@@ -249,7 +249,7 @@
         renderDrop(cachedSessions, prefix);
         return;
       }
-      fetch('/api/sessions').then(function(res) {
+      fetch('/api/sessions/list').then(function(res) {
         return res.json();
       }).then(function(data) {
         cachedSessions = data;

@@ -261,12 +261,13 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
 	mux.Handle("POST /api/sessions/{session_id}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessage)))
 	mux.Handle("POST /api/sessions/by-name/{name}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessageByName)))
+	mux.Handle("GET /api/sessions/list", ws.uiAuth(http.HandlerFunc(ws.handleAPISessions)))
 	mux.Handle("POST /api/sessions/{session_id}/upload", ws.uiAuth(http.HandlerFunc(ws.handleUpload)))
 	mux.Handle("GET /uploads/{session_id}/{filename}", ws.uiAuth(http.HandlerFunc(ws.handleServeFile)))
 	mux.Handle("GET /ws/ui", ws.uiAuth(http.HandlerFunc(ws.handleWSUI)))
 
 	// Sessions JSON API — used by @mention autocomplete.
-	mux.Handle("GET /api/sessions", ws.uiAuth(http.HandlerFunc(ws.handleAPISessions)))
+
 
 	// Session management API.
 	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
