@@ -149,6 +149,15 @@
     </div>
   </div>
 
+  <!-- File preview (staged file chip — shown when file selected, hidden by default) -->
+  <div id="file-preview" class="hidden px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
+    <img id="file-preview-img" class="hidden rounded-lg object-cover flex-shrink-0" style="width:48px;height:48px;border:1px solid #3A3A3C;" alt="preview">
+    <span id="file-preview-name" class="hidden text-sm text-white truncate flex-1" style="max-width:200px;"></span>
+    <button type="button" onclick="ccClearStagedFile()"
+            style="color:#8E8E93;background:transparent;border:none;cursor:pointer;font-size:18px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;margin-left:auto;"
+            aria-label="Remove staged file">✕</button>
+  </div>
+
   <!-- Input bar -->
   <div class="input-bar px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
     <!-- Hidden file input -->
@@ -171,12 +180,10 @@
     <!-- Send button -->
     <button
       id="send-btn"
+      type="button"
       class="text-white rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0 shadow"
       style="background:#25D366;"
-      hx-post="/api/sessions/{{.Session.ID}}/message"
-      hx-vals="js:{content: document.getElementById('msg-input').value}"
-      hx-swap="none"
-      hx-on:htmx:after-request="document.getElementById('msg-input').value=''"
+      onclick="ccSend()"
     >
       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
         <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -191,15 +198,20 @@
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
   })();
 
-  // --- File upload ---
+  // --- File upload + staged send ---
   (function() {
-    var sessionId = '{{.Session.ID}}';
-    var fileInput  = document.getElementById('file-input');
-    var progress   = document.getElementById('upload-progress');
+    var sessionId   = '{{.Session.ID}}';
+    var fileInput   = document.getElementById('file-input');
+    var progress    = document.getElementById('upload-progress');
     var progressBar = document.getElementById('upload-progress-bar');
-    var pctLabel   = document.getElementById('upload-pct');
+    var pctLabel    = document.getElementById('upload-pct');
+    var previewDiv  = document.getElementById('file-preview');
+    var previewImg  = document.getElementById('file-preview-img');
+    var previewName = document.getElementById('file-preview-name');
 
     if (!fileInput) return;
+
+    var stagedFile = null;
 
     // Close + popover when clicking outside
     document.addEventListener('click', function(e) {
@@ -210,44 +222,92 @@
       }
     });
 
+    // Stage file on select — no auto-upload
     fileInput.addEventListener('change', function(e) {
       var file = e.target.files[0];
       if (!file) return;
 
-      var caption = (document.getElementById('msg-input').value || '').trim();
+      stagedFile = file;
 
-      var fd = new FormData();
-      fd.append('file', file);
-      if (caption) fd.append('content', caption);
+      // Show preview chip
+      previewDiv.classList.remove('hidden');
+      previewImg.classList.add('hidden');
+      previewImg.src = '';
+      previewName.classList.add('hidden');
+      previewName.textContent = '';
 
-      progress.classList.remove('hidden');
-      progressBar.style.width = '0%';
-      pctLabel.textContent = '0%';
-
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/sessions/' + sessionId + '/upload');
-
-      xhr.upload.addEventListener('progress', function(ev) {
-        if (ev.lengthComputable) {
-          var pct = Math.round(ev.loaded / ev.total * 100);
-          progressBar.style.width = pct + '%';
-          pctLabel.textContent = pct + '%';
-        }
-      });
-
-      xhr.addEventListener('load', function() {
-        progress.classList.add('hidden');
-        fileInput.value = '';
-        if (caption) document.getElementById('msg-input').value = '';
-      });
-
-      xhr.addEventListener('error', function() {
-        progress.classList.add('hidden');
-        fileInput.value = '';
-      });
-
-      xhr.send(fd);
+      if (file.type.startsWith('image/')) {
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+          previewImg.src = ev.target.result;
+          previewImg.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+      } else {
+        previewName.textContent = file.name;
+        previewName.classList.remove('hidden');
+      }
     });
+
+    // Clear staged file + hide preview
+    window.ccClearStagedFile = function() {
+      stagedFile = null;
+      fileInput.value = '';
+      previewDiv.classList.add('hidden');
+      previewImg.classList.add('hidden');
+      previewImg.src = '';
+      previewName.classList.add('hidden');
+      previewName.textContent = '';
+    };
+
+    // Unified send: XHR if file staged, htmx POST if text-only
+    window.ccSend = function() {
+      var msgInput = document.getElementById('msg-input');
+      var text = msgInput ? msgInput.value.trim() : '';
+
+      if (stagedFile) {
+        // Upload file + optional caption via XHR
+        var fd = new FormData();
+        fd.append('file', stagedFile);
+        if (text) fd.append('content', text);
+
+        progress.classList.remove('hidden');
+        progressBar.style.width = '0%';
+        pctLabel.textContent = '0%';
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/sessions/' + sessionId + '/upload');
+
+        xhr.upload.addEventListener('progress', function(ev) {
+          if (ev.lengthComputable) {
+            var pct = Math.round(ev.loaded / ev.total * 100);
+            progressBar.style.width = pct + '%';
+            pctLabel.textContent = pct + '%';
+          }
+        });
+
+        xhr.addEventListener('load', function() {
+          progress.classList.add('hidden');
+          if (msgInput) msgInput.value = '';
+          ccClearStagedFile();
+        });
+
+        xhr.addEventListener('error', function() {
+          progress.classList.add('hidden');
+          ccClearStagedFile();
+        });
+
+        xhr.send(fd);
+      } else {
+        // Text-only — delegate to htmx
+        if (!text) return;
+        htmx.ajax('POST', '/api/sessions/' + sessionId + '/message', {
+          values: { content: text },
+          swap: 'none'
+        });
+        if (msgInput) msgInput.value = '';
+      }
+    };
   })();
 
   // --- File browser ---
