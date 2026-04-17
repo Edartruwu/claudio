@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,7 +17,10 @@ import (
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/app"
+	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/auth/refresh"
+	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/cli/attachclient"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/plugins"
 	"github.com/Abraxas-365/claudio/internal/prompts"
@@ -44,6 +48,9 @@ var (
 	flagResume              string
 	flagDangerouslySkipPerm bool
 	flagPrint               bool
+	flagAttach              string
+	flagName                string
+	flagMaster              bool
 )
 
 // appInstance is initialized before command execution.
@@ -114,6 +121,42 @@ security, and hackability.`,
 			return fmt.Errorf("failed to initialize: %w", err)
 		}
 		appInstance = a
+
+		// Setup attach client if --attach flag set
+		if flagAttach != "" {
+			password := os.Getenv("COMANDCENTER_PASSWORD")
+			if password == "" {
+				log.Printf("Warning: COMANDCENTER_PASSWORD env var not set, attaching without auth\n")
+			}
+
+			client := attachclient.New(flagAttach, password, flagName, flagMaster)
+			if err := client.Connect(context.Background()); err != nil {
+				log.Printf("Warning: failed to attach to ComandCenter: %v\n", err)
+			} else {
+				// Register user message callback (TODO: inject into session input queue)
+				client.OnUserMessage(func(payload attach.UserMsgPayload) {
+					// For now, just log
+					log.Printf("Received user message from ComandCenter: %q\n", payload.Content)
+				})
+
+				// Subscribe to bus events and forward
+				appInstance.Bus.SubscribeAll(func(event bus.Event) {
+					// TODO: map bus events to attach protocol events and forward
+					// For now, silently forward all events
+					switch event.Type {
+					case "message.assistant":
+						// Parse and forward assistant messages
+					case "task.created":
+						// Parse and forward task created events
+					}
+				})
+
+				// Store client for later access (TODO: better cleanup registration)
+				// For now, relies on app.Close()
+				_ = client
+			}
+		}
+
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -157,6 +200,9 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagPrint, "print", false, "Print-only mode (no TUI, clean stdout for piping)")
 	rootCmd.PersistentFlags().StringVar(&flagAgent, "agent", "", "Run as a specific agent persona (e.g., prab, backend-senior)")
 	rootCmd.PersistentFlags().StringVar(&flagTeam, "team", "", "Pre-load a team template at startup (e.g., backend-team)")
+	rootCmd.PersistentFlags().StringVar(&flagAttach, "attach", "", "ComandCenter server URL (e.g. http://localhost:8080)")
+	rootCmd.PersistentFlags().StringVar(&flagName, "name", "", "Session display name in ComandCenter")
+	rootCmd.PersistentFlags().BoolVar(&flagMaster, "master", false, "Mark this session as the master session")
 }
 
 func Execute() error {
