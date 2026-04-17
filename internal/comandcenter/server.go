@@ -35,6 +35,12 @@ func NewServer(password string, storage *Storage, hub *Hub, dataDir string) *Ser
 	return s
 }
 
+// Mux returns the underlying ServeMux so external packages can register
+// additional routes (e.g., the browser UI) without an import cycle.
+func (s *Server) Mux() *http.ServeMux {
+	return s.mux
+}
+
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)

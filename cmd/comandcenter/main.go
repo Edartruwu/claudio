@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/Abraxas-365/claudio/internal/comandcenter"
+	"github.com/Abraxas-365/claudio/internal/comandcenter/web"
 )
 
 func main() {
@@ -55,6 +56,10 @@ func main() {
 
 	hub := comandcenter.NewHub(storage)
 	srv := comandcenter.NewServer(*password, storage, hub, *dataDir)
+
+	// Mount browser UI (WhatsApp-style chat interface).
+	webSrv := web.NewWebServer(storage, hub, *password)
+	webSrv.RegisterRoutes(srv.Mux())
 
 	addr := fmt.Sprintf(":%d", *port)
 	httpSrv := &http.Server{

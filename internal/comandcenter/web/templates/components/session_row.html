@@ -1,0 +1,29 @@
+{{define "session-row"}}
+<a href="/chat/{{.Session.ID}}"
+   class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-100 transition">
+  <!-- Avatar -->
+  <div class="w-12 h-12 rounded-full whatsapp-green flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+    {{firstChar .Session.Name}}
+  </div>
+  <!-- Body -->
+  <div class="flex-1 min-w-0">
+    <div class="flex items-center justify-between">
+      <span class="font-semibold text-gray-800 text-sm truncate">
+        {{if .Session.Master}}★ {{end}}{{.Session.Name}}
+      </span>
+      <span class="text-xs text-gray-400 flex-shrink-0 ml-2">{{relTime .Session.LastActiveAt}}</span>
+    </div>
+    <div class="flex items-center justify-between mt-0.5">
+      <span class="text-xs text-gray-500 truncate">
+        {{if .LastMessage}}{{.LastMessage}}{{else}}<em class="text-gray-400">No messages</em>{{end}}
+      </span>
+      <!-- Status dot -->
+      {{if eq .Session.Status "active"}}
+      <span class="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0 ml-2"></span>
+      {{else}}
+      <span class="w-2.5 h-2.5 rounded-full bg-gray-300 flex-shrink-0 ml-2"></span>
+      {{end}}
+    </div>
+  </div>
+</a>
+{{end}}

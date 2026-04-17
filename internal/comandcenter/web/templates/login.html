@@ -1,0 +1,42 @@
+{{define "login.html"}}{{template "layout" .}}{{end}}
+
+{{define "content"}}
+<div class="flex flex-col items-center justify-center min-h-screen bg-gray-100 px-4">
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+    <div class="text-center mb-6">
+      <div class="w-16 h-16 whatsapp-green rounded-full flex items-center justify-center mx-auto mb-3">
+        <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.52 3.66 1.43 5.18L2 22l4.93-1.41A9.953 9.953 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-800">ComandCenter</h1>
+      <p class="text-sm text-gray-500 mt-1">AI Session Manager</p>
+    </div>
+
+    {{with .Error}}{{if .}}
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 mb-4 text-sm">
+      {{.}}
+    </div>
+    {{end}}{{end}}
+
+    <form method="POST" action="/login" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input
+          type="password"
+          name="password"
+          placeholder="Enter password"
+          autofocus
+          class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+        >
+      </div>
+      <button
+        type="submit"
+        class="w-full whatsapp-green text-white rounded-lg py-2 font-semibold text-sm hover:opacity-90 transition"
+      >
+        Sign In
+      </button>
+    </form>
+  </div>
+</div>
+{{end}}

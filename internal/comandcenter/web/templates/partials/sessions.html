@@ -1,0 +1,7 @@
+{{define "sessions-partial"}}
+{{range .}}
+  {{template "session-row" .}}
+{{else}}
+  <div class="px-4 py-8 text-center text-gray-400 text-sm">No active sessions</div>
+{{end}}
+{{end}}

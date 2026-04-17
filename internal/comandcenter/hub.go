@@ -35,12 +35,20 @@ func (n *netWSConn) close() error {
 	return n.c.Close()
 }
 
+// UIEvent wraps a broadcast event with the originating session ID.
+// It is sent on the UIBroadcast channel so UI listeners know which session
+// produced the event.
+type UIEvent struct {
+	SessionID string
+	Envelope  attach.Envelope
+}
+
 // Hub manages active WebSocket connections from Claudio sessions.
 type Hub struct {
 	mu          sync.RWMutex
 	sessions    map[string]wsConn
 	storage     *Storage
-	uiBroadcast chan attach.Envelope
+	uiBroadcast chan UIEvent
 }
 
 // NewHub creates a Hub backed by storage.
@@ -48,7 +56,7 @@ func NewHub(storage *Storage) *Hub {
 	return &Hub{
 		sessions:    make(map[string]wsConn),
 		storage:     storage,
-		uiBroadcast: make(chan attach.Envelope, 256),
+		uiBroadcast: make(chan UIEvent, 256),
 	}
 }
 
@@ -85,8 +93,9 @@ func (h *Hub) SessionCount() int {
 }
 
 // UIBroadcast returns the channel that receives all inbound session events
-// for SSE broadcast to UI listeners. Callers must not close this channel.
-func (h *Hub) UIBroadcast() <-chan attach.Envelope {
+// (with session context) for broadcast to UI listeners. Callers must not
+// close this channel.
+func (h *Hub) UIBroadcast() <-chan UIEvent {
 	return h.uiBroadcast
 }
 
@@ -139,7 +148,7 @@ func (h *Hub) handleConn(conn wsConn) {
 	}
 
 	h.Register(sessionID, conn)
-	h.broadcast(env)
+	h.broadcast(sessionID, env)
 
 	// Main read loop.
 	for {
@@ -152,7 +161,7 @@ func (h *Hub) handleConn(conn wsConn) {
 		}
 
 		h.processEvent(sessionID, ev)
-		h.broadcast(ev)
+		h.broadcast(sessionID, ev)
 	}
 }
 
@@ -250,10 +259,10 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 	}
 }
 
-// broadcast sends an envelope to UI listeners (non-blocking; drops if full).
-func (h *Hub) broadcast(env attach.Envelope) {
+// broadcast sends an envelope (with session context) to UI listeners (non-blocking; drops if full).
+func (h *Hub) broadcast(sessionID string, env attach.Envelope) {
 	select {
-	case h.uiBroadcast <- env:
+	case h.uiBroadcast <- UIEvent{SessionID: sessionID, Envelope: env}:
 	default:
 	}
 }
