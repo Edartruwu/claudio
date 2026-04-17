@@ -205,6 +205,9 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Configure snippet expansion on Write/Edit tools
 	registry.SetSnippetConfig(settings.Snippets)
 
+	// Inject event bus into task tools
+	registry.SetBus(eventBus)
+
 	// Remove denied tools
 	for _, denied := range settings.DenyTools {
 		registry.Remove(denied)
@@ -313,6 +316,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, "", subAgentCfg)
 	})
 	teamRunner.Settings = settings
+	teamRunner.SetBus(eventBus)
 	// Inject plugin instructions so sub-agents know to prefer plugin tools over Grep/Glob/Read.
 	if len(pluginReg.All()) > 0 {
 		var pluginInfos []prompts.PluginInfo
@@ -422,6 +426,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.TaskRuntime = taskRuntime
 			at.ParentRegistry = registry
 			at.TeamRunner = teamRunner
+			at.EventBus = eventBus
 			// Wire available models: Anthropic aliases + provider shortcuts
 			at.AvailableModels = buildAvailableModels(apiClient)
 			// Wire real sub-agent execution

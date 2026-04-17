@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/bus"
 )
 
 // freshStore returns a clean TaskStore for testing.
@@ -306,5 +309,107 @@ func TestTaskFlow_CreateAndCompleteByAssignee(t *testing.T) {
 		if task.Status != "completed" {
 			t.Errorf("worker-1 task %s should be completed, got %s", task.ID, task.Status)
 		}
+	}
+}
+
+// --- Bus publish tests ---
+
+func TestTaskCreateTool_PublishesEvent(t *testing.T) {
+	orig := GlobalTaskStore
+	defer func() { GlobalTaskStore = orig }()
+
+	GlobalTaskStore = freshStore()
+
+	// Create event bus and subscribe
+	eventBus := bus.New()
+	events := make(chan bus.Event, 1)
+	unsub := eventBus.Subscribe(attach.EventTaskCreated, func(e bus.Event) {
+		events <- e
+	})
+	defer unsub()
+
+	// Create tool with bus
+	tool := &TaskCreateTool{bus: eventBus}
+	input := json.RawMessage(`{"subject": "Test Task", "description": "Test", "assigned_to": "agent-1"}`)
+
+	result, err := tool.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+
+	// Verify event published
+	select {
+	case evt := <-events:
+		if evt.Type != attach.EventTaskCreated {
+			t.Errorf("expected %s, got %s", attach.EventTaskCreated, evt.Type)
+		}
+
+		var payload attach.TaskCreatedPayload
+		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+		if payload.Title != "Test Task" {
+			t.Errorf("expected title 'Test Task', got %q", payload.Title)
+		}
+		if payload.Status != "pending" {
+			t.Errorf("expected status 'pending', got %q", payload.Status)
+		}
+		if payload.AssignedTo != "agent-1" {
+			t.Errorf("expected assigned_to 'agent-1', got %q", payload.AssignedTo)
+		}
+	case <-make(chan struct{}): // timeout
+		t.Error("event not published")
+	}
+}
+
+func TestTaskUpdateTool_PublishesEvent(t *testing.T) {
+	orig := GlobalTaskStore
+	defer func() { GlobalTaskStore = orig }()
+
+	GlobalTaskStore = freshStore()
+	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Subject: "test", Status: "pending"}
+
+	// Create event bus and subscribe
+	eventBus := bus.New()
+	events := make(chan bus.Event, 1)
+	unsub := eventBus.Subscribe(attach.EventTaskUpdated, func(e bus.Event) {
+		events <- e
+	})
+	defer unsub()
+
+	// Update tool with bus
+	tool := &TaskUpdateTool{bus: eventBus}
+	input := json.RawMessage(`{"taskId": "5", "status": "completed"}`)
+
+	result, err := tool.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+
+	// Verify event published
+	select {
+	case evt := <-events:
+		if evt.Type != attach.EventTaskUpdated {
+			t.Errorf("expected %s, got %s", attach.EventTaskUpdated, evt.Type)
+		}
+
+		var payload attach.TaskUpdatedPayload
+		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+		if payload.ID != "5" {
+			t.Errorf("expected id '5', got %q", payload.ID)
+		}
+		if payload.Status != "completed" {
+			t.Errorf("expected status 'completed', got %q", payload.Status)
+		}
+	case <-make(chan struct{}): // timeout
+		t.Error("event not published")
 	}
 }

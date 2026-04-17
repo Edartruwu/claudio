@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tools/grepcache"
@@ -285,6 +286,23 @@ func (r *Registry) SetSnippetConfig(cfg *snippets.Config) {
 	if t, err := r.Get("Edit"); err == nil {
 		if ft, ok := t.(*FileEditTool); ok {
 			ft.SnippetConfig = cfg
+		}
+	}
+}
+
+// SetBus injects the event bus into task tools for event publishing.
+func (r *Registry) SetBus(b *bus.Bus) {
+	if b == nil {
+		return
+	}
+	if t, err := r.Get("TaskCreate"); err == nil {
+		if tc, ok := t.(*TaskCreateTool); ok {
+			tc.bus = b
+		}
+	}
+	if t, err := r.Get("TaskUpdate"); err == nil {
+		if tu, ok := t.(*TaskUpdateTool); ok {
+			tu.bus = b
 		}
 	}
 }
