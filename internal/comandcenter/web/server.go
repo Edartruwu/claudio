@@ -22,6 +22,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 	"golang.org/x/net/websocket"
 )
 
@@ -168,9 +169,11 @@ func itoa(n int) string {
 }
 
 // renderMarkdown converts markdown to sanitized HTML safe for template.HTML use.
+var mdParser = goldmark.New(goldmark.WithExtensions(extension.Table, extension.Strikethrough, extension.TaskList))
+
 func renderMarkdown(s string) template.HTML {
 	var buf bytes.Buffer
-	if err := goldmark.Convert([]byte(s), &buf); err != nil {
+	if err := mdParser.Convert([]byte(s), &buf); err != nil {
 		return template.HTML(template.HTMLEscapeString(s))
 	}
 	safe := bluemonday.UGCPolicy().SanitizeBytes(buf.Bytes())
