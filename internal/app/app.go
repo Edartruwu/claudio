@@ -571,6 +571,30 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	}, nil
 }
 
+// InjectAttachClient injects the attach client and URL into session coordination tools.
+// Called from root.go after attachClient is established.
+// client should implement tools.AttachClient interface.
+func (a *App) InjectAttachClient(client interface{}, url string) {
+	if client != nil {
+		if st, err := a.Tools.Get("SendToSession"); err == nil {
+			if tool, ok := st.(*tools.SendToSessionTool); ok {
+				if ac, ok := client.(tools.AttachClient); ok {
+					tool.AttachClient = ac
+					tool.AttachURL = url
+				}
+			}
+		}
+	}
+	
+	if url != "" {
+		if sp, err := a.Tools.Get("SpawnSession"); err == nil {
+			if tool, ok := sp.(*tools.SpawnSessionTool); ok {
+				tool.AttachURL = url
+			}
+		}
+	}
+}
+
 // InjectMessage sends a message to the inject channel for headless mode processing.
 // Non-blocking — if channel full, drops message with log (no blocking, no panic).
 func (a *App) InjectMessage(content string) {

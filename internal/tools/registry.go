@@ -390,6 +390,10 @@ func DefaultRegistry() *Registry {
 	r.Register(&SaveTeamTemplateTool{deferrable: newDeferrable("save team template reuse composition")})
 	r.Register(&InstantiateTeamTool{deferrable: newDeferrable("instantiate team template load roster")})
 
+	// Master session coordination (AttachClient/AttachURL injected later)
+	r.Register(&SendToSessionTool{deferrable: newDeferrable("send message to master session ComandCenter")})
+	r.Register(&SpawnSessionTool{deferrable: newDeferrable("spawn new session attach ComandCenter parallel")})
+
 	// Memory access (Store injected later)
 	r.Register(&MemoryTool{})
 	r.Register(&RecallTool{})
