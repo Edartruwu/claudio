@@ -240,9 +240,9 @@ func runSinglePrompt(prompt string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	defer appInstance.Close()
-	if attachClient != nil {
-		defer attachClient.Close()
-	}
+	// attachClient.Close() is intentionally NOT deferred here.
+	// In headless+attach mode runSinglePrompt is called in a loop — the WS
+	// connection must stay open across turns. runHeadlessAttach owns the close.
 
 	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
 	if modelOverride != "" {
