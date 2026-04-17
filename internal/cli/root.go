@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -139,14 +140,24 @@ security, and hackability.`,
 			} else {
 				attachClient = client
 
-				// Subscribe to bus events and forward
+				// Subscribe to bus events and forward task/agent events to ComandCenter
 				appInstance.Bus.SubscribeAll(func(event bus.Event) {
-					// TODO: map bus events to attach protocol events and forward
 					switch event.Type {
-					case "message.assistant":
-						// Parse and forward assistant messages
-					case "task.created":
-						// Parse and forward task created events
+					case attach.EventTaskCreated:
+						var p attach.TaskCreatedPayload
+						if err := json.Unmarshal(event.Payload, &p); err == nil {
+							_ = attachClient.SendEvent(attach.EventTaskCreated, p)
+						}
+					case attach.EventTaskUpdated:
+						var p attach.TaskUpdatedPayload
+						if err := json.Unmarshal(event.Payload, &p); err == nil {
+							_ = attachClient.SendEvent(attach.EventTaskUpdated, p)
+						}
+					case attach.EventAgentStatus:
+						var p attach.AgentStatusPayload
+						if err := json.Unmarshal(event.Payload, &p); err == nil {
+							_ = attachClient.SendEvent(attach.EventAgentStatus, p)
+						}
 					}
 				})
 			}
@@ -219,6 +230,9 @@ func runSinglePrompt(prompt string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	defer appInstance.Close()
+	if attachClient != nil {
+		defer attachClient.Close()
+	}
 
 	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
 	if modelOverride != "" {
@@ -249,7 +263,10 @@ func runSinglePrompt(prompt string) error {
 		reg.Register(advisorTool)
 	}
 
-	handler := &query.StdoutHandler{Verbose: flagVerbose}
+	var handler query.EventHandler = &query.StdoutHandler{Verbose: flagVerbose}
+	if attachClient != nil {
+		handler = attachclient.NewEventProxy(handler, attachClient)
+	}
 	singleTurnCfg := query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,
@@ -617,6 +634,9 @@ func runInteractive() error {
 	}
 
 	defer appInstance.Close()
+	if attachClient != nil {
+		defer attachClient.Close()
+	}
 
 	systemPrompt := buildFullSystemPrompt()
 
