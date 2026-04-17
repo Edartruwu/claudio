@@ -379,6 +379,15 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
+// DeleteMessages removes all messages for a session (used by /clear command).
+func (s *Storage) DeleteMessages(sessionID string) error {
+	_, err := s.db.Exec(`DELETE FROM cc_messages WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return fmt.Errorf("delete messages: %w", err)
+	}
+	return nil
+}
+
 // UpsertTask inserts or updates a task.
 func (s *Storage) UpsertTask(task Task) error {
 	_, err := s.db.Exec(`

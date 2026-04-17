@@ -107,11 +107,16 @@ func main() {
 		}
 		hub.Broadcast(sessionID, env)
 	}
-	// Wire background execution via auth resolver (keychain + OAuth + env).
-	{
+	// Shared API client — used for /compact in web UI and background cron execution.
+	sharedAPIClient := func() *api.Client {
 		store := authstorage.NewDefaultStorage()
 		resolver := auth.NewResolver(store)
-		apiClient := api.NewClient(resolver, api.WithPromptCaching(false))
+		return api.NewClient(resolver, api.WithPromptCaching(false))
+	}()
+
+	// Wire background execution via auth resolver (keychain + OAuth + env).
+	{
+		apiClient := sharedAPIClient
 		cronRunner.RunBackgroundFn = func(ctx context.Context, modelID, systemPrompt, prompt string) (string, error) {
 			contentJSON, _ := json.Marshal([]map[string]string{{"type": "text", "text": prompt}})
 			req := &api.MessagesRequest{
@@ -144,6 +149,7 @@ func main() {
 	// Mount browser UI (WhatsApp-style chat interface).
 	webSrv := web.NewWebServer(storage, hub, *password, *dataDir)
 	webSrv.SetCronStore(cronStore)
+	webSrv.SetAPIClient(sharedAPIClient)
 	if pk, _, err := storage.GetOrCreateVAPIDKeys(); err == nil && pk != "" {
 		webSrv.SetVAPIDPublicKey(pk)
 	}

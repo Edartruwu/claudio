@@ -3,6 +3,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
@@ -19,7 +20,9 @@ import (
 	"time"
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
@@ -248,6 +251,7 @@ type WebServer struct {
 	uploadsDir     string
 	vapidPublicKey string
 	cronStore      *tasks.CronStore
+	apiClient      *api.Client
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
@@ -318,6 +322,9 @@ func (ws *WebServer) SetVAPIDPublicKey(key string) { ws.vapidPublicKey = key }
 
 // SetCronStore attaches a CronStore so cron API endpoints are available.
 func (ws *WebServer) SetCronStore(cs *tasks.CronStore) { ws.cronStore = cs }
+
+// SetAPIClient attaches an API client used for /compact command execution.
+func (ws *WebServer) SetAPIClient(c *api.Client) { ws.apiClient = c }
 
 // handleVAPIDPublicKey returns the VAPID public key for browser push subscription.
 func (ws *WebServer) handleVAPIDPublicKey(w http.ResponseWriter, r *http.Request) {
@@ -677,6 +684,33 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Intercept /clear — wipe history, confirm, return early.
+	if strings.TrimSpace(content) == "/clear" {
+		if err := ws.storage.DeleteMessages(sessionID); err != nil {
+			http.Error(w, "storage error", http.StatusInternalServerError)
+			return
+		}
+		confirm := cc.Message{
+			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+			SessionID: sessionID,
+			Role:      "assistant",
+			AgentName: "system",
+			Content:   "Conversation cleared. ✓",
+			CreatedAt: time.Now(),
+		}
+		_ = ws.storage.InsertMessage(confirm)
+		ws.pushMsgBubble(sessionID, confirm)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Intercept /compact [instruction] — summarize+replace history via compact service.
+	if strings.HasPrefix(strings.TrimSpace(content), "/compact") {
+		instruction := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(content), "/compact"))
+		ws.handleCompact(w, sessionID, instruction)
+		return
+	}
+
 	// Detect @mention: "@Name message body"
 	if m := mentionRe.FindStringSubmatch(content); m != nil {
 		targetName := m[1]
@@ -826,6 +860,137 @@ func (ws *WebServer) handleSendMessageByName(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleCompact runs the compact service on the session's message history,
+// replaces DB messages with compacted ones, and pushes a confirmation bubble.
+func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction string) {
+	if ws.apiClient == nil {
+		http.Error(w, "compact unavailable: no API client configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	msgs, err := ws.storage.ListMessages(sessionID, 1000)
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	if len(msgs) == 0 {
+		confirm := cc.Message{
+			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+			SessionID: sessionID,
+			Role:      "assistant",
+			AgentName: "system",
+			Content:   "Nothing to compact.",
+			CreatedAt: time.Now(),
+		}
+		_ = ws.storage.InsertMessage(confirm)
+		ws.pushMsgBubble(sessionID, confirm)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// ListMessages returns newest first; compact needs oldest first.
+	apiMsgs := ccMessagesToAPI(reverseMessages(msgs))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	compacted, summary, err := compact.Compact(ctx, ws.apiClient, apiMsgs, 10, instruction)
+	if err != nil {
+		http.Error(w, "compact failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Replace DB messages with compacted set.
+	if err := ws.storage.DeleteMessages(sessionID); err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	now := time.Now()
+	for i, am := range compacted {
+		cm := cc.Message{
+			ID:        fmt.Sprintf("%d-%d", now.UnixNano(), i),
+			SessionID: sessionID,
+			Role:      apiRoleToCC(am.Role),
+			Content:   apiMessageText(am),
+			AgentName: "system",
+			CreatedAt: now.Add(time.Duration(i) * time.Millisecond),
+		}
+		_ = ws.storage.InsertMessage(cm)
+	}
+
+	confirmText := "Conversation compacted. ✓"
+	if summary != "" {
+		runes := []rune(summary)
+		if len(runes) > 200 {
+			runes = runes[:200]
+		}
+		confirmText = "Conversation compacted. ✓\n\n" + string(runes) + "…"
+	}
+	confirm := cc.Message{
+		ID:        fmt.Sprintf("%dc", now.UnixNano()),
+		SessionID: sessionID,
+		Role:      "assistant",
+		AgentName: "system",
+		Content:   confirmText,
+		CreatedAt: now.Add(time.Duration(len(compacted)) * time.Millisecond),
+	}
+	_ = ws.storage.InsertMessage(confirm)
+	ws.pushMsgBubble(sessionID, confirm)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ccMessagesToAPI converts cc.Message records to api.Message format for the compact service.
+func ccMessagesToAPI(msgs []cc.Message) []api.Message {
+	out := make([]api.Message, 0, len(msgs))
+	for _, m := range msgs {
+		role := m.Role
+		if role == "tool_use" {
+			role = "assistant"
+		}
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content, _ := json.Marshal([]map[string]string{{"type": "text", "text": m.Content}})
+		out = append(out, api.Message{Role: role, Content: json.RawMessage(content)})
+	}
+	return out
+}
+
+// apiRoleToCC converts an API message role to a cc.Message role.
+func apiRoleToCC(role string) string {
+	if role == "assistant" {
+		return "assistant"
+	}
+	return "user"
+}
+
+// apiMessageText extracts plain text from an api.Message content.
+func apiMessageText(m api.Message) string {
+	// Try array of blocks first.
+	var blocks []json.RawMessage
+	if json.Unmarshal(m.Content, &blocks) == nil {
+		var parts []string
+		for _, b := range blocks {
+			var block struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			if json.Unmarshal(b, &block) == nil && block.Type == "text" && block.Text != "" {
+				parts = append(parts, block.Text)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "\n")
+		}
+	}
+	// Fallback: try plain string.
+	var s string
+	if json.Unmarshal(m.Content, &s) == nil {
+		return s
+	}
+	return string(m.Content)
 }
 
 // pushMsgBubble renders and pushes a user message bubble to a session's WS clients.
