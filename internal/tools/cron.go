@@ -10,7 +10,8 @@ import (
 
 // CronCreateTool creates a new scheduled task.
 type CronCreateTool struct {
-	Store *tasks.CronStore
+	Store     *tasks.CronStore
+	SessionID string // injected at runtime — current active session ID
 }
 
 func (t *CronCreateTool) Name() string        { return "CronCreate" }
@@ -26,7 +27,8 @@ func (t *CronCreateTool) InputSchema() json.RawMessage {
 		"properties": {
 			"schedule": {"type": "string", "description": "Schedule: @every 1h, @daily, @hourly, or HH:MM"},
 			"prompt": {"type": "string", "description": "The prompt/task to execute on schedule"},
-			"agent": {"type": "string", "description": "Optional agent type to use"}
+			"agent": {"type": "string", "description": "Optional agent type to use"},
+			"type": {"type": "string", "enum": ["inline", "background"], "description": "Execution type: inline (inject as user msg) or background (spawn isolated engine). Default: inline"}
 		},
 		"required": ["schedule", "prompt"]
 	}`)
@@ -37,6 +39,7 @@ func (t *CronCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		Schedule string `json:"schedule"`
 		Prompt   string `json:"prompt"`
 		Agent    string `json:"agent"`
+		Type     string `json:"type"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
 		return errResult("invalid input: " + err.Error()), nil
@@ -45,13 +48,13 @@ func (t *CronCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		return errResult("cron store not configured"), nil
 	}
 
-	entry, err := t.Store.Add(params.Schedule, params.Prompt, params.Agent)
+	entry, err := t.Store.Add(params.Schedule, params.Prompt, params.Agent, params.Type, t.SessionID)
 	if err != nil {
 		return errResult("failed to create cron entry: " + err.Error()), nil
 	}
 
-	return &Result{Content: fmt.Sprintf("Created cron entry %s (schedule: %s, next: %s)",
-		entry.ID, entry.Schedule, entry.NextRun.Format("2006-01-02 15:04"))}, nil
+	return &Result{Content: fmt.Sprintf("Created cron entry %s (type: %s, schedule: %s, next: %s)",
+		entry.ID, entry.Type, entry.Schedule, entry.NextRun.Format("2006-01-02 15:04"))}, nil
 }
 
 // CronDeleteTool removes a scheduled task.

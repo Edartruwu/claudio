@@ -12,13 +12,15 @@ import (
 
 // CronEntry defines a scheduled recurring task.
 type CronEntry struct {
-	ID       string    `json:"id"`
-	Schedule string    `json:"schedule"` // simplified: "@every 1h", "@daily", or "HH:MM"
-	Prompt   string    `json:"prompt"`   // what to execute
-	Agent    string    `json:"agent,omitempty"`
-	LastRun  time.Time `json:"last_run,omitempty"`
-	NextRun  time.Time `json:"next_run"`
-	Enabled  bool      `json:"enabled"`
+	ID        string    `json:"id"`
+	Schedule  string    `json:"schedule"` // simplified: "@every 1h", "@daily", or "HH:MM"
+	Prompt    string    `json:"prompt"`   // what to execute
+	Agent     string    `json:"agent,omitempty"`
+	Type      string    `json:"type,omitempty"`       // "inline" (default) or "background"
+	SessionID string    `json:"session_id,omitempty"` // owning session for inject/store
+	LastRun   time.Time `json:"last_run,omitempty"`
+	NextRun   time.Time `json:"next_run"`
+	Enabled   bool      `json:"enabled"`
 }
 
 // CronStore manages persisted cron entries.
@@ -64,20 +66,26 @@ func (cs *CronStore) Save() error {
 }
 
 // Add creates a new cron entry with the given schedule and prompt.
-func (cs *CronStore) Add(schedule, prompt, agent string) (*CronEntry, error) {
+func (cs *CronStore) Add(schedule, prompt, agent, entryType, sessionID string) (*CronEntry, error) {
 	nextRun, err := computeNextRun(schedule, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("invalid schedule %q: %w", schedule, err)
 	}
 
+	if entryType == "" {
+		entryType = "inline"
+	}
+
 	cs.nextID++
 	entry := CronEntry{
-		ID:       fmt.Sprintf("cron-%d", cs.nextID),
-		Schedule: schedule,
-		Prompt:   prompt,
-		Agent:    agent,
-		NextRun:  nextRun,
-		Enabled:  true,
+		ID:        fmt.Sprintf("cron-%d", cs.nextID),
+		Schedule:  schedule,
+		Prompt:    prompt,
+		Agent:     agent,
+		Type:      entryType,
+		SessionID: sessionID,
+		NextRun:   nextRun,
+		Enabled:   true,
 	}
 
 	cs.entries = append(cs.entries, entry)

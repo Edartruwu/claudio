@@ -215,6 +215,12 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 			tool.GetSessionID = func() string { return sessionID }
 		}
 	}
+	// Wire session ID into CronCreate tool so cron entries track their session.
+	if ct, err := registry.Get("CronCreate"); err == nil {
+		if tool, ok := ct.(*tools.CronCreateTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
 	e.model = cfg.Model
 	e.permissionMode = cfg.PermissionMode
 	if e.permissionMode == "" {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
@@ -9,9 +11,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
+	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/comandcenter/web"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 )
 
 func main() {
@@ -55,6 +60,51 @@ func main() {
 	defer storage.Close()
 
 	hub := comandcenter.NewHub(storage)
+
+	// Cron runner — fires inline crons by sending user messages to attached sessions via hub.
+	cronPath := filepath.Join(claudioDir, "cron.json")
+	cronStore := tasks.NewCronStore(cronPath)
+	if err := cronStore.Load(); err != nil {
+		log.Printf("warning: load cron store: %v", err)
+	}
+	cronRunner := tasks.NewCronRunner(cronStore)
+	cronRunner.InjectFn = func(sessionID, prompt string) {
+		payload := attach.UserMsgPayload{Content: prompt}
+		env, err := attach.NewEnvelope(attach.EventMsgUser, payload)
+		if err != nil {
+			log.Printf("[cron] inject envelope build: %v", err)
+			return
+		}
+		if err := hub.Send(sessionID, env); err != nil {
+			log.Printf("[cron] inject send to session %s: %v", sessionID, err)
+		}
+	}
+	cronRunner.StoreFn = func(sessionID, agentName, content string) {
+		msg := comandcenter.Message{
+			ID:        genID(),
+			SessionID: sessionID,
+			Role:      "assistant",
+			Content:   content,
+			AgentName: agentName,
+			CreatedAt: time.Now(),
+		}
+		if err := storage.InsertMessage(msg); err != nil {
+			log.Printf("[cron] store msg for session %s: %v", sessionID, err)
+			return
+		}
+		env, err := attach.NewEnvelope(attach.EventMsgAssistant, attach.AssistantMsgPayload{
+			Content:   content,
+			AgentName: agentName,
+		})
+		if err != nil {
+			log.Printf("[cron] broadcast envelope build: %v", err)
+			return
+		}
+		hub.Broadcast(sessionID, env)
+	}
+	cronCtx, cronCancel := context.WithCancel(context.Background())
+	cronRunner.Start(cronCtx)
+
 	srv := comandcenter.NewServer(*password, storage, hub, *dataDir)
 
 	// Mount browser UI (WhatsApp-style chat interface).
@@ -82,7 +132,15 @@ func main() {
 
 	<-quit
 	log.Println("shutting down")
+	cronCancel()
+	cronRunner.Stop()
 	if err := httpSrv.Close(); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+}
+
+func genID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }

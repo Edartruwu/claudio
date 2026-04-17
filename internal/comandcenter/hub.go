@@ -259,7 +259,7 @@ func (h *Hub) handleConn(conn wsConn) {
 	h.RegisterInterrupt(sessionID, func() {
 		_ = conn.writeEnvelope(attach.Envelope{Type: attach.EventInterrupt})
 	})
-	h.broadcast(sessionID, env)
+	h.Broadcast(sessionID, env)
 
 	// Main read loop.
 	for {
@@ -272,7 +272,7 @@ func (h *Hub) handleConn(conn wsConn) {
 		}
 
 		h.processEvent(sessionID, ev)
-		h.broadcast(sessionID, ev)
+		h.Broadcast(sessionID, ev)
 	}
 }
 
@@ -378,8 +378,8 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 	}
 }
 
-// broadcast sends an envelope (with session context) to UI listeners (non-blocking; drops if full).
-func (h *Hub) broadcast(sessionID string, env attach.Envelope) {
+// Broadcast sends an envelope (with session context) to UI listeners (non-blocking; drops if full).
+func (h *Hub) Broadcast(sessionID string, env attach.Envelope) {
 	select {
 	case h.uiBroadcast <- UIEvent{SessionID: sessionID, Envelope: env}:
 	default:

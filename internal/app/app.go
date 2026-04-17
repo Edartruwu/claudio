@@ -57,6 +57,7 @@ type App struct {
 	TeamRunner   *teams.TeammateRunner
 	Plugins      *plugins.Registry
 	Cron         *tasks.CronStore
+	CronRunner   *tasks.CronRunner
 	LSP          *lsp.ServerManager
 	InjectCh     chan attach.UserMsgPayload
 	InterruptCh  chan struct{}
@@ -299,9 +300,26 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		registry.Register(pt)
 	}
 
-	// Cron store
+	// Cron store + runner
 	cronStore := tasks.NewCronStore(filepath.Join(paths.Home, "cron.json"))
 	cronStore.Load()
+
+	cronRunner := tasks.NewCronRunner(cronStore)
+	cronRunner.ResolveModelFn = func(agentName string) (string, string) {
+		// Try model shorthand first
+		if modelID := resolveModelAlias(agentName); modelID != agentName {
+			return modelID, ""
+		}
+		// Try loading as agent definition
+		agentDef := agents.GetAgent(agentName)
+		model := agentDef.Model
+		if model == "" {
+			model = "claude-sonnet-4-6"
+		} else {
+			model = resolveModelAlias(model)
+		}
+		return model, agentDef.SystemPrompt
+	}
 
 	// Team manager
 	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
@@ -569,6 +587,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		TeamRunner:  teamRunner,
 		Plugins:     pluginReg,
 		Cron:        cronStore,
+		CronRunner:  cronRunner,
 		LSP:         lspManager,
 		InjectCh:    injectCh,
 		InterruptCh: interruptCh,
