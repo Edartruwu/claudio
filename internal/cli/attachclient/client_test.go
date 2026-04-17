@@ -1,72 +1,30 @@
 package attachclient
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
-	"net/http"
+	"io"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/attach"
+	"golang.org/x/net/websocket"
 )
 
 // TestClient_Connect_SendsHello verifies connection + hello message.
 func TestClient_Connect_SendsHello(t *testing.T) {
-	// Test server that expects WebSocket upgrade
 	var receivedEnv attach.Envelope
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Upgrade") != "websocket" {
-			http.Error(w, "not a websocket request", http.StatusBadRequest)
-			return
-		}
-
-		// Check auth header
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") {
-			http.Error(w, "missing auth", http.StatusUnauthorized)
-			return
-		}
-
-		// Upgrade to raw TCP for frame reading
-		hj, ok := w.(http.Hijacker)
-		if !ok {
-			http.Error(w, "hijack not supported", http.StatusInternalServerError)
-			return
-		}
-
-		conn, _, err := hj.Hijack()
-		if err != nil {
-			http.Error(w, "hijack failed", http.StatusInternalServerError)
-			return
-		}
+	handler := websocket.Handler(func(conn *websocket.Conn) {
 		defer conn.Close()
-
-		// Send upgrade response
-		conn.Write([]byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"))
-
-		// Read first frame (should be hello)
-		reader := bufio.NewReader(conn)
-		lenBuf := make([]byte, 4)
-		if _, err := reader.Read(lenBuf); err != nil {
-			t.Logf("read length failed: %v", err)
+		
+		// Read hello
+		if err := websocket.JSON.Receive(conn, &receivedEnv); err != nil {
+			t.Logf("receive failed: %v", err)
 			return
 		}
-
-		frameLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-		frameBuf := make([]byte, frameLen)
-		if _, err := reader.Read(frameBuf); err != nil {
-			t.Logf("read frame failed: %v", err)
-			return
-		}
-
-		if err := json.Unmarshal(frameBuf, &receivedEnv); err != nil {
-			t.Logf("unmarshal failed: %v", err)
-			return
-		}
-	}))
+	})
+	
+	server := httptest.NewServer(handler)
 	defer server.Close()
 
 	client := New(server.URL, "test-password", "test-session", true)
@@ -76,7 +34,7 @@ func TestClient_Connect_SendsHello(t *testing.T) {
 	}
 	defer client.Close()
 
-	// Wait a tick for server goroutine
+	// Wait for server to process
 	<-time.After(10 * time.Millisecond)
 
 	// Verify hello was sent
@@ -100,27 +58,24 @@ func TestClient_Connect_SendsHello(t *testing.T) {
 // TestClient_SendEvent_AssistantMsg verifies SendEvent works.
 func TestClient_SendEvent_AssistantMsg(t *testing.T) {
 	var receivedEnv attach.Envelope
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hj, _ := w.(http.Hijacker)
-		conn, _, _ := hj.Hijack()
+	handler := websocket.Handler(func(conn *websocket.Conn) {
 		defer conn.Close()
-
-		conn.Write([]byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"))
-
-		// Skip hello (first frame)
-		reader := bufio.NewReader(conn)
-		lenBuf := make([]byte, 4)
-		reader.Read(lenBuf)
-		frameLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-		reader.Read(make([]byte, frameLen))
-
-		// Read second frame (assistant msg)
-		reader.Read(lenBuf)
-		frameLen = int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-		frameBuf := make([]byte, frameLen)
-		reader.Read(frameBuf)
-		json.Unmarshal(frameBuf, &receivedEnv)
-	}))
+		
+		// Skip hello (first message)
+		var hello attach.Envelope
+		if err := websocket.JSON.Receive(conn, &hello); err != nil {
+			t.Logf("receive hello failed: %v", err)
+			return
+		}
+		
+		// Read assistant msg (second message)
+		if err := websocket.JSON.Receive(conn, &receivedEnv); err != nil {
+			t.Logf("receive msg failed: %v", err)
+			return
+		}
+	})
+	
+	server := httptest.NewServer(handler)
 	defer server.Close()
 
 	client := New(server.URL, "test-password", "test-session", false)
@@ -161,38 +116,32 @@ func TestClient_OnUserMessage_FiresCallback(t *testing.T) {
 	callbackFired := false
 	var callbackPayload attach.UserMsgPayload
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hj, _ := w.(http.Hijacker)
-		conn, _, _ := hj.Hijack()
+	handler := websocket.Handler(func(conn *websocket.Conn) {
 		defer conn.Close()
-
-		conn.Write([]byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"))
-
-		// Skip hello
-		reader := bufio.NewReader(conn)
-		lenBuf := make([]byte, 4)
-		reader.Read(lenBuf)
-		frameLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-		reader.Read(make([]byte, frameLen))
-
+		
+		// Read hello
+		var hello attach.Envelope
+		if err := websocket.JSON.Receive(conn, &hello); err != nil {
+			t.Logf("receive hello failed: %v", err)
+			return
+		}
+		
 		// Send user message
 		userMsg := attach.UserMsgPayload{
 			Content:     "hello from server",
 			FromSession: "remote-session",
 		}
 		env, _ := attach.NewEnvelope(attach.EventMsgUser, userMsg)
-		data, _ := json.Marshal(env)
-		frame := make([]byte, 4+len(data))
-		frame[0] = byte((len(data) >> 24) & 0xff)
-		frame[1] = byte((len(data) >> 16) & 0xff)
-		frame[2] = byte((len(data) >> 8) & 0xff)
-		frame[3] = byte(len(data) & 0xff)
-		copy(frame[4:], data)
-		conn.Write(frame)
-
+		if err := websocket.JSON.Send(conn, env); err != nil {
+			t.Logf("send failed: %v", err)
+			return
+		}
+		
 		// Keep alive
 		<-time.After(100 * time.Millisecond)
-	}))
+	})
+	
+	server := httptest.NewServer(handler)
 	defer server.Close()
 
 	client := New(server.URL, "test-password", "test-session", false)
@@ -222,30 +171,25 @@ func TestClient_OnUserMessage_FiresCallback(t *testing.T) {
 // TestClient_Close_SendsBye verifies Close sends bye message.
 func TestClient_Close_SendsBye(t *testing.T) {
 	var byeReceived bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hj, _ := w.(http.Hijacker)
-		conn, _, _ := hj.Hijack()
+	handler := websocket.Handler(func(conn *websocket.Conn) {
 		defer conn.Close()
-
-		conn.Write([]byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"))
-
-		reader := bufio.NewReader(conn)
-		for i := 0; i < 2; i++ { // hello + bye
-			lenBuf := make([]byte, 4)
-			if n, _ := reader.Read(lenBuf); n != 4 {
-				break
-			}
-			frameLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-			frameBuf := make([]byte, frameLen)
-			reader.Read(frameBuf)
-
+		
+		for {
 			var env attach.Envelope
-			json.Unmarshal(frameBuf, &env)
+			if err := websocket.JSON.Receive(conn, &env); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return
+			}
+			
 			if env.Type == attach.EventSessionBye {
 				byeReceived = true
 			}
 		}
-	}))
+	})
+	
+	server := httptest.NewServer(handler)
 	defer server.Close()
 
 	client := New(server.URL, "test-password", "test-session", false)

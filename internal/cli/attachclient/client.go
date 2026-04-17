@@ -1,18 +1,15 @@
 package attachclient
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 
 	"github.com/Abraxas-365/claudio/internal/attach"
+	"golang.org/x/net/websocket"
 )
 
 // Client manages WebSocket connection to ComandCenter.
@@ -21,7 +18,7 @@ type Client struct {
 	password     string
 	name         string
 	master       bool
-	conn         net.Conn
+	conn         *websocket.Conn
 	onUserMsg    func(attach.UserMsgPayload)
 	mu           sync.Mutex
 	closed       bool
@@ -51,45 +48,26 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("already connected")
 	}
 
-	// Parse server URL
-	u, err := url.Parse(c.serverURL)
+	wsURL := c.serverURL
+	if strings.HasPrefix(wsURL, "https://") {
+		wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+	} else {
+		wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
+	}
+	wsURL += "/ws/attach"
+
+	origin := "http://localhost/"
+	cfg, err := websocket.NewConfig(wsURL, origin)
 	if err != nil {
-		return fmt.Errorf("parse URL: %w", err)
+		return fmt.Errorf("websocket config: %w", err)
+	}
+	cfg.Header = http.Header{
+		"Authorization": []string{"Bearer " + c.password},
 	}
 
-	// Establish TCP connection
-	conn, err := net.Dial("tcp", u.Host)
+	conn, err := websocket.DialConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
-	}
-
-	// HTTP upgrade request
-	req := fmt.Sprintf(
-		"GET /ws/attach HTTP/1.1\r\n"+
-			"Host: %s\r\n"+
-			"Upgrade: websocket\r\n"+
-			"Connection: Upgrade\r\n"+
-			"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"+
-			"Sec-WebSocket-Version: 13\r\n"+
-			"Authorization: Bearer %s\r\n"+
-			"\r\n",
-		u.Host, c.password)
-
-	if _, err := conn.Write([]byte(req)); err != nil {
-		conn.Close()
-		return fmt.Errorf("send upgrade: %w", err)
-	}
-
-	// Read response headers
-	reader := bufio.NewReader(conn)
-	resp, err := http.ReadResponse(reader, &http.Request{Method: "GET"})
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusSwitchingProtocols {
-		conn.Close()
-		return fmt.Errorf("upgrade failed: status %d", resp.StatusCode)
 	}
 
 	c.conn = conn
@@ -131,24 +109,7 @@ func (c *Client) sendEnvelopeUnlocked(eventType string, payload any) error {
 		return err
 	}
 
-	data, err := json.Marshal(env)
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-
-	// Simple framing: length (4 bytes) + payload
-	frame := make([]byte, 4+len(data))
-	frame[0] = byte((len(data) >> 24) & 0xff)
-	frame[1] = byte((len(data) >> 16) & 0xff)
-	frame[2] = byte((len(data) >> 8) & 0xff)
-	frame[3] = byte(len(data) & 0xff)
-	copy(frame[4:], data)
-
-	if _, err := c.conn.Write(frame); err != nil {
-		return fmt.Errorf("write: %w", err)
-	}
-
-	return nil
+	return websocket.JSON.Send(c.conn, env)
 }
 
 // OnUserMessage registers callback for inbound EventMsgUser messages.
@@ -184,8 +145,6 @@ func (c *Client) Close() error {
 
 // readLoop reads inbound Envelopes and fires callbacks.
 func (c *Client) readLoop() {
-	reader := bufio.NewReader(c.conn)
-
 	for {
 		select {
 		case <-c.closedChan:
@@ -193,34 +152,10 @@ func (c *Client) readLoop() {
 		default:
 		}
 
-		// Read frame length (4 bytes)
-		lenBuf := make([]byte, 4)
-		if _, err := reader.Read(lenBuf); err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				return
-			}
-			log.Printf("read length: %v", err)
-			return
-		}
-
-		frameLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-		if frameLen <= 0 || frameLen > 10*1024*1024 { // sanity check: 10MB max
-			log.Printf("invalid frame length: %d", frameLen)
-			return
-		}
-
-		// Read frame payload
-		frameBuf := make([]byte, frameLen)
-		if _, err := reader.Read(frameBuf); err != nil {
-			log.Printf("read frame: %v", err)
-			return
-		}
-
-		// Unmarshal envelope
 		var env attach.Envelope
-		if err := json.Unmarshal(frameBuf, &env); err != nil {
-			log.Printf("unmarshal: %v", err)
-			continue
+		if err := websocket.JSON.Receive(c.conn, &env); err != nil {
+			log.Printf("read envelope: %v", err)
+			return
 		}
 
 		// Handle EventMsgUser
