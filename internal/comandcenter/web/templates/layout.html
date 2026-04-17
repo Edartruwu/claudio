@@ -171,11 +171,18 @@
       if (e) e.stopPropagation();
       var dd = btn.nextElementSibling;
       var wasOpen = dd.style.display === 'block';
-      // Close all first
+      // Close all + reset z-index
       document.querySelectorAll('.row-menu-dropdown').forEach(function (d) {
         d.style.display = 'none';
       });
-      if (!wasOpen) dd.style.display = 'block';
+      document.querySelectorAll('.swipe-content').forEach(function (el) {
+        el.style.zIndex = '1';
+      });
+      if (!wasOpen) {
+        dd.style.display = 'block';
+        // Elevate this row above siblings so dropdown isn't clipped
+        btn.closest('.swipe-content').style.zIndex = '50';
+      }
     };
 
     document.addEventListener('DOMContentLoaded', initAll);
