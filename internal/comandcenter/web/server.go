@@ -332,6 +332,17 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = ws.storage.InsertMessage(msg)
 
+	// Push user bubble to UI WS clients immediately (no refresh needed).
+	var buf bytes.Buffer
+	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", &msg); err == nil {
+		if payload, err := json.Marshal(map[string]string{
+			"type": "message.user",
+			"html": buf.String(),
+		}); err == nil {
+			ws.pushToSessionClients(sessionID, payload)
+		}
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -381,44 +392,77 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 	wsServer.ServeHTTP(w, r)
 }
 
+// pushToSessionClients delivers payload bytes to all UI WS clients watching sessionID.
+func (ws *WebServer) pushToSessionClients(sessionID string, payload []byte) {
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
+	for client := range ws.clients {
+		if client.sessionID == sessionID {
+			select {
+			case client.send <- payload:
+			default: // drop if full
+			}
+		}
+	}
+}
+
 // fanout reads UIBroadcast events and forwards rendered HTML to interested clients.
 func (ws *WebServer) fanout() {
 	ch := ws.hub.UIBroadcast()
 	for ev := range ch {
-		if ev.Envelope.Type != attach.EventMsgAssistant && ev.Envelope.Type != attach.EventMsgToolUse {
-			continue
-		}
-
-		// Render message bubble for this event.
-		msg := envelopeToMessage(ev)
-		if msg == nil {
-			continue
-		}
-
-		var buf bytes.Buffer
-		if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", msg); err != nil {
-			continue
-		}
-
-		payload, err := json.Marshal(map[string]string{
-			"type": "new_message",
-			"html": buf.String(),
-		})
-		if err != nil {
-			continue
-		}
-
-		// Send to all clients watching this session.
-		ws.mu.RLock()
-		for client := range ws.clients {
-			if client.sessionID == ev.SessionID {
-				select {
-				case client.send <- payload:
-				default: // drop if full
-				}
+		switch ev.Envelope.Type {
+		case attach.EventMsgAssistant:
+			msg := envelopeToMessage(ev)
+			if msg == nil {
+				continue
 			}
+			var buf bytes.Buffer
+			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", msg); err != nil {
+				continue
+			}
+			payload, err := json.Marshal(map[string]string{
+				"type": "message.assistant",
+				"html": buf.String(),
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
+
+		case attach.EventMsgToolUse:
+			// 1. Permanent tool-use bubble in chat history.
+			msg := envelopeToMessage(ev)
+			if msg == nil {
+				continue
+			}
+			var buf bytes.Buffer
+			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", msg); err != nil {
+				continue
+			}
+			bubblePayload, err := json.Marshal(map[string]string{
+				"type": "message.tool_use",
+				"html": buf.String(),
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, bubblePayload)
+
+			// 2. Transient typing indicator with tool + agent name.
+			var p attach.ToolUsePayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			typingPayload, err := json.Marshal(map[string]string{
+				"type":      "typing",
+				"tool":      p.Tool,
+				"agentName": p.AgentName,
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, typingPayload)
 		}
-		ws.mu.RUnlock()
 	}
 }
 

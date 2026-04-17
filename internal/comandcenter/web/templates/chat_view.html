@@ -43,6 +43,15 @@
     {{else}}
       <div class="text-center text-sm mt-8" style="color:#8E8E93;">No messages yet</div>
     {{end}}
+    <!-- Typing indicator bubble — shown/hidden by app.js -->
+    <div id="typing-bubble" class="hidden flex justify-start mb-1">
+      <div class="msg-bubble-assistant px-4 py-2 max-w-xs shadow-sm flex items-center gap-2">
+        <span class="typing-text text-xs" style="color:#8E8E93;"></span>
+        <span class="typing-dots" aria-label="typing">
+          <span></span><span></span><span></span>
+        </span>
+      </div>
+    </div>
   </div>
 
   <!-- Input bar -->

@@ -24,6 +24,23 @@
     if (t) t.textContent = text;
   }
 
+  function showTypingBubble(tool, agentName) {
+    var bubble = document.getElementById('typing-bubble');
+    if (!bubble || !msgs) return;
+    var label = (agentName || 'Agent') + ' is running ' + (tool || 'tool') + '...';
+    var textEl = bubble.querySelector('.typing-text');
+    if (textEl) textEl.textContent = label;
+    bubble.classList.remove('hidden');
+    // Move typing bubble to end of messages so it's always last.
+    msgs.appendChild(bubble);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function removeTypingBubble() {
+    var bubble = document.getElementById('typing-bubble');
+    if (bubble) bubble.classList.add('hidden');
+  }
+
   function todayLabel() {
     var d = new Date();
     var opts = { month: 'short', day: 'numeric' };
@@ -45,6 +62,19 @@
       lastMsgDate = today;
       insertDateDivider('Today');
     }
+  }
+
+  function appendMessage(html) {
+    if (!msgs) return;
+    maybeInsertDateDivider();
+    // Insert before the typing bubble so it stays at the bottom.
+    var bubble = document.getElementById('typing-bubble');
+    if (bubble && !bubble.classList.contains('hidden')) {
+      bubble.insertAdjacentHTML('beforebegin', html);
+    } else {
+      msgs.insertAdjacentHTML('beforeend', html);
+    }
+    msgs.scrollTop = msgs.scrollHeight;
   }
 
   // Insert initial date divider if messages exist on page load.
@@ -74,20 +104,38 @@
     ws.onmessage = function (e) {
       try {
         var data = JSON.parse(e.data);
-        if (data.type === 'new_message' && msgs) {
-          // Detect role from rendered HTML class names (server only sends html+type).
-          var isToolUse = data.html && data.html.indexOf('msg-bubble-tool') !== -1;
-          var isAssistant = data.html && data.html.indexOf('msg-bubble-assistant') !== -1;
+        var type = data.type;
 
-          if (isToolUse) {
+        if (type === 'message.assistant') {
+          // Remove typing bubble, then append assistant response.
+          removeTypingBubble();
+          setTyping('● online');
+          if (data.html) appendMessage(data.html);
+
+        } else if (type === 'typing') {
+          // Show transient typing indicator bubble + update header.
+          showTypingBubble(data.tool, data.agentName);
+          setTyping((data.agentName || 'Agent') + ' is working...');
+
+        } else if (type === 'message.user') {
+          // User's own message pushed back from server.
+          if (data.html) appendMessage(data.html);
+
+        } else if (type === 'message.tool_use') {
+          // Permanent tool-use bubble in chat history.
+          if (data.html) appendMessage(data.html);
+
+        } else if (type === 'new_message' && data.html) {
+          // Backward-compat path (legacy event type).
+          var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;
+          var isAssistant = data.html.indexOf('msg-bubble-assistant') !== -1;
+          if (isAssistant) {
+            removeTypingBubble();
+            setTyping('● online');
+          } else if (isToolUse) {
             setTyping('typing...');
-          } else if (isAssistant) {
-            setTyping('');
           }
-
-          maybeInsertDateDivider();
-          msgs.insertAdjacentHTML('beforeend', data.html);
-          msgs.scrollTop = msgs.scrollHeight;
+          appendMessage(data.html);
         }
       } catch (_) {}
     };
