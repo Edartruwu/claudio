@@ -144,6 +144,9 @@ security, and hackability.`,
 				log.Printf("Warning: failed to attach to ComandCenter: %v\n", err)
 			} else {
 				attachClient = client
+				
+				// Inject attach client into session coordination tools
+				appInstance.InjectAttachClient(attachClient, flagAttach)
 
 				// Subscribe to bus events and forward task/agent events to ComandCenter
 				appInstance.Bus.SubscribeAll(func(event bus.Event) {

@@ -588,6 +588,42 @@ Usage notes:
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.`
 }
 
+// SendToSessionDescription returns the description for the SendMessage tool.
+func SendToSessionDescription() string {
+	return `Send a message to another session connected to the same ComandCenter instance.
+
+Use this tool when you are running in attached mode (--attach flag) and need to:
+- Coordinate with another session running in parallel
+- Send instructions or progress updates to a sibling session
+- Request work from another named session
+
+The target session is identified by its session ID or display name. Use 'master' to target the master session.
+
+This tool requires:
+- The current session to be started with --attach flag
+- The target session to be connected to the same ComandCenter instance
+- COMANDCENTER_PASSWORD environment variable to be set (for authentication)`
+}
+
+// SpawnSessionDescription returns the description for the SpawnSession tool.
+func SpawnSessionDescription() string {
+	return `Spawn and attach a new child session to the same ComandCenter instance.
+
+Use this tool when you need to:
+- Delegate work to a parallel session running in a different directory
+- Spawn multiple child sessions for parallel independent work
+- Pre-load a specific agent persona or team configuration in the new session
+
+The new session will start in interactive TUI mode by default (use headless=true for non-interactive).
+
+This tool requires:
+- The current session to be started with --master flag to coordinate child sessions
+- The current session to be started with --attach flag to the ComandCenter URL
+- COMANDCENTER_PASSWORD environment variable to be set (for authentication)
+
+Once spawned, use SendMessage to communicate with the child session.`
+}
+
 // getOSInfo returns a string describing the current OS.
 func getOSInfo() string {
 	return fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
