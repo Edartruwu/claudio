@@ -18,8 +18,6 @@
 #   Logs:   /tmp/caddy.log  /tmp/caddy.err
 
 macbook-pro.taila6d76.ts.net {
-    tls {
-        get_certificate tailscale
-    }
+    tls /Users/abraxas/Library/Containers/io.tailscale.ipn.macos/Data/macbook-pro.taila6d76.ts.net.crt /Users/abraxas/Library/Containers/io.tailscale.ipn.macos/Data/macbook-pro.taila6d76.ts.net.key
     reverse_proxy localhost:8080
 }

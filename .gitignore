@@ -7,3 +7,9 @@ bin/
 .DS_Store
 node_modules/
 internal/web/static/vendor/tailwind.min.css
+
+# Caddy TLS certs (machine-specific, never commit)
+deploy/*.pem
+deploy/*.crt
+deploy/*.key
+deploy/com.caddy.server.plist
