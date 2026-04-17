@@ -11,10 +11,12 @@ self.addEventListener('push', function (e) {
 
   var title   = data.title  || 'ComandCenter';
   var options = {
-    body  : data.body  || '',
-    icon  : '/static/icon-192.png',
-    badge : '/static/icon-192.png',
-    data  : { url: data.url || '/' },
+    body   : data.body  || '',
+    icon   : '/static/icon-192.png',
+    badge  : '/static/icon-192.png',
+    data   : { url: data.url || '/' },
+    silent : false,
+    vibrate: [200, 100, 200],
   };
 
   e.waitUntil(self.registration.showNotification(title, options));

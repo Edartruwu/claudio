@@ -302,6 +302,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/sessions/{session_id}/browse", ws.uiAuth(http.HandlerFunc(ws.handleBrowseSession)))
 	mux.Handle("GET /api/push/vapid-public-key", ws.uiAuth(http.HandlerFunc(ws.handleVAPIDPublicKey)))
 	mux.Handle("POST /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushSubscribe)))
+	mux.Handle("DELETE /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushUnsubscribe)))
 }
 
 // SetVAPIDPublicKey stores the VAPID public key for the browser subscription flow.
@@ -327,6 +328,22 @@ func (ws *WebServer) handlePushSubscribe(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := ws.storage.SavePushSubscription(cc.PushSubscription{Endpoint: body.Endpoint, P256dh: body.Keys.P256dh, Auth: body.Keys.Auth}); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handlePushUnsubscribe removes a browser push subscription (cookie-auth version).
+func (ws *WebServer) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Endpoint == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := ws.storage.DeletePushSubscription(body.Endpoint); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
