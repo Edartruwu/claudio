@@ -80,6 +80,13 @@ func funcMap() template.FuncMap {
 			}
 			return string(r[:n]) + "…"
 		},
+		"avatarColor": func(s string) string {
+			colors := []string{"#25D366", "#128C7E", "#075E54", "#34B7F1", "#8E44AD"}
+			if len(s) == 0 {
+				return colors[0]
+			}
+			return colors[len(s)%len(colors)]
+		},
 	}
 }
 

@@ -1,70 +1,65 @@
 {{define "chat_view.html"}}{{template "layout" .}}{{end}}
 
 {{define "content"}}
-<div class="flex flex-col h-screen bg-white">
-  <!-- Header (chat-header adds safe-area-inset-top padding) -->
-  <header class="chat-header whatsapp-green text-white px-4 py-3 flex items-center gap-3 shadow-md flex-shrink-0">
-    <!-- Back arrow — touch target ≥44px -->
-    <a href="/" class="text-white min-w-[44px] min-h-[44px] flex items-center justify-center -ml-3 flex-shrink-0">
+<div class="flex flex-col h-screen" style="background:#000000;">
+  <!-- Header -->
+  <header class="chat-header flex items-center gap-3 px-4 py-3 flex-shrink-0 shadow-md" style="background:#1C1C1E;">
+    <!-- Back arrow -->
+    <a href="/" class="text-white flex items-center justify-center flex-shrink-0 -ml-2" style="min-width:44px;min-height:44px;">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
       </svg>
     </a>
     <!-- Avatar -->
-    <div class="w-9 h-9 rounded-full bg-green-300 flex items-center justify-center font-bold text-green-900 text-sm flex-shrink-0">
+    <div class="rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0" style="width:36px;height:36px;background:{{avatarColor .Session.Name}};">
       {{firstChar .Session.Name}}
     </div>
-    <!-- Name + status subtitle -->
+    <!-- Name + status -->
     <div class="flex-1 min-w-0">
-      <p class="font-semibold text-sm truncate">
+      <p class="font-semibold text-sm text-white truncate">
         {{if .Session.Master}}★ {{end}}{{.Session.Name}}
       </p>
-      <!-- Typing indicator doubles as status subtitle; JS overrides text when typing -->
       {{if eq .Session.Status "active"}}
-      <p id="typing-indicator" class="text-xs text-green-300">● online</p>
+      <p id="typing-indicator" class="text-xs" style="color:#25D366;">● online</p>
       {{else}}
-      <p id="typing-indicator" class="text-xs text-gray-300">last seen recently</p>
+      <p id="typing-indicator" class="text-xs" style="color:#8E8E93;">last seen recently</p>
       {{end}}
     </div>
-    <!-- Status dot -->
-    {{if eq .Session.Status "active"}}
-    <span class="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0"></span>
-    {{else}}
-    <span class="w-2.5 h-2.5 rounded-full bg-gray-400 flex-shrink-0"></span>
-    {{end}}
-    <!-- Menu icon — touch target ≥44px -->
-    <button class="min-w-[44px] min-h-[44px] flex items-center justify-center -mr-3 flex-shrink-0 text-white opacity-80 bg-transparent border-none">
+    <!-- Menu -->
+    <button class="flex items-center justify-center flex-shrink-0 -mr-3 bg-transparent border-none" style="min-width:44px;min-height:44px;color:#8E8E93;">
       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
         <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
       </svg>
     </button>
   </header>
 
-  <!-- WS reconnect banner (hidden by default, shown on disconnect) -->
-  <div id="ws-banner" class="hidden bg-yellow-600 text-white text-center text-xs py-1">Connecting...</div>
+  <!-- WS reconnect banner -->
+  <div id="ws-banner" class="hidden text-white text-center text-xs py-1" style="background:#8E44AD;">Connecting...</div>
 
   <!-- Messages -->
-  <div id="messages" class="flex-1 overflow-y-auto px-3 py-4 space-y-1" style="background: #ECE5DD;">
+  <div id="messages" class="flex-1 overflow-y-auto px-3 py-4 space-y-1" style="background:#000000;">
     {{range .Messages}}
       {{template "message-bubble" .}}
     {{else}}
-      <div class="text-center text-gray-400 text-sm mt-8">No messages yet</div>
+      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No messages yet</div>
     {{end}}
   </div>
 
-  <!-- Input bar (input-bar adds safe-area-inset-bottom padding) -->
-  <div class="input-bar bg-gray-100 px-3 py-2 flex items-center gap-2 flex-shrink-0 border-t border-gray-200">
+  <!-- Input bar -->
+  <div class="input-bar px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
     <input
       id="msg-input"
       type="text"
       placeholder="Message"
-      class="flex-1 bg-white rounded-full px-4 py-2 text-base outline-none border border-gray-300 focus:border-green-500"
+      class="flex-1 rounded-full px-4 py-2 text-base outline-none text-white"
+      style="background:#2C2C2E;border:none;"
       hx-on:keydown="if(event.key==='Enter'){document.getElementById('send-btn').click()}"
     >
-    <!-- Send button — min 44×44px touch target -->
+    <!-- Send button -->
     <button
       id="send-btn"
-      class="whatsapp-light-green text-white rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0 shadow"
+      class="text-white rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0 shadow"
+      style="background:#25D366;"
       hx-post="/api/sessions/{{.Session.ID}}/message"
       hx-vals="js:{content: document.getElementById('msg-input').value}"
       hx-swap="none"
@@ -78,7 +73,6 @@
 </div>
 
 <script>
-  // Scroll to bottom on load.
   (function() {
     var msgs = document.getElementById('messages');
     if (msgs) msgs.scrollTop = msgs.scrollHeight;

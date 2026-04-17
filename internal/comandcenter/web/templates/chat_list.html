@@ -1,41 +1,39 @@
 {{define "chat_list.html"}}{{template "layout" .}}{{end}}
 
 {{define "content"}}
-<div class="flex flex-col h-screen bg-white">
-  <!-- Header (chat-header adds safe-area-inset-top padding) -->
-  <header class="chat-header whatsapp-green text-white px-4 py-3 flex items-center justify-between shadow-md flex-shrink-0">
-    <h1 class="text-xl font-bold tracking-wide">ComandCenter</h1>
-    <div class="flex items-center gap-1">
-      <!-- Search icon — touch target ≥44px -->
-      <button class="min-w-[44px] min-h-[44px] flex items-center justify-center opacity-80 text-white bg-transparent border-none">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<div class="flex flex-col min-h-screen" style="background:#000000;">
+  <!-- Header -->
+  <div class="chat-header flex-shrink-0" style="background:#1C1C1E;">
+    <div class="flex justify-between items-center px-4 pt-3 pb-2">
+      <h1 class="text-white font-bold" style="font-size:34px;line-height:1.1;">ComandCenter</h1>
+      <div class="flex items-center gap-2">
+        <!-- New session button -->
+        <a href="/" class="flex items-center justify-center rounded-full" style="width:44px;height:44px;background:#25D366;">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+    <!-- Search bar -->
+    <div class="px-4 pb-2">
+      <div class="flex items-center rounded-lg px-3" style="background:#2C2C2E;height:36px;border-radius:10px;">
+        <svg class="w-4 h-4 mr-2 flex-shrink-0" style="color:#8E8E93;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
         </svg>
-      </button>
-      <!-- Menu icon — touch target ≥44px -->
-      <button class="min-w-[44px] min-h-[44px] flex items-center justify-center opacity-80 text-white bg-transparent border-none">
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
-        </svg>
-      </button>
+        <input type="text" placeholder="Search" class="bg-transparent text-white text-base flex-1 outline-none" style="color:#FFFFFF;" />
+      </div>
     </div>
-  </header>
-
-  <!-- Search bar -->
-  <div class="bg-gray-50 px-3 py-2 flex-shrink-0">
-    <div class="flex items-center bg-white rounded-full px-4 py-2 shadow-sm border border-gray-200">
-      <svg class="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-      </svg>
-      <input type="search" placeholder="Search sessions…" class="flex-1 text-base outline-none bg-transparent text-gray-700 placeholder-gray-400">
+    <!-- Filter chips -->
+    <div class="flex gap-2 px-4 pb-3 overflow-x-auto no-scrollbar">
+      <button class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#25D366;">All</button>
+      <button class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Active</button>
+      <button class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Inactive</button>
     </div>
   </div>
 
   <!-- Session List -->
-  <main class="flex-1 overflow-y-auto">
-    <div class="px-4 py-2">
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">AI Sessions</p>
-    </div>
+  <main class="flex-1 overflow-y-auto" style="padding-bottom:83px;">
     <div id="session-list"
          hx-get="/partials/sessions"
          hx-trigger="every 3s"
@@ -44,10 +42,39 @@
       {{range .Rows}}
         {{template "session-row" .}}
       {{else}}
-        <div class="px-4 py-8 text-center text-gray-400 text-sm">No active sessions</div>
+        <!-- Empty state — small + subtle -->
+        <div class="flex flex-col items-center justify-center py-20">
+          <svg class="mb-3" style="width:40px;height:40px;color:#8E8E93;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+          </svg>
+          <p style="color:#8E8E93;font-size:15px;">No sessions yet</p>
+        </div>
       {{end}}
     </div>
-    <span class="htmx-indicator block text-center text-xs text-gray-400 py-1">↻</span>
+    <span class="htmx-indicator block text-center text-xs py-1" style="color:#8E8E93;">↻</span>
   </main>
+
+  <!-- Bottom tab bar -->
+  <nav class="fixed bottom-0 left-0 right-0 flex" style="background:#1C1C1E;border-top:1px solid #2C2C2E;padding-bottom:env(safe-area-inset-bottom);max-width:480px;margin:0 auto;">
+    <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:#25D366;">
+      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+        <path d="M7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/>
+      </svg>
+      <span style="font-size:10px;" class="mt-1">Sessions</span>
+    </a>
+    <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:#8E8E93;">
+      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+      </svg>
+      <span style="font-size:10px;" class="mt-1">Contacts</span>
+    </a>
+    <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:#8E8E93;">
+      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/>
+      </svg>
+      <span style="font-size:10px;" class="mt-1">Settings</span>
+    </a>
+  </nav>
 </div>
 {{end}}

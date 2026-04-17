@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#075E54">
+  <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,20 +12,20 @@
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <style>
-    body { max-width: 480px; margin: 0 auto; background: #ECE5DD; padding-top: env(safe-area-inset-top); }
-    .whatsapp-green { background-color: #075E54; }
-    .whatsapp-light-green { background-color: #25D366; }
-    .msg-bubble-assistant { background: #fff; border-radius: 0 12px 12px 12px; }
-    .msg-bubble-user { background: #DCF8C6; border-radius: 12px 0 12px 12px; color: #303030; }
-    .msg-bubble-tool { background: #e0e0e0; border-radius: 8px; font-style: italic; font-size: 0.75rem; }
+    body { max-width: 480px; margin: 0 auto; background: #000000; padding-top: env(safe-area-inset-top); }
+    .msg-bubble-assistant { background: #1C1C1E; border-radius: 0 12px 12px 12px; }
+    .msg-bubble-user { background: #075E54; border-radius: 12px 0 12px 12px; color: #FFFFFF; }
+    .msg-bubble-tool { background: #2C2C2E; border-radius: 8px; font-style: italic; font-size: 0.75rem; }
     #messages { scroll-behavior: smooth; }
     .chat-header { padding-top: env(safe-area-inset-top); }
     .input-bar { padding-bottom: env(safe-area-inset-bottom); }
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body class="min-h-screen" {{if .SessionID}}data-session-id="{{.SessionID}}"{{end}}>
+<body class="bg-black text-white min-h-screen overflow-x-hidden" {{if .SessionID}}data-session-id="{{.SessionID}}"{{end}}>
   {{block "content" .}}{{end}}
   <script src="/static/app.js"></script>
 </body>

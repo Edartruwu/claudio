@@ -1,34 +1,23 @@
 {{define "session-row"}}
 <a href="/chat/{{.Session.ID}}"
-   class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-100 transition">
-  <!-- Avatar -->
-  <div class="w-12 h-12 rounded-full whatsapp-green flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-    {{firstChar .Session.Name}}
+   class="flex items-center px-4" style="height:76px;border-bottom:1px solid #2C2C2E;background:#000000;">
+  <!-- Avatar 56px circle -->
+  <div class="rounded-full flex items-center justify-center flex-shrink-0 mr-3" style="width:56px;height:56px;background:{{avatarColor .Session.Name}};">
+    <span class="text-white font-semibold text-xl">{{firstChar .Session.Name}}</span>
   </div>
-  <!-- Body -->
+  <!-- Content -->
   <div class="flex-1 min-w-0">
-    <div class="flex items-center justify-between">
-      <span class="font-semibold text-gray-800 text-sm truncate">
-        {{if .Session.Master}}★ {{end}}{{.Session.Name}}
-      </span>
-      <span class="text-xs text-gray-400 flex-shrink-0 ml-2">{{relTime .Session.LastActiveAt}}</span>
+    <div class="flex justify-between items-baseline">
+      <span class="text-white font-semibold truncate" style="font-size:17px;">{{if .Session.Master}}★ {{end}}{{.Session.Name}}</span>
+      <span class="ml-2 flex-shrink-0" style="font-size:13px;color:{{if .UnreadCount}}#25D366{{else}}#8E8E93{{end}};">{{relTime .Session.LastActiveAt}}</span>
     </div>
-    <div class="flex items-center justify-between mt-0.5">
-      <span class="text-xs text-gray-500 truncate">
-        {{if .LastMessage}}{{.LastMessage}}{{else}}<em class="text-gray-400">No messages</em>{{end}}
+    <div class="flex justify-between items-center" style="margin-top:2px;">
+      <span class="truncate" style="font-size:15px;color:#8E8E93;">
+        {{if .LastMessage}}{{.LastMessage}}{{else}}No messages{{end}}
       </span>
-      <div class="flex items-center gap-1.5 flex-shrink-0 ml-2">
-        <!-- Unread badge -->
-        {{if .UnreadCount}}
-        <span class="bg-[#25D366] text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">{{.UnreadCount}}</span>
-        {{end}}
-        <!-- Status dot -->
-        {{if eq .Session.Status "active"}}
-        <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
-        {{else}}
-        <span class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
-        {{end}}
-      </div>
+      {{if .UnreadCount}}
+      <span class="text-white text-xs font-bold rounded-full flex items-center justify-center ml-2 flex-shrink-0" style="background:#25D366;min-width:20px;height:20px;padding:0 6px;">{{.UnreadCount}}</span>
+      {{end}}
     </div>
   </div>
 </a>
