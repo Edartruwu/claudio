@@ -127,6 +127,11 @@ security, and hackability.`,
 		}
 		appInstance = a
 
+		// Force headless mode when --attach is set
+		if flagAttach != "" {
+			flagHeadless = true
+		}
+
 		// Setup attach client if --attach flag set
 		if flagAttach != "" {
 			password := os.Getenv("COMANDCENTER_PASSWORD")
@@ -166,6 +171,11 @@ security, and hackability.`,
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Headless+attach mode: run engine in loop, inject messages from PWA
+		if flagHeadless && flagAttach != "" && attachClient != nil {
+			return runHeadlessAttach(args)
+		}
+
 		// Detect pipe mode: if stdout is not a terminal, use print mode
 		isPiped := !isTerminal()
 		if isPiped || flagPrint {
@@ -303,6 +313,50 @@ func runSinglePrompt(prompt string) error {
 // buildAdvisorConfig resolves the system prompt and model for an AdvisorSettings block.
 // Rule: always append AdvisorSystemPrompt(); prepend the subagent's own prompt when set.
 // Model precedence: AdvisorSettings.Model > subagent.Model > appInstance.Config.Model.
+// runHeadlessAttach runs the engine in headless mode, processing messages from the inject channel.
+// Used when --attach is set: engine loop reads from app.InjectCh and runs each message as a turn.
+// Wires attachClient.OnUserMessage to app.InjectMessage.
+func runHeadlessAttach(args []string) error {
+	if !appInstance.Auth.IsLoggedIn() {
+		return fmt.Errorf("not logged in. Run: claudio auth login")
+	}
+
+	// Proactive token refresh
+	if _, err := refresh.CheckAndRefreshIfNeeded(appInstance.Storage, false); err != nil {
+		if flagVerbose {
+			fmt.Fprintf(os.Stderr, "Warning: token refresh failed: %v\n", err)
+		}
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	defer appInstance.Close()
+	defer attachClient.Close()
+
+	// Wire PWA user messages → app.InjectMessage (not program.Send, which is TUI-only)
+	attachClient.OnUserMessage(func(payload attach.UserMsgPayload) {
+		appInstance.InjectMessage(payload.Content)
+	})
+
+	// If initial prompt provided as arg, inject it first
+	if len(args) > 0 {
+		initialPrompt := strings.Join(args, " ")
+		appInstance.InjectMessage(initialPrompt)
+	}
+
+	// Run engine loop: process messages from inject channel
+	for {
+		select {
+		case msg := <-appInstance.InjectCh:
+			if err := runSinglePrompt(msg); err != nil {
+				log.Printf("attach: prompt error: %v\n", err)
+			}
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
 func buildAdvisorConfig(cfg *config.AdvisorSettings) (systemPrompt string, model string) {
 	if cfg.SubagentType != "" {
 		agentDef := agents.GetAgent(cfg.SubagentType)
@@ -789,7 +843,7 @@ func runInteractive() error {
 	// Wire ComandCenter user messages → TUI submit path.
 	// program.Send dispatches through BubbleTea's Update loop, so the
 	// message follows the exact same path as local keyboard input.
-	if attachClient != nil {
+	if attachClient != nil && p != nil {
 		attachClient.OnUserMessage(func(payload attach.UserMsgPayload) {
 			p.Send(prompt.SubmitMsg{Text: payload.Content})
 		})

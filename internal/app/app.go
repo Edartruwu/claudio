@@ -57,6 +57,7 @@ type App struct {
 	Plugins      *plugins.Registry
 	Cron         *tasks.CronStore
 	LSP          *lsp.ServerManager
+	InjectCh     chan string
 }
 
 // SecurityContext wraps config-based security settings for tool injection.
@@ -302,6 +303,9 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 
 	// Team manager
 	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
+
+	// Message injection channel for headless mode
+	injectCh := make(chan string, 8)
 
 	// Build sub-agent engine config (caveman injection mirrors main agent path).
 	subAgentCfg := query.EngineConfig{}
@@ -563,7 +567,20 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		Plugins:     pluginReg,
 		Cron:        cronStore,
 		LSP:         lspManager,
+		InjectCh:    injectCh,
 	}, nil
+}
+
+// InjectMessage sends a message to the inject channel for headless mode processing.
+// Non-blocking — if channel full, drops message with log (no blocking, no panic).
+func (a *App) InjectMessage(content string) {
+	select {
+	case a.InjectCh <- content:
+		// sent successfully
+	default:
+		// channel full, drop
+		fmt.Fprintf(os.Stderr, "Warning: message injection channel full, dropping message\n")
+	}
 }
 
 // MemoryExtractor returns a callback for background memory extraction at end-of-turn.
