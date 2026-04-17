@@ -97,6 +97,12 @@
        class="hidden"
        style="position:absolute;bottom:68px;left:12px;z-index:200;background:#2C2C2E;border-radius:14px;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,0.6);min-width:210px;">
     <button type="button"
+            onclick="ccInterrupt()"
+            style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;"
+            onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+      <span style="font-size:20px;">⏹</span> Interrupt
+    </button>
+    <button type="button"
             onclick="document.getElementById('file-input').click();document.getElementById('plus-popover').classList.add('hidden');"
             style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;"
             onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
@@ -482,6 +488,38 @@
       }
     });
   })();
+
+  // --- Interrupt ---
+  function ccToast(msg, ok) {
+    var d = document.createElement('div');
+    d.textContent = msg;
+    d.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;transition:opacity .4s;background:' + (ok ? '#25D366' : '#FF3B30') + ';color:#fff';
+    document.body.appendChild(d);
+    setTimeout(function() { d.style.opacity = '0'; setTimeout(function() { d.remove(); }, 400); }, 2500);
+  }
+
+  window.ccInterrupt = async function() {
+    document.getElementById('plus-popover').classList.add('hidden');
+    var sessionId = '{{.Session.ID}}';
+    var token = localStorage.getItem('cc_token');
+    try {
+      var res = await fetch('/api/sessions/' + sessionId + '/interrupt', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + (token || '') }
+      });
+      if (res.ok) {
+        ccToast('Turn interrupted', true);
+      } else if (res.status === 503) {
+        ccToast('No active turn', false);
+      } else if (res.status === 404) {
+        ccToast('Session not found', false);
+      } else {
+        ccToast('Request failed', false);
+      }
+    } catch (e) {
+      ccToast('Request failed', false);
+    }
+  };
 
   // --- Push notification bell ---
   (function() {
