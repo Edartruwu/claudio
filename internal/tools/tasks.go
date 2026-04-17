@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 )
 
@@ -170,6 +172,7 @@ func (s *TaskStore) ByAssignee(agentName string) []*Task {
 
 type TaskCreateTool struct {
 	deferrable
+	bus *bus.Bus
 }
 
 type taskCreateInput struct {
@@ -218,6 +221,20 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	store.tasks[id] = task
 	store.saveToDB(task)
 	store.mu.Unlock()
+
+	// Publish event
+	if t.bus != nil {
+		payload, _ := json.Marshal(attach.TaskCreatedPayload{
+			ID:         id,
+			Title:      in.Subject,
+			AssignedTo: in.AssignedTo,
+			Status:     "pending",
+		})
+		t.bus.Publish(bus.Event{
+			Type:    attach.EventTaskCreated,
+			Payload: payload,
+		})
+	}
 
 	return &Result{Content: fmt.Sprintf("Task #%s created: %s", id, in.Subject)}, nil
 }
@@ -272,6 +289,7 @@ func (t *TaskListTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 
 type TaskUpdateTool struct {
 	deferrable
+	bus *bus.Bus
 }
 
 type taskUpdateInput struct {
@@ -343,6 +361,18 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	}
 	task.UpdatedAt = time.Now()
 	store.saveToDB(task)
+
+	// Publish event
+	if t.bus != nil {
+		payload, _ := json.Marshal(attach.TaskUpdatedPayload{
+			ID:     in.TaskID,
+			Status: task.Status,
+		})
+		t.bus.Publish(bus.Event{
+			Type:    attach.EventTaskUpdated,
+			Payload: payload,
+		})
+	}
 
 	return &Result{Content: fmt.Sprintf("Task #%s updated", in.TaskID)}, nil
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tasks"
@@ -243,6 +244,8 @@ type AgentTool struct {
 	TeamRunner *teams.TeammateRunner
 	// AvailableModels lists extra model names from configured providers (e.g., Groq, OpenAI-compatible).
 	AvailableModels []string
+	// EventBus for publishing agent status events.
+	EventBus *bus.Bus
 }
 
 type agentInput struct {
@@ -424,6 +427,7 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 			AgentType:   agentDef.Type,
 			Model:       in.Model,
 			System:      agentDef.SystemPrompt,
+			EventBus:    t.EventBus,
 			RunAgent: func(ctx context.Context, system, prompt string) (string, error) {
 				if runFn != nil {
 					return runFn(ctx, system, prompt)

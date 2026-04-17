@@ -3,9 +3,13 @@ package tasks
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/bus"
 )
 
 // AgentTaskInput defines parameters for spawning a background agent task.
@@ -15,6 +19,7 @@ type AgentTaskInput struct {
 	AgentType   string
 	Model       string // model override
 	System      string // system prompt for the agent
+	EventBus    *bus.Bus // optional; used to publish agent status events
 
 	// RunAgent is the callback that actually executes the agent.
 	// It receives context, system prompt, user prompt, and an output writer.
@@ -75,15 +80,48 @@ func runAgentTask(ctx context.Context, rt *Runtime, state *TaskState, output *Ta
 		if ctx.Err() == context.Canceled {
 			rt.SetStatus(state.ID, StatusKilled, "killed by user")
 			output.Write([]byte("\n[KILLED]\n"))
+			// Publish event
+			if input.EventBus != nil {
+				payload, _ := json.Marshal(attach.AgentStatusPayload{
+					Name:   state.Description,
+					Status: "killed",
+				})
+				input.EventBus.Publish(bus.Event{
+					Type:    attach.EventAgentStatus,
+					Payload: payload,
+				})
+			}
 			return
 		}
 		rt.SetStatus(state.ID, StatusFailed, err.Error())
 		output.Write([]byte(fmt.Sprintf("\n[FAILED] %v\n", err)))
+		// Publish event
+		if input.EventBus != nil {
+			payload, _ := json.Marshal(attach.AgentStatusPayload{
+				Name:   state.Description,
+				Status: "failed",
+			})
+			input.EventBus.Publish(bus.Event{
+				Type:    attach.EventAgentStatus,
+				Payload: payload,
+			})
+		}
 		return
 	}
 
 	output.Write([]byte(fmt.Sprintf("\n[RESULT]\n%s\n", result)))
 	rt.SetStatus(state.ID, StatusCompleted, "")
+	// Publish event
+	if input.EventBus != nil {
+		payload, _ := json.Marshal(attach.AgentStatusPayload{
+			Name:   state.Description,
+			Status: "completed",
+		})
+		input.EventBus.Publish(bus.Event{
+			Type:    attach.EventAgentStatus,
+			Payload: payload,
+		})
+	}
 }
 
 // RunAgentFunc creates the RunAgent callback using a query engine factory.

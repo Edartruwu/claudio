@@ -2,6 +2,7 @@ package teams
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/git"
 	"github.com/Abraxas-365/claudio/internal/prompts"
@@ -267,6 +270,7 @@ type TeammateRunner struct {
 	activeTeam         string // explicitly set active team name
 	PluginsSection     string // injected into every sub-agent's system prompt
 	Settings           *config.Settings // optional; used to inject caveman prefix
+	eventBus           *bus.Bus // optional; used to publish agent status events
 
 	childrenMu sync.Mutex
 	children   map[string][]string // parentAgentID → []childAgentID
@@ -316,6 +320,11 @@ func (r *TeammateRunner) SetCwdInjector(fn CwdInjector) {
 // SetTaskCompleter sets the callback for updating tasks when agents finish.
 func (r *TeammateRunner) SetTaskCompleter(fn TaskCompleter) {
 	r.taskCompleter = fn
+}
+
+// SetBus sets the event bus for publishing agent status events.
+func (r *TeammateRunner) SetBus(b *bus.Bus) {
+	r.eventBus = b
 }
 
 // EmitEvent sends an event to the registered handler.
@@ -746,7 +755,20 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		state.Status = StatusComplete
 		state.Result = result
 	}
+	status := state.Status
 	state.mu.Unlock()
+
+	// Publish agent status event
+	if r.eventBus != nil {
+		payload, _ := json.Marshal(attach.AgentStatusPayload{
+			Name:   state.Identity.AgentName,
+			Status: string(status),
+		})
+		r.eventBus.Publish(bus.Event{
+			Type:    attach.EventAgentStatus,
+			Payload: payload,
+		})
+	}
 
 	// Worktree cleanup: remove if no changes; auto-merge into main if complete; keep on failure/question.
 	// Uses the pre-fork HEAD SHA to detect both uncommitted files and new commits.
