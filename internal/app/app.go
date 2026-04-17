@@ -11,6 +11,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/api/provider"
 	"github.com/Abraxas-365/claudio/internal/auth"
 	authstorage "github.com/Abraxas-365/claudio/internal/auth/storage"
@@ -57,7 +58,7 @@ type App struct {
 	Plugins      *plugins.Registry
 	Cron         *tasks.CronStore
 	LSP          *lsp.ServerManager
-	InjectCh     chan string
+	InjectCh     chan attach.UserMsgPayload
 	InterruptCh  chan struct{}
 }
 
@@ -306,7 +307,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
 
 	// Message injection channel for headless mode
-	injectCh := make(chan string, 8)
+	injectCh := make(chan attach.UserMsgPayload, 8)
 	interruptCh := make(chan struct{}, 1)
 
 	// Build sub-agent engine config (caveman injection mirrors main agent path).
@@ -598,16 +599,21 @@ func (a *App) InjectAttachClient(client interface{}, url string) {
 	}
 }
 
-// InjectMessage sends a message to the inject channel for headless mode processing.
-// Non-blocking — if channel full, drops message with log (no blocking, no panic).
-func (a *App) InjectMessage(content string) {
+// InjectPayload sends a UserMsgPayload to the inject channel for headless mode processing.
+// Non-blocking — if channel full, drops with log (no blocking, no panic).
+func (a *App) InjectPayload(p attach.UserMsgPayload) {
 	select {
-	case a.InjectCh <- content:
+	case a.InjectCh <- p:
 		// sent successfully
 	default:
 		// channel full, drop
 		fmt.Fprintf(os.Stderr, "Warning: message injection channel full, dropping message\n")
 	}
+}
+
+// InjectMessage is a backward-compat shim that wraps content in a UserMsgPayload.
+func (a *App) InjectMessage(content string) {
+	a.InjectPayload(attach.UserMsgPayload{Content: content})
 }
 
 // Interrupt signals the headless engine loop to cancel the current turn.
