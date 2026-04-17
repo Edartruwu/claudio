@@ -43,8 +43,8 @@
 </div>
 {{else}}
 <div class="flex justify-start mb-1">
-  <div class="msg-bubble-assistant px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
-    {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:#25D366;">{{.AgentName}}</p>{{end}}
+  <div class="{{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}} px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
+    {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:{{if hasPrefix .AgentName "⏰"}}#A78BFA{{else}}#25D366{{end}};">{{.AgentName}}</p>{{end}}
     <div class="text-sm leading-relaxed text-white md-content">{{renderMD .Content}}</div>
     {{range .Attachments}}
       {{if isImage .MimeType}}

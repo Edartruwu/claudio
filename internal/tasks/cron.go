@@ -151,7 +151,15 @@ func (cs *CronStore) FormatList() string {
 		if !e.Enabled {
 			status = "disabled"
 		}
-		line := fmt.Sprintf("  %s  %s  [%s]  %s", e.ID, e.Schedule, status, truncateStr(e.Prompt, 60))
+		cronType := e.Type
+		if cronType == "" {
+			cronType = "inline"
+		}
+		line := fmt.Sprintf("  %s  %s  [%s]  type:%s", e.ID, e.Schedule, status, cronType)
+		if e.SessionID != "" {
+			line += fmt.Sprintf("  session:%s", e.SessionID)
+		}
+		line += fmt.Sprintf("  %s", truncateStr(e.Prompt, 60))
 		if !e.LastRun.IsZero() {
 			line += fmt.Sprintf("  (last: %s)", e.LastRun.Format("2006-01-02 15:04"))
 		}

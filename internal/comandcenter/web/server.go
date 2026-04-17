@@ -153,6 +153,8 @@ func funcMap() template.FuncMap {
 		},
 		// renderMD converts markdown to sanitized HTML.
 		"renderMD": renderMarkdown,
+		// hasPrefix reports whether s starts with prefix.
+		"hasPrefix": strings.HasPrefix,
 	}
 }
 
