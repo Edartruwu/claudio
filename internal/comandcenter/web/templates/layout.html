@@ -53,6 +53,10 @@
     .md-content tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
     .md-content del { text-decoration: line-through; opacity: 0.6; }
     .md-content input[type=checkbox] { margin-right: 4px; }
+    /* Wider bubbles on desktop */
+    @media (min-width: 768px) {
+      .msg-bubble-user, .msg-bubble-assistant { max-width: min(640px, 72vw) !important; }
+    }
     /* Typing dots animation */
     .typing-dots { display: inline-flex; align-items: center; gap: 3px; margin-left: 2px; }
     .typing-dots span {
