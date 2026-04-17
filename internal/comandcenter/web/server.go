@@ -295,9 +295,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Session management API.
 	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
 	mux.Handle("DELETE /api/sessions/{id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteSession)))
-<<<<<<< Updated upstream
 	mux.Handle("GET /api/sessions/{session_id}/browse", ws.uiAuth(http.HandlerFunc(ws.handleBrowseSession)))
-=======
 	mux.Handle("GET /api/push/vapid-public-key", ws.uiAuth(http.HandlerFunc(ws.handleVAPIDPublicKey)))
 	mux.Handle("POST /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushSubscribe)))
 }
@@ -329,7 +327,6 @@ func (ws *WebServer) handlePushSubscribe(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
->>>>>>> Stashed changes
 }
 
 // uiAuth checks the "auth" HttpOnly cookie.
