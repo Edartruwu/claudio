@@ -66,6 +66,12 @@
     </div>
   </div>
 
+  <!-- @mention autocomplete dropdown -->
+  <div id="mention-dropdown"
+       class="hidden"
+       style="position:absolute;bottom:72px;left:12px;right:12px;z-index:100;background:#1C1C1E;border-radius:12px;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,0.5);">
+  </div>
+
   <!-- Input bar -->
   <div class="input-bar px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
     <!-- Hidden file input -->
@@ -164,6 +170,120 @@
       });
 
       xhr.send(fd);
+    });
+  })();
+
+  // --- @mention autocomplete ---
+  (function() {
+    var input    = document.getElementById('msg-input');
+    var dropdown = document.getElementById('mention-dropdown');
+    if (!input || !dropdown) return;
+
+    var debounceTimer = null;
+    var cachedSessions = null;  // cache fetched sessions
+    var cacheExpiry = 0;
+
+    function closeDrop() {
+      dropdown.classList.add('hidden');
+      dropdown.innerHTML = '';
+    }
+
+    function getMentionPrefix(val) {
+      // Get last "word" — characters after last whitespace
+      var parts = val.split(/\s/);
+      var last = parts[parts.length - 1];
+      if (last.charAt(0) === '@') return last.slice(1);
+      return null;
+    }
+
+    function insertMention(name) {
+      var val = input.value;
+      // Replace the trailing @... token with @Name + space
+      var idx = val.lastIndexOf('@');
+      if (idx !== -1) {
+        input.value = val.slice(0, idx) + '@' + name + ' ';
+      }
+      closeDrop();
+      input.focus();
+    }
+
+    function renderDrop(sessions, prefix) {
+      var pfx = prefix.toLowerCase();
+      var active = sessions.filter(function(s) {
+        return s.status === 'active' && s.name.toLowerCase().startsWith(pfx);
+      }).slice(0, 5);
+
+      if (active.length === 0) {
+        closeDrop();
+        return;
+      }
+
+      var colors = ['#25D366','#128C7E','#075E54','#34B7F1','#8E44AD'];
+      function avatarColor(name) { return colors[name.length % colors.length]; }
+      function firstChar(name)   { return name.charAt(0).toUpperCase(); }
+
+      dropdown.innerHTML = active.map(function(s, i) {
+        var borderTop = i > 0 ? 'border-top:1px solid #2C2C2E;' : '';
+        return '<button type="button" data-name="' + s.name.replace(/"/g,'&quot;') + '" ' +
+          'style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;background:transparent;border:none;cursor:pointer;' + borderTop + '"' +
+          ' onmouseenter="this.style.background=\'#2C2C2E\'" onmouseleave="this.style.background=\'transparent\'">' +
+          '<div style="width:32px;height:32px;border-radius:50%;background:' + avatarColor(s.name) + ';display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;flex-shrink:0;">' + firstChar(s.name) + '</div>' +
+          '<span style="color:#fff;font-size:14px;">' + s.name.replace(/</g,'&lt;') + '</span>' +
+          '</button>';
+      }).join('');
+
+      dropdown.classList.remove('hidden');
+
+      // Bind click handlers
+      dropdown.querySelectorAll('button').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.preventDefault();
+          insertMention(btn.dataset.name);
+        });
+      });
+    }
+
+    function doFetch(prefix) {
+      var now = Date.now();
+      if (cachedSessions && now < cacheExpiry) {
+        renderDrop(cachedSessions, prefix);
+        return;
+      }
+      fetch('/api/sessions').then(function(res) {
+        return res.json();
+      }).then(function(data) {
+        cachedSessions = data;
+        cacheExpiry = Date.now() + 10000; // cache 10s
+        renderDrop(data, prefix);
+      }).catch(function() {
+        closeDrop();
+      });
+    }
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeDrop();
+      }
+    });
+
+    input.addEventListener('keyup', function(e) {
+      if (e.key === 'Escape') return;
+      clearTimeout(debounceTimer);
+      var prefix = getMentionPrefix(input.value);
+      if (prefix === null) {
+        closeDrop();
+        return;
+      }
+      debounceTimer = setTimeout(function() {
+        doFetch(prefix);
+      }, 150);
+    });
+
+    // Close on outside click
+    document.addEventListener('click', function(e) {
+      if (!dropdown.contains(e.target) && e.target !== input) {
+        closeDrop();
+      }
     });
   })();
 </script>

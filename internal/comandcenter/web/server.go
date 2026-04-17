@@ -265,6 +265,9 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /uploads/{session_id}/{filename}", ws.uiAuth(http.HandlerFunc(ws.handleServeFile)))
 	mux.Handle("GET /ws/ui", ws.uiAuth(http.HandlerFunc(ws.handleWSUI)))
 
+	// Sessions JSON API — used by @mention autocomplete.
+	mux.Handle("GET /api/sessions", ws.uiAuth(http.HandlerFunc(ws.handleAPISessions)))
+
 	// Session management API.
 	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
 	mux.Handle("DELETE /api/sessions/{id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteSession)))
@@ -776,6 +779,21 @@ func (ws *WebServer) handleDeleteSession(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleAPISessions returns all non-archived sessions as JSON.
+// Used by the @mention autocomplete in the chat UI.
+func (ws *WebServer) handleAPISessions(w http.ResponseWriter, r *http.Request) {
+	sessions, err := ws.storage.ListSessions()
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	if sessions == nil {
+		sessions = []cc.Session{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
 }
 
 // buildSessionRows fetches the last message for each session and unread count.

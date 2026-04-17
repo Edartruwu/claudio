@@ -9,6 +9,12 @@
 {{else if eq .Role "user"}}
 <div class="flex justify-end mb-1">
   <div class="msg-bubble-user px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
+    {{if .ReplyToSession}}
+    <div class="mb-2 rounded" style="border-left:3px solid #25D366;padding:4px 8px;background:rgba(37,211,102,0.10);">
+      <p class="text-xs font-semibold" style="color:#25D366;">@{{.ReplyToSession}}</p>
+      <p class="text-xs leading-snug" style="color:#8E8E93;">{{truncate 80 .QuotedContent}}</p>
+    </div>
+    {{end}}
     {{if .Content}}<p class="text-sm leading-relaxed whitespace-pre-wrap text-white">{{.Content}}</p>{{end}}
     {{range .Attachments}}
       {{if isImage .MimeType}}
