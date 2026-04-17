@@ -37,6 +37,12 @@ func (s *Session) Current() *storage.Session {
 	return s.current
 }
 
+// FindByTitle looks up the most recent session with the given title in projectDir.
+// Returns (nil, nil) when no matching session exists.
+func (s *Session) FindByTitle(title, projectDir string) (*storage.Session, error) {
+	return s.db.GetSessionByTitle(title, projectDir)
+}
+
 // Resume loads a previous session by ID.
 func (s *Session) Resume(id string) (*storage.Session, error) {
 	sess, err := s.db.GetSession(id)

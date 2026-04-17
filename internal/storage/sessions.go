@@ -117,6 +117,21 @@ func (db *DB) UpdateSessionSummary(id, summary string) error {
 	return err
 }
 
+// GetSessionByTitle returns the most recent session matching title and projectDir,
+// or nil if no such session exists.
+func (db *DB) GetSessionByTitle(title, projectDir string) (*Session, error) {
+	s := &Session{}
+	err := db.conn.QueryRow(
+		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template
+		 FROM sessions WHERE title = ? AND project_dir = ? ORDER BY created_at DESC LIMIT 1`,
+		title, projectDir,
+	).Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return s, err
+}
+
 // GetSession retrieves a session by ID.
 func (db *DB) GetSession(id string) (*Session, error) {
 	s := &Session{}

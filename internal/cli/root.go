@@ -350,14 +350,81 @@ func runHeadlessAttach(args []string) error {
 		appInstance.Interrupt()
 	})
 
-	// If initial prompt provided as arg, inject it first
-	if len(args) > 0 {
-		initialPrompt := strings.Join(args, " ")
-		appInstance.InjectMessage(initialPrompt)
+	// --- Session setup: find existing session by name or create new one ---
+	sess := session.New(appInstance.DB)
+	projectDir, _ := os.Getwd()
+	if flagName != "" {
+		if existing, err := sess.FindByTitle(flagName, projectDir); err == nil && existing != nil {
+			if _, err := sess.Resume(existing.ID); err != nil && flagVerbose {
+				fmt.Fprintf(os.Stderr, "Warning: failed to resume session %q: %v\n", flagName, err)
+			}
+		} else {
+			if _, err := sess.Start(appInstance.Config.Model); err != nil && flagVerbose {
+				fmt.Fprintf(os.Stderr, "Warning: failed to start session: %v\n", err)
+			}
+			_ = sess.SetTitle(flagName)
+		}
+	} else {
+		if _, err := sess.Start(appInstance.Config.Model); err != nil && flagVerbose {
+			fmt.Fprintf(os.Stderr, "Warning: failed to start session: %v\n", err)
+		}
 	}
 
-	// Run engine loop: process messages from inject channel.
-	// Each turn gets its own cancelable context so ComandCenter can interrupt it.
+	// --- Load history from DB into engine ---
+	var initialMsgs []api.Message
+	if storedMsgs, err := sess.GetMessages(); err == nil && len(storedMsgs) > 0 {
+		initialMsgs = session.ReconstructEngineMessages(storedMsgs)
+	}
+
+	// --- Build ONE persistent engine for the session lifetime ---
+	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
+	if modelOverride != "" {
+		appInstance.Config.Model = modelOverride
+		appInstance.API.SetModel(modelOverride)
+	}
+
+	var handler query.EventHandler = &query.StdoutHandler{Verbose: flagVerbose}
+	if attachClient != nil {
+		handler = attachclient.NewEventProxy(handler, attachClient)
+	}
+
+	engineCfg := query.EngineConfig{
+		Hooks:           appInstance.Hooks,
+		Analytics:       appInstance.Analytics,
+		TaskRuntime:     appInstance.TaskRuntime,
+		Model:           appInstance.Config.Model,
+		PermissionMode:  appInstance.Config.PermissionMode,
+		PermissionRules: appInstance.Config.PermissionRules,
+		OnTurnEnd:       appInstance.MemoryExtractor(),
+		OnAutoCompact: func(msgs []api.Message, summary string) {
+			_ = sess.PersistCompacted(msgs)
+			_ = sess.SaveSummary(summary)
+		},
+	}
+	if appInstance.Config.CavemanEnabled() {
+		if c := skills.BundledSkillContent("caveman"); c != "" {
+			engineCfg.CavemanMsg = "**CAVEMAN ULTRA MODE ACTIVE — respond in caveman ultra for the entire session. Active for all agents and sub-agents. Only the human user can disable with \"stop caveman\" or \"normal mode\".**\n\n" + c + "\n\nLevel: ultra.\n\n**EXCEPTION — structured protocol output:** Always use exact format for `### Done` completion reports (exact header, all required bullet fields). Caveman style inside the fields is fine. Never skip or rename the header."
+		}
+	}
+
+	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, engineCfg)
+	sys := buildFullSystemPrompt()
+	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
+		sys += "\n\n" + section
+	}
+	engine.SetSystem(sys)
+	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
+	engine.SetSystemContext(buildSystemContext())
+	if len(initialMsgs) > 0 {
+		engine.SetMessages(initialMsgs)
+	}
+
+	// If initial prompt provided as arg, inject it first
+	if len(args) > 0 {
+		appInstance.InjectMessage(strings.Join(args, " "))
+	}
+
+	// --- Message loop: one persistent engine across all turns ---
 	for {
 		select {
 		case msg := <-appInstance.InjectCh:
@@ -372,13 +439,17 @@ func runHeadlessAttach(args []string) error {
 					// engine finished normally; nothing to do
 				}
 			}()
-			err := runSinglePromptWithCtx(turnCtx, msg)
+			err := engine.Run(turnCtx, msg)
 			close(engineDone) // signal monitor goroutine to exit
 			turnCancel()      // no-op if already cancelled; ensures context cleanup
 			// Drain any stale interrupt signal so the next turn starts clean.
 			select {
 			case <-appInstance.InterruptCh:
 			default:
+			}
+			// Persist full conversation state after each turn.
+			if msgs := engine.Messages(); len(msgs) > 0 {
+				_ = sess.PersistCompacted(msgs)
 			}
 			if err != nil {
 				log.Printf("attach: prompt error: %v\n", err)
