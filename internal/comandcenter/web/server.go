@@ -1045,6 +1045,16 @@ func (ws *WebServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 		ws.pushToSessionClients(sessionID, payload)
 	}
 
+	// Forward to headless Claudio session.
+	diskPath := filepath.Join(ws.uploadsDir, sessionID, storedName)
+	fwdEnv, fwdErr := attach.NewEnvelope(attach.EventMsgUser, attach.UserMsgPayload{
+		Content:     caption,
+		Attachments: []attach.Attachment{{FilePath: diskPath, MimeType: mimeType}},
+	})
+	if fwdErr == nil {
+		_ = ws.hub.Send(sessionID, fwdEnv) // ignore error — session may not be connected
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"url":          "/uploads/" + sessionID + "/" + storedName,
@@ -1061,7 +1071,7 @@ func (ws *WebServer) handleServeFile(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")
 
 	// Sanitize: prevent path traversal.
-	if strings.ContainsAny(filename, "/\\..") {
+	if strings.Contains(filename, "..") || strings.ContainsAny(filename, "/\\") {
 		http.Error(w, "invalid filename", http.StatusBadRequest)
 		return
 	}

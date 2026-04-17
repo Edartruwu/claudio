@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -342,7 +343,7 @@ func runHeadlessAttach(args []string) error {
 
 	// Wire PWA user messages → app.InjectMessage (not program.Send, which is TUI-only)
 	attachClient.OnUserMessage(func(payload attach.UserMsgPayload) {
-		appInstance.InjectMessage(payload.Content)
+		appInstance.InjectPayload(payload)
 	})
 
 	// Wire interrupt signal from ComandCenter → app.Interrupt
@@ -421,13 +422,13 @@ func runHeadlessAttach(args []string) error {
 
 	// If initial prompt provided as arg, inject it first
 	if len(args) > 0 {
-		appInstance.InjectMessage(strings.Join(args, " "))
+		appInstance.InjectPayload(attach.UserMsgPayload{Content: strings.Join(args, " ")})
 	}
 
 	// --- Message loop: one persistent engine across all turns ---
 	for {
 		select {
-		case msg := <-appInstance.InjectCh:
+		case payload := <-appInstance.InjectCh:
 			turnCtx, turnCancel := context.WithCancel(ctx)
 			engineDone := make(chan struct{})
 			// Monitor goroutine: cancel the turn context if an interrupt arrives.
@@ -439,7 +440,20 @@ func runHeadlessAttach(args []string) error {
 					// engine finished normally; nothing to do
 				}
 			}()
-			err := engine.Run(turnCtx, msg)
+			var err error
+			if len(payload.Attachments) > 0 {
+				images := make([]api.UserContentBlock, 0, len(payload.Attachments))
+				for _, att := range payload.Attachments {
+					data, readErr := os.ReadFile(att.FilePath)
+					if readErr != nil {
+						continue
+					}
+					images = append(images, api.NewImageBlock(att.MimeType, base64.StdEncoding.EncodeToString(data)))
+				}
+				err = engine.RunWithImages(turnCtx, payload.Content, images)
+			} else {
+				err = engine.Run(turnCtx, payload.Content)
+			}
 			close(engineDone) // signal monitor goroutine to exit
 			turnCancel()      // no-op if already cancelled; ensures context cleanup
 			// Drain any stale interrupt signal so the next turn starts clean.
