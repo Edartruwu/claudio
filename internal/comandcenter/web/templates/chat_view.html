@@ -25,6 +25,22 @@
       <p id="typing-indicator" class="text-xs" style="color:#8E8E93;">last seen recently</p>
       {{end}}
     </div>
+    <!-- Bell — push notification subscribe/unsubscribe -->
+    <button id="bell-btn"
+            type="button"
+            onclick="ccTogglePush()"
+            class="flex items-center justify-center flex-shrink-0"
+            style="min-width:44px;min-height:44px;color:#8E8E93;background:transparent;border:none;cursor:pointer;"
+            aria-label="Toggle push notifications">
+      <!-- outline bell (default / unsubscribed) -->
+      <svg id="bell-outline" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+      </svg>
+      <!-- filled bell (subscribed — hidden by default) -->
+      <svg id="bell-filled" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24" style="color:#25D366;">
+        <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+      </svg>
+    </button>
     <!-- Menu — tap opens session info panel -->
     <a href="/chat/{{.Session.ID}}/info"
        class="flex items-center justify-center flex-shrink-0 -mr-3"
@@ -34,6 +50,10 @@
       </svg>
     </a>
   </header>
+
+  <!-- Push toast -->
+  <div id="push-toast" class="hidden fixed top-4 left-1/2 text-white text-sm px-4 py-2 rounded-full shadow-lg z-50"
+       style="transform:translateX(-50%);background:#2C2C2E;"></div>
 
   <!-- WS reconnect banner -->
   <div id="ws-banner" class="hidden text-white text-center text-xs py-1" style="background:#8E44AD;">Connecting...</div>
@@ -285,6 +305,122 @@
         closeDrop();
       }
     });
+  })();
+
+  // --- Push notification bell ---
+  (function() {
+    var bellOutline = document.getElementById('bell-outline');
+    var bellFilled  = document.getElementById('bell-filled');
+    var toast       = document.getElementById('push-toast');
+
+    function showToast(msg, duration) {
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.classList.remove('hidden');
+      setTimeout(function() { toast.classList.add('hidden'); }, duration || 3000);
+    }
+
+    function setBellState(subscribed) {
+      if (!bellOutline || !bellFilled) return;
+      if (subscribed) {
+        bellOutline.classList.add('hidden');
+        bellFilled.classList.remove('hidden');
+      } else {
+        bellOutline.classList.remove('hidden');
+        bellFilled.classList.add('hidden');
+      }
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      var padding = '='.repeat((4 - base64String.length % 4) % 4);
+      var base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      var raw     = atob(base64);
+      var output  = new Uint8Array(raw.length);
+      for (var i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+      return output;
+    }
+
+    function getToken() {
+      return localStorage.getItem('cc_token') || '';
+    }
+
+    // Check subscription state on load.
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.ready.then(function(reg) {
+        return reg.pushManager.getSubscription();
+      }).then(function(sub) {
+        setBellState(!!sub);
+      }).catch(function() {});
+    }
+
+    window.ccTogglePush = function() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        showToast('Push notifications not supported');
+        return;
+      }
+
+      navigator.serviceWorker.ready.then(function(reg) {
+        return reg.pushManager.getSubscription().then(function(existing) {
+          if (existing) {
+            // Unsubscribe.
+            return existing.unsubscribe().then(function() {
+              var token = getToken();
+              return fetch('/api/push/subscribe', {
+                method: 'DELETE',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer ' + token,
+                },
+                body: JSON.stringify({ endpoint: existing.endpoint }),
+              });
+            }).then(function() {
+              setBellState(false);
+              showToast('Notifications off');
+            });
+          }
+
+          // Subscribe.
+          return Notification.requestPermission().then(function(perm) {
+            if (perm !== 'granted') {
+              showToast('Notifications blocked');
+              return;
+            }
+            var token = getToken();
+            return fetch('/api/vapid-public-key', {
+              headers: { 'Authorization': 'Bearer ' + token },
+            }).then(function(res) {
+              return res.json();
+            }).then(function(data) {
+              var appKey = urlBase64ToUint8Array(data.publicKey);
+              return reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: appKey,
+              });
+            }).then(function(sub) {
+              var j = sub.toJSON();
+              var token = getToken();
+              return fetch('/api/push/subscribe', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer ' + token,
+                },
+                body: JSON.stringify({
+                  endpoint: j.endpoint,
+                  keys: { p256dh: j.keys.p256dh, auth: j.keys.auth },
+                }),
+              });
+            }).then(function() {
+              setBellState(true);
+              showToast('Notifications on');
+            });
+          });
+        });
+      }).catch(function(err) {
+        console.error('push toggle error', err);
+        showToast('Push error: ' + (err.message || err));
+      });
+    };
   })();
 </script>
 {{end}}

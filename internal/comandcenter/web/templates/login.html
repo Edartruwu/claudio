@@ -19,7 +19,7 @@
     </div>
     {{end}}{{end}}
 
-    <form method="POST" action="/login" class="space-y-4">
+    <form method="POST" action="/login" class="space-y-4" id="login-form">
       <div>
         <label class="block text-sm font-medium mb-1" style="color:#8E8E93;">Password</label>
         <input
@@ -41,4 +41,10 @@
     </form>
   </div>
 </div>
+<script>
+  document.getElementById('login-form').addEventListener('submit', function () {
+    var pass = document.querySelector('input[name=password]').value;
+    if (pass) localStorage.setItem('cc_token', pass);
+  });
+</script>
 {{end}}

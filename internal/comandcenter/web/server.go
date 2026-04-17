@@ -267,6 +267,9 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticSub)))
 
+	// Service worker — must be served at root scope, no auth.
+	mux.HandleFunc("GET /sw.js", ws.handleServiceWorker)
+
 	// No-auth routes.
 	mux.HandleFunc("GET /login", ws.handleLoginGet)
 	mux.HandleFunc("POST /login", ws.handleLoginPost)
@@ -337,6 +340,19 @@ func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleServiceWorker serves /sw.js at root scope so the SW controls all pages.
+func (ws *WebServer) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
+	content, err := staticFS.ReadFile("static/sw.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(content)
 }
 
 type sessionRow struct {

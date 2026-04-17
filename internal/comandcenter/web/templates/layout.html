@@ -103,6 +103,13 @@
   {{end}}
   <script src="/static/app.js"></script>
   <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function(err) {
+      console.warn('SW registration failed:', err);
+    });
+  }
+  </script>
+  <script>
   // ── Filter chips ─────────────────────────────────────────────────────────
   window.ccSetFilter = function(f) {
     // Update session-list hx-get so 3s auto-poll stays filtered.
