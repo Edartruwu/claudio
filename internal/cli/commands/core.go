@@ -720,13 +720,6 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		},
 	})
 
-	r.Register(&Command{
-		Name:        "web",
-		Description: "Start web server to access session from browser/phone",
-		Execute: func(args string) (string, error) {
-			return "", nil // handled directly in TUI root
-		},
-	})
 }
 
 func openBrowser(url string) error {
