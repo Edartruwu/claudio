@@ -273,3 +273,94 @@ func TestWebServer_DeleteSession_NoAuth(t *testing.T) {
 		t.Fatalf("want 303 redirect for unauthed request, got %d", w.Code)
 	}
 }
+
+// TestWebServer_SessionInfo_NotFound verifies GET /chat/{id}/info for unknown id → 404.
+func TestWebServer_SessionInfo_NotFound(t *testing.T) {
+	_, mux := newTestEnv(t)
+
+	r := authedRequest(http.MethodGet, "/chat/nonexistent-id/info")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", w.Code)
+	}
+}
+
+// TestWebServer_SessionInfo_Renders verifies GET /chat/{id}/info → 200 with session name + tabs.
+func TestWebServer_SessionInfo_Renders(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	err := storage.UpsertSession(cc.Session{
+		ID:           "info-sess-1",
+		Name:         "InfoAgent",
+		Path:         "/workspace",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	// Seed a task and agent.
+	if err := storage.UpsertTask(cc.Task{
+		ID:        "info-task-1",
+		SessionID: "info-sess-1",
+		Title:     "Build feature",
+		Status:    "in_progress",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if err := storage.UpsertAgent(cc.Agent{
+		ID:        "info-agent-1",
+		SessionID: "info-sess-1",
+		Name:      "worker",
+		Status:    "working",
+		UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed agent: %v", err)
+	}
+
+	r := authedRequest(http.MethodGet, "/chat/info-sess-1/info")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "InfoAgent") {
+		t.Error("response body does not contain session name 'InfoAgent'")
+	}
+	if !strings.Contains(body, "Build feature") {
+		t.Error("response body does not contain task title 'Build feature'")
+	}
+	if !strings.Contains(body, "worker") {
+		t.Error("response body does not contain agent name 'worker'")
+	}
+	if !strings.Contains(body, "Tasks") {
+		t.Error("response body does not contain 'Tasks' tab")
+	}
+	if !strings.Contains(body, "Team") {
+		t.Error("response body does not contain 'Team' tab")
+	}
+	if !strings.Contains(body, "Media") {
+		t.Error("response body does not contain 'Media' tab")
+	}
+}
+
+// TestWebServer_SessionInfo_NoAuth verifies unauthenticated GET /chat/{id}/info → 303 redirect.
+func TestWebServer_SessionInfo_NoAuth(t *testing.T) {
+	_, mux := newTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/chat/any-id/info", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303 redirect for unauthed request, got %d", w.Code)
+	}
+}

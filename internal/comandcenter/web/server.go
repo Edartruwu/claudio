@@ -42,6 +42,7 @@ var (
 	chatViewTmpl *templateSet
 	sessionsTmpl *templateSet
 	messagesTmpl *templateSet
+	infoTmpl     *templateSet
 	bubbleTmpl   *template.Template
 )
 
@@ -89,6 +90,52 @@ func funcMap() template.FuncMap {
 			}
 			return colors[len(s)%len(colors)]
 		},
+		// taskStatusDot returns a Tailwind-compatible inline style color class for a task status dot.
+		"taskStatusDot": func(status string) string {
+			switch status {
+			case "in_progress":
+				return "bg-blue-500"
+			case "done":
+				return "bg-green-500"
+			case "blocked":
+				return "bg-red-500"
+			default: // pending
+				return "bg-gray-500"
+			}
+		},
+		// taskStatusBadge returns inline style classes for a task status pill badge.
+		"taskStatusBadge": func(status string) string {
+			switch status {
+			case "in_progress":
+				return "text-blue-400 bg-blue-400/10"
+			case "done":
+				return "text-green-400 bg-green-400/10"
+			case "blocked":
+				return "text-red-400 bg-red-400/10"
+			default: // pending
+				return "text-gray-400 bg-gray-400/10"
+			}
+		},
+		// agentStatusDot returns a dot color class for agent status.
+		"agentStatusDot": func(status string) string {
+			switch status {
+			case "working":
+				return "bg-blue-500"
+			case "idle":
+				return "bg-gray-500"
+			default:
+				return "bg-gray-600"
+			}
+		},
+		// agentStatusColor returns text color class for agent status label.
+		"agentStatusColor": func(status string) string {
+			switch status {
+			case "working":
+				return "text-blue-400"
+			default:
+				return "text-gray-400"
+			}
+		},
 	}
 }
 
@@ -134,6 +181,10 @@ func init() {
 	messagesTmpl = mustParseFS(
 		"templates/partials/messages.html",
 		"templates/components/message_bubble.html",
+	)
+	infoTmpl = mustParseFS(
+		"templates/layout.html",
+		"templates/info_panel.html",
 	)
 	t, err := template.New("").Funcs(funcMap()).ParseFS(staticFS, "templates/components/message_bubble.html")
 	if err != nil {
@@ -186,6 +237,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Auth-gated routes.
 	mux.Handle("GET /", ws.uiAuth(http.HandlerFunc(ws.handleChatList)))
 	mux.Handle("GET /chat/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handleChatView)))
+	mux.Handle("GET /chat/{session_id}/info", ws.uiAuth(http.HandlerFunc(ws.handleSessionInfo)))
 	mux.Handle("GET /partials/sessions", ws.uiAuth(http.HandlerFunc(ws.handlePartialSessions)))
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
 	mux.Handle("POST /api/sessions/{session_id}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessage)))
@@ -243,9 +295,17 @@ func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 }
 
 type sessionRow struct {
-	Session      cc.Session
-	LastMessage  string
-	UnreadCount  int
+	Session     cc.Session
+	LastMessage string
+	UnreadCount int
+}
+
+// InfoPageData holds data for the session info panel.
+type InfoPageData struct {
+	Session   cc.Session
+	Tasks     []cc.Task
+	Agents    []cc.Agent
+	SessionID string
 }
 
 func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +340,29 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 		"Session":   sess,
 		"Messages":  reversed,
 		"SessionID": id,
+	})
+}
+
+func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("session_id")
+	sess, err := ws.storage.GetSession(id)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	tasks, err := ws.storage.ListTasks(id)
+	if err != nil {
+		tasks = nil
+	}
+	agents, err := ws.storage.ListAgents(id)
+	if err != nil {
+		agents = nil
+	}
+	infoTmpl.execute(w, "info_panel.html", InfoPageData{
+		Session:   sess,
+		Tasks:     tasks,
+		Agents:    agents,
+		SessionID: id,
 	})
 }
 

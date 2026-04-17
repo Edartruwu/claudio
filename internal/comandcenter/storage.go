@@ -393,3 +393,49 @@ func (s *Storage) MarkRead(sessionID string) error {
 	}
 	return nil
 }
+
+// ListTasks returns all tasks for a session ordered by created_at DESC.
+func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
+	rows, err := s.db.Query(`
+		SELECT id, session_id, title, status, COALESCE(assigned_to,''), created_at, updated_at
+		FROM cc_tasks WHERE session_id=? ORDER BY created_at DESC
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks: %w", err)
+	}
+	defer rows.Close()
+
+	var tasks []Task
+	for rows.Next() {
+		var t Task
+		if err := rows.Scan(&t.ID, &t.SessionID, &t.Title, &t.Status,
+			&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan task: %w", err)
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
+}
+
+// ListAgents returns all agents for a session.
+func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
+	rows, err := s.db.Query(`
+		SELECT id, session_id, name, status, COALESCE(current_task_id,''), updated_at
+		FROM cc_agents WHERE session_id=?
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list agents: %w", err)
+	}
+	defer rows.Close()
+
+	var agents []Agent
+	for rows.Next() {
+		var a Agent
+		if err := rows.Scan(&a.ID, &a.SessionID, &a.Name, &a.Status,
+			&a.CurrentTaskID, &a.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan agent: %w", err)
+		}
+		agents = append(agents, a)
+	}
+	return agents, rows.Err()
+}

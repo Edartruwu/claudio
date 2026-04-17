@@ -373,6 +373,183 @@ func TestStorage_DeleteSession(t *testing.T) {
 	}
 }
 
+func TestStorage_ListTasks(t *testing.T) {
+	s := newTestStorage(t)
+
+	sess := Session{
+		ID: "sess-tasks-1", Name: "s", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	// Empty initially.
+	tasks, err := s.ListTasks(sess.ID)
+	if err != nil {
+		t.Fatalf("ListTasks empty: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("expected 0 tasks, got %d", len(tasks))
+	}
+
+	// Insert tasks.
+	now := time.Now()
+	t1 := Task{
+		ID: "task-1", SessionID: sess.ID, Title: "Fix bug",
+		Status: "pending", AssignedTo: "agent-a",
+		CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour),
+	}
+	t2 := Task{
+		ID: "task-2", SessionID: sess.ID, Title: "Write tests",
+		Status: "done", AssignedTo: "",
+		CreatedAt: now.Add(-1 * time.Hour), UpdatedAt: now,
+	}
+	for _, tk := range []Task{t1, t2} {
+		if err := s.UpsertTask(tk); err != nil {
+			t.Fatalf("UpsertTask %s: %v", tk.ID, err)
+		}
+	}
+
+	tasks, err = s.ListTasks(sess.ID)
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 tasks, got %d", len(tasks))
+	}
+	// Newest first (task-2 created_at is later).
+	if tasks[0].ID != "task-2" {
+		t.Errorf("expected task-2 first, got %q", tasks[0].ID)
+	}
+	if tasks[0].Title != "Write tests" {
+		t.Errorf("Title: got %q, want %q", tasks[0].Title, "Write tests")
+	}
+	if tasks[0].Status != "done" {
+		t.Errorf("Status: got %q, want %q", tasks[0].Status, "done")
+	}
+}
+
+func TestStorage_ListTasks_IsolatedBySession(t *testing.T) {
+	s := newTestStorage(t)
+
+	for _, id := range []string{"sess-a", "sess-b"} {
+		if err := s.UpsertSession(Session{
+			ID: id, Name: id, Path: "/tmp", Status: "active",
+			CreatedAt: time.Now(), LastActiveAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("UpsertSession %s: %v", id, err)
+		}
+	}
+
+	if err := s.UpsertTask(Task{
+		ID: "task-a", SessionID: "sess-a", Title: "Task A",
+		Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	tasks, err := s.ListTasks("sess-b")
+	if err != nil {
+		t.Fatalf("ListTasks sess-b: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("expected 0 tasks for sess-b, got %d", len(tasks))
+	}
+}
+
+func TestStorage_ListAgents(t *testing.T) {
+	s := newTestStorage(t)
+
+	sess := Session{
+		ID: "sess-agents-1", Name: "s", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	// Empty initially.
+	agents, err := s.ListAgents(sess.ID)
+	if err != nil {
+		t.Fatalf("ListAgents empty: %v", err)
+	}
+	if len(agents) != 0 {
+		t.Errorf("expected 0 agents, got %d", len(agents))
+	}
+
+	// Insert agents.
+	a1 := Agent{
+		ID: "agent-1", SessionID: sess.ID, Name: "researcher",
+		Status: "working", CurrentTaskID: "task-1", UpdatedAt: time.Now(),
+	}
+	a2 := Agent{
+		ID: "agent-2", SessionID: sess.ID, Name: "coder",
+		Status: "idle", CurrentTaskID: "", UpdatedAt: time.Now(),
+	}
+	for _, ag := range []Agent{a1, a2} {
+		if err := s.UpsertAgent(ag); err != nil {
+			t.Fatalf("UpsertAgent %s: %v", ag.ID, err)
+		}
+	}
+
+	agents, err = s.ListAgents(sess.ID)
+	if err != nil {
+		t.Fatalf("ListAgents: %v", err)
+	}
+	if len(agents) != 2 {
+		t.Fatalf("expected 2 agents, got %d", len(agents))
+	}
+	// Find agent-1 and verify fields.
+	var found Agent
+	for _, a := range agents {
+		if a.ID == "agent-1" {
+			found = a
+			break
+		}
+	}
+	if found.ID == "" {
+		t.Fatal("agent-1 not found in ListAgents result")
+	}
+	if found.Name != "researcher" {
+		t.Errorf("Name: got %q, want %q", found.Name, "researcher")
+	}
+	if found.Status != "working" {
+		t.Errorf("Status: got %q, want %q", found.Status, "working")
+	}
+	if found.CurrentTaskID != "task-1" {
+		t.Errorf("CurrentTaskID: got %q, want %q", found.CurrentTaskID, "task-1")
+	}
+}
+
+func TestStorage_ListAgents_IsolatedBySession(t *testing.T) {
+	s := newTestStorage(t)
+
+	for _, id := range []string{"sess-c", "sess-d"} {
+		if err := s.UpsertSession(Session{
+			ID: id, Name: id, Path: "/tmp", Status: "active",
+			CreatedAt: time.Now(), LastActiveAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("UpsertSession %s: %v", id, err)
+		}
+	}
+
+	if err := s.UpsertAgent(Agent{
+		ID: "agent-x", SessionID: "sess-c", Name: "agent-x",
+		Status: "idle", UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertAgent: %v", err)
+	}
+
+	agents, err := s.ListAgents("sess-d")
+	if err != nil {
+		t.Fatalf("ListAgents sess-d: %v", err)
+	}
+	if len(agents) != 0 {
+		t.Errorf("expected 0 agents for sess-d, got %d", len(agents))
+	}
+}
+
 func TestStorage_ListSessions_ExcludesArchived(t *testing.T) {
 	s := newTestStorage(t)
 

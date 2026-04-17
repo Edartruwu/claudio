@@ -25,12 +25,14 @@
       <p id="typing-indicator" class="text-xs" style="color:#8E8E93;">last seen recently</p>
       {{end}}
     </div>
-    <!-- Menu -->
-    <button class="flex items-center justify-center flex-shrink-0 -mr-3 bg-transparent border-none" style="min-width:44px;min-height:44px;color:#8E8E93;">
+    <!-- Menu — tap opens session info panel -->
+    <a href="/chat/{{.Session.ID}}/info"
+       class="flex items-center justify-center flex-shrink-0 -mr-3"
+       style="min-width:44px;min-height:44px;color:#8E8E93;">
       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
         <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
       </svg>
-    </button>
+    </a>
   </header>
 
   <!-- WS reconnect banner -->

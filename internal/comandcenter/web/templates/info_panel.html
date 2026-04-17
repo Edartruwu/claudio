@@ -1,0 +1,144 @@
+{{define "info_panel.html"}}{{template "layout" .}}{{end}}
+
+{{define "main"}}
+<div class="flex flex-col h-full" style="background:#000000;">
+  <!-- Header -->
+  <header class="chat-header flex items-center gap-3 px-4 py-3 flex-shrink-0 shadow-md" style="background:#1C1C1E;">
+    <a href="/chat/{{.Session.ID}}"
+       class="text-white flex items-center justify-center flex-shrink-0 -ml-2"
+       style="min-width:44px;min-height:44px;">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </a>
+    <div class="rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0"
+         style="width:40px;height:40px;background:{{avatarColor .Session.Name}};">
+      {{firstChar .Session.Name}}
+    </div>
+    <div class="flex-1 min-w-0">
+      <p class="font-semibold text-white truncate">
+        {{if .Session.Master}}★ {{end}}{{.Session.Name}}
+      </p>
+    </div>
+  </header>
+
+  <!-- Session Meta Card -->
+  <div class="mx-4 mt-4 rounded-xl px-4 py-3 flex flex-col gap-1" style="background:#1C1C1E;">
+    <div class="flex items-center gap-2 text-sm">
+      <span style="color:#8E8E93;">Path</span>
+      <span class="flex-1 truncate text-white text-right text-xs">{{.Session.Path}}</span>
+    </div>
+    <div class="flex items-center gap-2 text-sm">
+      <span style="color:#8E8E93;">Status</span>
+      <span class="flex-1 flex items-center justify-end gap-1">
+        {{if eq .Session.Status "active"}}
+          <span class="inline-block w-2 h-2 rounded-full" style="background:#25D366;"></span>
+          <span class="text-xs" style="color:#25D366;">active</span>
+        {{else}}
+          <span class="inline-block w-2 h-2 rounded-full" style="background:#8E8E93;"></span>
+          <span class="text-xs" style="color:#8E8E93;">inactive</span>
+        {{end}}
+      </span>
+    </div>
+    <div class="flex items-center gap-2 text-sm">
+      <span style="color:#8E8E93;">Connected</span>
+      <span class="flex-1 text-white text-right text-xs">{{relTime .Session.CreatedAt}}</span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="mx-4 mt-4 flex rounded-xl overflow-hidden" style="background:#1C1C1E;">
+    <button id="tab-tasks"
+            onclick="showTab('tasks')"
+            class="flex-1 py-2 text-sm font-semibold tab-btn tab-active">
+      Tasks
+    </button>
+    <button id="tab-team"
+            onclick="showTab('team')"
+            class="flex-1 py-2 text-sm font-semibold tab-btn">
+      Team
+    </button>
+    <button id="tab-media"
+            onclick="showTab('media')"
+            class="flex-1 py-2 text-sm font-semibold tab-btn">
+      Media
+    </button>
+  </div>
+
+  <!-- Tab Panels -->
+  <div class="flex-1 overflow-y-auto mt-2 pb-8">
+
+    <!-- Tasks Tab -->
+    <div id="panel-tasks" class="tab-panel px-4 flex flex-col gap-2">
+      {{range .Tasks}}
+      <div class="rounded-xl px-4 py-3 flex items-start gap-3" style="background:#1C1C1E;">
+        <span class="mt-1 inline-block w-2 h-2 rounded-full flex-shrink-0 {{taskStatusDot .Status}}"></span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-white truncate">{{.Title}}</p>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-xs px-2 py-0.5 rounded-full {{taskStatusBadge .Status}}">{{.Status}}</span>
+            {{if .AssignedTo}}
+            <span class="text-xs" style="color:#8E8E93;">→ {{.AssignedTo}}</span>
+            {{end}}
+          </div>
+        </div>
+      </div>
+      {{else}}
+      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No tasks yet</div>
+      {{end}}
+    </div>
+
+    <!-- Team Tab -->
+    <div id="panel-team" class="tab-panel hidden px-4 flex flex-col gap-2">
+      {{range .Agents}}
+      <div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:#1C1C1E;">
+        <div class="rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+             style="width:36px;height:36px;background:{{avatarColor .Name}};color:#fff;">
+          {{firstChar .Name}}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-white truncate">{{.Name}}</p>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="inline-block w-2 h-2 rounded-full flex-shrink-0 {{agentStatusDot .Status}}"></span>
+            <span class="text-xs {{agentStatusColor .Status}}">{{.Status}}</span>
+            {{if .CurrentTaskID}}
+            <span class="text-xs" style="color:#8E8E93;">· task {{truncate 8 .CurrentTaskID}}</span>
+            {{end}}
+          </div>
+        </div>
+      </div>
+      {{else}}
+      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No agents yet</div>
+      {{end}}
+    </div>
+
+    <!-- Media Tab -->
+    <div id="panel-media" class="tab-panel hidden px-4">
+      <div class="flex flex-col items-center justify-center mt-16 gap-3" style="color:#8E8E93;">
+        <svg class="w-12 h-12 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <p class="text-sm">No media yet</p>
+        <p class="text-xs opacity-60">Images will appear here in M4</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+  .tab-btn { color: #8E8E93; transition: color 0.15s; }
+  .tab-active { color: #25D366 !important; border-bottom: 2px solid #25D366; }
+</style>
+
+<script>
+  function showTab(name) {
+    ['tasks','team','media'].forEach(function(t) {
+      document.getElementById('panel-' + t).classList.toggle('hidden', t !== name);
+      var btn = document.getElementById('tab-' + t);
+      btn.classList.toggle('tab-active', t === name);
+    });
+  }
+</script>
+{{end}}
