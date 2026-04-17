@@ -20,6 +20,8 @@ import (
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/microcosm-cc/bluemonday"
+	"github.com/yuin/goldmark"
 	"golang.org/x/net/websocket"
 )
 
@@ -147,6 +149,8 @@ func funcMap() template.FuncMap {
 		"isImage": func(mimeType string) bool {
 			return strings.HasPrefix(mimeType, "image/")
 		},
+		// renderMD converts markdown to sanitized HTML.
+		"renderMD": renderMarkdown,
 	}
 }
 
@@ -160,6 +164,16 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(buf)
+}
+
+// renderMarkdown converts markdown to sanitized HTML safe for template.HTML use.
+func renderMarkdown(s string) template.HTML {
+	var buf bytes.Buffer
+	if err := goldmark.Convert([]byte(s), &buf); err != nil {
+		return template.HTML(template.HTMLEscapeString(s))
+	}
+	safe := bluemonday.UGCPolicy().SanitizeBytes(buf.Bytes())
+	return template.HTML(safe)
 }
 
 func mustParseFS(files ...string) *templateSet {
@@ -337,7 +351,7 @@ type InfoPageData struct {
 }
 
 func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
-	sessions, err := ws.storage.ListSessions()
+	sessions, err := ws.storage.ListSessions("")
 	if err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
 		return
@@ -420,7 +434,8 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Request) {
-	sessions, err := ws.storage.ListSessions()
+	filter := r.URL.Query().Get("filter")
+	sessions, err := ws.storage.ListSessions(filter)
 	if err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
 		return
@@ -785,7 +800,7 @@ func (ws *WebServer) handleDeleteSession(w http.ResponseWriter, r *http.Request)
 // handleAPISessions returns all non-archived sessions as JSON.
 // Used by the @mention autocomplete in the chat UI.
 func (ws *WebServer) handleAPISessions(w http.ResponseWriter, r *http.Request) {
-	sessions, err := ws.storage.ListSessions()
+	sessions, err := ws.storage.ListSessions("")
 	if err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
 		return

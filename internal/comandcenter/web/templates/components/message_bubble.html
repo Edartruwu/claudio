@@ -1,6 +1,6 @@
 {{define "message-bubble"}}
 {{if eq .Role "tool_use"}}
-<div class="flex justify-center my-1">
+<div class="flex justify-start my-1">
   <div class="msg-bubble-tool px-3 py-1 max-w-xs" style="color:#8E8E93;">
     🔧 {{truncate 80 .Content}}
     {{if .AgentName}}<span style="color:#636366;"> — {{.AgentName}}</span>{{end}}
@@ -45,7 +45,7 @@
 <div class="flex justify-start mb-1">
   <div class="msg-bubble-assistant px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
     {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:#25D366;">{{.AgentName}}</p>{{end}}
-    <p class="text-sm leading-relaxed whitespace-pre-wrap text-white">{{.Content}}</p>
+    <div class="text-sm leading-relaxed text-white md-content">{{renderMD .Content}}</div>
     {{range .Attachments}}
       {{if isImage .MimeType}}
         <a href="/uploads/{{.SessionID}}/{{.Filename}}" target="_blank">

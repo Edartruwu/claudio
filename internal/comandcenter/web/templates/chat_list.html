@@ -25,10 +25,25 @@
       </div>
     </div>
     <!-- Filter chips -->
-    <div class="flex gap-2 px-4 pb-3 overflow-x-auto no-scrollbar">
-      <button class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#25D366;">All</button>
-      <button class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Active</button>
-      <button class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Inactive</button>
+    <div id="filter-chips" class="flex gap-2 px-4 pb-3 overflow-x-auto no-scrollbar">
+      <button id="chip-all" data-filter=""
+        hx-get="/partials/sessions?filter="
+        hx-target="#session-list"
+        hx-swap="innerHTML"
+        onclick="ccSetFilter('')"
+        class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#25D366;">All</button>
+      <button id="chip-active" data-filter="active"
+        hx-get="/partials/sessions?filter=active"
+        hx-target="#session-list"
+        hx-swap="innerHTML"
+        onclick="ccSetFilter('active')"
+        class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Active</button>
+      <button id="chip-inactive" data-filter="inactive"
+        hx-get="/partials/sessions?filter=inactive"
+        hx-target="#session-list"
+        hx-swap="innerHTML"
+        onclick="ccSetFilter('inactive')"
+        class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Inactive</button>
     </div>
   </div>
 

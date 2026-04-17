@@ -35,6 +35,18 @@
     @media (hover: hover) {
       .swipe-row:hover .row-menu-trigger { opacity: 1 !important; }
     }
+    /* Markdown rendered content */
+    .md-content p { margin: 0 0 0.5em 0; }
+    .md-content p:last-child { margin-bottom: 0; }
+    .md-content ul, .md-content ol { margin: 0.25em 0 0.5em 1.25em; }
+    .md-content li { margin-bottom: 0.125em; }
+    .md-content code { background: rgba(255,255,255,0.1); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: 0.875em; }
+    .md-content pre { background: rgba(0,0,0,0.4); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 0.5em 0; }
+    .md-content pre code { background: none; padding: 0; }
+    .md-content strong { font-weight: 600; }
+    .md-content em { font-style: italic; }
+    .md-content a { color: #25D366; text-decoration: underline; }
+    .md-content h1, .md-content h2, .md-content h3 { font-weight: 600; margin: 0.5em 0 0.25em 0; }
     /* Typing dots animation */
     .typing-dots { display: inline-flex; align-items: center; gap: 3px; margin-left: 2px; }
     .typing-dots span {
@@ -91,6 +103,19 @@
   {{end}}
   <script src="/static/app.js"></script>
   <script>
+  // ── Filter chips ─────────────────────────────────────────────────────────
+  window.ccSetFilter = function(f) {
+    // Update session-list hx-get so 3s auto-poll stays filtered.
+    var sl = document.getElementById('session-list');
+    if (sl) sl.setAttribute('hx-get', '/partials/sessions?filter=' + encodeURIComponent(f));
+    // Update chip visual state.
+    var chipIds = ['chip-all', 'chip-active', 'chip-inactive'];
+    var chipFilters = ['', 'active', 'inactive'];
+    chipIds.forEach(function(id, i) {
+      var el = document.getElementById(id);
+      if (el) el.style.background = chipFilters[i] === f ? '#25D366' : '#2C2C2E';
+    });
+  };
   // ── Swipe-to-archive/delete ──────────────────────────────────────────────
   (function () {
     var THRESHOLD = 60;      // px drag required to snap open

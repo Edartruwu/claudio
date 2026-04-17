@@ -177,7 +177,7 @@ func TestWebServer_ArchiveSession(t *testing.T) {
 	}
 
 	// Session must be absent from ListSessions (archived).
-	sessions, err := storage.ListSessions()
+	sessions, err := storage.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestWebServer_DeleteSession(t *testing.T) {
 	}
 
 	// Session must be gone.
-	sessions, err := storage.ListSessions()
+	sessions, err := storage.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}

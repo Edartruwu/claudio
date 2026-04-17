@@ -33,7 +33,7 @@ func TestStorage_UpsertSession(t *testing.T) {
 		t.Fatalf("UpsertSession: %v", err)
 	}
 
-	sessions, err := s.ListSessions()
+	sessions, err := s.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestStorage_UpsertSession_Update(t *testing.T) {
 		t.Fatalf("UpsertSession update: %v", err)
 	}
 
-	sessions, err := s.ListSessions()
+	sessions, err := s.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestStorage_ArchiveSession(t *testing.T) {
 	}
 
 	// Before archive: visible in list.
-	sessions, err := s.ListSessions()
+	sessions, err := s.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions before archive: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestStorage_ArchiveSession(t *testing.T) {
 	}
 
 	// After archive: NOT in list.
-	sessions, err = s.ListSessions()
+	sessions, err = s.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions after archive: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestStorage_DeleteSession(t *testing.T) {
 	}
 
 	// Before delete: session + messages exist.
-	sessions, err := s.ListSessions()
+	sessions, err := s.ListSessions("")
 	if err != nil || len(sessions) != 1 {
 		t.Fatalf("expected 1 session before delete, got %d (err=%v)", len(sessions), err)
 	}
@@ -349,7 +349,7 @@ func TestStorage_DeleteSession(t *testing.T) {
 	}
 
 	// After delete: session gone from list.
-	sessions, err = s.ListSessions()
+	sessions, err = s.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions after delete: %v", err)
 	}
@@ -570,7 +570,7 @@ func TestStorage_ListSessions_ExcludesArchived(t *testing.T) {
 		t.Fatalf("ArchiveSession: %v", err)
 	}
 
-	sessions, err := s.ListSessions()
+	sessions, err := s.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -579,6 +579,56 @@ func TestStorage_ListSessions_ExcludesArchived(t *testing.T) {
 	}
 	if sessions[0].ID != active.ID {
 		t.Errorf("expected active session, got %q", sessions[0].ID)
+	}
+}
+
+func TestStorage_ListSessions_Filter(t *testing.T) {
+	s := newTestStorage(t)
+
+	now := time.Now()
+	for _, sess := range []Session{
+		{ID: "f-active-1", Name: "a1", Path: "/tmp", Status: "active", CreatedAt: now, LastActiveAt: now},
+		{ID: "f-active-2", Name: "a2", Path: "/tmp", Status: "active", CreatedAt: now, LastActiveAt: now},
+		{ID: "f-inactive-1", Name: "i1", Path: "/tmp", Status: "inactive", CreatedAt: now, LastActiveAt: now},
+	} {
+		if err := s.UpsertSession(sess); err != nil {
+			t.Fatalf("UpsertSession %s: %v", sess.ID, err)
+		}
+	}
+
+	// filter="" → all 3 non-archived
+	all, err := s.ListSessions("")
+	if err != nil {
+		t.Fatalf("ListSessions all: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("filter='': expected 3, got %d", len(all))
+	}
+
+	// filter="active" → 2
+	active, err := s.ListSessions("active")
+	if err != nil {
+		t.Fatalf("ListSessions active: %v", err)
+	}
+	if len(active) != 2 {
+		t.Errorf("filter='active': expected 2, got %d", len(active))
+	}
+	for _, sess := range active {
+		if sess.Status != "active" {
+			t.Errorf("filter='active': got session with status %q", sess.Status)
+		}
+	}
+
+	// filter="inactive" → 1
+	inactive, err := s.ListSessions("inactive")
+	if err != nil {
+		t.Fatalf("ListSessions inactive: %v", err)
+	}
+	if len(inactive) != 1 {
+		t.Errorf("filter='inactive': expected 1, got %d", len(inactive))
+	}
+	if inactive[0].ID != "f-inactive-1" {
+		t.Errorf("filter='inactive': expected f-inactive-1, got %q", inactive[0].ID)
 	}
 }
 
