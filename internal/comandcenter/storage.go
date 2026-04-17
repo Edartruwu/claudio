@@ -120,6 +120,10 @@ func (s *Storage) migrate() error {
 			size INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// 7
+		`ALTER TABLE cc_messages ADD COLUMN reply_to_session TEXT`,
+		// 8
+		`ALTER TABLE cc_messages ADD COLUMN quoted_content TEXT`,
 	}
 
 	for i, m := range migrations {
@@ -310,9 +314,10 @@ func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 // InsertMessage stores a message for a session.
 func (s *Storage) InsertMessage(msg Message) error {
 	_, err := s.db.Exec(`
-		INSERT INTO cc_messages (id, session_id, role, content, agent_name, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, msg.ID, msg.SessionID, msg.Role, msg.Content, msg.AgentName, msg.CreatedAt)
+		INSERT INTO cc_messages (id, session_id, role, content, agent_name, created_at, reply_to_session, quoted_content)
+		VALUES (?, ?, ?, ?, ?, ?, NULLIF(?,?), NULLIF(?,?))
+	`, msg.ID, msg.SessionID, msg.Role, msg.Content, msg.AgentName, msg.CreatedAt,
+		msg.ReplyToSession, "", msg.QuotedContent, "")
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
 	}
@@ -325,7 +330,8 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 		limit = 50
 	}
 	rows, err := s.db.Query(`
-		SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at
+		SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
+		       COALESCE(reply_to_session,''), COALESCE(quoted_content,'')
 		FROM cc_messages WHERE session_id=?
 		ORDER BY created_at DESC LIMIT ?
 	`, sessionID, limit)
@@ -338,7 +344,7 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content,
-			&m.AgentName, &m.CreatedAt); err != nil {
+			&m.AgentName, &m.CreatedAt, &m.ReplyToSession, &m.QuotedContent); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
 		msgs = append(msgs, m)

@@ -20,12 +20,14 @@ type Session struct {
 
 // Message is a stored conversation message for a session.
 type Message struct {
-	ID        string
-	SessionID string
-	Role      string // assistant|user|tool_use
-	Content   string
-	AgentName string
-	CreatedAt time.Time
+	ID              string
+	SessionID       string
+	Role            string // assistant|user|tool_use
+	Content         string
+	AgentName       string
+	CreatedAt       time.Time
+	ReplyToSession  string // name of target session for @mention routing (empty if none)
+	QuotedContent   string // first 80 chars of content stored as reply-quote metadata
 }
 
 // Task is a tracked task associated with a session.

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,10 @@ import (
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"golang.org/x/net/websocket"
 )
+
+// mentionRe matches "@Name message" at the start of content.
+// Group 1 = session name, Group 2 = message body.
+var mentionRe = regexp.MustCompile(`^@(\w[\w\s]*?)\s+(.+)$`)
 
 //go:embed templates static
 var staticFS embed.FS
@@ -255,6 +260,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /partials/sessions", ws.uiAuth(http.HandlerFunc(ws.handlePartialSessions)))
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
 	mux.Handle("POST /api/sessions/{session_id}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessage)))
+	mux.Handle("POST /api/sessions/by-name/{name}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessageByName)))
 	mux.Handle("POST /api/sessions/{session_id}/upload", ws.uiAuth(http.HandlerFunc(ws.handleUpload)))
 	mux.Handle("GET /uploads/{session_id}/{filename}", ws.uiAuth(http.HandlerFunc(ws.handleServeFile)))
 	mux.Handle("GET /ws/ui", ws.uiAuth(http.HandlerFunc(ws.handleWSUI)))
@@ -454,6 +460,15 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Detect @mention: "@Name message body"
+	if m := mentionRe.FindStringSubmatch(content); m != nil {
+		targetName := m[1]
+		msgBody := m[2]
+		ws.handleMentionRoute(w, sessionID, targetName, msgBody, content)
+		return
+	}
+
+	// Normal (non-@mention) path — existing behavior.
 	payload, _ := json.Marshal(attach.UserMsgPayload{Content: content})
 	env := attach.Envelope{Type: attach.EventMsgUser, Payload: payload}
 	if err := ws.hub.Send(sessionID, env); err != nil {
@@ -482,6 +497,131 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleMentionRoute handles @Name routing: stores in origin session with reply metadata,
+// routes a copy to the target session, and pushes UI events to both sessions' WS clients.
+func (ws *WebServer) handleMentionRoute(w http.ResponseWriter, originID, targetName, msgBody, fullContent string) {
+	// Resolve target session by name.
+	targetSess, found, err := ws.storage.GetSessionByName(targetName)
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	if !found {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Route message body to target session via hub.
+	payload, _ := json.Marshal(attach.UserMsgPayload{Content: msgBody})
+	env := attach.Envelope{Type: attach.EventMsgUser, Payload: payload}
+	if err := ws.hub.Send(targetSess.ID, env); err != nil {
+		http.Error(w, "session not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	now := time.Now()
+
+	// Quoted content: first 80 runes of full message.
+	quoted := fullContent
+	if r := []rune(fullContent); len(r) > 80 {
+		quoted = string(r[:80])
+	}
+
+	// Store in originating session with reply metadata.
+	originMsg := cc.Message{
+		ID:             fmt.Sprintf("%d", now.UnixNano()),
+		SessionID:      originID,
+		Role:           "user",
+		Content:        fullContent,
+		CreatedAt:      now,
+		ReplyToSession: targetName,
+		QuotedContent:  quoted,
+	}
+	_ = ws.storage.InsertMessage(originMsg)
+
+	// Store copy in target session (plain user message, no reply fields).
+	targetMsg := cc.Message{
+		ID:        fmt.Sprintf("%da", now.UnixNano()),
+		SessionID: targetSess.ID,
+		Role:      "user",
+		Content:   msgBody,
+		CreatedAt: now,
+	}
+	_ = ws.storage.InsertMessage(targetMsg)
+
+	// Push bubbles to both sessions' WS clients.
+	ws.pushMsgBubble(originID, originMsg)
+	ws.pushMsgBubble(targetSess.ID, targetMsg)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSendMessageByName handles POST /api/sessions/by-name/{name}/message.
+// Looks up the session by name, then sends the message via hub.
+func (ws *WebServer) handleSendMessageByName(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	content := r.FormValue("content")
+	if content == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	sess, found, err := ws.storage.GetSessionByName(name)
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	if !found {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	payload, _ := json.Marshal(attach.UserMsgPayload{Content: content})
+	env := attach.Envelope{Type: attach.EventMsgUser, Payload: payload}
+	if err := ws.hub.Send(sess.ID, env); err != nil {
+		http.Error(w, "session not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	msg := cc.Message{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		SessionID: sess.ID,
+		Role:      "user",
+		Content:   content,
+		CreatedAt: time.Now(),
+	}
+	_ = ws.storage.InsertMessage(msg)
+
+	var buf bytes.Buffer
+	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err == nil {
+		if p, err := json.Marshal(map[string]string{
+			"type": "message.user",
+			"html": buf.String(),
+		}); err == nil {
+			ws.pushToSessionClients(sess.ID, p)
+		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// pushMsgBubble renders and pushes a user message bubble to a session's WS clients.
+func (ws *WebServer) pushMsgBubble(sessionID string, msg cc.Message) {
+	var buf bytes.Buffer
+	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err == nil {
+		if p, err := json.Marshal(map[string]string{
+			"type": "message.user",
+			"html": buf.String(),
+		}); err == nil {
+			ws.pushToSessionClients(sessionID, p)
+		}
+	}
 }
 
 // handleWSUI upgrades to WebSocket and streams new messages to the browser.
