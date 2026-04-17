@@ -33,6 +33,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui"
 	"github.com/Abraxas-365/claudio/internal/tui/agentselector"
+	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
@@ -55,6 +56,9 @@ var (
 
 // appInstance is initialized before command execution.
 var appInstance *app.App
+
+// attachClient holds the ComandCenter attach client (set by --attach flag).
+var attachClient *attachclient.Client
 
 var rootCmd = &cobra.Command{
 	Use:   "claudio [prompt]",
@@ -133,16 +137,11 @@ security, and hackability.`,
 			if err := client.Connect(context.Background()); err != nil {
 				log.Printf("Warning: failed to attach to ComandCenter: %v\n", err)
 			} else {
-				// Register user message callback (TODO: inject into session input queue)
-				client.OnUserMessage(func(payload attach.UserMsgPayload) {
-					// For now, just log
-					log.Printf("Received user message from ComandCenter: %q\n", payload.Content)
-				})
+				attachClient = client
 
 				// Subscribe to bus events and forward
 				appInstance.Bus.SubscribeAll(func(event bus.Event) {
 					// TODO: map bus events to attach protocol events and forward
-					// For now, silently forward all events
 					switch event.Type {
 					case "message.assistant":
 						// Parse and forward assistant messages
@@ -150,10 +149,6 @@ security, and hackability.`,
 						// Parse and forward task created events
 					}
 				})
-
-				// Store client for later access (TODO: better cleanup registration)
-				// For now, relies on app.Close()
-				_ = client
 			}
 		}
 
@@ -770,6 +765,15 @@ func runInteractive() error {
 	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	// Wire ComandCenter user messages → TUI submit path.
+	// program.Send dispatches through BubbleTea's Update loop, so the
+	// message follows the exact same path as local keyboard input.
+	if attachClient != nil {
+		attachClient.OnUserMessage(func(payload attach.UserMsgPayload) {
+			p.Send(prompt.SubmitMsg{Text: payload.Content})
+		})
+	}
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
