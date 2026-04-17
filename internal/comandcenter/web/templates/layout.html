@@ -31,6 +31,10 @@
     .htmx-request .htmx-indicator { display: inline; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Swipe row: show ... button on hover (desktop only) */
+    @media (hover: hover) {
+      .swipe-row:hover .row-menu-trigger { opacity: 1 !important; }
+    }
   </style>
 </head>
 <body class="font-mono bg-black text-white h-screen overflow-hidden" {{if .SessionID}}data-session-id="{{.SessionID}}"{{end}}>
@@ -73,6 +77,99 @@
   </div>
   {{end}}
   <script src="/static/app.js"></script>
+  <script>
+  // ── Swipe-to-archive/delete ──────────────────────────────────────────────
+  (function () {
+    var THRESHOLD = 60;      // px drag required to snap open
+    var ACTION_W  = 160;     // total width of action button strip (2 × 80px)
+
+    function initSwipeRow(row) {
+      if (row.dataset.swipeInit) return;
+      row.dataset.swipeInit = '1';
+
+      var content = row.querySelector('.swipe-content');
+      if (!content) return;
+
+      var startX = 0, startY = 0, baseX = 0;
+      var isOpen = false, dragging = false;
+
+      function snapTo(x, animate) {
+        content.style.transition = animate ? 'transform 0.2s ease' : 'none';
+        content.style.transform = 'translateX(' + x + 'px)';
+        isOpen = x < 0;
+      }
+
+      content.addEventListener('touchstart', function (e) {
+        var t = e.touches[0];
+        startX = t.clientX;
+        startY = t.clientY;
+        baseX  = isOpen ? -ACTION_W : 0;
+        dragging = false;
+        content.style.transition = 'none';
+      }, { passive: true });
+
+      content.addEventListener('touchmove', function (e) {
+        var t = e.touches[0];
+        var dx = t.clientX - startX;
+        var dy = t.clientY - startY;
+
+        // Ignore vertical scrolls
+        if (!dragging && Math.abs(dy) > Math.abs(dx)) return;
+        dragging = true;
+        e.preventDefault();
+
+        var nx = Math.max(-ACTION_W, Math.min(0, baseX + dx));
+        content.style.transform = 'translateX(' + nx + 'px)';
+      }, { passive: false });
+
+      content.addEventListener('touchend', function (e) {
+        if (!dragging) return;
+        var dx = e.changedTouches[0].clientX - startX;
+        if (isOpen) {
+          snapTo(dx > THRESHOLD ? 0 : -ACTION_W, true);
+        } else {
+          snapTo(dx < -THRESHOLD ? -ACTION_W : 0, true);
+        }
+      }, { passive: true });
+    }
+
+    function initAll() {
+      document.querySelectorAll('.swipe-row').forEach(initSwipeRow);
+    }
+
+    // Close all open swipe rows when tapping outside
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.swipe-row')) {
+        document.querySelectorAll('.swipe-row .swipe-content').forEach(function (c) {
+          c.style.transition = 'transform 0.2s ease';
+          c.style.transform  = 'translateX(0)';
+        });
+      }
+      // Close any open dropdown menus
+      if (!e.target.closest('.row-menu')) {
+        document.querySelectorAll('.row-menu-dropdown').forEach(function (d) {
+          d.style.display = 'none';
+        });
+      }
+    });
+
+    // Desktop ... dropdown toggle
+    window.ccToggleRowMenu = function (btn, e) {
+      if (e) e.stopPropagation();
+      var dd = btn.nextElementSibling;
+      var wasOpen = dd.style.display === 'block';
+      // Close all first
+      document.querySelectorAll('.row-menu-dropdown').forEach(function (d) {
+        d.style.display = 'none';
+      });
+      if (!wasOpen) dd.style.display = 'block';
+    };
+
+    document.addEventListener('DOMContentLoaded', initAll);
+    document.addEventListener('htmx:afterSwap',   initAll);
+    document.addEventListener('htmx:afterSettle', initAll);
+  })();
+  </script>
 </body>
 </html>
 {{end}}

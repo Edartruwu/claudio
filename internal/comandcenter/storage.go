@@ -194,11 +194,47 @@ func (s *Storage) SetSessionStatus(id, status string) error {
 	return nil
 }
 
-// ListSessions returns all sessions ordered by last_active_at desc.
+// ArchiveSession sets a session's status to 'archived'.
+// Archived sessions are excluded from ListSessions.
+func (s *Storage) ArchiveSession(id string) error {
+	_, err := s.db.Exec(
+		`UPDATE cc_sessions SET status='archived', last_active_at=? WHERE id=?`,
+		time.Now(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("archive session: %w", err)
+	}
+	return nil
+}
+
+// DeleteSession permanently removes a session and all its related records.
+// Deletes messages, tasks, and agents before removing the session row.
+func (s *Storage) DeleteSession(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("delete session begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	for _, q := range []string{
+		`DELETE FROM cc_agents WHERE session_id=?`,
+		`DELETE FROM cc_tasks WHERE session_id=?`,
+		`DELETE FROM cc_messages WHERE session_id=?`,
+		`DELETE FROM cc_sessions WHERE id=?`,
+	} {
+		if _, err := tx.Exec(q, id); err != nil {
+			return fmt.Errorf("delete session cleanup: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// ListSessions returns all non-archived sessions ordered by last_active_at desc.
 func (s *Storage) ListSessions() ([]Session, error) {
 	rows, err := s.db.Query(`
 		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
-		FROM cc_sessions ORDER BY last_active_at DESC
+		FROM cc_sessions WHERE status != 'archived' ORDER BY last_active_at DESC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)

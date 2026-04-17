@@ -187,6 +187,10 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /partials/sessions", ws.uiAuth(http.HandlerFunc(ws.handlePartialSessions)))
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
 	mux.Handle("GET /ws/ui", ws.uiAuth(http.HandlerFunc(ws.handleWSUI)))
+
+	// Session management API.
+	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
+	mux.Handle("DELETE /api/sessions/{id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteSession)))
 }
 
 // uiAuth checks the "auth" HttpOnly cookie.
@@ -394,6 +398,28 @@ func (ws *WebServer) removeClient(c *uiClient) {
 	ws.mu.Lock()
 	delete(ws.clients, c)
 	ws.mu.Unlock()
+}
+
+// handleArchiveSession sets a session's status to 'archived' and returns 200 with empty body.
+// htmx swaps the row with the empty response, removing it from the DOM.
+func (ws *WebServer) handleArchiveSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := ws.storage.ArchiveSession(id); err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleDeleteSession permanently deletes a session + all its messages/tasks/agents.
+// Returns 200 with empty body so htmx removes the row via outerHTML swap.
+func (ws *WebServer) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := ws.storage.DeleteSession(id); err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // buildSessionRows fetches the last message for each session and unread count.

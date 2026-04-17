@@ -150,3 +150,126 @@ func TestWebServer_ChatView_Renders(t *testing.T) {
 		t.Fatalf("want 200, got %d\nbody: %s", w.Code, w.Body.String())
 	}
 }
+
+// TestWebServer_ArchiveSession verifies PATCH /api/sessions/{id}/archive → 200 + session archived.
+func TestWebServer_ArchiveSession(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	err := storage.UpsertSession(cc.Session{
+		ID:           "arch-sess-1",
+		Name:         "ToArchive",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	r := authedRequest(http.MethodPatch, "/api/sessions/arch-sess-1/archive")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+
+	// Session must be absent from ListSessions (archived).
+	sessions, err := storage.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	for _, s := range sessions {
+		if s.ID == "arch-sess-1" {
+			t.Error("archived session still visible in ListSessions")
+		}
+	}
+
+	// Status in DB must be 'archived'.
+	got, err := storage.GetSession("arch-sess-1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if got.Status != "archived" {
+		t.Errorf("Status after archive: got %q, want %q", got.Status, "archived")
+	}
+}
+
+// TestWebServer_ArchiveSession_NoAuth verifies unauthenticated request → 303 redirect.
+func TestWebServer_ArchiveSession_NoAuth(t *testing.T) {
+	_, mux := newTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodPatch, "/api/sessions/any-id/archive", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303 redirect for unauthed request, got %d", w.Code)
+	}
+}
+
+// TestWebServer_DeleteSession verifies DELETE /api/sessions/{id} → 200 + session+messages removed.
+func TestWebServer_DeleteSession(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	err := storage.UpsertSession(cc.Session{
+		ID:           "del-sess-1",
+		Name:         "ToDelete",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	err = storage.InsertMessage(cc.Message{
+		ID:        "del-msg-1",
+		SessionID: "del-sess-1",
+		Role:      "user",
+		Content:   "hello",
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+
+	r := authedRequest(http.MethodDelete, "/api/sessions/del-sess-1")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+
+	// Session must be gone.
+	sessions, err := storage.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	for _, s := range sessions {
+		if s.ID == "del-sess-1" {
+			t.Error("deleted session still in ListSessions")
+		}
+	}
+
+	// GetSession must error.
+	_, err = storage.GetSession("del-sess-1")
+	if err == nil {
+		t.Error("expected error from GetSession after delete, got nil")
+	}
+}
+
+// TestWebServer_DeleteSession_NoAuth verifies unauthenticated request → 303 redirect.
+func TestWebServer_DeleteSession_NoAuth(t *testing.T) {
+	_, mux := newTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodDelete, "/api/sessions/any-id", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303 redirect for unauthed request, got %d", w.Code)
+	}
+}
