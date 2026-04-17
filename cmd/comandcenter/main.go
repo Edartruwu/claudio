@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -10,10 +11,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/auth"
 	"github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/comandcenter/web"
 	"github.com/Abraxas-365/claudio/internal/tasks"
@@ -102,6 +106,39 @@ func main() {
 		}
 		hub.Broadcast(sessionID, env)
 	}
+	// Wire background execution via Anthropic API using ANTHROPIC_API_KEY env var.
+	{
+		apiKey := os.Getenv("ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			log.Println("[cron] warning: ANTHROPIC_API_KEY not set — background crons will not execute")
+		} else {
+			resolver := auth.NewResolver(nil)
+			apiClient := api.NewClient(resolver, api.WithPromptCaching(false))
+			cronRunner.RunBackgroundFn = func(ctx context.Context, modelID, systemPrompt, prompt string) (string, error) {
+				contentJSON, _ := json.Marshal([]map[string]string{{"type": "text", "text": prompt}})
+				req := &api.MessagesRequest{
+					Model:     modelID,
+					MaxTokens: 8192,
+					System:    systemPrompt,
+					Messages: []api.Message{
+						{Role: "user", Content: json.RawMessage(contentJSON)},
+					},
+				}
+				resp, err := apiClient.SendMessage(ctx, req)
+				if err != nil {
+					return "", fmt.Errorf("background cron API call: %w", err)
+				}
+				var parts []string
+				for _, block := range resp.Content {
+					if block.Type == "text" && block.Text != "" {
+						parts = append(parts, block.Text)
+					}
+				}
+				return strings.Join(parts, "\n"), nil
+			}
+		}
+	}
+
 	cronCtx, cronCancel := context.WithCancel(context.Background())
 	cronRunner.Start(cronCtx)
 
@@ -109,6 +146,7 @@ func main() {
 
 	// Mount browser UI (WhatsApp-style chat interface).
 	webSrv := web.NewWebServer(storage, hub, *password, *dataDir)
+	webSrv.SetCronStore(cronStore)
 	if pk, _, err := storage.GetOrCreateVAPIDKeys(); err == nil && pk != "" {
 		webSrv.SetVAPIDPublicKey(pk)
 	}

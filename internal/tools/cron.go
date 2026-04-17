@@ -53,6 +53,19 @@ func (t *CronCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		return errResult("failed to create cron entry: " + err.Error()), nil
 	}
 
+	// Embed cron ID in inline prompts so the AI can self-delete when done.
+	entryType := entry.Type
+	if entryType == "" {
+		entryType = "inline"
+	}
+	if entryType == "inline" {
+		updated := entry.Prompt + fmt.Sprintf("\n\n[cron_id: %s] If your task is complete or a condition is met that should stop future runs, call the CronDelete tool with this ID.", entry.ID)
+		if err := t.Store.UpdatePrompt(entry.ID, updated); err != nil {
+			// Non-fatal: log but don't fail the create.
+			_ = err
+		}
+	}
+
 	return &Result{Content: fmt.Sprintf("Created cron entry %s (type: %s, schedule: %s, next: %s)",
 		entry.ID, entry.Type, entry.Schedule, entry.NextRun.Format("2006-01-02 15:04"))}, nil
 }

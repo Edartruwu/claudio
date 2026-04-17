@@ -20,6 +20,7 @@ import (
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -246,6 +247,7 @@ type WebServer struct {
 	password       string
 	uploadsDir     string
 	vapidPublicKey string
+	cronStore      *tasks.CronStore
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
@@ -305,10 +307,17 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/push/vapid-public-key", ws.uiAuth(http.HandlerFunc(ws.handleVAPIDPublicKey)))
 	mux.Handle("POST /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushSubscribe)))
 	mux.Handle("DELETE /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushUnsubscribe)))
+
+	// Cron endpoints.
+	mux.Handle("GET /chat/{session_id}/crons", ws.uiAuth(http.HandlerFunc(ws.handleCronList)))
+	mux.Handle("DELETE /api/crons/{id}", ws.uiAuth(http.HandlerFunc(ws.handleCronDelete)))
 }
 
 // SetVAPIDPublicKey stores the VAPID public key for the browser subscription flow.
 func (ws *WebServer) SetVAPIDPublicKey(key string) { ws.vapidPublicKey = key }
+
+// SetCronStore attaches a CronStore so cron API endpoints are available.
+func (ws *WebServer) SetCronStore(cs *tasks.CronStore) { ws.cronStore = cs }
 
 // handleVAPIDPublicKey returns the VAPID public key for browser push subscription.
 func (ws *WebServer) handleVAPIDPublicKey(w http.ResponseWriter, r *http.Request) {
@@ -347,6 +356,88 @@ func (ws *WebServer) handlePushUnsubscribe(w http.ResponseWriter, r *http.Reques
 	}
 	if err := ws.storage.DeletePushSubscription(body.Endpoint); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleCronList returns a partial HTML list of cron entries for the given session.
+func (ws *WebServer) handleCronList(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	if ws.cronStore == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<div class="text-gray-500 text-sm px-4 py-2">Cron store not configured.</div>`)
+		return
+	}
+
+	var entries []tasks.CronEntry
+	for _, e := range ws.cronStore.All() {
+		if e.SessionID == sessionID {
+			entries = append(entries, e)
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if len(entries) == 0 {
+		fmt.Fprint(w, `<div class="text-gray-500 text-sm px-4 py-2">No scheduled tasks.</div>`)
+		return
+	}
+
+	for _, e := range entries {
+		cronType := e.Type
+		if cronType == "" {
+			cronType = "inline"
+		}
+		badgeColor := "background:#3B82F6" // blue for inline
+		if cronType == "background" {
+			badgeColor = "background:#8B5CF6" // violet for background
+		}
+		prompt := e.Prompt
+		if len([]rune(prompt)) > 60 {
+			runes := []rune(prompt)
+			prompt = string(runes[:60]) + "…"
+		}
+		agent := ""
+		if e.Agent != "" {
+			agent = fmt.Sprintf(`<span class="text-gray-400 text-xs ml-2">agent: %s</span>`, template.HTMLEscapeString(e.Agent))
+		}
+		fmt.Fprintf(w, `
+<div class="cron-row" style="background:#1C1C1E;border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
+  <div style="flex:1;min-width:0;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+      <span style="%s;color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;">%s</span>
+      <span class="text-gray-300 text-xs font-mono">%s</span>
+      %s
+    </div>
+    <div class="text-gray-400 text-xs truncate">%s</div>
+  </div>
+  <button
+    hx-delete="/api/crons/%s"
+    hx-confirm="Delete this cron?"
+    hx-target="closest .cron-row"
+    hx-swap="outerHTML swap:300ms"
+    style="background:none;border:none;cursor:pointer;color:#EF4444;padding:4px 8px;border-radius:6px;font-size:18px;"
+    title="Delete cron">🗑</button>
+</div>`,
+			badgeColor,
+			template.HTMLEscapeString(cronType),
+			template.HTMLEscapeString(e.Schedule),
+			agent,
+			template.HTMLEscapeString(prompt),
+			template.HTMLEscapeString(e.ID),
+		)
+	}
+}
+
+// handleCronDelete removes a cron entry by ID and returns 204.
+func (ws *WebServer) handleCronDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if ws.cronStore == nil {
+		http.Error(w, "cron store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if err := ws.cronStore.Remove(id); err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -423,8 +514,9 @@ type InfoPageData struct {
 	Tasks     []cc.Task
 	Agents    []cc.Agent
 	SessionID string
-	Images    []cc.Attachment // image attachments for media grid
-	Docs      []cc.Attachment // non-image attachments for document list
+	Images    []cc.Attachment    // image attachments for media grid
+	Docs      []cc.Attachment    // non-image attachments for document list
+	Crons     []tasks.CronEntry  // scheduled tasks for this session
 }
 
 // TaskDetailData holds data for the task detail partial.
@@ -490,9 +582,9 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
-	tasks, err := ws.storage.ListTasks(id)
+	sessionTasks, err := ws.storage.ListTasks(id)
 	if err != nil {
-		tasks = nil
+		sessionTasks = nil
 	}
 	agents, err := ws.storage.ListAgents(id)
 	if err != nil {
@@ -507,13 +599,22 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 			docs = append(docs, att)
 		}
 	}
+	var crons []tasks.CronEntry
+	if ws.cronStore != nil {
+		for _, e := range ws.cronStore.All() {
+			if e.SessionID == id {
+				crons = append(crons, e)
+			}
+		}
+	}
 	infoTmpl.execute(w, "info_panel.html", InfoPageData{
 		Session:   sess,
-		Tasks:     tasks,
+		Tasks:     sessionTasks,
 		Agents:    agents,
 		SessionID: id,
 		Images:    images,
 		Docs:      docs,
+		Crons:     crons,
 	})
 }
 

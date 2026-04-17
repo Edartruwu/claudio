@@ -92,6 +92,17 @@ func (cs *CronStore) Add(schedule, prompt, agent, entryType, sessionID string) (
 	return &entry, cs.Save()
 }
 
+// UpdatePrompt replaces the Prompt field of a cron entry in-memory and saves.
+func (cs *CronStore) UpdatePrompt(id, prompt string) error {
+	for i := range cs.entries {
+		if cs.entries[i].ID == id {
+			cs.entries[i].Prompt = prompt
+			return cs.Save()
+		}
+	}
+	return fmt.Errorf("cron entry %q not found", id)
+}
+
 // Remove deletes a cron entry by ID.
 func (cs *CronStore) Remove(id string) error {
 	for i, e := range cs.entries {
