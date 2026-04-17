@@ -269,6 +269,142 @@ func TestUnreadCount_CountsMessagesAfterLastRead(t *testing.T) {
 	}
 }
 
+func TestStorage_ArchiveSession(t *testing.T) {
+	s := newTestStorage(t)
+
+	sess := Session{
+		ID: "sess-archive-1", Name: "archive-me", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	// Before archive: visible in list.
+	sessions, err := s.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions before archive: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session before archive, got %d", len(sessions))
+	}
+
+	if err := s.ArchiveSession(sess.ID); err != nil {
+		t.Fatalf("ArchiveSession: %v", err)
+	}
+
+	// After archive: NOT in list.
+	sessions, err = s.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions after archive: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions after archive, got %d", len(sessions))
+	}
+
+	// But still retrievable via GetSession with 'archived' status.
+	got, err := s.GetSession(sess.ID)
+	if err != nil {
+		t.Fatalf("GetSession after archive: %v", err)
+	}
+	if got.Status != "archived" {
+		t.Errorf("Status after archive: got %q, want %q", got.Status, "archived")
+	}
+}
+
+func TestStorage_DeleteSession(t *testing.T) {
+	s := newTestStorage(t)
+
+	sess := Session{
+		ID: "sess-delete-1", Name: "delete-me", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	// Insert some messages.
+	for _, m := range []Message{
+		{ID: "del-msg-0", SessionID: sess.ID, Role: "user", Content: "content 0", CreatedAt: time.Now()},
+		{ID: "del-msg-1", SessionID: sess.ID, Role: "assistant", Content: "content 1", CreatedAt: time.Now()},
+		{ID: "del-msg-2", SessionID: sess.ID, Role: "user", Content: "content 2", CreatedAt: time.Now()},
+	} {
+		if err := s.InsertMessage(m); err != nil {
+			t.Fatalf("InsertMessage %s: %v", m.ID, err)
+		}
+	}
+
+	// Before delete: session + messages exist.
+	sessions, err := s.ListSessions()
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("expected 1 session before delete, got %d (err=%v)", len(sessions), err)
+	}
+	msgs, err := s.ListMessages(sess.ID, 10)
+	if err != nil || len(msgs) != 3 {
+		t.Fatalf("expected 3 messages before delete, got %d (err=%v)", len(msgs), err)
+	}
+
+	if err := s.DeleteSession(sess.ID); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+
+	// After delete: session gone from list.
+	sessions, err = s.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions after delete: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions after delete, got %d", len(sessions))
+	}
+
+	// GetSession returns error (not found).
+	_, err = s.GetSession(sess.ID)
+	if err == nil {
+		t.Error("expected error from GetSession after delete, got nil")
+	}
+
+	// Messages also gone.
+	msgs, err = s.ListMessages(sess.ID, 10)
+	if err != nil {
+		t.Fatalf("ListMessages after delete: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages after delete, got %d", len(msgs))
+	}
+}
+
+func TestStorage_ListSessions_ExcludesArchived(t *testing.T) {
+	s := newTestStorage(t)
+
+	active := Session{
+		ID: "sess-active", Name: "active", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	archived := Session{
+		ID: "sess-arch", Name: "archived", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	for _, sess := range []Session{active, archived} {
+		if err := s.UpsertSession(sess); err != nil {
+			t.Fatalf("UpsertSession %s: %v", sess.ID, err)
+		}
+	}
+	if err := s.ArchiveSession(archived.ID); err != nil {
+		t.Fatalf("ArchiveSession: %v", err)
+	}
+
+	sessions, err := s.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (non-archived), got %d", len(sessions))
+	}
+	if sessions[0].ID != active.ID {
+		t.Errorf("expected active session, got %q", sessions[0].ID)
+	}
+}
+
 func TestMarkRead_ResetsUnreadCount(t *testing.T) {
 	s := newTestStorage(t)
 

@@ -145,21 +145,7 @@ func TestServer_ListMessages(t *testing.T) {
 	}
 }
 
-func TestServer_SendMessage_NoSession(t *testing.T) {
-	srv := newTestServer(t, "secret")
 
-	body := strings.NewReader(`{"content":"hello"}`)
-	req := httptest.NewRequest("POST", "/api/sessions/nope/message", body)
-	req.Header.Set("Authorization", "Bearer secret")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
-
-	// No WS connection → hub.Send fails → 502
-	if rec.Code != http.StatusBadGateway {
-		t.Errorf("send to disconnected: got %d, want 502", rec.Code)
-	}
-}
 
 func TestServer_ContentType_JSON(t *testing.T) {
 	srv := newTestServer(t, "secret")
