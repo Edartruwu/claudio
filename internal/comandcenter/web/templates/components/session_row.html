@@ -1,9 +1,14 @@
 {{define "session-row"}}
 <a href="/chat/{{.Session.ID}}"
-   class="flex items-center px-4" style="height:76px;border-bottom:1px solid #2C2C2E;background:#000000;">
-  <!-- Avatar 56px circle -->
-  <div class="rounded-full flex items-center justify-center flex-shrink-0 mr-3" style="width:56px;height:56px;background:{{avatarColor .Session.Name}};">
-    <span class="text-white font-semibold text-xl">{{firstChar .Session.Name}}</span>
+   class="flex items-center px-4" style="height:76px;border-bottom:1px solid #2C2C2E;background:#000000;{{if ne .Session.Status "active"}}opacity:0.5;{{end}}">
+  <!-- Avatar 56px circle with active dot -->
+  <div class="relative flex-shrink-0 mr-3">
+    <div class="rounded-full flex items-center justify-center" style="width:56px;height:56px;background:{{avatarColor .Session.Name}};">
+      <span class="text-white font-semibold text-xl">{{firstChar .Session.Name}}</span>
+    </div>
+    {{if eq .Session.Status "active"}}
+    <span class="absolute bottom-0 right-0 block rounded-full" style="width:14px;height:14px;background:#25D366;border:2px solid #000;"></span>
+    {{end}}
   </div>
   <!-- Content -->
   <div class="flex-1 min-w-0">

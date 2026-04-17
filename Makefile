@@ -5,12 +5,17 @@ LDFLAGS := -ldflags "-s -w -X github.com/Abraxas-365/claudio/internal/cli.Versio
 
 build:
 	go build $(LDFLAGS) -o bin/claudio ./cmd/claudio
+	go build $(LDFLAGS) -o bin/claudio-server ./cmd/comandcenter
 
 run:
 	go run $(LDFLAGS) ./cmd/claudio
 
+run-server:
+	go run $(LDFLAGS) ./cmd/comandcenter
+
 install:
 	go install $(LDFLAGS) ./cmd/claudio
+	go install $(LDFLAGS) ./cmd/comandcenter
 
 test:
 	go test ./...

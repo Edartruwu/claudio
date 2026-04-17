@@ -54,7 +54,6 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /ws/attach", s.auth(http.HandlerFunc(s.handleWSAttach)))
 	s.mux.Handle("GET /api/sessions", s.auth(http.HandlerFunc(s.handleListSessions)))
 	s.mux.Handle("GET /api/sessions/{id}/messages", s.auth(http.HandlerFunc(s.handleListMessages)))
-	s.mux.Handle("POST /api/sessions/{id}/message", s.auth(http.HandlerFunc(s.handleSendMessage)))
 }
 
 // auth is a middleware that checks the Authorization: Bearer <password> header.

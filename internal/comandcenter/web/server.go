@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
+
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"golang.org/x/net/websocket"
@@ -186,6 +188,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /chat/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handleChatView)))
 	mux.Handle("GET /partials/sessions", ws.uiAuth(http.HandlerFunc(ws.handlePartialSessions)))
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
+	mux.Handle("POST /api/sessions/{session_id}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessage)))
 	mux.Handle("GET /ws/ui", ws.uiAuth(http.HandlerFunc(ws.handleWSUI)))
 }
 
@@ -295,6 +298,37 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 	}
 	reversed := reverseMessages(msgs)
 	messagesTmpl.execute(w, "messages-partial", reversed)
+}
+
+func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	content := r.FormValue("content")
+	if content == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	payload, _ := json.Marshal(attach.UserMsgPayload{Content: content})
+	env := attach.Envelope{Type: attach.EventMsgUser, Payload: payload}
+	if err := ws.hub.Send(sessionID, env); err != nil {
+		http.Error(w, "session not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	msg := cc.Message{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		SessionID: sessionID,
+		Role:      "user",
+		Content:   content,
+		CreatedAt: time.Now(),
+	}
+	_ = ws.storage.InsertMessage(msg)
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleWSUI upgrades to WebSocket and streams new messages to the browser.

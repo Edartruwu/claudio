@@ -131,7 +131,13 @@ func (h *Hub) handleConn(conn wsConn) {
 		return
 	}
 
-	sessionID = newID()
+	// Reconnect to existing session by name if it exists.
+	existing, found, _ := h.storage.GetSessionByName(hello.Name)
+	if found {
+		sessionID = existing.ID
+	} else {
+		sessionID = newID()
+	}
 	now := time.Now()
 	sess := Session{
 		ID:           sessionID,

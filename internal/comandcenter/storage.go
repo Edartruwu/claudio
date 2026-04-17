@@ -238,6 +238,25 @@ func (s *Storage) GetSession(id string) (Session, error) {
 	return sess, nil
 }
 
+// GetSessionByName returns the most recent session with the given name, if any.
+func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
+	var sess Session
+	var master int
+	err := s.db.QueryRow(`
+		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+		FROM cc_sessions WHERE name=? ORDER BY created_at DESC LIMIT 1
+	`, name).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
+		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt)
+	if err == sql.ErrNoRows {
+		return Session{}, false, nil
+	}
+	if err != nil {
+		return Session{}, false, err
+	}
+	sess.Master = master == 1
+	return sess, true, nil
+}
+
 // InsertMessage stores a message for a session.
 func (s *Storage) InsertMessage(msg Message) error {
 	_, err := s.db.Exec(`
