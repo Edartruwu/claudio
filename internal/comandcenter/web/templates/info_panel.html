@@ -70,18 +70,48 @@
 
     <!-- Tasks Tab -->
     <div id="panel-tasks" class="tab-panel px-4 flex flex-col gap-2">
+      {{$sessID := .Session.ID}}
       {{range .Tasks}}
-      <div class="rounded-xl px-4 py-3 flex items-start gap-3" style="background:#1C1C1E;">
-        <span class="mt-1 inline-block w-2 h-2 rounded-full flex-shrink-0 {{taskStatusDot .Status}}"></span>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm text-white truncate">{{.Title}}</p>
-          <div class="flex items-center gap-2 mt-1">
-            <span class="text-xs px-2 py-0.5 rounded-full {{taskStatusBadge .Status}}">{{.Status}}</span>
+      {{$taskID := .ID}}
+      <div class="rounded-xl overflow-hidden" style="background:#1C1C1E;">
+        <!-- Clickable row -->
+        <div class="px-4 py-3 flex items-start gap-3 cursor-pointer select-none task-row"
+             hx-get="/chat/{{$sessID}}/tasks/{{$taskID}}"
+             hx-trigger="click"
+             hx-swap="innerHTML"
+             hx-target="next .task-detail"
+             onclick="toggleTaskDetail(this)"
+             style="{{if eq .Status "done"}}opacity:0.6;{{end}}">
+          <!-- Status icon -->
+          {{if eq .Status "done"}}
+            <span class="mt-0.5 flex-shrink-0 text-base leading-none" style="color:#25D366;">✓</span>
+          {{else if eq .Status "in_progress"}}
+            <span class="mt-1 flex-shrink-0 inline-block w-2 h-2 rounded-full animate-pulse" style="background:#3B9EFF;"></span>
+          {{else if eq .Status "blocked"}}
+            <span class="mt-0.5 flex-shrink-0 text-base leading-none" style="color:#FF453A;">✕</span>
+          {{else}}
+            <span class="mt-1 flex-shrink-0 inline-block w-2 h-2 rounded-full border" style="border-color:#8E8E93;"></span>
+          {{end}}
+          <div class="flex-1 min-w-0">
+            {{if eq .Status "done"}}
+              <p class="text-sm text-white truncate line-through">{{.Title}}</p>
+            {{else if eq .Status "in_progress"}}
+              <p class="text-sm text-white truncate font-bold">{{.Title}}</p>
+            {{else if eq .Status "blocked"}}
+              <p class="text-sm truncate" style="color:#FF453A;">{{.Title}}</p>
+            {{else}}
+              <p class="text-sm text-white truncate">{{.Title}}</p>
+            {{end}}
             {{if .AssignedTo}}
             <span class="text-xs" style="color:#8E8E93;">→ {{.AssignedTo}}</span>
             {{end}}
           </div>
+          <svg class="task-chevron w-4 h-4 flex-shrink-0 transition-transform mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:#8E8E93;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
         </div>
+        <!-- Detail expand area (htmx fills this) -->
+        <div class="task-detail hidden px-4 pb-3"></div>
       </div>
       {{else}}
       <div class="text-center text-sm mt-8" style="color:#8E8E93;">No tasks yet</div>
@@ -179,5 +209,36 @@
       btn.classList.toggle('tab-active', t === name);
     });
   }
+
+  // Toggle task accordion: if detail is already visible, collapse it.
+  // If not, let htmx load it (htmx handles the fetch + innerHTML swap).
+  // After htmx swap we show the detail div.
+  function toggleTaskDetail(rowEl) {
+    var detail = rowEl.parentElement.querySelector('.task-detail');
+    var chevron = rowEl.querySelector('.task-chevron');
+    if (!detail) return;
+    if (!detail.classList.contains('hidden')) {
+      detail.classList.add('hidden');
+      if (chevron) chevron.style.transform = '';
+      return;
+    }
+    // If detail is empty, htmx will fire and fill it, then we show.
+    // If already filled, just show it.
+    if (detail.innerHTML.trim() !== '') {
+      detail.classList.remove('hidden');
+      if (chevron) chevron.style.transform = 'rotate(90deg)';
+    }
+    // else: htmx event after-request fires → we show it there.
+  }
+
+  // After htmx fills a task-detail, reveal it.
+  document.addEventListener('htmx:afterSwap', function(e) {
+    var target = e.detail.target;
+    if (target && target.classList.contains('task-detail')) {
+      target.classList.remove('hidden');
+      var chevron = target.previousElementSibling && target.previousElementSibling.querySelector('.task-chevron');
+      if (chevron) chevron.style.transform = 'rotate(90deg)';
+    }
+  });
 </script>
 {{end}}

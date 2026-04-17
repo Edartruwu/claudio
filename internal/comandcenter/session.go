@@ -32,13 +32,14 @@ type Message struct {
 
 // Task is a tracked task associated with a session.
 type Task struct {
-	ID         string
-	SessionID  string
-	Title      string
-	Status     string
-	AssignedTo string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID          string
+	SessionID   string
+	Title       string
+	Description string // optional markdown description
+	Status      string
+	AssignedTo  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Agent tracks an agent within a session.
