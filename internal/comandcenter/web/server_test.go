@@ -1,10 +1,13 @@
 package web_test
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -634,5 +637,121 @@ func TestMentionRouting_DualStore(t *testing.T) {
 	}
 	if targetMsgs[0].ReplyToSession != "" {
 		t.Errorf("target msg should have empty ReplyToSession, got %q", targetMsgs[0].ReplyToSession)
+	}
+}
+
+// TestBrowseSession_ListsFiles verifies GET /api/sessions/{id}/browse returns 200 + items.
+func TestBrowseSession_ListsFiles(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	// Create a temp dir with a file and a subdirectory.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("create test file: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatalf("create subdir: %v", err)
+	}
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           "browse-sess-1",
+		Name:         "BrowseAgent",
+		Path:         dir,
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	r := authedRequest(http.MethodGet, "/api/sessions/browse-sess-1/browse")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Current string `json:"current"`
+		Root    string `json:"root"`
+		Items   []struct {
+			Name  string `json:"name"`
+			IsDir bool   `json:"is_dir"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Root == "" {
+		t.Error("response.root is empty")
+	}
+	if len(resp.Items) < 2 {
+		t.Fatalf("want at least 2 items, got %d", len(resp.Items))
+	}
+	var foundFile, foundDir bool
+	for _, item := range resp.Items {
+		if item.Name == "hello.txt" && !item.IsDir {
+			foundFile = true
+		}
+		if item.Name == "subdir" && item.IsDir {
+			foundDir = true
+		}
+	}
+	if !foundFile {
+		t.Error("hello.txt not in response items")
+	}
+	if !foundDir {
+		t.Error("subdir not in response items")
+	}
+}
+
+// TestBrowseSession_TraversalBlocked verifies path traversal above session root → 403.
+func TestBrowseSession_TraversalBlocked(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	dir := t.TempDir()
+	if err := storage.UpsertSession(cc.Session{
+		ID:           "browse-sess-2",
+		Name:         "BrowseAgent2",
+		Path:         dir,
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	// Attempt traversal: ../../etc
+	r := authedRequest(http.MethodGet, "/api/sessions/browse-sess-2/browse?path="+url.QueryEscape("../../etc"))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for traversal, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestBrowseSession_NoPath verifies session with empty path → 400.
+func TestBrowseSession_NoPath(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           "browse-sess-3",
+		Name:         "BrowseAgent3",
+		Path:         "", // no path set
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	r := authedRequest(http.MethodGet, "/api/sessions/browse-sess-3/browse")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for no-path session, got %d\nbody: %s", w.Code, w.Body.String())
 	}
 }

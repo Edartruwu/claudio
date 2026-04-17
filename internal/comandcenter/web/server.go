@@ -294,6 +294,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Session management API.
 	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
 	mux.Handle("DELETE /api/sessions/{id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteSession)))
+	mux.Handle("GET /api/sessions/{session_id}/browse", ws.uiAuth(http.HandlerFunc(ws.handleBrowseSession)))
 }
 
 // uiAuth checks the "auth" HttpOnly cookie.
@@ -1019,6 +1020,84 @@ func (ws *WebServer) handleServeFile(w http.ResponseWriter, r *http.Request) {
 
 	path := filepath.Join(ws.uploadsDir, sessionID, filename)
 	http.ServeFile(w, r, path)
+}
+
+// browseItem is a single directory entry for the file browser JSON response.
+type browseItem struct {
+	Name     string    `json:"name"`
+	IsDir    bool      `json:"is_dir"`
+	Size     int64     `json:"size"`
+	Modified time.Time `json:"modified"`
+}
+
+// browseResponse is the JSON body for GET /api/sessions/{session_id}/browse.
+type browseResponse struct {
+	Current string       `json:"current"`
+	Root    string       `json:"root"`
+	Items   []browseItem `json:"items"`
+}
+
+// handleBrowseSession lists files/directories inside the session's working directory.
+// GET /api/sessions/{session_id}/browse?path=<relative-path>
+func (ws *WebServer) handleBrowseSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	sess, err := ws.storage.GetSession(sessionID)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if sess.Path == "" {
+		http.Error(w, "session has no path set", http.StatusBadRequest)
+		return
+	}
+
+	root, err := filepath.Abs(sess.Path)
+	if err != nil {
+		http.Error(w, "invalid session path", http.StatusInternalServerError)
+		return
+	}
+
+	// Resolve the requested subpath.
+	subPath := r.URL.Query().Get("path")
+	var target string
+	if subPath == "" || subPath == "/" {
+		target = root
+	} else {
+		// Join and clean; then verify it doesn't escape root.
+		target = filepath.Join(root, filepath.FromSlash(subPath))
+		rel, err := filepath.Rel(root, target)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			http.Error(w, "path traversal not allowed", http.StatusForbidden)
+			return
+		}
+	}
+
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		http.Error(w, "cannot read directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]browseItem, 0, len(entries))
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		items = append(items, browseItem{
+			Name:     e.Name(),
+			IsDir:    e.IsDir(),
+			Size:     info.Size(),
+			Modified: info.ModTime(),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(browseResponse{
+		Current: target,
+		Root:    root,
+		Items:   items,
+	})
 }
 
 // envelopeToMessage converts a UIEvent envelope to a displayable Message-like struct.
