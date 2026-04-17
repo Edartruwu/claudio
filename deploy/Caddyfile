@@ -1,0 +1,22 @@
+# Caddyfile — ComandCenter HTTPS reverse proxy
+#
+# Purpose: Terminate TLS for PWA push notifications (push API requires HTTPS).
+#          Caddy auto-acquires/renews certs via ACME (Let's Encrypt / ZeroSSL).
+#
+# Domain:  macbook-pro.taila6d76.ts.net (Tailscale)
+# Backend: ComandCenter Go server on localhost:8080
+#
+# Usage:
+#   caddy run --config deploy/Caddyfile          # foreground
+#   caddy start --config deploy/Caddyfile        # background daemon
+#   caddy stop                                   # stop daemon
+#   caddy reload --config deploy/Caddyfile       # hot-reload config
+#
+# Auto-start: deploy/com.caddy.server.plist loaded by launchd on login.
+#   Load:   launchctl load ~/Library/LaunchAgents/com.caddy.server.plist
+#   Unload: launchctl unload ~/Library/LaunchAgents/com.caddy.server.plist
+#   Logs:   /tmp/caddy.log  /tmp/caddy.err
+
+macbook-pro.taila6d76.ts.net {
+    reverse_proxy localhost:8080
+}
