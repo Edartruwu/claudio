@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -74,9 +75,10 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.conn = conn
 
 	// Send hello
+	cwd, _ := os.Getwd()
 	hello := attach.HelloPayload{
 		Name:   c.name,
-		Path:   "",
+		Path:   cwd,
 		Master: c.master,
 	}
 	if err := c.sendEnvelopeUnlocked(attach.EventSessionHello, hello); err != nil {
