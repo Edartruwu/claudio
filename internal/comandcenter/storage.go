@@ -248,12 +248,22 @@ func (s *Storage) DeleteSession(id string) error {
 	return tx.Commit()
 }
 
-// ListSessions returns all non-archived sessions ordered by last_active_at desc.
-func (s *Storage) ListSessions() ([]Session, error) {
-	rows, err := s.db.Query(`
-		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
-		FROM cc_sessions WHERE status != 'archived' ORDER BY last_active_at DESC
-	`)
+// ListSessions returns non-archived sessions ordered by last_active_at desc.
+// filter: "" = all, "active" = status='active', "inactive" = status not 'active' and not 'archived'.
+func (s *Storage) ListSessions(filter string) ([]Session, error) {
+	var query string
+	switch filter {
+	case "active":
+		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+			FROM cc_sessions WHERE status = 'active' ORDER BY last_active_at DESC`
+	case "inactive":
+		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+			FROM cc_sessions WHERE status != 'active' AND status != 'archived' ORDER BY last_active_at DESC`
+	default:
+		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+			FROM cc_sessions WHERE status != 'archived' ORDER BY last_active_at DESC`
+	}
+	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}

@@ -136,7 +136,7 @@ func TestHub_HandleConn_HelloRegisters(t *testing.T) {
 		case <-deadline:
 			t.Fatal("timeout waiting for session to appear in DB")
 		case <-time.After(10 * time.Millisecond):
-			sessions, err := s.ListSessions()
+			sessions, err := s.ListSessions("")
 			if err == nil && len(sessions) > 0 {
 				if sessions[0].Name == "my-session" {
 					goto done
@@ -148,7 +148,7 @@ done:
 	<-done
 
 	// After loop closes, session should be inactive.
-	sessions, err := s.ListSessions()
+	sessions, err := s.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestHub_HandleConn_ProcessesAssistantMsg(t *testing.T) {
 
 	h.handleConn(conn)
 
-	sessions, err := s.ListSessions()
+	sessions, err := s.ListSessions("")
 	if err != nil || len(sessions) == 0 {
 		t.Fatal("no session in DB")
 	}
@@ -209,7 +209,7 @@ func TestHub_HandleConn_NonHelloFirstMsg(t *testing.T) {
 	}
 	h.handleConn(conn)
 
-	sessions, _ := s.ListSessions()
+	sessions, _ := s.ListSessions("")
 	if len(sessions) != 0 {
 		t.Errorf("expected no sessions for bad first msg, got %d", len(sessions))
 	}

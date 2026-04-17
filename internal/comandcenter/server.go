@@ -105,7 +105,7 @@ func (s *Server) handleWSAttach(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/sessions
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	sessions, err := s.storage.ListSessions()
+	sessions, err := s.storage.ListSessions("")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
