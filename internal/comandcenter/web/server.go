@@ -295,6 +295,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Session management API.
 	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
 	mux.Handle("DELETE /api/sessions/{id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteSession)))
+	mux.Handle("POST /api/sessions/{id}/interrupt", ws.uiAuth(http.HandlerFunc(ws.handleInterruptSession)))
 	mux.Handle("GET /api/sessions/{session_id}/browse", ws.uiAuth(http.HandlerFunc(ws.handleBrowseSession)))
 	mux.Handle("GET /api/push/vapid-public-key", ws.uiAuth(http.HandlerFunc(ws.handleVAPIDPublicKey)))
 	mux.Handle("POST /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushSubscribe)))
@@ -866,6 +867,21 @@ func (ws *WebServer) handleDeleteSession(w http.ResponseWriter, r *http.Request)
 	id := r.PathValue("id")
 	if err := ws.storage.DeleteSession(id); err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleInterruptSession sends an interrupt signal to the active engine turn for a session.
+// Returns 200 on success, 404 if the session is unknown, 503 if no active turn is registered.
+func (ws *WebServer) handleInterruptSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, err := ws.storage.GetSession(id); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if !ws.hub.Interrupt(id) {
+		http.Error(w, "no active turn", http.StatusServiceUnavailable)
 		return
 	}
 	w.WriteHeader(http.StatusOK)

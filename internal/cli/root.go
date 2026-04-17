@@ -229,6 +229,10 @@ func Execute() error {
 }
 
 func runSinglePrompt(prompt string) error {
+	return runSinglePromptWithCtx(context.Background(), prompt)
+}
+
+func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 	if !appInstance.Auth.IsLoggedIn() {
 		return fmt.Errorf("not logged in. Run: claudio auth login")
 	}
@@ -240,7 +244,7 @@ func runSinglePrompt(prompt string) error {
 		}
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(parent, os.Interrupt)
 	defer cancel()
 	defer appInstance.Close()
 	// attachClient.Close() is intentionally NOT deferred here.
@@ -341,17 +345,42 @@ func runHeadlessAttach(args []string) error {
 		appInstance.InjectMessage(payload.Content)
 	})
 
+	// Wire interrupt signal from ComandCenter → app.Interrupt
+	attachClient.OnInterrupt(func() {
+		appInstance.Interrupt()
+	})
+
 	// If initial prompt provided as arg, inject it first
 	if len(args) > 0 {
 		initialPrompt := strings.Join(args, " ")
 		appInstance.InjectMessage(initialPrompt)
 	}
 
-	// Run engine loop: process messages from inject channel
+	// Run engine loop: process messages from inject channel.
+	// Each turn gets its own cancelable context so ComandCenter can interrupt it.
 	for {
 		select {
 		case msg := <-appInstance.InjectCh:
-			if err := runSinglePrompt(msg); err != nil {
+			turnCtx, turnCancel := context.WithCancel(ctx)
+			engineDone := make(chan struct{})
+			// Monitor goroutine: cancel the turn context if an interrupt arrives.
+			go func() {
+				select {
+				case <-appInstance.InterruptCh:
+					turnCancel()
+				case <-engineDone:
+					// engine finished normally; nothing to do
+				}
+			}()
+			err := runSinglePromptWithCtx(turnCtx, msg)
+			close(engineDone) // signal monitor goroutine to exit
+			turnCancel()      // no-op if already cancelled; ensures context cleanup
+			// Drain any stale interrupt signal so the next turn starts clean.
+			select {
+			case <-appInstance.InterruptCh:
+			default:
+			}
+			if err != nil {
 				log.Printf("attach: prompt error: %v\n", err)
 			}
 		case <-ctx.Done():

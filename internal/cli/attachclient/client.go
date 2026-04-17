@@ -20,6 +20,7 @@ type Client struct {
 	master       bool
 	conn         *websocket.Conn
 	onUserMsg    func(attach.UserMsgPayload)
+	onInterrupt  func()
 	mu           sync.Mutex
 	closed       bool
 	closedChan   chan struct{}
@@ -119,6 +120,13 @@ func (c *Client) OnUserMessage(fn func(attach.UserMsgPayload)) {
 	c.onUserMsg = fn
 }
 
+// OnInterrupt registers callback invoked when the server sends EventInterrupt.
+func (c *Client) OnInterrupt(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onInterrupt = fn
+}
+
 // Close sends EventSessionBye then closes connection.
 func (c *Client) Close() error {
 	c.mu.Lock()
@@ -158,20 +166,26 @@ func (c *Client) readLoop() {
 			return
 		}
 
-		// Handle EventMsgUser
-		if env.Type == attach.EventMsgUser {
+		switch env.Type {
+		case attach.EventMsgUser:
 			var payload attach.UserMsgPayload
 			if err := env.UnmarshalPayload(&payload); err != nil {
 				log.Printf("unmarshal payload: %v", err)
 				continue
 			}
-
 			c.mu.Lock()
 			cb := c.onUserMsg
 			c.mu.Unlock()
-
 			if cb != nil {
 				cb(payload)
+			}
+
+		case attach.EventInterrupt:
+			c.mu.Lock()
+			cb := c.onInterrupt
+			c.mu.Unlock()
+			if cb != nil {
+				cb()
 			}
 		}
 	}

@@ -18,7 +18,8 @@ const (
 
 // Events: ComandCenter → Claudio
 const (
-	EventMsgUser = "message.user"
+	EventMsgUser    = "message.user"
+	EventInterrupt  = "session.interrupt"
 )
 
 // Envelope wraps event type + payload.

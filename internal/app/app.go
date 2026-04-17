@@ -58,6 +58,7 @@ type App struct {
 	Cron         *tasks.CronStore
 	LSP          *lsp.ServerManager
 	InjectCh     chan string
+	InterruptCh  chan struct{}
 }
 
 // SecurityContext wraps config-based security settings for tool injection.
@@ -306,6 +307,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 
 	// Message injection channel for headless mode
 	injectCh := make(chan string, 8)
+	interruptCh := make(chan struct{}, 1)
 
 	// Build sub-agent engine config (caveman injection mirrors main agent path).
 	subAgentCfg := query.EngineConfig{}
@@ -568,6 +570,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		Cron:        cronStore,
 		LSP:         lspManager,
 		InjectCh:    injectCh,
+		InterruptCh: interruptCh,
 	}, nil
 }
 
@@ -604,6 +607,15 @@ func (a *App) InjectMessage(content string) {
 	default:
 		// channel full, drop
 		fmt.Fprintf(os.Stderr, "Warning: message injection channel full, dropping message\n")
+	}
+}
+
+// Interrupt signals the headless engine loop to cancel the current turn.
+// Non-blocking — if already signaled or no turn running, the signal is dropped.
+func (a *App) Interrupt() {
+	select {
+	case a.InterruptCh <- struct{}{}:
+	default:
 	}
 }
 

@@ -49,6 +49,7 @@ type UIEvent struct {
 type Hub struct {
 	mu              sync.RWMutex
 	sessions        map[string]wsConn
+	interruptFns    map[string]func()
 	storage         *Storage
 	uiBroadcast     chan UIEvent
 	vapidPublicKey  string
@@ -58,9 +59,10 @@ type Hub struct {
 // NewHub creates a Hub backed by storage.
 func NewHub(storage *Storage) *Hub {
 	return &Hub{
-		sessions:    make(map[string]wsConn),
-		storage:     storage,
-		uiBroadcast: make(chan UIEvent, 256),
+		sessions:     make(map[string]wsConn),
+		interruptFns: make(map[string]func()),
+		storage:      storage,
+		uiBroadcast:  make(chan UIEvent, 256),
 	}
 }
 
@@ -94,6 +96,33 @@ func (h *Hub) SessionCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.sessions)
+}
+
+// RegisterInterrupt stores a cancel function for a session's active engine turn.
+func (h *Hub) RegisterInterrupt(sessionID string, fn func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.interruptFns[sessionID] = fn
+}
+
+// UnregisterInterrupt removes the cancel function for a session.
+func (h *Hub) UnregisterInterrupt(sessionID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.interruptFns, sessionID)
+}
+
+// Interrupt calls the registered cancel function for a session.
+// Returns true if a function was found and called, false otherwise.
+func (h *Hub) Interrupt(sessionID string) bool {
+	h.mu.RLock()
+	fn, ok := h.interruptFns[sessionID]
+	h.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	fn()
+	return true
 }
 
 // UIBroadcast returns the channel that receives all inbound session events
@@ -183,6 +212,7 @@ func (h *Hub) handleConn(conn wsConn) {
 	defer func() {
 		conn.close()
 		if sessionID != "" {
+			h.UnregisterInterrupt(sessionID)
 			h.Unregister(sessionID)
 			_ = h.storage.SetSessionStatus(sessionID, "inactive")
 		}
@@ -225,6 +255,10 @@ func (h *Hub) handleConn(conn wsConn) {
 	}
 
 	h.Register(sessionID, conn)
+	// Register interrupt fn: sends EventInterrupt envelope to the attached Claudio process.
+	h.RegisterInterrupt(sessionID, func() {
+		_ = conn.writeEnvelope(attach.Envelope{Type: attach.EventInterrupt})
+	})
 	h.broadcast(sessionID, env)
 
 	// Main read loop.
