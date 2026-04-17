@@ -13,3 +13,4 @@ deploy/*.pem
 deploy/*.crt
 deploy/*.key
 deploy/com.caddy.server.plist
+.claudio/
