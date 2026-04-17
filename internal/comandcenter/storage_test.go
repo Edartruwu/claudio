@@ -725,3 +725,114 @@ func TestMarkRead_ResetsUnreadCount(t *testing.T) {
 		t.Errorf("UnreadCount after MarkRead: got %d, want 0", count)
 	}
 }
+
+func TestStorage_SavePushSubscription(t *testing.T) {
+	s := newTestStorage(t)
+
+	sub := PushSubscription{
+		ID:        "sub-1",
+		Endpoint:  "https://push.example.com/sub1",
+		P256dh:    "dGVzdC1wMjU2ZGg=",
+		Auth:      "dGVzdC1hdXRo",
+		CreatedAt: time.Now(),
+	}
+	if err := s.SavePushSubscription(sub); err != nil {
+		t.Fatalf("SavePushSubscription: %v", err)
+	}
+
+	subs, err := s.ListPushSubscriptions()
+	if err != nil {
+		t.Fatalf("ListPushSubscriptions: %v", err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+	if subs[0].Endpoint != sub.Endpoint {
+		t.Errorf("Endpoint: got %q, want %q", subs[0].Endpoint, sub.Endpoint)
+	}
+	if subs[0].P256dh != sub.P256dh {
+		t.Errorf("P256dh: got %q, want %q", subs[0].P256dh, sub.P256dh)
+	}
+	if subs[0].Auth != sub.Auth {
+		t.Errorf("Auth: got %q, want %q", subs[0].Auth, sub.Auth)
+	}
+}
+
+func TestStorage_SavePushSubscription_Upsert(t *testing.T) {
+	s := newTestStorage(t)
+
+	sub := PushSubscription{
+		ID: "sub-2", Endpoint: "https://push.example.com/sub2",
+		P256dh: "old-key", Auth: "old-auth", CreatedAt: time.Now(),
+	}
+	if err := s.SavePushSubscription(sub); err != nil {
+		t.Fatalf("SavePushSubscription initial: %v", err)
+	}
+
+	// Same endpoint, updated keys.
+	sub.ID = "sub-2b"
+	sub.P256dh = "new-key"
+	sub.Auth = "new-auth"
+	if err := s.SavePushSubscription(sub); err != nil {
+		t.Fatalf("SavePushSubscription upsert: %v", err)
+	}
+
+	subs, err := s.ListPushSubscriptions()
+	if err != nil {
+		t.Fatalf("ListPushSubscriptions: %v", err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription after upsert, got %d", len(subs))
+	}
+	if subs[0].P256dh != "new-key" {
+		t.Errorf("P256dh after upsert: got %q, want %q", subs[0].P256dh, "new-key")
+	}
+}
+
+func TestStorage_DeletePushSubscription(t *testing.T) {
+	s := newTestStorage(t)
+
+	sub := PushSubscription{
+		ID: "sub-3", Endpoint: "https://push.example.com/sub3",
+		P256dh: "k", Auth: "a", CreatedAt: time.Now(),
+	}
+	if err := s.SavePushSubscription(sub); err != nil {
+		t.Fatalf("SavePushSubscription: %v", err)
+	}
+
+	if err := s.DeletePushSubscription(sub.Endpoint); err != nil {
+		t.Fatalf("DeletePushSubscription: %v", err)
+	}
+
+	subs, err := s.ListPushSubscriptions()
+	if err != nil {
+		t.Fatalf("ListPushSubscriptions: %v", err)
+	}
+	if len(subs) != 0 {
+		t.Fatalf("expected 0 subscriptions after delete, got %d", len(subs))
+	}
+}
+
+func TestStorage_GetOrCreateVAPIDKeys(t *testing.T) {
+	s := newTestStorage(t)
+
+	pub1, priv1, err := s.GetOrCreateVAPIDKeys()
+	if err != nil {
+		t.Fatalf("GetOrCreateVAPIDKeys first call: %v", err)
+	}
+	if pub1 == "" || priv1 == "" {
+		t.Fatal("expected non-empty VAPID keys")
+	}
+
+	// Second call must return same keys.
+	pub2, priv2, err := s.GetOrCreateVAPIDKeys()
+	if err != nil {
+		t.Fatalf("GetOrCreateVAPIDKeys second call: %v", err)
+	}
+	if pub2 != pub1 {
+		t.Errorf("public key changed: got %q, want %q", pub2, pub1)
+	}
+	if priv2 != priv1 {
+		t.Errorf("private key changed: got %q, want %q", priv2, priv1)
+	}
+}

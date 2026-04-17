@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"golang.org/x/net/websocket"
 )
@@ -45,10 +47,12 @@ type UIEvent struct {
 
 // Hub manages active WebSocket connections from Claudio sessions.
 type Hub struct {
-	mu          sync.RWMutex
-	sessions    map[string]wsConn
-	storage     *Storage
-	uiBroadcast chan UIEvent
+	mu              sync.RWMutex
+	sessions        map[string]wsConn
+	storage         *Storage
+	uiBroadcast     chan UIEvent
+	vapidPublicKey  string
+	vapidPrivateKey string
 }
 
 // NewHub creates a Hub backed by storage.
@@ -97,6 +101,73 @@ func (h *Hub) SessionCount() int {
 // close this channel.
 func (h *Hub) UIBroadcast() <-chan UIEvent {
 	return h.uiBroadcast
+}
+
+// SetVAPIDKeys configures the VAPID keys used for sending push notifications.
+func (h *Hub) SetVAPIDKeys(public, private string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.vapidPublicKey = public
+	h.vapidPrivateKey = private
+}
+
+// sendPushNotifications sends a push notification to all subscribers for a new assistant message.
+// Subscriptions that return HTTP 410 Gone are deleted (browser unsubscribed).
+func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
+	h.mu.RLock()
+	pub := h.vapidPublicKey
+	priv := h.vapidPrivateKey
+	h.mu.RUnlock()
+
+	if pub == "" || priv == "" {
+		return
+	}
+
+	subs, err := h.storage.ListPushSubscriptions()
+	if err != nil || len(subs) == 0 {
+		return
+	}
+
+	// Truncate preview to 100 chars.
+	body := preview
+	if len(body) > 100 {
+		body = body[:100]
+	}
+
+	type pushPayload struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+		URL   string `json:"url"`
+	}
+	payloadBytes, err := json.Marshal(pushPayload{
+		Title: sessionName,
+		Body:  body,
+		URL:   "/chat/" + sessionID,
+	})
+	if err != nil {
+		return
+	}
+
+	for _, sub := range subs {
+		resp, err := webpush.SendNotification(payloadBytes, &webpush.Subscription{
+			Endpoint: sub.Endpoint,
+			Keys: webpush.Keys{
+				P256dh: sub.P256dh,
+				Auth:   sub.Auth,
+			},
+		}, &webpush.Options{
+			VAPIDPublicKey:  pub,
+			VAPIDPrivateKey: priv,
+			Subscriber:      "mailto:admin@comandcenter.local",
+		})
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusGone {
+			_ = h.storage.DeletePushSubscription(sub.Endpoint)
+		}
+	}
 }
 
 // HandleSession runs the read loop for a raw *websocket.Conn.
@@ -188,6 +259,14 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			AgentName: p.AgentName,
 			CreatedAt: now,
 		})
+		// Notify push subscribers of new assistant message.
+		go func() {
+			sess, err := h.storage.GetSession(sessionID)
+			if err != nil {
+				return
+			}
+			h.sendPushNotifications(sess.Name, sessionID, p.Content)
+		}()
 
 	case attach.EventMsgToolUse:
 		var p attach.ToolUsePayload

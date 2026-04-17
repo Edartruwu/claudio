@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	_ "modernc.org/sqlite"
 )
 
@@ -126,6 +127,20 @@ func (s *Storage) migrate() error {
 		`ALTER TABLE cc_messages ADD COLUMN quoted_content TEXT`,
 		// 9
 		`ALTER TABLE cc_tasks ADD COLUMN description TEXT`,
+		// 10
+		`CREATE TABLE IF NOT EXISTS cc_push_subscriptions (
+			id TEXT PRIMARY KEY,
+			endpoint TEXT NOT NULL UNIQUE,
+			p256dh TEXT NOT NULL,
+			auth TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// 11
+		`CREATE TABLE IF NOT EXISTS cc_vapid_keys (
+			id INTEGER PRIMARY KEY CHECK (id=1),
+			public_key TEXT NOT NULL,
+			private_key TEXT NOT NULL
+		)`,
 	}
 
 	for i, m := range migrations {
@@ -521,6 +536,75 @@ func (s *Storage) ListAttachments(sessionID string) ([]Attachment, error) {
 		atts = append(atts, a)
 	}
 	return atts, rows.Err()
+}
+
+// SavePushSubscription inserts or replaces a push subscription.
+func (s *Storage) SavePushSubscription(sub PushSubscription) error {
+	_, err := s.db.Exec(`
+		INSERT INTO cc_push_subscriptions (id, endpoint, p256dh, auth, created_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(endpoint) DO UPDATE SET
+			p256dh=excluded.p256dh,
+			auth=excluded.auth
+	`, sub.ID, sub.Endpoint, sub.P256dh, sub.Auth, sub.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("save push subscription: %w", err)
+	}
+	return nil
+}
+
+// ListPushSubscriptions returns all stored push subscriptions.
+func (s *Storage) ListPushSubscriptions() ([]PushSubscription, error) {
+	rows, err := s.db.Query(`
+		SELECT id, endpoint, p256dh, auth, created_at FROM cc_push_subscriptions
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list push subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var subs []PushSubscription
+	for rows.Next() {
+		var sub PushSubscription
+		if err := rows.Scan(&sub.ID, &sub.Endpoint, &sub.P256dh, &sub.Auth, &sub.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan push subscription: %w", err)
+		}
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
+// DeletePushSubscription removes a push subscription by endpoint.
+func (s *Storage) DeletePushSubscription(endpoint string) error {
+	_, err := s.db.Exec(`DELETE FROM cc_push_subscriptions WHERE endpoint=?`, endpoint)
+	if err != nil {
+		return fmt.Errorf("delete push subscription: %w", err)
+	}
+	return nil
+}
+
+// GetOrCreateVAPIDKeys returns stored VAPID keys, generating and storing them on first call.
+func (s *Storage) GetOrCreateVAPIDKeys() (public, private string, err error) {
+	err = s.db.QueryRow(`SELECT public_key, private_key FROM cc_vapid_keys WHERE id=1`).
+		Scan(&public, &private)
+	if err == nil {
+		return public, private, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", "", fmt.Errorf("get vapid keys: %w", err)
+	}
+
+	// Generate new VAPID keys.
+	priv, pub, err := webpush.GenerateVAPIDKeys()
+	if err != nil {
+		return "", "", fmt.Errorf("generate vapid keys: %w", err)
+	}
+
+	_, err = s.db.Exec(`INSERT INTO cc_vapid_keys (id, public_key, private_key) VALUES (1, ?, ?)`, pub, priv)
+	if err != nil {
+		return "", "", fmt.Errorf("store vapid keys: %w", err)
+	}
+	return pub, priv, nil
 }
 
 // ListMessageAttachments returns all attachments linked to a specific message.

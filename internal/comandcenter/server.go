@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"golang.org/x/net/websocket"
@@ -15,22 +16,36 @@ import (
 
 // Server is the ComandCenter HTTP server.
 type Server struct {
-	password string
-	storage  *Storage
-	hub      *Hub
-	dataDir  string
-	mux      *http.ServeMux
+	password        string
+	storage         *Storage
+	hub             *Hub
+	dataDir         string
+	mux             *http.ServeMux
+	vapidPublicKey  string
+	vapidPrivateKey string
 }
 
 // NewServer creates a Server and registers all routes.
 func NewServer(password string, storage *Storage, hub *Hub, dataDir string) *Server {
-	s := &Server{
-		password: password,
-		storage:  storage,
-		hub:      hub,
-		dataDir:  dataDir,
-		mux:      http.NewServeMux(),
+	pub, priv, err := storage.GetOrCreateVAPIDKeys()
+	if err != nil {
+		// Non-fatal: push won't work but server still starts.
+		pub, priv = "", ""
 	}
+
+	s := &Server{
+		password:        password,
+		storage:         storage,
+		hub:             hub,
+		dataDir:         dataDir,
+		mux:             http.NewServeMux(),
+		vapidPublicKey:  pub,
+		vapidPrivateKey: priv,
+	}
+
+	// Wire VAPID keys into hub so it can send push notifications.
+	hub.SetVAPIDKeys(pub, priv)
+
 	s.routes()
 	return s
 }
@@ -54,6 +69,11 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /ws/attach", s.auth(http.HandlerFunc(s.handleWSAttach)))
 	s.mux.Handle("GET /api/sessions", s.auth(http.HandlerFunc(s.handleListSessions)))
 	s.mux.Handle("GET /api/sessions/{id}/messages", s.auth(http.HandlerFunc(s.handleListMessages)))
+
+	// Push notification routes.
+	s.mux.Handle("GET /api/vapid-public-key", s.auth(http.HandlerFunc(s.handleVAPIDPublicKey)))
+	s.mux.Handle("POST /api/push/subscribe", s.auth(http.HandlerFunc(s.handlePushSubscribe)))
+	s.mux.Handle("DELETE /api/push/subscribe", s.auth(http.HandlerFunc(s.handlePushUnsubscribe)))
 }
 
 // auth is a middleware that checks the Authorization: Bearer <password> header.
@@ -169,6 +189,70 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
+// GET /api/vapid-public-key — returns the server VAPID public key for JS subscription.
+func (s *Server) handleVAPIDPublicKey(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"publicKey": s.vapidPublicKey})
+}
+
+// POST /api/push/subscribe — saves a push subscription.
+// Body: {"endpoint":"...","keys":{"p256dh":"...","auth":"..."}}
+func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body failed"})
+		return
+	}
+
+	var req struct {
+		Endpoint string `json:"endpoint"`
+		Keys     struct {
+			P256dh string `json:"p256dh"`
+			Auth   string `json:"auth"`
+		} `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Endpoint == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription"})
+		return
+	}
+
+	sub := PushSubscription{
+		ID:        newID(),
+		Endpoint:  req.Endpoint,
+		P256dh:    req.Keys.P256dh,
+		Auth:      req.Keys.Auth,
+		CreatedAt: time.Now(),
+	}
+	if err := s.storage.SavePushSubscription(sub); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"status": "subscribed"})
+}
+
+// DELETE /api/push/subscribe — removes a push subscription by endpoint.
+// Body: {"endpoint":"..."}
+func (s *Server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body failed"})
+		return
+	}
+
+	var req struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Endpoint == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+
+	if err := s.storage.DeletePushSubscription(req.Endpoint); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "unsubscribed"})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

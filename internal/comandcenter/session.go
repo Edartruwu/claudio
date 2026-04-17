@@ -64,6 +64,15 @@ type Attachment struct {
 	CreatedAt    time.Time
 }
 
+// PushSubscription holds a browser Web Push subscription.
+type PushSubscription struct {
+	ID        string
+	Endpoint  string
+	P256dh    string
+	Auth      string
+	CreatedAt time.Time
+}
+
 // NewID generates a random hex ID (16 bytes → 32 hex chars).
 func NewID() string {
 	return newID()
