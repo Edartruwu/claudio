@@ -1,7 +1,7 @@
 {{define "chat_list.html"}}{{template "layout" .}}{{end}}
 
-{{define "content"}}
-<div class="flex flex-col min-h-screen" style="background:#000000;">
+{{define "sidebar"}}
+<div class="flex flex-col h-full" style="background:#000000;">
   <!-- Header -->
   <div class="chat-header flex-shrink-0" style="background:#1C1C1E;">
     <div class="flex justify-between items-center px-4 pt-3 pb-2">
@@ -33,7 +33,7 @@
   </div>
 
   <!-- Session List -->
-  <main class="flex-1 overflow-y-auto" style="padding-bottom:83px;">
+  <main class="flex-1 overflow-y-auto">
     <div id="session-list"
          hx-get="/partials/sessions"
          hx-trigger="every 3s"
@@ -42,7 +42,7 @@
       {{range .Rows}}
         {{template "session-row" .}}
       {{else}}
-        <!-- Empty state — small + subtle -->
+        <!-- Empty state -->
         <div class="flex flex-col items-center justify-center py-20">
           <svg class="mb-3" style="width:40px;height:40px;color:#8E8E93;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
@@ -54,8 +54,8 @@
     <span class="htmx-indicator block text-center text-xs py-1" style="color:#8E8E93;">↻</span>
   </main>
 
-  <!-- Bottom tab bar -->
-  <nav class="fixed bottom-0 left-0 right-0 flex" style="background:#1C1C1E;border-top:1px solid #2C2C2E;padding-bottom:env(safe-area-inset-bottom);max-width:480px;margin:0 auto;">
+  <!-- Bottom tab bar — mobile only -->
+  <nav class="md:hidden flex flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;padding-bottom:env(safe-area-inset-bottom);">
     <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:#25D366;">
       <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
         <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
