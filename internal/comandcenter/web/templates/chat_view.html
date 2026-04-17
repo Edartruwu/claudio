@@ -169,14 +169,13 @@
             class="flex items-center justify-center flex-shrink-0 rounded-full font-bold text-xl"
             style="width:36px;height:36px;color:#8E8E93;background:transparent;border:none;cursor:pointer;line-height:1;"
             aria-label="Attach or browse files">+</button>
-    <input
+    <textarea
       id="msg-input"
-      type="text"
+      rows="1"
       placeholder="Message"
-      class="flex-1 rounded-full px-4 py-2 text-base outline-none text-white"
-      style="background:#2C2C2E;border:none;"
-      hx-on:keydown="if(event.key==='Enter'){document.getElementById('send-btn').click()}"
-    >
+      class="flex-1 rounded-2xl px-4 py-2 text-base outline-none text-white"
+      style="background:#2C2C2E;border:none;resize:none;overflow:hidden;line-height:1.4;max-height:120px;min-height:40px;"
+    ></textarea>
     <!-- Send button -->
     <button
       id="send-btn"
@@ -196,6 +195,25 @@
   (function() {
     var msgs = document.getElementById('messages');
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  })();
+
+  // --- Auto-grow textarea + Enter key ---
+  (function() {
+    var el = document.getElementById('msg-input');
+    if (!el) return;
+    var MAX_H = 120;
+    el.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, MAX_H) + 'px';
+      this.style.overflowY = this.scrollHeight > MAX_H ? 'auto' : 'hidden';
+    });
+    el.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('send-btn').click();
+      }
+      // Shift+Enter → newline (default)
+    });
   })();
 
   // --- File upload + staged send ---
@@ -288,7 +306,7 @@
 
         xhr.addEventListener('load', function() {
           progress.classList.add('hidden');
-          if (msgInput) msgInput.value = '';
+          if (msgInput) { msgInput.value = ''; msgInput.dispatchEvent(new Event('input')); }
           ccClearStagedFile();
         });
 
@@ -305,7 +323,7 @@
           values: { content: text },
           swap: 'none'
         });
-        if (msgInput) msgInput.value = '';
+        if (msgInput) { msgInput.value = ''; msgInput.dispatchEvent(new Event('input')); }
       }
     };
   })();
