@@ -18,5 +18,8 @@
 #   Logs:   /tmp/caddy.log  /tmp/caddy.err
 
 macbook-pro.taila6d76.ts.net {
+    tls {
+        get_certificate tailscale
+    }
     reverse_proxy localhost:8080
 }
