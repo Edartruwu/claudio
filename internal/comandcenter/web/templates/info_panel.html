@@ -63,6 +63,7 @@
             class="flex-1 py-2 text-sm font-semibold tab-btn">
       Media
     </button>
+    <button id="tab-crons" onclick="showTab('crons')" class="flex-1 py-2 text-sm font-semibold tab-btn">Crons</button>
   </div>
 
   <!-- Tab Panels -->
@@ -193,6 +194,41 @@
       {{end}}
     </div>
 
+    <!-- Crons Tab -->
+    <div id="panel-crons" class="tab-panel hidden px-4 flex flex-col gap-2">
+      {{range .Crons}}
+      <div class="cron-row rounded-xl px-4 py-3 flex items-start gap-3" style="background:#1C1C1E;">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-sm font-semibold text-white">{{.Schedule}}</span>
+            {{if eq .Type "inline"}}
+            <span class="text-xs px-2 py-0.5 rounded-full text-white font-semibold" style="background:#3B9EFF;">inline</span>
+            {{else}}
+            <span class="text-xs px-2 py-0.5 rounded-full text-white font-semibold" style="background:#A78BFA;">background</span>
+            {{end}}
+          </div>
+          {{if .Agent}}
+          <p class="text-xs" style="color:#8E8E93;">{{.Agent}}</p>
+          {{end}}
+          <p class="text-xs" style="color:#8E8E93;">{{truncate 60 .Prompt}}</p>
+        </div>
+        <button
+          hx-delete="/api/crons/{{.ID}}"
+          hx-confirm="Delete this cron?"
+          hx-target="closest .cron-row"
+          hx-swap="outerHTML swap:300ms"
+          class="flex-shrink-0 mt-0.5 p-1 rounded">
+          <svg class="w-4 h-4" fill="none" stroke="#FF453A" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>
+      </div>
+      {{else}}
+      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No crons yet</div>
+      {{end}}
+    </div>
+
   </div>
 </div>
 
@@ -203,7 +239,7 @@
 
 <script>
   function showTab(name) {
-    ['tasks','team','media'].forEach(function(t) {
+    ['tasks','team','media','crons'].forEach(function(t) {
       document.getElementById('panel-' + t).classList.toggle('hidden', t !== name);
       var btn = document.getElementById('tab-' + t);
       btn.classList.toggle('tab-active', t === name);
