@@ -366,6 +366,81 @@ func TestWebServer_SessionInfo_NoAuth(t *testing.T) {
 	}
 }
 
+// TestWebServer_TaskDetail_Renders verifies GET /chat/{id}/tasks/{task_id} → 200 with task content.
+func TestWebServer_TaskDetail_Renders(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	err := storage.UpsertSession(cc.Session{
+		ID:           "td-sess-1",
+		Name:         "TaskAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	err = storage.UpsertTask(cc.Task{
+		ID:          "td-task-1",
+		SessionID:   "td-sess-1",
+		Title:       "Detail Task",
+		Description: "**bold** description",
+		Status:      "in_progress",
+		AssignedTo:  "agent-a",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+
+	r := authedRequest(http.MethodGet, "/chat/td-sess-1/tasks/td-task-1")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "in_progress") && !strings.Contains(body, "in progress") {
+		t.Error("response does not contain status")
+	}
+	if !strings.Contains(body, "agent-a") {
+		t.Error("response does not contain assigned_to")
+	}
+	// Markdown rendered: **bold** → <strong>bold</strong>
+	if !strings.Contains(body, "<strong>") {
+		t.Error("response does not contain rendered markdown (<strong>)")
+	}
+}
+
+// TestWebServer_TaskDetail_NotFound verifies GET /chat/{id}/tasks/{task_id} → 404 for unknown task.
+func TestWebServer_TaskDetail_NotFound(t *testing.T) {
+	_, mux := newTestEnv(t)
+
+	r := authedRequest(http.MethodGet, "/chat/any-sess/tasks/nonexistent-task")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", w.Code)
+	}
+}
+
+// TestWebServer_TaskDetail_NoAuth verifies unauthenticated request → 303 redirect.
+func TestWebServer_TaskDetail_NoAuth(t *testing.T) {
+	_, mux := newTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/chat/any-sess/tasks/any-task", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d", w.Code)
+	}
+}
+
 // TestByNameEndpoint_NotFound verifies POST /api/sessions/by-name/{name}/message
 // returns 404 for an unknown session name.
 func TestByNameEndpoint_NotFound(t *testing.T) {

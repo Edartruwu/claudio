@@ -458,6 +458,56 @@ func TestStorage_ListTasks_IsolatedBySession(t *testing.T) {
 	}
 }
 
+func TestStorage_GetTask(t *testing.T) {
+	s := newTestStorage(t)
+
+	sess := Session{
+		ID: "sess-gettask-1", Name: "s", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	task := Task{
+		ID: "task-get-1", SessionID: sess.ID, Title: "Get me",
+		Description: "**bold** description", Status: "pending",
+		AssignedTo: "agent-x",
+		CreatedAt:  time.Now(), UpdatedAt: time.Now(),
+	}
+	if err := s.UpsertTask(task); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	got, err := s.GetTask("task-get-1")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.ID != task.ID {
+		t.Errorf("ID: got %q, want %q", got.ID, task.ID)
+	}
+	if got.Title != task.Title {
+		t.Errorf("Title: got %q, want %q", got.Title, task.Title)
+	}
+	if got.Description != task.Description {
+		t.Errorf("Description: got %q, want %q", got.Description, task.Description)
+	}
+	if got.Status != task.Status {
+		t.Errorf("Status: got %q, want %q", got.Status, task.Status)
+	}
+	if got.AssignedTo != task.AssignedTo {
+		t.Errorf("AssignedTo: got %q, want %q", got.AssignedTo, task.AssignedTo)
+	}
+}
+
+func TestStorage_GetTask_NotFound(t *testing.T) {
+	s := newTestStorage(t)
+	_, err := s.GetTask("does-not-exist")
+	if err == nil {
+		t.Error("expected error for non-existent task, got nil")
+	}
+}
+
 func TestStorage_ListAgents(t *testing.T) {
 	s := newTestStorage(t)
 

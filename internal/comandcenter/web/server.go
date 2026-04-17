@@ -46,13 +46,14 @@ func (ts *templateSet) execute(w http.ResponseWriter, name string, data any) {
 // Templates parsed at package init. Each page has its own template.Template
 // so that {{define "content"}} blocks don't collide across pages.
 var (
-	loginTmpl    *templateSet
-	chatListTmpl *templateSet
-	chatViewTmpl *templateSet
-	sessionsTmpl *templateSet
-	messagesTmpl *templateSet
-	infoTmpl     *templateSet
-	bubbleTmpl   *template.Template
+	loginTmpl      *templateSet
+	chatListTmpl   *templateSet
+	chatViewTmpl   *templateSet
+	sessionsTmpl   *templateSet
+	messagesTmpl   *templateSet
+	infoTmpl       *templateSet
+	taskDetailTmpl *templateSet
+	bubbleTmpl     *template.Template
 )
 
 func funcMap() template.FuncMap {
@@ -211,6 +212,9 @@ func init() {
 		"templates/layout.html",
 		"templates/info_panel.html",
 	)
+	taskDetailTmpl = mustParseFS(
+		"templates/partials/task_detail.html",
+	)
 	t, err := template.New("").Funcs(funcMap()).ParseFS(staticFS, "templates/components/message_bubble.html")
 	if err != nil {
 		panic("web: parse bubble template: " + err.Error())
@@ -271,6 +275,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /", ws.uiAuth(http.HandlerFunc(ws.handleChatList)))
 	mux.Handle("GET /chat/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handleChatView)))
 	mux.Handle("GET /chat/{session_id}/info", ws.uiAuth(http.HandlerFunc(ws.handleSessionInfo)))
+	mux.Handle("GET /chat/{session_id}/tasks/{task_id}", ws.uiAuth(http.HandlerFunc(ws.handleTaskDetail)))
 	mux.Handle("GET /partials/sessions", ws.uiAuth(http.HandlerFunc(ws.handlePartialSessions)))
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
 	mux.Handle("POST /api/sessions/{session_id}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessage)))
@@ -350,6 +355,13 @@ type InfoPageData struct {
 	Docs      []cc.Attachment // non-image attachments for document list
 }
 
+// TaskDetailData holds data for the task detail partial.
+type TaskDetailData struct {
+	Task     cc.Task
+	DescHTML template.HTML // markdown description pre-rendered to HTML
+}
+
+// renderMarkdown converts a markdown string to safe HTML.
 func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
 	sessions, err := ws.storage.ListSessions("")
 	if err != nil {
@@ -430,6 +442,19 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		SessionID: id,
 		Images:    images,
 		Docs:      docs,
+	})
+}
+
+func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("task_id")
+	task, err := ws.storage.GetTask(taskID)
+	if err != nil {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	taskDetailTmpl.execute(w, "task-detail", TaskDetailData{
+		Task:     task,
+		DescHTML: renderMarkdown(task.Description),
 	})
 }
 

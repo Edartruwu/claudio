@@ -124,6 +124,8 @@ func (s *Storage) migrate() error {
 		`ALTER TABLE cc_messages ADD COLUMN reply_to_session TEXT`,
 		// 8
 		`ALTER TABLE cc_messages ADD COLUMN quoted_content TEXT`,
+		// 9
+		`ALTER TABLE cc_tasks ADD COLUMN description TEXT`,
 	}
 
 	for i, m := range migrations {
@@ -365,18 +367,33 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 // UpsertTask inserts or updates a task.
 func (s *Storage) UpsertTask(task Task) error {
 	_, err := s.db.Exec(`
-		INSERT INTO cc_tasks (id, session_id, title, status, assigned_to, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO cc_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			status=excluded.status,
+			description=excluded.description,
 			assigned_to=excluded.assigned_to,
 			updated_at=excluded.updated_at
-	`, task.ID, task.SessionID, task.Title, task.Status, task.AssignedTo,
+	`, task.ID, task.SessionID, task.Title, task.Description, task.Status, task.AssignedTo,
 		task.CreatedAt, task.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upsert task: %w", err)
 	}
 	return nil
+}
+
+// GetTask returns a single task by ID, or an error if not found.
+func (s *Storage) GetTask(id string) (Task, error) {
+	var t Task
+	err := s.db.QueryRow(`
+		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
+		FROM cc_tasks WHERE id=?
+	`, id).Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
+		&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		return Task{}, fmt.Errorf("get task %q: %w", id, err)
+	}
+	return t, nil
 }
 
 // UpsertAgent inserts or updates an agent record.
@@ -427,7 +444,7 @@ func (s *Storage) MarkRead(sessionID string) error {
 // ListTasks returns all tasks for a session ordered by created_at DESC.
 func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 	rows, err := s.db.Query(`
-		SELECT id, session_id, title, status, COALESCE(assigned_to,''), created_at, updated_at
+		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
 		FROM cc_tasks WHERE session_id=? ORDER BY created_at DESC
 	`, sessionID)
 	if err != nil {
@@ -438,7 +455,7 @@ func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 	var tasks []Task
 	for rows.Next() {
 		var t Task
-		if err := rows.Scan(&t.ID, &t.SessionID, &t.Title, &t.Status,
+		if err := rows.Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
 			&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
 		}
