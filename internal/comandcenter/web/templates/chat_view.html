@@ -103,6 +103,18 @@
       <span style="font-size:20px;">⏹</span> Interrupt
     </button>
     <button type="button"
+            onclick="ccSendCommand('/clear')"
+            style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;"
+            onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+      <span style="font-size:20px;">🗑</span> Clear Conversation
+    </button>
+    <button type="button"
+            onclick="ccSendCommand('/compact')"
+            style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;"
+            onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+      <span style="font-size:20px;">⚡</span> Compact
+    </button>
+    <button type="button"
             onclick="document.getElementById('file-input').click();document.getElementById('plus-popover').classList.add('hidden');"
             style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;"
             onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
@@ -516,6 +528,23 @@
       } else {
         ccToast('Request failed', false);
       }
+    } catch (e) {
+      ccToast('Request failed', false);
+    }
+  };
+
+  // --- Send slash command ---
+  window.ccSendCommand = async function(cmd) {
+    document.getElementById('plus-popover').classList.add('hidden');
+    var sessionId = '{{.Session.ID}}';
+    var token = localStorage.getItem('cc_token') || '';
+    try {
+      var res = await fetch('/api/sessions/' + sessionId + '/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ content: cmd })
+      });
+      ccToast(res.ok ? cmd + ' sent' : 'Failed', res.ok);
     } catch (e) {
       ccToast('Request failed', false);
     }
