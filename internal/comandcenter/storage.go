@@ -109,6 +109,17 @@ func (s *Storage) migrate() error {
 		)`,
 		// 5
 		`ALTER TABLE cc_sessions ADD COLUMN last_read_at DATETIME`,
+		// 6
+		`CREATE TABLE IF NOT EXISTS cc_attachments (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES cc_sessions(id),
+			message_id TEXT REFERENCES cc_messages(id),
+			filename TEXT NOT NULL,
+			original_name TEXT NOT NULL,
+			mime_type TEXT NOT NULL DEFAULT '',
+			size INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
 	}
 
 	for i, m := range migrations {
@@ -135,6 +146,8 @@ func (s *Storage) detectExistingSchemaVersion() int {
 		return n > 0
 	}
 	switch {
+	case hasTable("cc_attachments"):
+		return 6
 	case hasTable("cc_agents"):
 		return 4
 	case hasTable("cc_tasks"):
@@ -219,6 +232,7 @@ func (s *Storage) DeleteSession(id string) error {
 	for _, q := range []string{
 		`DELETE FROM cc_agents WHERE session_id=?`,
 		`DELETE FROM cc_tasks WHERE session_id=?`,
+		`DELETE FROM cc_attachments WHERE session_id=?`,
 		`DELETE FROM cc_messages WHERE session_id=?`,
 		`DELETE FROM cc_sessions WHERE id=?`,
 	} {
@@ -438,4 +452,63 @@ func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
 		agents = append(agents, a)
 	}
 	return agents, rows.Err()
+}
+
+// InsertAttachment stores a new attachment record.
+func (s *Storage) InsertAttachment(att Attachment) error {
+	_, err := s.db.Exec(`
+		INSERT INTO cc_attachments (id, session_id, message_id, filename, original_name, mime_type, size, created_at)
+		VALUES (?, ?, NULLIF(?,?), ?, ?, ?, ?, ?)
+	`, att.ID, att.SessionID, att.MessageID, "", att.Filename, att.OriginalName,
+		att.MimeType, att.Size, att.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("insert attachment: %w", err)
+	}
+	return nil
+}
+
+// ListAttachments returns all attachments for a session ordered by created_at DESC.
+func (s *Storage) ListAttachments(sessionID string) ([]Attachment, error) {
+	rows, err := s.db.Query(`
+		SELECT id, session_id, COALESCE(message_id,''), filename, original_name, mime_type, size, created_at
+		FROM cc_attachments WHERE session_id=? ORDER BY created_at DESC
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list attachments: %w", err)
+	}
+	defer rows.Close()
+
+	var atts []Attachment
+	for rows.Next() {
+		var a Attachment
+		if err := rows.Scan(&a.ID, &a.SessionID, &a.MessageID, &a.Filename,
+			&a.OriginalName, &a.MimeType, &a.Size, &a.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan attachment: %w", err)
+		}
+		atts = append(atts, a)
+	}
+	return atts, rows.Err()
+}
+
+// ListMessageAttachments returns all attachments linked to a specific message.
+func (s *Storage) ListMessageAttachments(messageID string) ([]Attachment, error) {
+	rows, err := s.db.Query(`
+		SELECT id, session_id, COALESCE(message_id,''), filename, original_name, mime_type, size, created_at
+		FROM cc_attachments WHERE message_id=? ORDER BY created_at ASC
+	`, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("list message attachments: %w", err)
+	}
+	defer rows.Close()
+
+	var atts []Attachment
+	for rows.Next() {
+		var a Attachment
+		if err := rows.Scan(&a.ID, &a.SessionID, &a.MessageID, &a.Filename,
+			&a.OriginalName, &a.MimeType, &a.Size, &a.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan attachment: %w", err)
+		}
+		atts = append(atts, a)
+	}
+	return atts, rows.Err()
 }

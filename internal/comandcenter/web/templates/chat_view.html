@@ -56,8 +56,31 @@
     </div>
   </div>
 
+  <!-- Upload progress bar -->
+  <div id="upload-progress" class="hidden px-3 py-1" style="background:#1C1C1E;">
+    <div class="flex items-center gap-2">
+      <div class="flex-1 rounded-full overflow-hidden" style="height:2px;background:#2C2C2E;">
+        <div id="upload-progress-bar" class="h-full rounded-full" style="background:#25D366;width:0%;transition:width 0.15s;"></div>
+      </div>
+      <span id="upload-pct" class="text-xs flex-shrink-0" style="color:#8E8E93;min-width:2.5rem;text-align:right;">0%</span>
+    </div>
+  </div>
+
   <!-- Input bar -->
   <div class="input-bar px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
+    <!-- Hidden file input -->
+    <input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip">
+    <!-- Attach button -->
+    <button id="attach-btn"
+            type="button"
+            class="flex items-center justify-center flex-shrink-0 rounded-full"
+            style="width:36px;height:36px;color:#8E8E93;background:transparent;"
+            aria-label="Attach file">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+      </svg>
+    </button>
     <input
       id="msg-input"
       type="text"
@@ -87,6 +110,61 @@
   (function() {
     var msgs = document.getElementById('messages');
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  })();
+
+  // --- File upload ---
+  (function() {
+    var sessionId = '{{.Session.ID}}';
+    var fileInput  = document.getElementById('file-input');
+    var attachBtn  = document.getElementById('attach-btn');
+    var progress   = document.getElementById('upload-progress');
+    var progressBar = document.getElementById('upload-progress-bar');
+    var pctLabel   = document.getElementById('upload-pct');
+
+    if (!attachBtn || !fileInput) return;
+
+    attachBtn.addEventListener('click', function() {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+
+      var caption = (document.getElementById('msg-input').value || '').trim();
+
+      var fd = new FormData();
+      fd.append('file', file);
+      if (caption) fd.append('content', caption);
+
+      progress.classList.remove('hidden');
+      progressBar.style.width = '0%';
+      pctLabel.textContent = '0%';
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/sessions/' + sessionId + '/upload');
+
+      xhr.upload.addEventListener('progress', function(ev) {
+        if (ev.lengthComputable) {
+          var pct = Math.round(ev.loaded / ev.total * 100);
+          progressBar.style.width = pct + '%';
+          pctLabel.textContent = pct + '%';
+        }
+      });
+
+      xhr.addEventListener('load', function() {
+        progress.classList.add('hidden');
+        fileInput.value = '';
+        if (caption) document.getElementById('msg-input').value = '';
+      });
+
+      xhr.addEventListener('error', function() {
+        progress.classList.add('hidden');
+        fileInput.value = '';
+      });
+
+      xhr.send(fd);
+    });
   })();
 </script>
 {{end}}

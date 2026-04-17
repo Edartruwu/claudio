@@ -49,6 +49,23 @@ type Agent struct {
 	UpdatedAt     time.Time
 }
 
+// Attachment is a file uploaded by the user and linked to a session (optionally a message).
+type Attachment struct {
+	ID           string
+	SessionID    string
+	MessageID    string // empty if not linked to a specific message
+	Filename     string // stored filename on disk (unique, e.g. "<id>.<ext>")
+	OriginalName string // original filename from the upload
+	MimeType     string
+	Size         int64
+	CreatedAt    time.Time
+}
+
+// NewID generates a random hex ID (16 bytes → 32 hex chars).
+func NewID() string {
+	return newID()
+}
+
 // newID generates a random hex ID (16 bytes → 32 hex chars).
 func newID() string {
 	b := make([]byte, 16)

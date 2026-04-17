@@ -8,16 +8,60 @@
 </div>
 {{else if eq .Role "user"}}
 <div class="flex justify-end mb-1">
-  <div class="msg-bubble-user px-4 py-2 max-w-xs shadow-sm">
-    <p class="text-sm leading-relaxed whitespace-pre-wrap text-white">{{.Content}}</p>
+  <div class="msg-bubble-user px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
+    {{if .Content}}<p class="text-sm leading-relaxed whitespace-pre-wrap text-white">{{.Content}}</p>{{end}}
+    {{range .Attachments}}
+      {{if isImage .MimeType}}
+        <a href="/uploads/{{.SessionID}}/{{.Filename}}" target="_blank">
+          <img src="/uploads/{{.SessionID}}/{{.Filename}}"
+               alt="{{.OriginalName}}"
+               class="mt-2 rounded-lg object-cover cursor-pointer"
+               style="max-width:240px;max-height:240px;"
+               loading="lazy">
+        </a>
+      {{else}}
+        <a href="/uploads/{{.SessionID}}/{{.Filename}}"
+           download="{{.OriginalName}}"
+           class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs no-underline"
+           style="background:rgba(255,255,255,0.12);color:#fff;">
+          <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"/>
+            <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <span class="truncate" style="max-width:160px;">{{.OriginalName}}</span>
+        </a>
+      {{end}}
+    {{end}}
     <p class="text-xs text-right mt-1" style="color:rgba(255,255,255,0.6);">{{relTime .CreatedAt}}</p>
   </div>
 </div>
 {{else}}
 <div class="flex justify-start mb-1">
-  <div class="msg-bubble-assistant px-4 py-2 max-w-xs shadow-sm">
+  <div class="msg-bubble-assistant px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
     {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:#25D366;">{{.AgentName}}</p>{{end}}
     <p class="text-sm leading-relaxed whitespace-pre-wrap text-white">{{.Content}}</p>
+    {{range .Attachments}}
+      {{if isImage .MimeType}}
+        <a href="/uploads/{{.SessionID}}/{{.Filename}}" target="_blank">
+          <img src="/uploads/{{.SessionID}}/{{.Filename}}"
+               alt="{{.OriginalName}}"
+               class="mt-2 rounded-lg object-cover cursor-pointer"
+               style="max-width:240px;max-height:240px;"
+               loading="lazy">
+        </a>
+      {{else}}
+        <a href="/uploads/{{.SessionID}}/{{.Filename}}"
+           download="{{.OriginalName}}"
+           class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs no-underline"
+           style="background:rgba(255,255,255,0.08);color:#fff;">
+          <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"/>
+            <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <span class="truncate" style="max-width:160px;">{{.OriginalName}}</span>
+        </a>
+      {{end}}
+    {{end}}
     <p class="text-xs mt-1" style="color:#8E8E93;">{{relTime .CreatedAt}}</p>
   </div>
 </div>

@@ -58,7 +58,7 @@ func main() {
 	srv := comandcenter.NewServer(*password, storage, hub, *dataDir)
 
 	// Mount browser UI (WhatsApp-style chat interface).
-	webSrv := web.NewWebServer(storage, hub, *password)
+	webSrv := web.NewWebServer(storage, hub, *password, *dataDir)
 	webSrv.RegisterRoutes(srv.Mux())
 
 	addr := fmt.Sprintf("0.0.0.0:%d", *port)

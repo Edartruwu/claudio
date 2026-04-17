@@ -6,14 +6,16 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-
-	"fmt"
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/attach"
@@ -136,6 +138,10 @@ func funcMap() template.FuncMap {
 				return "text-gray-400"
 			}
 		},
+		// isImage reports whether a MIME type is an image.
+		"isImage": func(mimeType string) bool {
+			return strings.HasPrefix(mimeType, "image/")
+		},
 	}
 }
 
@@ -199,23 +205,31 @@ type uiClient struct {
 	send      chan []byte
 }
 
+// MessageView wraps a cc.Message with its associated attachments for template rendering.
+type MessageView struct {
+	cc.Message
+	Attachments []cc.Attachment
+}
+
 // WebServer serves the browser UI for ComandCenter.
 type WebServer struct {
-	storage  *cc.Storage
-	hub      *cc.Hub
-	password string
+	storage    *cc.Storage
+	hub        *cc.Hub
+	password   string
+	uploadsDir string
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
 }
 
-// NewWebServer creates a WebServer.
-func NewWebServer(storage *cc.Storage, hub *cc.Hub, password string) *WebServer {
+// NewWebServer creates a WebServer. uploadsDir is the base directory for uploaded files.
+func NewWebServer(storage *cc.Storage, hub *cc.Hub, password, uploadsDir string) *WebServer {
 	ws := &WebServer{
 		storage:  storage,
 		hub:      hub,
 		password: password,
-		clients:  make(map[*uiClient]struct{}),
+		clients:    make(map[*uiClient]struct{}),
+		uploadsDir: uploadsDir,
 	}
 	go ws.fanout()
 	return ws
@@ -241,6 +255,8 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /partials/sessions", ws.uiAuth(http.HandlerFunc(ws.handlePartialSessions)))
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
 	mux.Handle("POST /api/sessions/{session_id}/message", ws.uiAuth(http.HandlerFunc(ws.handleSendMessage)))
+	mux.Handle("POST /api/sessions/{session_id}/upload", ws.uiAuth(http.HandlerFunc(ws.handleUpload)))
+	mux.Handle("GET /uploads/{session_id}/{filename}", ws.uiAuth(http.HandlerFunc(ws.handleServeFile)))
 	mux.Handle("GET /ws/ui", ws.uiAuth(http.HandlerFunc(ws.handleWSUI)))
 
 	// Session management API.
@@ -306,6 +322,8 @@ type InfoPageData struct {
 	Tasks     []cc.Task
 	Agents    []cc.Agent
 	SessionID string
+	Images    []cc.Attachment // image attachments for media grid
+	Docs      []cc.Attachment // non-image attachments for document list
 }
 
 func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
@@ -336,9 +354,23 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 	}
 	// ListMessages returns newest first; reverse for display.
 	reversed := reverseMessages(msgs)
+
+	// Load all session attachments and group by message_id for O(1) lookup.
+	allAtts, _ := ws.storage.ListAttachments(id)
+	attsByMsg := make(map[string][]cc.Attachment, len(allAtts))
+	for _, att := range allAtts {
+		if att.MessageID != "" {
+			attsByMsg[att.MessageID] = append(attsByMsg[att.MessageID], att)
+		}
+	}
+	views := make([]MessageView, len(reversed))
+	for i, m := range reversed {
+		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
+	}
+
 	chatViewTmpl.execute(w, "chat_view.html", map[string]any{
 		"Session":   sess,
-		"Messages":  reversed,
+		"Messages":  views,
 		"SessionID": id,
 	})
 }
@@ -358,11 +390,22 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		agents = nil
 	}
+	allAtts, _ := ws.storage.ListAttachments(id)
+	var images, docs []cc.Attachment
+	for _, att := range allAtts {
+		if strings.HasPrefix(att.MimeType, "image/") {
+			images = append(images, att)
+		} else {
+			docs = append(docs, att)
+		}
+	}
 	infoTmpl.execute(w, "info_panel.html", InfoPageData{
 		Session:   sess,
 		Tasks:     tasks,
 		Agents:    agents,
 		SessionID: id,
+		Images:    images,
+		Docs:      docs,
 	})
 }
 
@@ -384,7 +427,19 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	reversed := reverseMessages(msgs)
-	messagesTmpl.execute(w, "messages-partial", reversed)
+
+	allAtts, _ := ws.storage.ListAttachments(id)
+	attsByMsg := make(map[string][]cc.Attachment, len(allAtts))
+	for _, att := range allAtts {
+		if att.MessageID != "" {
+			attsByMsg[att.MessageID] = append(attsByMsg[att.MessageID], att)
+		}
+	}
+	views := make([]MessageView, len(reversed))
+	for i, m := range reversed {
+		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
+	}
+	messagesTmpl.execute(w, "messages-partial", views)
 }
 
 func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
@@ -417,7 +472,7 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Push user bubble to UI WS clients immediately (no refresh needed).
 	var buf bytes.Buffer
-	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", &msg); err == nil {
+	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err == nil {
 		if payload, err := json.Marshal(map[string]string{
 			"type": "message.user",
 			"html": buf.String(),
@@ -500,7 +555,7 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			var buf bytes.Buffer
-			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", msg); err != nil {
+			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: *msg}); err != nil {
 				continue
 			}
 			payload, err := json.Marshal(map[string]string{
@@ -519,7 +574,7 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			var buf bytes.Buffer
-			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", msg); err != nil {
+			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: *msg}); err != nil {
 				continue
 			}
 			bubblePayload, err := json.Marshal(map[string]string{
@@ -614,6 +669,141 @@ func reverseMessages(msgs []cc.Message) []cc.Message {
 		out[len(msgs)-1-i] = m
 	}
 	return out
+}
+
+// POST /api/sessions/{session_id}/upload
+// Multipart form: "file" (required), "content" (optional caption).
+func (ws *WebServer) handleUpload(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+
+	// Validate session.
+	if _, err := ws.storage.GetSession(sessionID); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Parse multipart — 32 MB limit.
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "parse multipart failed", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "file field missing", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Detect MIME from first 512 bytes then reset reader.
+	sniff := make([]byte, 512)
+	n, _ := file.Read(sniff)
+	mimeType := http.DetectContentType(sniff[:n])
+	// Also honour the content-type from the part header if available.
+	if ct := header.Header.Get("Content-Type"); ct != "" && ct != "application/octet-stream" {
+		mimeType = ct
+	}
+
+	// Strip MIME parameters (e.g. "image/jpeg; name=...").
+	if idx := strings.Index(mimeType, ";"); idx != -1 {
+		mimeType = strings.TrimSpace(mimeType[:idx])
+	}
+
+	// Seek back to start by seeking on the underlying file.
+	if seeker, ok := file.(io.Seeker); ok {
+		seeker.Seek(0, io.SeekStart)
+	}
+
+	ext := filepath.Ext(header.Filename)
+	storedName := cc.NewID() + ext
+
+	// Ensure per-session upload directory exists.
+	dir := filepath.Join(ws.uploadsDir, sessionID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+
+	// Write file to disk.
+	dst, err := os.Create(filepath.Join(dir, storedName))
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	size, err := io.Copy(dst, file)
+	dst.Close()
+	if err != nil {
+		http.Error(w, "write error", http.StatusInternalServerError)
+		return
+	}
+
+	caption := strings.TrimSpace(r.FormValue("content"))
+	if caption == "" {
+		caption = header.Filename
+	}
+
+	now := time.Now()
+
+	// Create a user message for this upload.
+	msg := cc.Message{
+		ID:        cc.NewID(),
+		SessionID: sessionID,
+		Role:      "user",
+		Content:   caption,
+		CreatedAt: now,
+	}
+	if err := ws.storage.InsertMessage(msg); err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	// Record attachment linked to the message.
+	att := cc.Attachment{
+		ID:           cc.NewID(),
+		SessionID:    sessionID,
+		MessageID:    msg.ID,
+		Filename:     storedName,
+		OriginalName: header.Filename,
+		MimeType:     mimeType,
+		Size:         size,
+		CreatedAt:    now,
+	}
+	if err := ws.storage.InsertAttachment(att); err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	// Push bubble to WS clients.
+	var buf bytes.Buffer
+	view := MessageView{Message: msg, Attachments: []cc.Attachment{att}}
+	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", view); err == nil {
+		payload, _ := json.Marshal(map[string]string{"type": "message.user", "html": buf.String()})
+		ws.pushToSessionClients(sessionID, payload)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"url":          "/uploads/" + sessionID + "/" + storedName,
+		"filename":     storedName,
+		"originalName": header.Filename,
+		"mimeType":     mimeType,
+		"size":         size,
+	})
+}
+
+// GET /uploads/{session_id}/{filename}
+func (ws *WebServer) handleServeFile(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	filename := r.PathValue("filename")
+
+	// Sanitize: prevent path traversal.
+	if strings.ContainsAny(filename, "/\\..") {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+
+	path := filepath.Join(ws.uploadsDir, sessionID, filename)
+	http.ServeFile(w, r, path)
 }
 
 // envelopeToMessage converts a UIEvent envelope to a displayable Message-like struct.

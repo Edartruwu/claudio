@@ -24,7 +24,7 @@ func newTestEnv(t *testing.T) (*cc.Storage, *http.ServeMux) {
 	t.Cleanup(func() { storage.Close() })
 
 	hub := cc.NewHub(storage)
-	ws := web.NewWebServer(storage, hub, testPassword)
+	ws := web.NewWebServer(storage, hub, testPassword, "")
 	mux := http.NewServeMux()
 	ws.RegisterRoutes(mux)
 	return storage, mux
