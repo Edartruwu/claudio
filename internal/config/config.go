@@ -95,6 +95,17 @@ type Settings struct {
 
 	// Caveman enables ultra-compressed communication mode for all agents.
 	Caveman *bool `json:"caveman,omitempty"`
+
+	// Design configuration
+	Design DesignConfig `json:"design,omitempty"`
+}
+
+// DesignConfig holds configuration for the Claudio Design agent skills.
+// EnabledSkills is a whitelist — if non-empty, only these design skills are available.
+// DisabledSkills is a deny list — these design skills are hidden. Ignored if EnabledSkills is set.
+type DesignConfig struct {
+	EnabledSkills  []string `json:"enabledSkills,omitempty"`
+	DisabledSkills []string `json:"disabledSkills,omitempty"`
 }
 
 // SidebarConfig controls the persistent right-side panel.
@@ -366,6 +377,12 @@ func mergeFromFile(settings *Settings, path string) {
 	}
 	if len(overlay.DenyTools) > 0 {
 		settings.DenyTools = append(settings.DenyTools, overlay.DenyTools...)
+	}
+	if len(overlay.Design.EnabledSkills) > 0 {
+		settings.Design.EnabledSkills = append(settings.Design.EnabledSkills, overlay.Design.EnabledSkills...)
+	}
+	if len(overlay.Design.DisabledSkills) > 0 {
+		settings.Design.DisabledSkills = append(settings.Design.DisabledSkills, overlay.Design.DisabledSkills...)
 	}
 	if len(overlay.Providers) > 0 {
 		if settings.Providers == nil {
