@@ -336,6 +336,12 @@ func bundledSkills() []*Skill {
 			Content:     hifiSkillContent,
 			Source:      "bundled",
 		},
+		{
+			Name:        "prototype",
+			Description: "Generate stateful interactive prototypes with multi-screen flows, animated transitions, loading states, modals, and a hotspot mode for stakeholder walkthroughs",
+			Content:     prototypeSkillContent,
+			Source:      "bundled",
+		},
 	}
 }
 
@@ -2313,3 +2319,380 @@ Tell the user:
 - Variation names and their design directions
 - VerifyMockup score
 - Any unfixed issues`
+
+var prototypeSkillContent = `You are generating stateful interactive prototypes with multi-screen flows. Follow this workflow exactly.
+
+## Step 1 — Ask About the Flow
+
+Use AskUserQuestion to ask:
+
+- **"What user flows should the prototype cover?"**
+  Example: "login → dashboard → settings" or "onboarding → create project → invite team"
+
+- **"What is the entry point screen?"**
+  Example: "login" or "home page"
+
+- **"What interactions should be demonstrated?"**
+  Checklist options: "Form submission", "Modal/drawer open/close", "Loading states", "Navigation", "Tab switching", "Accordion/collapse", "Dropdown menu", "Error states"
+
+## Step 2 — Load or Define Design Tokens
+
+1. Check if ` + "`~/.claudio/designs/design-system.json`" + ` exists using Bash: ` + "`test -f ~/.claudio/designs/design-system.json && echo exists || echo notfound`" + `
+
+2. If exists: Read it with the Read tool. Extract:
+   - Color palette (primary, secondary, accent, background, text, border, error, success, warning)
+   - Typography (font family, font sizes for body/heading, line heights, weights)
+   - Spacing scale (base unit, then multiples: 8px, 16px, 24px, 32px, etc.)
+   - Border radii (sm, md, lg)
+   - Shadows (sm, md, lg)
+   - Transitions (duration, easing)
+
+3. If not exists: Use inline defaults:
+` + "```json" + `
+{
+  "colors": {
+    "primary": "#3b82f6",
+    "secondary": "#10b981",
+    "accent": "#7c3aed",
+    "background": "#ffffff",
+    "surface": "#f9fafb",
+    "text": "#1f2937",
+    "textMuted": "#6b7280",
+    "border": "#e5e7eb",
+    "error": "#ef4444",
+    "success": "#10b981",
+    "warning": "#f59e0b"
+  },
+  "typography": {
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "fontSize": { "sm": "12px", "base": "14px", "lg": "16px", "xl": "20px", "2xl": "24px" },
+    "fontWeight": { "normal": 400, "medium": 500, "semibold": 600, "bold": 700 },
+    "lineHeight": { "tight": "1.25", "normal": "1.5", "relaxed": "1.75" }
+  },
+  "spacing": { "xs": "4px", "sm": "8px", "md": "16px", "lg": "24px", "xl": "32px", "2xl": "48px" },
+  "radius": { "sm": "4px", "md": "8px", "lg": "12px" },
+  "shadow": {
+    "sm": "0 1px 2px rgba(0,0,0,0.05)",
+    "md": "0 4px 6px rgba(0,0,0,0.10)",
+    "lg": "0 10px 15px rgba(0,0,0,0.15)"
+  },
+  "transition": { "duration": "300ms", "easing": "cubic-bezier(0.4, 0, 0.2, 1)" }
+}
+` + "```" + `
+
+## Step 3 — Design the Screen Map
+
+Create a simple structure:
+` + "```js" + `
+const screens = {
+  "login": {
+    title: "Login",
+    next: "dashboard",
+    actions: { submit: "dashboard" }
+  },
+  "dashboard": {
+    title: "Dashboard",
+    previous: "login",
+    next: "settings",
+    actions: { settings: "settings", logout: "login" }
+  },
+  "settings": {
+    title: "Settings",
+    previous: "dashboard",
+    actions: { save: "dashboard" }
+  }
+};
+` + "```" + `
+
+Map each screen with:
+- ` + "`title`" + ` — display name
+- ` + "`previous`" + ` — screen to go back to (for breadcrumb/back button)
+- ` + "`next`" + ` — default forward flow (for primary button)
+- ` + "`actions`" + ` — { actionLabel: targetScreen } map (forms, nav, etc.)
+
+## Step 4 — Generate Multi-Screen React App
+
+Create a single HTML file with React from CDN. Structure:
+
+` + "```html" + `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interactive Prototype</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root {
+      --color-primary: #3b82f6;
+      --color-bg: #ffffff;
+      --color-text: #1f2937;
+      --spacing-md: 16px;
+      --radius-md: 8px;
+      --transition: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--font-family, system-ui); background: var(--color-bg); }
+    
+    .app { width: 100%; height: 100vh; display: flex; overflow: hidden; }
+    .viewport { flex: 1; position: relative; overflow: hidden; }
+    .screen {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition), transform var(--transition);
+    }
+    .screen.active { opacity: 1; pointer-events: auto; }
+    .screen.exit-left { transform: translateX(-100%); }
+    .screen.exit-right { transform: translateX(100%); }
+    .screen.enter-left { opacity: 1; transform: translateX(0); }
+    .screen.enter-right { opacity: 1; transform: translateX(0); }
+    
+    .screen__content { padding: var(--spacing-md); max-width: 600px; margin: 0 auto; }
+    .breadcrumb { display: flex; gap: 8px; margin-bottom: 16px; font-size: 12px; color: var(--color-textMuted, #6b7280); }
+    .breadcrumb a { cursor: pointer; color: var(--color-primary); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    
+    .form { display: flex; flex-direction: column; gap: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-weight: 500; font-size: 14px; }
+    .form-group input { padding: 8px 12px; border: 1px solid var(--color-border, #e5e7eb); border-radius: var(--radius-md); }
+    
+    .button {
+      padding: 10px 16px;
+      background: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-size: 14px;
+      transition: background var(--transition);
+    }
+    .button:hover { background: #2563eb; }
+    .button:disabled { background: #d1d5db; cursor: not-allowed; }
+    
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity var(--transition); }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal { background: white; border-radius: var(--radius-md); padding: 24px; max-width: 400px; width: 90%; }
+    
+    .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: var(--color-primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading { display: flex; justify-content: center; align-items: center; height: 200px; }
+    
+    .hotspot { position: relative; }
+    [data-hotspot] { outline: none; }
+    body.hotspot-mode [data-hotspot]::after {
+      content: attr(data-hotspot-label);
+      position: absolute;
+      top: -5px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-100%);
+      background: #3b82f6;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+      z-index: 1000;
+      pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      animation: pulse-outline 1.5s ease-in-out infinite;
+    }
+    body.hotspot-mode [data-hotspot] {
+      outline: 2px dashed #3b82f6;
+      outline-offset: 2px;
+      animation: pulse-glow 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-glow {
+      0%, 100% { outline-color: #3b82f6; }
+      50% { outline-color: #60a5fa; }
+    }
+    @keyframes pulse-outline {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    .hotspot-toggle {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 999;
+      padding: 8px 12px;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background var(--transition);
+    }
+    .hotspot-toggle:hover { background: #e5e7eb; }
+    .hotspot-toggle.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState } = React;
+    
+    const screens = {
+      /* FILLED FROM STEP 3 ABOVE */
+    };
+    
+    function App() {
+      const [currentScreen, setCurrentScreen] = useState('LOGIN_SCREEN');
+      const [isLoading, setIsLoading] = useState(false);
+      const [formData, setFormData] = useState({});
+      const [openModals, setOpenModals] = useState({});
+      const [hotspotMode, setHotspotMode] = useState(false);
+      
+      /* Screen render functions — one per screen */
+      const renderScreen = () => {
+        switch(currentScreen) {
+          case 'login':
+            return (
+              <div className="screen__content">
+                <h1>Login</h1>
+                <div className="form">
+                  <div className="form-group">
+                    <label>Email</label>
+                    <input type="email" value={formData.email || ''} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label>Password</label>
+                    <input type="password" value={formData.password || ''} onChange={(e) => setFormData({...formData, password: e.target.value})} />
+                  </div>
+                  <button className="button" data-hotspot="true" data-hotspot-label="Sign In" onClick={() => { setIsLoading(true); setTimeout(() => { setCurrentScreen('dashboard'); setIsLoading(false); }, 1000); }} disabled={isLoading}>
+                    {isLoading ? <span className="spinner"></span> : 'Sign In'}
+                  </button>
+                </div>
+              </div>
+            );
+          case 'dashboard':
+            return (
+              <div className="screen__content">
+                <h1>Dashboard</h1>
+                <p>Welcome! This is the main dashboard.</p>
+                <button className="button" data-hotspot="true" data-hotspot-label="Go to Settings" onClick={() => setCurrentScreen('settings')}>Settings</button>
+                <button className="button" data-hotspot="true" data-hotspot-label="Logout" onClick={() => setCurrentScreen('login')} style={{marginLeft: '8px', background: '#6b7280'}}>Logout</button>
+              </div>
+            );
+          case 'settings':
+            return (
+              <div className="screen__content">
+                <h1>Settings</h1>
+                <div className="form">
+                  <div className="form-group">
+                    <label>Display Name</label>
+                    <input type="text" value={formData.name || ''} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                  </div>
+                  <button className="button" data-hotspot="true" data-hotspot-label="Save Changes" onClick={() => { setIsLoading(true); setTimeout(() => { setCurrentScreen('dashboard'); setIsLoading(false); }, 800); }} disabled={isLoading}>
+                    {isLoading ? <span className="spinner"></span> : 'Save'}
+                  </button>
+                  <button className="button" data-hotspot="true" data-hotspot-label="Back" onClick={() => setCurrentScreen('dashboard')} style={{background: '#9ca3af'}}>Back</button>
+                </div>
+              </div>
+            );
+          default:
+            return <div>Unknown screen</div>;
+        }
+      };
+      
+      return (
+        <div className="app">
+          <button className={` + "\"" + `hotspot-toggle ${hotspotMode ? 'active' : ''}` + "\"" + `} onClick={() => setHotspotMode(!hotspotMode)}>🔍 Hotspots {hotspotMode ? 'ON' : 'OFF'}</button>
+          <div className="viewport" style={{body: hotspotMode ? 'hotspot-mode' : ''}}>
+            <div className={` + "\"" + `screen active` + "\"" + `}>
+              <div className="breadcrumb">
+                {screens[currentScreen]?.previous && <a onClick={() => setCurrentScreen(screens[currentScreen].previous)}>← Back</a>}
+                <span>/ {currentScreen.replace(/_/g, ' ')}</span>
+              </div>
+              {isLoading && <div className="loading"><div className="spinner"></div></div>}
+              {!isLoading && renderScreen()}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
+` + "```" + `
+
+**Key patterns:**
+
+- ` + "`currentScreen`" + ` state — tracks visible screen by name (e.g., "login", "dashboard")
+- ` + "`setCurrentScreen(name)`" + ` — navigate to a screen
+- ` + "`isLoading`" + ` state — shows spinner overlay + disables buttons during async (simulated with setTimeout)
+- ` + "`formData`" + ` state — holds form input values across navigation
+- ` + "`openModals`" + ` state — { modalName: boolean } for modal visibility
+- ` + "`hotspotMode`" + ` state — toggles body.hotspot-mode class
+- ` + "`[data-hotspot]`" + ` attributes on clickable elements for hotspot labeling
+- CSS transitions (slide/fade) applied via classes ` + "`exit-left`" + `, ` + "`enter-right`" + `, etc.
+- Breadcrumb rendered dynamically from screens map
+
+## Step 5 — Add Hotspot Mode Implementation
+
+In the ` + "`<style>`" + ` section (already above), the CSS handles hotspot display:
+
+- ` + "`body.hotspot-mode [data-hotspot]::after`" + ` — shows label with pulsing animation
+- ` + "`body.hotspot-mode [data-hotspot]`" + ` — pulsing blue outline + dashed outline
+- Hotspot toggle button (top-right) — toggles the mode
+
+In the ` + "`<body>`" + ` tag after the app mounts, ensure the class is synced:
+` + "```js" + `
+useEffect(() => {
+  if (hotspotMode) {
+    document.body.classList.add('hotspot-mode');
+  } else {
+    document.body.classList.remove('hotspot-mode');
+  }
+}, [hotspotMode]);
+` + "```" + `
+
+## Step 6 — Save to Temp Location
+
+1. Generate timestamp: ` + "`const ts = new Date().toISOString().replace(/[:-]/g, '').slice(0, 15)`" + `
+2. Create directory: ` + "``" + `mkdir -p ~/.claudio/designs/{timestamp}` + "``" + `
+3. Write the HTML file to ` + "`~/.claudio/designs/{timestamp}/prototype.html`" + ` using the Write tool
+
+## Step 7 — Render and Verify
+
+1. Call ` + "`RenderMockup`" + ` with the path to ` + "`prototype.html`" + `
+2. Call ` + "`VerifyMockup`" + ` with the screenshot path and ` + "`threshold: 75`" + `
+
+If ` + "`pass: false`" + `:
+- Read the ` + "`issues`" + ` list
+- Fix each blocking issue in the HTML
+- Re-render and re-verify
+- Repeat up to 3 cycles; after 3, report remaining issues and stop
+
+If ` + "`pass: true`" + `: proceed to Step 8.
+
+## Step 8 — Bundle
+
+Call ` + "`BundleMockup`" + ` with:
+- ` + "`indexPath`" + `: path to ` + "`prototype.html`" + `
+- ` + "`embedCDN`" + `: true
+
+Output path: ` + "`~/.claudio/designs/{timestamp}/bundle/prototype.html`" + `
+
+## Step 9 — Report
+
+Tell the user:
+- Bundle path
+- Screens covered in the flow
+- Interactions demonstrated (forms, loading states, navigation, etc.)
+- Hotspot mode usage note
+- VerifyMockup score
+- Any unfixed issues
+
+Then suggest: ` + "`Use /handoff to generate a developer spec from this prototype.`" + `
+`
