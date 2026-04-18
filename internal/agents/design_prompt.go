@@ -219,24 +219,32 @@ Call RenderMockup with index.html path. Inspect console_errors:
 - If empty: proceed to step 7.
 - If non-empty: fix errors, call RenderMockup again. Repeat until console_errors is empty.
 
-**Step 7: VerifyMockup (Verification Loop)**
-Call VerifyMockup with the latest screenshots from RenderMockup. Inspect overall_score and blocking_issues:
-- If overall_score ≥ 7.0 AND blocking_issues is empty: proceed to step 8.
-- If overall_score < 7.0 OR blocking_issues is non-empty: fix issues, call RenderMockup, then re-call VerifyMockup. Repeat.
+**Step 7: VerifyMockup (Verification Loop — 3-Cycle Budget)**
+After console_errors is clear, enter the verify→fix→re-render cycle:
 
-**Iteration Budget (Steps 6 & 7)**
-Max 3 render+verify cycles total:
-- Cycle 1: RenderMockup (console clear) → VerifyMockup
-- Cycle 2: fix → RenderMockup → VerifyMockup
-- Cycle 3: fix → RenderMockup → VerifyMockup
-- After cycle 3: if still failing, proceed to step 8 and report remaining issues in plain language.
+1. Call VerifyMockup with the latest screenshot path from RenderMockup output.
+2. Inspect the response:
+   - If ` + "`" + `pass` + "`" + ` is ` + "`" + `true` + "`" + ` AND ` + "`" + `overall_score >= 90` + "`" + `: proceed directly to step 8 (BundleMockup).
+   - If ` + "`" + `pass` + "`" + ` is ` + "`" + `false` + "`" + ` OR ` + "`" + `overall_score < 90` + "`" + `: continue to next point.
+3. If verification did not pass:
+   - Fix ALL ` + "`" + `blocking_issues` + "`" + ` identified in the response.
+   - Address top 2–3 ` + "`" + `suggestions` + "`" + ` items if present.
+   - Call RenderMockup again.
+   - Call VerifyMockup again with the new screenshot.
+4. Repeat steps 2–3 up to 3 times total (3 render+verify cycles).
+   - Cycle 1: initial RenderMockup → VerifyMockup
+   - Cycle 2: fix → RenderMockup → VerifyMockup
+   - Cycle 3: fix → RenderMockup → VerifyMockup
+5. If ` + "`" + `pass` + "`" + ` is ` + "`" + `true` + "`" + ` after any cycle: proceed to step 8.
+6. If after cycle 3 ` + "`" + `pass` + "`" + ` is still ` + "`" + `false` + "`" + `: proceed to step 8 and include a summary of remaining blocking issues.
 
 **Step 8: BundleMockup (Finalize)**
 Call BundleMockup to bundle all files. Present to user:
 - Output file path
 - Aesthetic direction (one sentence)
 - Screens included (list)
-- Any remaining issues (if iteration limit hit)
+- Verification result (pass/fail and score)
+- Any remaining issues (if cycle limit hit before full pass)
 
 ---
 

@@ -1938,7 +1938,8 @@ func registerCapabilityTools(registry *tools.Registry, capabilities []string) {
 		registry.Register(tools.NewBundleMockupTool(paths.Designs))
 		// TODO: uncomment after render.go is merged (S2-B8)
 		registry.Register(tools.NewRenderMockupTool(paths.Designs))
-		// VerifyMockup added in Sprint 3
+		// TODO: uncomment after verify.go is merged (S3-B10)
+		// registry.Register(tools.NewVerifyMockupTool(paths.Designs))
 	}
 }
 
