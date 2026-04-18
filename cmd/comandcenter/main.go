@@ -25,10 +25,11 @@ import (
 )
 
 func main() {
-	password := flag.String("password", "", "shared secret for bearer auth (required)")
-	port := flag.Int("port", 8080, "HTTP port to listen on")
-	dbPath := flag.String("db", "", "path to SQLite database (default: ~/.claudio/comandcenter.db)")
-	dataDir := flag.String("data-dir", "", "path to uploads directory (default: ~/.claudio/uploads/)")
+	password   := flag.String("password", "", "shared secret for bearer auth (required)")
+	port       := flag.Int("port", 8080, "HTTP port to listen on")
+	dbPath     := flag.String("db", "", "path to SQLite database (default: ~/.claudio/comandcenter.db)")
+	dataDir    := flag.String("data-dir", "", "path to uploads directory (default: ~/.claudio/uploads/)")
+	configPath := flag.String("config", "", "path to cc-config.json (default: ~/.claudio/cc-config.json)")
 	flag.Parse()
 
 	if *password == "" {
@@ -48,6 +49,9 @@ func main() {
 	}
 	if *dataDir == "" {
 		*dataDir = filepath.Join(claudioDir, "uploads")
+	}
+	if *configPath == "" {
+		*configPath = defaultCCConfigPath()
 	}
 
 	// Ensure directories exist.
@@ -161,6 +165,14 @@ func main() {
 		Handler: srv,
 	}
 
+	// Load session config and build launcher.
+	ccCfg, err := LoadCCConfig(*configPath)
+	if err != nil {
+		log.Fatalf("load cc-config: %v", err)
+	}
+	serverURL := fmt.Sprintf("http://localhost:%d", *port)
+	launcher := NewSessionLauncher(ccCfg, serverURL, *password)
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -171,8 +183,16 @@ func main() {
 		}
 	}()
 
+	// Give the HTTP server a moment to bind before spawning attach sessions.
+	if len(ccCfg.Sessions) > 0 {
+		time.Sleep(500 * time.Millisecond)
+		log.Printf("launching %d managed session(s)", len(ccCfg.Sessions))
+		launcher.Start()
+	}
+
 	<-quit
 	log.Println("shutting down")
+	launcher.Stop()
 	cronCancel()
 	cronRunner.Stop()
 	if err := httpSrv.Close(); err != nil {
