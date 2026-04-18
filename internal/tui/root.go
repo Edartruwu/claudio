@@ -1938,6 +1938,7 @@ func registerCapabilityTools(registry *tools.Registry, capabilities []string, cl
 		registry.Register(tools.NewBundleMockupTool(paths.Designs))
 		registry.Register(tools.NewRenderMockupTool(paths.Designs))
 		registry.Register(tools.NewVerifyMockupTool(paths.Designs, client, ""))
+		registry.Register(tools.NewExportHandoffTool(paths.Designs))
 	}
 }
 
