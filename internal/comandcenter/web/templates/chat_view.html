@@ -158,6 +158,11 @@
             aria-label="Remove staged file">✕</button>
   </div>
 
+  <!-- Compact loading indicator -->
+  <div id="compact-loading" style="display:none;padding:10px 16px;background:#1C1C1E;border-top:1px solid #2C2C2E;text-align:center;font-size:13px;color:#8E8E93;">
+    <span class="compact-spinner"></span> Compacting conversation…
+  </div>
+
   <!-- Input bar -->
   <div class="input-bar px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
     <!-- Hidden file input -->
@@ -639,6 +644,9 @@
   window.ccSendCommand = async function(cmd) {
     document.getElementById('plus-popover').classList.add('hidden');
     var sessionId = '{{.Session.ID}}';
+    var isCompact = cmd === '/compact' || cmd.startsWith('/compact ');
+    var loader = document.getElementById('compact-loading');
+    if (isCompact && loader) loader.style.display = '';
     try {
       var params = new URLSearchParams();
       params.append('content', cmd);
@@ -647,8 +655,13 @@
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString()
       });
-      ccToast(res.ok ? cmd + ' sent' : 'Failed', res.ok);
+      if (!res.ok) {
+        if (loader) loader.style.display = 'none';
+        ccToast('Failed', false);
+      }
+      // On success: loader hidden by messages.compacted WS event
     } catch (e) {
+      if (loader) loader.style.display = 'none';
       ccToast('Request failed', false);
     }
   };

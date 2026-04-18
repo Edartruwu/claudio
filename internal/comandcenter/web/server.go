@@ -985,6 +985,9 @@ func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction
 	}
 	_ = ws.storage.InsertMessage(confirm)
 	ws.pushMsgBubble(sessionID, confirm)
+	if p, err := json.Marshal(map[string]string{"type": "messages.compacted"}); err == nil {
+		ws.pushToSessionClients(sessionID, p)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
