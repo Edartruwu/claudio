@@ -49,23 +49,23 @@ Primitives are generic, reusable base components: Button, Input, Card, Badge, Av
 **Step 5 — Compose screen components in screens.jsx.**
 Each screen is a self-contained functional component wrapped in a data-artboard div (see ARTBOARD CONVENTION below). Screens assemble primitives and tokens into full UI layouts. Export via Object.assign(window, ...).
 
-**Step 6 — Write index.html.**
-index.html loads React 18 + ReactDOM 18 + Babel Standalone 7 from unpkg CDN, then loads your four files as Babel-transformed scripts. It mounts a root App component that renders all screens stacked vertically.
+Then write index.html: load React 18 + ReactDOM 18 + Babel Standalone 7 from unpkg CDN, load your four files as Babel-transformed scripts in order (tokens.jsx → primitives.jsx → screens.jsx), then mount a root App component that renders all screens stacked vertically.
 
-Script load order is critical: tokens.jsx → primitives.jsx → screens.jsx → inline App mount.
+**Step 6 — Call RenderMockup.**
+After writing all files, call the ` + "`" + `RenderMockup` + "`" + ` tool with the path to index.html. Inspect the ` + "`" + `console_errors` + "`" + ` field in the response:
+- If ` + "`" + `console_errors` + "`" + ` is non-empty: read each error, locate the root cause, fix the relevant file(s), then call RenderMockup again.
+- Each re-render counts as one iteration toward the 3-iteration budget.
+- Continue until console_errors is empty before proceeding to step 7.
 
-**Step 7 — Call RenderMockup.**
-Call the RenderMockup tool with the path to index.html. Read the console_errors field in the response. If non-empty, fix every error, then call RenderMockup again. Each render counts as one iteration toward the 3-iteration budget.
+**Step 7 — Call VerifyMockup.**
+Call the ` + "`" + `VerifyMockup` + "`" + ` tool with the screenshot(s) from the most recent RenderMockup render. Inspect the response:
+- If ` + "`" + `overall_score >= 7.0` + "`" + ` AND ` + "`" + `blocking_issues` + "`" + ` is empty: pass the screenshots and verification score to the next step (BundleMockup).
+- If ` + "`" + `overall_score < 7.0` + "`" + ` OR ` + "`" + `blocking_issues` + "`" + ` is non-empty: fix the issues, call RenderMockup again, then re-call VerifyMockup.
+- Max 3 total render+verify cycles across steps 6 and 7 combined.
+- If still failing after 3 cycles: proceed to step 8, then inform the user of remaining issues in plain language.
 
-**Step 8 — Call VerifyMockup.**
-Call the VerifyMockup tool with the screenshot(s) from the render. Read overall_score and blocking_issues.
-
-- If overall_score < 7.0 OR blocking_issues is non-empty: fix the listed issues, re-render (RenderMockup), then call VerifyMockup again.
-- Max 3 total render+verify cycles across steps 7 and 8 combined.
-- If still failing after 3 cycles: proceed to step 9, then report the remaining issues to the user.
-
-**Step 9 — Call BundleMockup.**
-Only call BundleMockup after verification passes (or the iteration limit is reached). Present the output path and a 2–3 sentence summary of the design direction and screens delivered to the user.
+**Step 8 — Call BundleMockup.**
+After verification passes or the iteration limit is exhausted, call the ` + "`" + `BundleMockup` + "`" + ` tool. Present the output file path and a 2–3 sentence summary of the design direction and screens delivered to the user.
 
 ---
 
@@ -212,33 +212,31 @@ index.html skeleton:
 
 # VERIFICATION PROTOCOL
 
-After generating all four files, follow this exact sequence:
+This protocol mirrors the workflow steps 6–8. Execute in strict order:
 
-**1. RenderMockup**
-Call RenderMockup with the index.html path. Inspect console_errors in the response.
-- If console_errors is non-empty: read each error, locate the root cause in your code, fix it, then call RenderMockup again. This re-render counts as iteration 1.
+**Step 6: RenderMockup (Render Loop)**
+Call RenderMockup with index.html path. Inspect console_errors:
+- If empty: proceed to step 7.
+- If non-empty: fix errors, call RenderMockup again. Repeat until console_errors is empty.
 
-**2. VerifyMockup**
-Call VerifyMockup with the rendered screenshot(s). Inspect overall_score and blocking_issues.
-- If overall_score ≥ 7.0 AND blocking_issues is empty: proceed to BundleMockup.
-- If overall_score < 7.0 OR blocking_issues is non-empty: address every blocking issue and any score gaps above 0.5 points. Fix the relevant files, call RenderMockup (iteration N), then call VerifyMockup again.
+**Step 7: VerifyMockup (Verification Loop)**
+Call VerifyMockup with the latest screenshots from RenderMockup. Inspect overall_score and blocking_issues:
+- If overall_score ≥ 7.0 AND blocking_issues is empty: proceed to step 8.
+- If overall_score < 7.0 OR blocking_issues is non-empty: fix issues, call RenderMockup, then re-call VerifyMockup. Repeat.
 
-**3. Iteration budget**
-Steps 7 and 8 combined share a budget of 3 render+verify cycles.
-- Cycle 1: initial RenderMockup + VerifyMockup
+**Iteration Budget (Steps 6 & 7)**
+Max 3 render+verify cycles total:
+- Cycle 1: RenderMockup (console clear) → VerifyMockup
 - Cycle 2: fix → RenderMockup → VerifyMockup
 - Cycle 3: fix → RenderMockup → VerifyMockup
-- After cycle 3: if still failing, call BundleMockup anyway, then inform the user of the remaining issues in plain language.
+- After cycle 3: if still failing, proceed to step 8 and report remaining issues in plain language.
 
-**4. BundleMockup**
-Call BundleMockup only after verification passes or the iteration budget is exhausted. Never skip this step. The bundle is the deliverable.
-
-**5. Present to user**
-After BundleMockup completes, present:
-- The output file path
-- The aesthetic direction chosen (one sentence)
-- The screens included (list)
-- Any known remaining issues (if iteration limit was hit)
+**Step 8: BundleMockup (Finalize)**
+Call BundleMockup to bundle all files. Present to user:
+- Output file path
+- Aesthetic direction (one sentence)
+- Screens included (list)
+- Any remaining issues (if iteration limit hit)
 
 ---
 
