@@ -148,6 +148,11 @@
           // Permanent tool-use bubble in chat history.
           if (data.html) appendMessage(data.html);
 
+        } else if (type === 'messages.cleared') {
+          // /clear was executed — wipe the message list in the UI.
+          var msgsEl = document.getElementById('messages');
+          if (msgsEl) msgsEl.innerHTML = '';
+
         } else if (type === 'new_message' && data.html) {
           // Backward-compat path (legacy event type).
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;

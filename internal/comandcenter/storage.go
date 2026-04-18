@@ -141,6 +141,11 @@ func (s *Storage) migrate() error {
 			public_key TEXT NOT NULL,
 			private_key TEXT NOT NULL
 		)`,
+		// 12 — idempotent retry: ensure reply_to_session exists (migration 7 may have been
+		// silently skipped on DBs where schema_version was bootstrapped incorrectly).
+		`ALTER TABLE cc_messages ADD COLUMN reply_to_session TEXT`,
+		// 13 — idempotent retry: same for quoted_content (migration 8).
+		`ALTER TABLE cc_messages ADD COLUMN quoted_content TEXT`,
 	}
 
 	for i, m := range migrations {

@@ -742,6 +742,10 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: time.Now(),
 		}
 		_ = ws.storage.InsertMessage(confirm)
+		// Tell all connected clients to clear their message list, then show confirm bubble.
+		if p, err := json.Marshal(map[string]string{"type": "messages.cleared"}); err == nil {
+			ws.pushToSessionClients(sessionID, p)
+		}
 		ws.pushMsgBubble(sessionID, confirm)
 		w.WriteHeader(http.StatusNoContent)
 		return
