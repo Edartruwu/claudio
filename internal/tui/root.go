@@ -1742,6 +1742,12 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 		if m.engine != nil {
 			m.engine.SetSystem(m.baseSystemPrompt)
 		}
+		// Restore SkillTool to the full unfiltered registry (no capabilities → no design skills).
+		var removeCfg *config.Settings
+		if m.appCtx != nil {
+			removeCfg = m.appCtx.Config
+		}
+		applySkillFiltering(m.registry, nil, removeCfg, m.skills)
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: "Agent persona removed — back to default Claudio"})
 		m.refreshViewport()
 		return m
@@ -1759,6 +1765,11 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 		filtered.Remove(name)
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient)
+	var agentCfg *config.Settings
+	if m.appCtx != nil {
+		agentCfg = m.appCtx.Config
+	}
+	applySkillFiltering(filtered, msg.Capabilities, agentCfg, m.skills)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -1910,6 +1921,11 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 		filtered.Remove(name)
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient)
+	var startupCfg *config.Settings
+	if m.appCtx != nil {
+		startupCfg = m.appCtx.Config
+	}
+	applySkillFiltering(filtered, msg.Capabilities, startupCfg, m.skills)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -1940,6 +1956,57 @@ func registerCapabilityTools(registry *tools.Registry, capabilities []string, cl
 		registry.Register(tools.NewVerifyMockupTool(paths.Designs, client, ""))
 		registry.Register(tools.NewExportHandoffTool(paths.Designs))
 	}
+}
+
+// applySkillFiltering updates the SkillTool inside toolRegistry with a filtered
+// skills registry based on the agent's capabilities and design config.
+// It creates a new SkillTool instance (never mutates the shared pointer) so the
+// cached description is rebuilt for the new skill set.
+//
+// Filtering rules:
+//   - Non-design agents: only skills with empty Capabilities (i.e. no design skills).
+//   - Design agents: all design skills, then apply EnabledSkills whitelist or
+//     DisabledSkills denylist from cfg.Design.
+func applySkillFiltering(toolRegistry *tools.Registry, capabilities []string, cfg *config.Settings, fullSkills *skills.Registry) {
+	if fullSkills == nil {
+		return
+	}
+	skillToolRaw, err := toolRegistry.Get("Skill")
+	if err != nil {
+		return // no SkillTool registered — nothing to do
+	}
+	existing, ok := skillToolRaw.(*tools.SkillTool)
+	if !ok {
+		return
+	}
+
+	// Start from the full registry, keep only skills accessible to this agent.
+	filteredSkills := fullSkills.FilterByCapabilities(capabilities)
+
+	// For design-capable agents, apply the per-settings design skill config.
+	if slices.Contains(capabilities, "design") && cfg != nil {
+		if len(cfg.Design.EnabledSkills) > 0 {
+			// Whitelist mode: remove design skills not explicitly listed.
+			for _, s := range filteredSkills.All() {
+				if slices.Contains(s.Capabilities, "design") && !slices.Contains(cfg.Design.EnabledSkills, s.Name) {
+					filteredSkills.Remove(s.Name)
+				}
+			}
+		} else {
+			// Denylist mode: remove disabled design skills.
+			for _, name := range cfg.Design.DisabledSkills {
+				filteredSkills.Remove(name)
+			}
+		}
+	}
+
+	// Register a fresh SkillTool so the cached description is rebuilt.
+	toolRegistry.Register(&tools.SkillTool{
+		SkillsRegistry: filteredSkills,
+		HooksManager:   existing.HooksManager,
+		ProjectRoot:    existing.ProjectRoot,
+		ExcludedNames:  existing.ExcludedNames,
+	})
 }
 
 // ApplyTeamContextAtStartup applies team context at startup, before the engine is running.
