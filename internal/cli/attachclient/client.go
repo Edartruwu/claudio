@@ -22,6 +22,8 @@ type Client struct {
 	conn         *websocket.Conn
 	onUserMsg    func(attach.UserMsgPayload)
 	onInterrupt  func()
+	onSetAgent   func(attach.SetAgentPayload)
+	onSetTeam    func(attach.SetTeamPayload)
 	mu           sync.Mutex
 	closed       bool
 	closedChan   chan struct{}
@@ -129,6 +131,20 @@ func (c *Client) OnInterrupt(fn func()) {
 	c.onInterrupt = fn
 }
 
+// OnSetAgent registers callback invoked when the server sends EventSetAgent.
+func (c *Client) OnSetAgent(fn func(attach.SetAgentPayload)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onSetAgent = fn
+}
+
+// OnSetTeam registers callback invoked when the server sends EventSetTeam.
+func (c *Client) OnSetTeam(fn func(attach.SetTeamPayload)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onSetTeam = fn
+}
+
 // Close sends EventSessionBye then closes connection.
 func (c *Client) Close() error {
 	c.mu.Lock()
@@ -188,6 +204,32 @@ func (c *Client) readLoop() {
 			c.mu.Unlock()
 			if cb != nil {
 				cb()
+			}
+
+		case attach.EventSetAgent:
+			var payload attach.SetAgentPayload
+			if err := env.UnmarshalPayload(&payload); err != nil {
+				log.Printf("unmarshal set_agent payload: %v", err)
+				continue
+			}
+			c.mu.Lock()
+			cb := c.onSetAgent
+			c.mu.Unlock()
+			if cb != nil {
+				cb(payload)
+			}
+
+		case attach.EventSetTeam:
+			var payload attach.SetTeamPayload
+			if err := env.UnmarshalPayload(&payload); err != nil {
+				log.Printf("unmarshal set_team payload: %v", err)
+				continue
+			}
+			c.mu.Lock()
+			cb := c.onSetTeam
+			c.mu.Unlock()
+			if cb != nil {
+				cb(payload)
 			}
 		}
 	}

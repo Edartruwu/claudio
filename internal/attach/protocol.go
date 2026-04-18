@@ -18,9 +18,21 @@ const (
 
 // Events: ComandCenter → Claudio
 const (
-	EventMsgUser    = "message.user"
-	EventInterrupt  = "session.interrupt"
+	EventMsgUser   = "message.user"
+	EventInterrupt = "session.interrupt"
+	EventSetAgent  = "set_agent"
+	EventSetTeam   = "set_team"
 )
+
+// SetAgentPayload for EventSetAgent.
+type SetAgentPayload struct {
+	AgentType string `json:"agent_type"`
+}
+
+// SetTeamPayload for EventSetTeam.
+type SetTeamPayload struct {
+	TeamName string `json:"team_name"`
+}
 
 // Envelope wraps event type + payload.
 type Envelope struct {

@@ -973,6 +973,41 @@ func runInteractive() error {
 		attachClient.OnUserMessage(func(payload attach.UserMsgPayload) {
 			p.Send(prompt.SubmitMsg{Text: payload.Content})
 		})
+
+		// Wire agent/team changes from ComandCenter → TUI.
+		attachClient.OnSetAgent(func(payload attach.SetAgentPayload) {
+			customDirs := agents.GetCustomDirs()
+			allAgents := agents.AllAgents(customDirs...)
+			for _, def := range allAgents {
+				if def.Type == payload.AgentType {
+					p.Send(agentselector.AgentSelectedMsg{
+						AgentType:       def.Type,
+						DisplayName:     def.WhenToUse,
+						SystemPrompt:    def.SystemPrompt,
+						Model:           def.Model,
+						DisallowedTools: def.DisallowedTools,
+					})
+					return
+				}
+			}
+			log.Printf("set_agent: agent type %q not found", payload.AgentType)
+		})
+
+		attachClient.OnSetTeam(func(payload attach.SetTeamPayload) {
+			templatesDir := config.GetPaths().TeamTemplates
+			tmpls := teams.LoadTemplates(templatesDir)
+			for _, tmpl := range tmpls {
+				if tmpl.Name == payload.TeamName {
+					p.Send(teamselector.TeamSelectedMsg{
+						TemplateName: tmpl.Name,
+						Description:  tmpl.Description,
+						Members:      tmpl.Members,
+					})
+					return
+				}
+			}
+			log.Printf("set_team: team template %q not found", payload.TeamName)
+		})
 	}
 
 	if _, err := p.Run(); err != nil {

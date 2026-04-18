@@ -50,6 +50,8 @@ type Hub struct {
 	mu              sync.RWMutex
 	sessions        map[string]wsConn
 	interruptFns    map[string]func()
+	setAgentFns     map[string]func(agentType string)
+	setTeamFns      map[string]func(teamName string)
 	storage         *Storage
 	uiBroadcast     chan UIEvent
 	vapidPublicKey  string
@@ -61,6 +63,8 @@ func NewHub(storage *Storage) *Hub {
 	return &Hub{
 		sessions:     make(map[string]wsConn),
 		interruptFns: make(map[string]func()),
+		setAgentFns:  make(map[string]func(agentType string)),
+		setTeamFns:   make(map[string]func(teamName string)),
 		storage:      storage,
 		uiBroadcast:  make(chan UIEvent, 256),
 	}
@@ -123,6 +127,44 @@ func (h *Hub) Interrupt(sessionID string) bool {
 	}
 	fn()
 	return true
+}
+
+// RegisterSetAgentFn stores a callback to change the active agent for a session.
+func (h *Hub) RegisterSetAgentFn(sessionID string, fn func(agentType string)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.setAgentFns[sessionID] = fn
+}
+
+// RegisterSetTeamFn stores a callback to change the active team for a session.
+func (h *Hub) RegisterSetTeamFn(sessionID string, fn func(teamName string)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.setTeamFns[sessionID] = fn
+}
+
+// SetAgent calls the registered set-agent callback for a session.
+func (h *Hub) SetAgent(sessionID, agentType string) error {
+	h.mu.RLock()
+	fn, ok := h.setAgentFns[sessionID]
+	h.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("hub: session %s not connected", sessionID)
+	}
+	fn(agentType)
+	return nil
+}
+
+// SetTeam calls the registered set-team callback for a session.
+func (h *Hub) SetTeam(sessionID, teamName string) error {
+	h.mu.RLock()
+	fn, ok := h.setTeamFns[sessionID]
+	h.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("hub: session %s not connected", sessionID)
+	}
+	fn(teamName)
+	return nil
 }
 
 // UIBroadcast returns the channel that receives all inbound session events
@@ -231,6 +273,10 @@ func (h *Hub) handleConn(conn wsConn) {
 		conn.close()
 		if sessionID != "" {
 			h.UnregisterInterrupt(sessionID)
+			h.mu.Lock()
+			delete(h.setAgentFns, sessionID)
+			delete(h.setTeamFns, sessionID)
+			h.mu.Unlock()
 			h.Unregister(sessionID)
 			_ = h.storage.SetSessionStatus(sessionID, "inactive")
 		}
@@ -276,6 +322,19 @@ func (h *Hub) handleConn(conn wsConn) {
 	// Register interrupt fn: sends EventInterrupt envelope to the attached Claudio process.
 	h.RegisterInterrupt(sessionID, func() {
 		_ = conn.writeEnvelope(attach.Envelope{Type: attach.EventInterrupt})
+	})
+	// Register set-agent/set-team fns: send envelopes to the attached Claudio process.
+	h.RegisterSetAgentFn(sessionID, func(agentType string) {
+		env, err := attach.NewEnvelope(attach.EventSetAgent, attach.SetAgentPayload{AgentType: agentType})
+		if err == nil {
+			_ = conn.writeEnvelope(env)
+		}
+	})
+	h.RegisterSetTeamFn(sessionID, func(teamName string) {
+		env, err := attach.NewEnvelope(attach.EventSetTeam, attach.SetTeamPayload{TeamName: teamName})
+		if err == nil {
+			_ = conn.writeEnvelope(env)
+		}
 	})
 	h.Broadcast(sessionID, env)
 
