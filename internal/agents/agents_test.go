@@ -76,8 +76,8 @@ func TestSanitizeAgentName_MaxLen50(t *testing.T) {
 
 func TestBuiltInAgents_Count(t *testing.T) {
 	agents := BuiltInAgents()
-	if len(agents) != 4 {
-		t.Errorf("expected 4 built-in agents, got %d", len(agents))
+	if len(agents) != 5 {
+		t.Errorf("expected 5 built-in agents, got %d", len(agents))
 	}
 }
 
@@ -87,7 +87,7 @@ func TestBuiltInAgents_Types(t *testing.T) {
 	for _, a := range agents {
 		types[a.Type] = true
 	}
-	for _, expected := range []string{"general-purpose", "Explore", "Plan", "verification"} {
+	for _, expected := range []string{"general-purpose", "Explore", "Plan", "verification", "design"} {
 		if !types[expected] {
 			t.Errorf("expected agent type %q not found", expected)
 		}

@@ -85,9 +85,8 @@ func (t *BundleMockupTool) IsReadOnly() bool { return false }
 
 func (t *BundleMockupTool) RequiresApproval(_ json.RawMessage) bool { return false }
 
-// localScriptRe matches <script src="./foo.jsx"> or <script src="foo.jsx">
-// (relative paths only — no leading http/https).
-var localScriptRe = regexp.MustCompile(`(?i)<script([^>]*)\bsrc="((?!https?://)[^"]+)"([^>]*)>(\s*</script>)?`)
+// localScriptRe matches any <script src="...">; local vs CDN distinguished in code.
+var localScriptRe = regexp.MustCompile(`(?i)<script([^>]*)\bsrc="([^"]+)"([^>]*)>(\s*</script>)?`)
 
 // cdnScriptRe matches <script src="https://..."> or <script src="http://...">.
 var cdnScriptRe = regexp.MustCompile(`(?i)<script([^>]*)\bsrc="(https?://[^"]+)"([^>]*)>(\s*</script>)?`)
@@ -125,6 +124,10 @@ func (t *BundleMockupTool) Execute(_ context.Context, input json.RawMessage) (*R
 			return match
 		}
 		srcRef := groups[2] // e.g. "./tokens.jsx" or "tokens.jsx"
+		// Skip CDN URLs — handled by cdnScriptRe below.
+		if strings.HasPrefix(srcRef, "http://") || strings.HasPrefix(srcRef, "https://") {
+			return match
+		}
 		srcName := filepath.Base(srcRef)
 
 		// Determine actual file path: explicit map takes priority.
