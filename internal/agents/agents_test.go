@@ -550,3 +550,92 @@ func TestAgentDefinition_ZeroValue(t *testing.T) {
 		t.Error("DisallowedTools should be nil/empty")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// DesignAgent
+// ---------------------------------------------------------------------------
+
+func TestDesignAgent_Type(t *testing.T) {
+	a := DesignAgent()
+	if a.Type != "design" {
+		t.Errorf("expected type %q, got %q", "design", a.Type)
+	}
+}
+
+func TestDesignAgent_Capabilities(t *testing.T) {
+	a := DesignAgent()
+	if len(a.Capabilities) != 1 || a.Capabilities[0] != "design" {
+		t.Errorf("expected Capabilities=[design], got %v", a.Capabilities)
+	}
+}
+
+func TestDesignAgent_SystemPromptNonEmpty(t *testing.T) {
+	a := DesignAgent()
+	if a.SystemPrompt == "" {
+		t.Error("DesignAgent SystemPrompt should not be empty")
+	}
+}
+
+func TestDesignAgent_ToolsNonEmpty(t *testing.T) {
+	a := DesignAgent()
+	if len(a.Tools) == 0 {
+		t.Error("DesignAgent Tools should not be empty")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LoadCustomAgents — capabilities frontmatter
+// ---------------------------------------------------------------------------
+
+func TestLoadCustomAgents_CapabilitiesParsed(t *testing.T) {
+	dir := t.TempDir()
+	content := `---
+description: Design specialist
+capabilities: ["design"]
+---
+
+You are a design specialist agent.`
+	if err := os.WriteFile(filepath.Join(dir, "designer.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := LoadCustomAgents(dir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(result))
+	}
+	a := result[0]
+	if len(a.Capabilities) != 1 || a.Capabilities[0] != "design" {
+		t.Errorf("expected Capabilities=[design], got %v", a.Capabilities)
+	}
+}
+
+func TestLoadCustomAgents_EmptyCapabilitiesIfNotSet(t *testing.T) {
+	dir := t.TempDir()
+	content := "---\ndescription: Plain agent\n---\n\nDoes plain things."
+	if err := os.WriteFile(filepath.Join(dir, "plain.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := LoadCustomAgents(dir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(result))
+	}
+	if len(result[0].Capabilities) != 0 {
+		t.Errorf("expected empty Capabilities when not set, got %v", result[0].Capabilities)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AllAgents includes DesignAgent
+// ---------------------------------------------------------------------------
+
+func TestAllAgents_IncludesDesignAgent(t *testing.T) {
+	SetCustomDirs()
+	all := AllAgents()
+	for _, a := range all {
+		if a.Type == "design" {
+			return
+		}
+	}
+	t.Error("AllAgents() should include design agent")
+}
