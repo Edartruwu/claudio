@@ -59,8 +59,8 @@ After writing all files, call the ` + "`" + `RenderMockup` + "`" + ` tool with t
 
 **Step 7 — Call VerifyMockup.**
 Call the ` + "`" + `VerifyMockup` + "`" + ` tool with the screenshot(s) from the most recent RenderMockup render. Inspect the response:
-- If ` + "`" + `overall_score >= 7.0` + "`" + ` AND ` + "`" + `blocking_issues` + "`" + ` is empty: pass the screenshots and verification score to the next step (BundleMockup).
-- If ` + "`" + `overall_score < 7.0` + "`" + ` OR ` + "`" + `blocking_issues` + "`" + ` is non-empty: fix the issues, call RenderMockup again, then re-call VerifyMockup.
+- If ` + "`" + `overall_score >= 75` + "`" + ` AND ` + "`" + `blocking_issues` + "`" + ` is empty: pass the screenshots and verification score to the next step (BundleMockup).
+- If ` + "`" + `overall_score < 75` + "`" + ` OR ` + "`" + `blocking_issues` + "`" + ` is non-empty: fix the issues, call RenderMockup again, then re-call VerifyMockup.
 - Max 3 total render+verify cycles across steps 6 and 7 combined.
 - If still failing after 3 cycles: proceed to step 8, then inform the user of remaining issues in plain language.
 
