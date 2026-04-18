@@ -836,3 +836,121 @@ func TestStorage_GetOrCreateVAPIDKeys(t *testing.T) {
 		t.Errorf("private key changed: got %q, want %q", priv2, priv1)
 	}
 }
+
+func TestStorage_DeleteMessages(t *testing.T) {
+	s := newTestStorage(t)
+
+	sess := Session{
+		ID: "sess-delmsg-1", Name: "s", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	for _, m := range []Message{
+		{ID: "dm-1", SessionID: sess.ID, Role: "user", Content: "one", CreatedAt: time.Now()},
+		{ID: "dm-2", SessionID: sess.ID, Role: "assistant", Content: "two", CreatedAt: time.Now()},
+		{ID: "dm-3", SessionID: sess.ID, Role: "user", Content: "three", CreatedAt: time.Now()},
+	} {
+		if err := s.InsertMessage(m); err != nil {
+			t.Fatalf("InsertMessage %s: %v", m.ID, err)
+		}
+	}
+
+	if err := s.DeleteMessages(sess.ID); err != nil {
+		t.Fatalf("DeleteMessages: %v", err)
+	}
+
+	msgs, err := s.ListMessages(sess.ID, 100)
+	if err != nil {
+		t.Fatalf("ListMessages after delete: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages after DeleteMessages, got %d", len(msgs))
+	}
+}
+
+func TestStorage_ListMessages_ReplyAndQuotedFields(t *testing.T) {
+	s := newTestStorage(t)
+
+	sess := Session{
+		ID: "sess-reply-1", Name: "s", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	msg := Message{
+		ID:             "reply-msg-1",
+		SessionID:      sess.ID,
+		Role:           "user",
+		Content:        "original content",
+		CreatedAt:      time.Now(),
+		ReplyToSession: "other-sess",
+		QuotedContent:  "quoted text",
+	}
+	if err := s.InsertMessage(msg); err != nil {
+		t.Fatalf("InsertMessage: %v", err)
+	}
+
+	msgs, err := s.ListMessages(sess.ID, 10)
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got := msgs[0]
+	if got.ReplyToSession != "other-sess" {
+		t.Errorf("ReplyToSession: got %q, want %q", got.ReplyToSession, "other-sess")
+	}
+	if got.QuotedContent != "quoted text" {
+		t.Errorf("QuotedContent: got %q, want %q", got.QuotedContent, "quoted text")
+	}
+}
+
+func TestMigration_Idempotent(t *testing.T) {
+	s, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	sess := Session{
+		ID: "sess-mig-1", Name: "s", Path: "/tmp", Status: "active",
+		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	}
+	if err := s.UpsertSession(sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	msg := Message{
+		ID:             "mig-msg-1",
+		SessionID:      sess.ID,
+		Role:           "user",
+		Content:        "migration test",
+		CreatedAt:      time.Now(),
+		ReplyToSession: "some-session",
+		QuotedContent:  "some quoted text",
+	}
+	if err := s.InsertMessage(msg); err != nil {
+		t.Fatalf("InsertMessage: %v", err)
+	}
+
+	msgs, err := s.ListMessages(sess.ID, 10)
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got := msgs[0]
+	if got.ReplyToSession != "some-session" {
+		t.Errorf("ReplyToSession: got %q, want %q", got.ReplyToSession, "some-session")
+	}
+	if got.QuotedContent != "some quoted text" {
+		t.Errorf("QuotedContent: got %q, want %q", got.QuotedContent, "some quoted text")
+	}
+}

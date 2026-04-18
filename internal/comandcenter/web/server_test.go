@@ -755,3 +755,90 @@ func TestBrowseSession_NoPath(t *testing.T) {
 		t.Fatalf("want 400 for no-path session, got %d\nbody: %s", w.Code, w.Body.String())
 	}
 }
+
+// TestHandleSendMessage_Clear verifies POST content=/clear → 204 + all messages deleted.
+func TestHandleSendMessage_Clear(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           "clear-sess-1",
+		Name:         "ClearAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	for _, m := range []cc.Message{
+		{ID: "cl-msg-1", SessionID: "clear-sess-1", Role: "user", Content: "one", CreatedAt: time.Now()},
+		{ID: "cl-msg-2", SessionID: "clear-sess-1", Role: "assistant", Content: "two", CreatedAt: time.Now()},
+		{ID: "cl-msg-3", SessionID: "clear-sess-1", Role: "user", Content: "three", CreatedAt: time.Now()},
+	} {
+		if err := storage.InsertMessage(m); err != nil {
+			t.Fatalf("seed message %s: %v", m.ID, err)
+		}
+	}
+
+	form := url.Values{"content": {"/clear"}}
+	r := authedRequest(http.MethodPost, "/api/sessions/clear-sess-1/message")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+
+	msgs, err := storage.ListMessages("clear-sess-1", 100)
+	if err != nil {
+		t.Fatalf("ListMessages after /clear: %v", err)
+	}
+	// Handler inserts one system confirmation bubble after clearing.
+	if len(msgs) != 1 {
+		t.Errorf("expected 1 confirmation message after /clear, got %d", len(msgs))
+	}
+	if msgs[0].Content != "Conversation cleared. ✓" {
+		t.Errorf("unexpected confirmation content: %q", msgs[0].Content)
+	}
+}
+
+// TestHandleSendMessage_Compact_NoAPIClient verifies POST content=/compact → 503 when no API client.
+func TestHandleSendMessage_Compact_NoAPIClient(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           "compact-sess-1",
+		Name:         "CompactAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if err := storage.InsertMessage(cc.Message{
+		ID:        "cmp-msg-1",
+		SessionID: "compact-sess-1",
+		Role:      "user",
+		Content:   "hello",
+		CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+
+	form := url.Values{"content": {"/compact"}}
+	r := authedRequest(http.MethodPost, "/api/sessions/compact-sess-1/message")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "compact unavailable") {
+		t.Errorf("expected body to contain %q, got: %s", "compact unavailable", w.Body.String())
+	}
+}
