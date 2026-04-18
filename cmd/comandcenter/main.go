@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/auth"
@@ -155,6 +156,7 @@ func main() {
 	webSrv.SetCronStore(cronStore)
 	webSrv.SetAPIClient(sharedAPIClient)
 	webSrv.SetTeamTemplatesDir(filepath.Join(claudioDir, "team-templates"))
+	agents.SetCustomDirs(filepath.Join(claudioDir, "agents"))
 	if pk, _, err := storage.GetOrCreateVAPIDKeys(); err == nil && pk != "" {
 		webSrv.SetVAPIDPublicKey(pk)
 	}

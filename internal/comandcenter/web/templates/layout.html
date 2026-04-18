@@ -137,16 +137,15 @@
   </script>
   <script>
   // ── Filter chips ─────────────────────────────────────────────────────────
+  window._ccCurrentFilter = '';
   window.ccSetFilter = function(f) {
+    window._ccCurrentFilter = f;
     // Update session-list hx-get so 3s auto-poll stays filtered.
     var sl = document.getElementById('session-list');
     if (sl) sl.setAttribute('hx-get', '/partials/sessions?filter=' + encodeURIComponent(f));
-    // Update chip visual state.
-    var chipIds = ['chip-all', 'chip-active', 'chip-inactive'];
-    var chipFilters = ['', 'active', 'inactive'];
-    chipIds.forEach(function(id, i) {
-      var el = document.getElementById(id);
-      if (el) el.style.background = chipFilters[i] === f ? '#25D366' : '#2C2C2E';
+    // Update all chip visual states.
+    document.querySelectorAll('[data-filter-chip]').forEach(function(el) {
+      el.style.background = el.dataset.filterChip === f ? '#25D366' : '#2C2C2E';
     });
   };
   // ── Swipe-to-archive/delete ──────────────────────────────────────────────

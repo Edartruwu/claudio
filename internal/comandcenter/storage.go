@@ -3,6 +3,7 @@ package comandcenter
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -289,22 +290,60 @@ func (s *Storage) DeleteSession(id string) error {
 	return tx.Commit()
 }
 
-// ListSessions returns non-archived sessions ordered by last_active_at desc.
-// filter: "" = all, "active" = status='active', "inactive" = status not 'active' and not 'archived'.
-func (s *Storage) ListSessions(filter string) ([]Session, error) {
-	var query string
-	switch filter {
-	case "active":
-		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
-			FROM cc_sessions WHERE status = 'active' ORDER BY last_active_at DESC`
-	case "inactive":
-		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
-			FROM cc_sessions WHERE status != 'active' AND status != 'archived' ORDER BY last_active_at DESC`
-	default:
-		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
-			FROM cc_sessions WHERE status != 'archived' ORDER BY last_active_at DESC`
+// Project holds a unique project derived from session paths.
+type Project struct {
+	Name  string // filepath.Base of the path
+	Path  string // full path
+	Count int    // number of sessions in this project
+}
+
+// ListProjects returns unique projects derived from session paths, ordered by name.
+func (s *Storage) ListProjects() ([]Project, error) {
+	rows, err := s.db.Query(`
+		SELECT path, COUNT(*) as cnt
+		FROM cc_sessions
+		WHERE status != 'archived' AND path != ''
+		GROUP BY path
+		ORDER BY path ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
 	}
-	rows, err := s.db.Query(query)
+	defer rows.Close()
+	var projects []Project
+	for rows.Next() {
+		var p Project
+		if err := rows.Scan(&p.Path, &p.Count); err != nil {
+			return nil, fmt.Errorf("scan project: %w", err)
+		}
+		p.Name = filepath.Base(p.Path)
+		projects = append(projects, p)
+	}
+	return projects, rows.Err()
+}
+
+// ListSessions returns non-archived sessions ordered by last_active_at desc.
+// filter: "" = all, "active" = status='active', "inactive" = status not 'active' and not 'archived',
+// "project:<path>" = sessions where path = <path>.
+func (s *Storage) ListSessions(filter string) ([]Session, error) {
+	const sel = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')`
+	var (
+		query string
+		args  []any
+	)
+	switch {
+	case filter == "active":
+		query = sel + ` FROM cc_sessions WHERE status = 'active' ORDER BY last_active_at DESC`
+	case filter == "inactive":
+		query = sel + ` FROM cc_sessions WHERE status != 'active' AND status != 'archived' ORDER BY last_active_at DESC`
+	case strings.HasPrefix(filter, "project:"):
+		projectPath := strings.TrimPrefix(filter, "project:")
+		query = sel + ` FROM cc_sessions WHERE status != 'archived' AND path = ? ORDER BY last_active_at DESC`
+		args = append(args, projectPath)
+	default:
+		query = sel + ` FROM cc_sessions WHERE status != 'archived' ORDER BY last_active_at DESC`
+	}
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}

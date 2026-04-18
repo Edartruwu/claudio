@@ -325,6 +325,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("DELETE /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushUnsubscribe)))
 
 	// Agent/team discovery + live session config.
+	mux.Handle("GET /api/projects", ws.uiAuth(http.HandlerFunc(ws.handleAPIProjects)))
 	mux.Handle("GET /api/agents", ws.uiAuth(http.HandlerFunc(ws.handleAPIAgents)))
 	mux.Handle("GET /api/teams", ws.uiAuth(http.HandlerFunc(ws.handleAPITeams)))
 	mux.Handle("POST /api/sessions/{id}/set-agent", ws.uiAuth(http.HandlerFunc(ws.handleSetAgent)))
@@ -1254,6 +1255,25 @@ func (ws *WebServer) handleAPISessions(w http.ResponseWriter, r *http.Request) {
 
 // handleAPIAgents returns all available agent definitions (built-in + custom) as JSON.
 // Response: [{"type":"...","description":"...","when_to_use":"...","model":"..."}]
+func (ws *WebServer) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
+	projects, err := ws.storage.ListProjects()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	type projectJSON struct {
+		Name  string `json:"name"`
+		Path  string `json:"path"`
+		Count int    `json:"count"`
+	}
+	out := make([]projectJSON, 0, len(projects))
+	for _, p := range projects {
+		out = append(out, projectJSON{Name: p.Name, Path: p.Path, Count: p.Count})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
 func (ws *WebServer) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
 	all := agents.AllAgents(agents.GetCustomDirs()...)
 	type agentJSON struct {
