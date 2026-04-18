@@ -33,8 +33,10 @@ func NewRegistry() *Registry {
 
 // Register adds a tool to the registry.
 func (r *Registry) Register(t Tool) {
+	if _, exists := r.tools[t.Name()]; !exists {
+		r.order = append(r.order, t.Name())
+	}
 	r.tools[t.Name()] = t
-	r.order = append(r.order, t.Name())
 }
 
 // Get returns a tool by name.
