@@ -64,6 +64,11 @@
       Media
     </button>
     <button id="tab-crons" onclick="showTab('crons')" class="flex-1 py-2 text-sm font-semibold tab-btn">Crons</button>
+    <button id="tab-config"
+            onclick="showTab('config')"
+            class="flex-1 py-2 text-sm font-semibold tab-btn">
+      Config
+    </button>
   </div>
 
   <!-- Tab Panels -->
@@ -194,6 +199,43 @@
       {{end}}
     </div>
 
+    <!-- Config Tab -->
+    <div id="panel-config" class="tab-panel hidden px-4 flex flex-col gap-4 mt-2">
+
+      <!-- Agent section -->
+      <div class="rounded-xl px-4 py-3 flex flex-col gap-3" style="background:#1C1C1E;">
+        <p class="text-xs font-semibold uppercase tracking-wide" style="color:#8E8E93;">Agent</p>
+        <select id="agent-select"
+                class="w-full rounded-lg px-3 py-2 text-sm text-white appearance-none"
+                style="background:#2C2C2E;border:1px solid #3A3A3C;outline:none;">
+          <option value="">Default (no agent)</option>
+        </select>
+        <button onclick="applyAgent('{{.Session.ID}}')"
+                class="w-full py-2 rounded-lg text-sm font-semibold text-white transition-opacity active:opacity-70"
+                style="background:#25D366;">
+          Apply
+        </button>
+        <div id="agent-feedback" class="text-xs text-center" style="color:#8E8E93;min-height:1.2em;"></div>
+      </div>
+
+      <!-- Team section -->
+      <div class="rounded-xl px-4 py-3 flex flex-col gap-3" style="background:#1C1C1E;">
+        <p class="text-xs font-semibold uppercase tracking-wide" style="color:#8E8E93;">Team</p>
+        <select id="team-select"
+                class="w-full rounded-lg px-3 py-2 text-sm text-white appearance-none"
+                style="background:#2C2C2E;border:1px solid #3A3A3C;outline:none;">
+          <option value="">Default (no team)</option>
+        </select>
+        <button onclick="applyTeam('{{.Session.ID}}')"
+                class="w-full py-2 rounded-lg text-sm font-semibold text-white transition-opacity active:opacity-70"
+                style="background:#25D366;">
+          Apply
+        </button>
+        <div id="team-feedback" class="text-xs text-center" style="color:#8E8E93;min-height:1.2em;"></div>
+      </div>
+
+    </div>
+
     <!-- Crons Tab -->
     <div id="panel-crons" class="tab-panel hidden px-4 flex flex-col gap-2">
       {{range .Crons}}
@@ -239,11 +281,72 @@
 
 <script>
   function showTab(name) {
-    ['tasks','team','media','crons'].forEach(function(t) {
+    ['tasks','team','media','crons','config'].forEach(function(t) {
       document.getElementById('panel-' + t).classList.toggle('hidden', t !== name);
       var btn = document.getElementById('tab-' + t);
       btn.classList.toggle('tab-active', t === name);
     });
+    if (name === 'config') loadConfig();
+  }
+
+  var _configLoaded = false;
+  function loadConfig() {
+    if (_configLoaded) return;
+    _configLoaded = true;
+    var currentAgent = {{printf "%q" .Session.AgentType}};
+    var currentTeam  = {{printf "%q" .Session.TeamTemplate}};
+
+    fetch('/api/agents').then(function(r){ return r.json(); }).then(function(agents) {
+      var sel = document.getElementById('agent-select');
+      (agents || []).forEach(function(a) {
+        var opt = document.createElement('option');
+        opt.value = a.type;
+        opt.textContent = a.type;
+        if (a.type === currentAgent) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }).catch(function(){});
+
+    fetch('/api/teams').then(function(r){ return r.json(); }).then(function(teams) {
+      var sel = document.getElementById('team-select');
+      (teams || []).forEach(function(t) {
+        var opt = document.createElement('option');
+        opt.value = t.name;
+        opt.textContent = t.name;
+        if (t.name === currentTeam) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }).catch(function(){});
+  }
+
+  function _showFeedback(id, ok) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = ok ? 'Saved ✓' : 'Error — try again';
+    el.style.color  = ok ? '#25D366' : '#FF453A';
+    setTimeout(function() { el.textContent = ''; el.style.color = '#8E8E93'; }, 3000);
+  }
+
+  function applyAgent(sessionId) {
+    var val = document.getElementById('agent-select').value;
+    fetch('/api/sessions/' + sessionId + '/set-agent', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({agent_type: val})
+    }).then(function(r){ return r.json(); })
+      .then(function(d){ _showFeedback('agent-feedback', d && d.ok); })
+      .catch(function(){ _showFeedback('agent-feedback', false); });
+  }
+
+  function applyTeam(sessionId) {
+    var val = document.getElementById('team-select').value;
+    fetch('/api/sessions/' + sessionId + '/set-team', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({team_name: val})
+    }).then(function(r){ return r.json(); })
+      .then(function(d){ _showFeedback('team-feedback', d && d.ok); })
+      .catch(function(){ _showFeedback('team-feedback', false); });
   }
 
   // Toggle task accordion: if detail is already visible, collapse it.
