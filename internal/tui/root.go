@@ -1936,7 +1936,9 @@ func registerCapabilityTools(registry *tools.Registry, capabilities []string) {
 	if slices.Contains(capabilities, "design") {
 		paths := config.GetPaths()
 		registry.Register(tools.NewBundleMockupTool(paths.Designs))
-		// RenderMockup + VerifyMockup added in Sprint 2+3
+		// TODO: uncomment after render.go is merged (S2-B8)
+		// registry.Register(tools.NewRenderMockupTool(paths.Designs))
+		// VerifyMockup added in Sprint 3
 	}
 }
 
