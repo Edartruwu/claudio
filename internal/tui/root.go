@@ -1758,7 +1758,7 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 	for _, name := range msg.DisallowedTools {
 		filtered.Remove(name)
 	}
-	registerCapabilityTools(filtered, msg.Capabilities)
+	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -1909,7 +1909,7 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	for _, name := range msg.DisallowedTools {
 		filtered.Remove(name)
 	}
-	registerCapabilityTools(filtered, msg.Capabilities)
+	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -1932,14 +1932,12 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 // registerCapabilityTools adds capability-gated tools to the registry based on
 // the active agent's declared capabilities. Called on both startup and agent switch.
 // Each capability maps to a set of tools; agents without that capability never see them.
-func registerCapabilityTools(registry *tools.Registry, capabilities []string) {
+func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client) {
 	if slices.Contains(capabilities, "design") {
 		paths := config.GetPaths()
 		registry.Register(tools.NewBundleMockupTool(paths.Designs))
-		// TODO: uncomment after render.go is merged (S2-B8)
 		registry.Register(tools.NewRenderMockupTool(paths.Designs))
-		// TODO: uncomment after verify.go is merged (S3-B10)
-		// registry.Register(tools.NewVerifyMockupTool(paths.Designs))
+		registry.Register(tools.NewVerifyMockupTool(paths.Designs, client, ""))
 	}
 }
 
