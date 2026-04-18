@@ -164,6 +164,7 @@ type Paths struct {
 	Logs        string // ~/.claudio/logs/
 	Plans       string // ~/.claudio/plans/
 	Cache       string // ~/.claudio/cache/
+	Designs     string // ~/.claudio/designs/
 	DB          string // ~/.claudio/claudio.db
 	Instincts   string // ~/.claudio/instincts.json
 }
@@ -199,6 +200,7 @@ func GetPaths() *Paths {
 			Logs:        filepath.Join(base, "logs"),
 			Plans:       filepath.Join(base, "plans"),
 			Cache:       filepath.Join(base, "cache"),
+			Designs:     filepath.Join(base, "designs"),
 			DB:          filepath.Join(base, "claudio.db"),
 			Instincts:   filepath.Join(base, "instincts.json"),
 		}
@@ -209,7 +211,7 @@ func GetPaths() *Paths {
 // EnsureDirs creates all required directories and bootstraps default config files.
 func EnsureDirs() error {
 	p := GetPaths()
-	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts, p.Rules, p.Agents, p.TeamTemplates, p.Memory, p.Projects, p.Logs, p.Plans, p.Cache}
+	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts, p.Rules, p.Agents, p.TeamTemplates, p.Memory, p.Projects, p.Logs, p.Plans, p.Cache, p.Designs}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
