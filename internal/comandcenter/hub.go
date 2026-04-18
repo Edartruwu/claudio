@@ -163,15 +163,31 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 		body = body[:100]
 	}
 
-	type pushPayload struct {
+	// Declarative Web Push (iOS 18.4+): embed full notification in payload.
+	// On older iOS the SW push handler reads title/body/url directly.
+	// On iOS 18.4+ the "web_push" key lets APNS show notification without needing the SW alive.
+	type declarativeNotification struct {
 		Title string `json:"title"`
 		Body  string `json:"body"`
-		URL   string `json:"url"`
+		Icon  string `json:"icon,omitempty"`
+	}
+	type pushPayload struct {
+		Title   string                    `json:"title"`
+		Body    string                    `json:"body"`
+		URL     string                    `json:"url"`
+		WebPush int                       `json:"web_push"` // 8030 = Declarative Web Push version
+		Notification declarativeNotification `json:"notification"`
 	}
 	payloadBytes, err := json.Marshal(pushPayload{
 		Title: sessionName,
 		Body:  body,
 		URL:   "/chat/" + sessionID,
+		WebPush: 8030,
+		Notification: declarativeNotification{
+			Title: sessionName,
+			Body:  body,
+			Icon:  "/static/icon-192.png",
+		},
 	})
 	if err != nil {
 		return
@@ -188,6 +204,8 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 			VAPIDPublicKey:  pub,
 			VAPIDPrivateKey: priv,
 			Subscriber:      "mailto:admin@comandcenter.local",
+			Urgency:         webpush.UrgencyHigh,
+			TTL:             86400, // 24h — redeliver even if device was offline
 		})
 		if err != nil {
 			continue
@@ -293,14 +311,6 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			AgentName: p.AgentName,
 			CreatedAt: now,
 		})
-		// Notify push subscribers of new assistant message.
-		go func() {
-			sess, err := h.storage.GetSession(sessionID)
-			if err != nil {
-				return
-			}
-			h.sendPushNotifications(sess.Name, sessionID, p.Content)
-		}()
 
 	case attach.EventMsgToolUse:
 		var p attach.ToolUsePayload
@@ -379,9 +389,22 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 }
 
 // Broadcast sends an envelope (with session context) to UI listeners (non-blocking; drops if full).
+// For EventMsgAssistant it also fires push notifications so backgrounded PWA clients are notified.
 func (h *Hub) Broadcast(sessionID string, env attach.Envelope) {
 	select {
 	case h.uiBroadcast <- UIEvent{SessionID: sessionID, Envelope: env}:
 	default:
+	}
+	if env.Type == attach.EventMsgAssistant {
+		var p attach.AssistantMsgPayload
+		if err := env.UnmarshalPayload(&p); err == nil {
+			go func() {
+				sess, err := h.storage.GetSession(sessionID)
+				if err != nil {
+					return
+				}
+				h.sendPushNotifications(sess.Name, sessionID, p.Content)
+			}()
+		}
 	}
 }

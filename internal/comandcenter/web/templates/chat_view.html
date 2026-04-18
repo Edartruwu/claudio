@@ -214,6 +214,30 @@
       }
       // Shift+Enter → newline (default)
     });
+
+    // Paste image from clipboard
+    el.addEventListener('paste', function(e) {
+      var items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          e.preventDefault();
+          var blob = items[i].getAsFile();
+          if (!blob) continue;
+          var ext = items[i].type.split('/')[1] || 'png';
+          var file = new File([blob], 'paste.' + ext, { type: items[i].type });
+          // Reuse staging logic — simulate file input change
+          var dt = new DataTransfer();
+          dt.items.add(file);
+          var fileInput = document.getElementById('file-input');
+          if (fileInput) {
+            fileInput.files = dt.files;
+            fileInput.dispatchEvent(new Event('change'));
+          }
+          break;
+        }
+      }
+    });
   })();
 
   // --- File upload + staged send ---
@@ -670,6 +694,40 @@
         setBellState(!!sub);
       }).catch(function() {});
     }
+
+    // ITP fix: on app resume, check if subscription was silently deleted.
+    // If user had granted permission but subscription is gone, re-subscribe automatically.
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState !== 'visible') return;
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      if (Notification.permission !== 'granted') return;
+      navigator.serviceWorker.ready.then(function(reg) {
+        return reg.pushManager.getSubscription().then(function(sub) {
+          if (sub) { setBellState(true); return; }
+          // Subscription gone (ITP purge) — silently re-subscribe.
+          return fetch('/api/push/vapid-public-key').then(function(res) {
+            return res.json();
+          }).then(function(data) {
+            if (!data.publicKey) return;
+            var appKey = urlBase64ToUint8Array(data.publicKey);
+            return reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: appKey,
+            });
+          }).then(function(newSub) {
+            if (!newSub) return;
+            var j = newSub.toJSON();
+            return fetch('/api/push/subscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: j.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } }),
+            });
+          }).then(function() {
+            setBellState(true);
+          });
+        });
+      }).catch(function() {});
+    });
 
     window.ccTogglePush = function() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
