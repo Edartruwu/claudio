@@ -15,12 +15,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
@@ -69,6 +71,7 @@ var (
 	messagesTmpl   *templateSet
 	infoTmpl       *templateSet
 	taskDetailTmpl *templateSet
+	designsTmpl    *templateSet
 	bubbleTmpl     *template.Template
 )
 
@@ -235,6 +238,10 @@ func init() {
 	taskDetailTmpl = mustParseFS(
 		"templates/partials/task_detail.html",
 	)
+	designsTmpl = mustParseFS(
+		"templates/layout.html",
+		"templates/designs.html",
+	)
 	t, err := template.New("").Funcs(funcMap()).ParseFS(staticFS, "templates/components/message_bubble.html")
 	if err != nil {
 		panic("web: parse bubble template: " + err.Error())
@@ -334,6 +341,10 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Cron endpoints.
 	mux.Handle("GET /chat/{session_id}/crons", ws.uiAuth(http.HandlerFunc(ws.handleCronList)))
 	mux.Handle("DELETE /api/crons/{id}", ws.uiAuth(http.HandlerFunc(ws.handleCronDelete)))
+
+	// Designs gallery.
+	mux.Handle("GET /designs", ws.uiAuth(http.HandlerFunc(ws.handleDesignGallery)))
+	mux.Handle("GET /designs/static/{id}/{rest...}", ws.uiAuth(http.HandlerFunc(ws.handleDesignStatic)))
 }
 
 // SetVAPIDPublicKey stores the VAPID public key for the browser subscription flow.
@@ -1617,6 +1628,90 @@ func (ws *WebServer) handleBrowseSession(w http.ResponseWriter, r *http.Request)
 		Root:    root,
 		Items:   items,
 	})
+}
+
+// ── Designs gallery ──────────────────────────────────────────────────────────
+
+// DesignSession holds metadata for one design output directory.
+type DesignSession struct {
+	ID          string   // directory name (timestamp used as identifier)
+	HasBundle   bool     // bundle/mockup.html exists
+	HasHandoff  bool     // handoff/spec.md exists
+	Screenshots []string // filenames inside screenshots/
+}
+
+// DesignGalleryData is the template data for the designs gallery page.
+type DesignGalleryData struct {
+	Sessions []DesignSession
+}
+
+// handleDesignGallery lists all design sessions from ~/.claudio/designs/.
+func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request) {
+	designsDir := config.GetPaths().Designs
+
+	entries, err := os.ReadDir(designsDir)
+	if err != nil && !os.IsNotExist(err) {
+		http.Error(w, "error reading designs dir", http.StatusInternalServerError)
+		return
+	}
+
+	var sessions []DesignSession
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		id := e.Name()
+		sessionDir := filepath.Join(designsDir, id)
+
+		ds := DesignSession{ID: id}
+
+		if _, err := os.Stat(filepath.Join(sessionDir, "bundle", "mockup.html")); err == nil {
+			ds.HasBundle = true
+		}
+		if _, err := os.Stat(filepath.Join(sessionDir, "handoff", "spec.md")); err == nil {
+			ds.HasHandoff = true
+		}
+		if ssEntries, err := os.ReadDir(filepath.Join(sessionDir, "screenshots")); err == nil {
+			for _, se := range ssEntries {
+				if !se.IsDir() && strings.HasSuffix(strings.ToLower(se.Name()), ".png") {
+					ds.Screenshots = append(ds.Screenshots, se.Name())
+				}
+			}
+		}
+
+		sessions = append(sessions, ds)
+	}
+
+	// Newest first (directory names are timestamps).
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].ID > sessions[j].ID
+	})
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	designsTmpl.execute(w, "designs.html", DesignGalleryData{Sessions: sessions})
+}
+
+// handleDesignStatic serves static assets (screenshots, etc.) from the designs dir.
+// Path traversal is prevented by verifying the resolved path stays under designsDir.
+func (ws *WebServer) handleDesignStatic(w http.ResponseWriter, r *http.Request) {
+	designsDir := config.GetPaths().Designs
+	id := r.PathValue("id")
+	rest := r.PathValue("rest")
+
+	// Reject any path component that looks like a traversal attempt early.
+	if strings.Contains(id, "..") || strings.Contains(rest, "..") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	fp := filepath.Join(designsDir, id, rest)
+	cleaned := filepath.Clean(designsDir) + string(os.PathSeparator)
+	if !strings.HasPrefix(fp, cleaned) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	http.ServeFile(w, r, fp)
 }
 
 // envelopeToMessage converts a UIEvent envelope to a displayable Message-like struct.
