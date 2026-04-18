@@ -186,8 +186,9 @@ func (t *SpawnSessionTool) Execute(ctx context.Context, input json.RawMessage) (
 	// Append the working directory path
 	args = append(args, in.Path)
 
-	// Prepare command
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	// Prepare command — use exec.Command (not CommandContext) so the child process
+	// survives after this tool call returns and the request context is cancelled.
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = in.Path
 
 	// Inherit stdout/stderr for visibility
