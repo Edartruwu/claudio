@@ -19,6 +19,7 @@ type AgentSelectedMsg struct {
 	SystemPrompt    string
 	Model           string
 	DisallowedTools []string
+	Capabilities    []string
 }
 
 // DismissMsg is sent when the user cancels.
@@ -142,6 +143,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						SystemPrompt:    sel.SystemPrompt,
 						Model:           sel.Model,
 						DisallowedTools: sel.DisallowedTools,
+						Capabilities:    sel.Capabilities,
 					}
 				}
 			}
@@ -159,6 +161,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				SystemPrompt:    sel.SystemPrompt,
 				Model:           sel.Model,
 				DisallowedTools: sel.DisallowedTools,
+				Capabilities:    sel.Capabilities,
 			}
 		}
 	case "esc":

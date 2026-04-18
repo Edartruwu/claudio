@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -1757,6 +1758,7 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 	for _, name := range msg.DisallowedTools {
 		filtered.Remove(name)
 	}
+	registerCapabilityTools(filtered, msg.Capabilities)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -1907,6 +1909,7 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	for _, name := range msg.DisallowedTools {
 		filtered.Remove(name)
 	}
+	registerCapabilityTools(filtered, msg.Capabilities)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -1924,6 +1927,17 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	m.currentAgent = msg.AgentType
 
 	return m
+}
+
+// registerCapabilityTools adds capability-gated tools to the registry based on
+// the active agent's declared capabilities. Called on both startup and agent switch.
+// Each capability maps to a set of tools; agents without that capability never see them.
+func registerCapabilityTools(registry *tools.Registry, capabilities []string) {
+	if slices.Contains(capabilities, "design") {
+		paths := config.GetPaths()
+		registry.Register(tools.NewBundleMockupTool(paths.Designs))
+		// RenderMockup + VerifyMockup added in Sprint 2+3
+	}
 }
 
 // ApplyTeamContextAtStartup applies team context at startup, before the engine is running.
