@@ -383,6 +383,12 @@ func bundledSkills() []*Skill {
 			Source:       "bundled",
 			Capabilities: []string{"design"},
 		},
+		{
+			Name:        "wireframe",
+			Description: "Generate fast lo-fi grayscale wireframes with annotations for early-stage ideation — no design tokens, no polish, just structure",
+			Content:     wireframeSkillContent,
+			Source:      "bundled",
+		},
 	}
 }
 
@@ -2360,3 +2366,106 @@ Tell the user:
 - Variation names and their design directions
 - VerifyMockup score
 - Any unfixed issues`
+
+var wireframeSkillContent = `You are generating fast lo-fi grayscale wireframes for early-stage ideation. Follow this workflow exactly.
+
+## Step 1 — Clarification
+
+Ask the user ONE question only:
+**What screens or flows should the wireframe show, and what user actions should each screen demonstrate?**
+
+Example response: "Home screen with search, product listing, and checkout flow with 3 screens: list view, product detail, and cart review."
+
+Do NOT ask about brand, colors, typography, or visual polish — wireframes are intentionally unstyled.
+
+If the user has already answered this, proceed immediately to Step 2.
+
+## Step 2 — Generate Wireframe HTML
+
+Create a single ` + "`wireframe.html`" + ` file with:
+
+### Structure
+- **Vertical scroll layout** — all screens stacked top-to-bottom, no tabs or JS navigation needed
+- **Grayscale only** — use only: #000, #333, #666, #999, #ccc, #eee, #fff. No Tailwind colors, no design tokens, no color classes
+- **Boxes and placeholders** — use grey rectangles with centered ` + "`×`" + ` for images (no actual images)
+- **Labels and annotations** — text labels on interactive elements, brief descriptions
+- **Rough on purpose** — lo-fi aesthetic: simple borders, basic layout, no shadows or fancy effects
+
+### Wireframe content structure per screen
+
+` + "```html" + `
+<div class="screen" style="border-top:2px solid #000;padding:2rem;margin:2rem 0;">
+  <h2 style="font-family:Arial,sans-serif;color:#000;margin:0 0 1rem 0;">Screen Name</h2>
+  
+  <!-- Interactive element with annotation marker -->
+  <button style="padding:0.75rem 1rem;background:#ccc;border:1px solid #000;cursor:pointer;font-family:Arial,sans-serif;color:#000;">
+    Button ①
+  </button>
+  
+  <!-- Image placeholder -->
+  <div style="background:#eee;border:1px solid #999;width:200px;height:150px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;color:#999;font-size:2rem;">×</div>
+  
+  <!-- Form example -->
+  <input type="text" placeholder="Input field" style="padding:0.5rem;border:1px solid #999;font-family:Arial,sans-serif;display:block;margin:1rem 0;width:300px;">
+  
+  <!-- Annotation legend table for this screen -->
+  <table style="margin-top:1rem;border-collapse:collapse;font-family:Arial,sans-serif;font-size:0.9rem;color:#333;">
+    <tr style="border-bottom:1px solid #ccc;">
+      <td style="padding:0.5rem;text-align:left;width:40px;"><strong>①</strong></td>
+      <td style="padding:0.5rem;">Primary action button — triggers checkout flow</td>
+    </tr>
+  </table>
+</div>
+` + "```" + `
+
+### Annotation markers
+
+Use numbered markers (①②③ etc.) on interactive elements. Below each screen, add a legend table mapping each marker to a brief UX note:
+
+` + "```html" + `
+<table style="margin-top:1rem;border-collapse:collapse;font-family:Arial,sans-serif;font-size:0.9rem;">
+  <tr style="border-bottom:1px solid #ccc;">
+    <td style="padding:0.5rem;width:30px;"><strong>①</strong></td>
+    <td style="padding:0.5rem;">Search bar — suggests products as user types</td>
+  </tr>
+  <tr style="border-bottom:1px solid #ccc;">
+    <td style="padding:0.5rem;"><strong>②</strong></td>
+    <td style="padding:0.5rem;">Product card — tappable to view detail</td>
+  </tr>
+  <tr style="border-bottom:1px solid #ccc;">
+    <td style="padding:0.5rem;"><strong>③</strong></td>
+    <td style="padding:0.5rem;">Add to cart — updates cart count in header</td>
+  </tr>
+</table>
+` + "```" + `
+
+### Optional: Flow diagram
+
+If the user described a multi-screen flow, add a simple ASCII or SVG storyboard at the top showing the sequence:
+
+` + "```html" + `
+<div style="padding:2rem;border-bottom:2px solid #000;font-family:Arial,sans-serif;">
+  <h3 style="margin:0 0 1rem 0;color:#000;">Flow: Home → Product → Cart → Review</h3>
+  <!-- Optional: dashed SVG arrows between screen names -->
+</div>
+` + "```" + `
+
+## Step 3 — Output
+
+Call ` + "`BundleMockup`" + ` with:
+- ` + "`indexPath`" + `: path to ` + "`wireframe.html`" + `
+- ` + "`embedCDN`" + `: false (wireframes don't need CDN, minimal HTML)
+
+Output path: ` + "`~/.claudio/designs/{timestamp}/bundle/wireframe.html`" + `
+
+**Do NOT call RenderMockup or VerifyMockup** — wireframes skip the render/verify loop entirely for speed.
+
+## Step 4 — Report
+
+Tell the user:
+- Bundle path
+- Screens covered in the wireframe
+- Key flows demonstrated
+- Ask: "Which screen should we explore further, or shall we move to hi-fi with /hifi?"
+
+Done. Wireframe is intentionally rough — move fast.`
