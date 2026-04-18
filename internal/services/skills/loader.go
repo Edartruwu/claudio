@@ -312,6 +312,24 @@ func bundledSkills() []*Skill {
 			Content:     cavemanReviewSkillContent,
 			Source:      "bundled",
 		},
+		{
+			Name:        "design-system",
+			Description: "Extract a design token system from reference assets, URLs, or descriptions",
+			Content:     designSystemSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "mockup",
+			Description: "Generate a complete multi-screen HTML mockup from a product brief",
+			Content:     mockupSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "handoff",
+			Description: "Generate a developer handoff package from a completed mockup",
+			Content:     handoffSkillContent,
+			Source:      "bundled",
+		},
 	}
 }
 
@@ -1743,3 +1761,307 @@ Drop terse mode for: security findings (CVE-class bugs need full explanation + r
 ## Boundaries
 
 Reviews only — does not write the code fix, does not approve/request-changes, does not run linters. Output the comment(s) ready to paste into the PR. "stop caveman-review" or "normal mode": revert to verbose review style.`
+
+var designSystemSkillContent = `You are extracting a design token system from reference material. Follow this workflow exactly.
+
+## Step 1 — Gather Reference Material
+
+Ask the user for one or more of:
+- A screenshot path (you will use vision to analyze colors and typography)
+- A live URL (use RenderMockup to capture, then analyze the screenshot)
+- A codebase path (read CSS custom properties, Tailwind config, theme files)
+- Brand asset files (SVG files, font metadata)
+- A plain description (e.g. "dark fintech app, deep navy + gold accents, Inter font")
+
+If the user provides nothing, ask before proceeding.
+
+## Step 2 — Extract Tokens by Source Type
+
+### From a screenshot
+Use vision to identify:
+- Dominant background color → background
+- Primary action color (buttons, links, CTAs) → primary
+- Secondary action color → secondary
+- Accent / highlight color → accent
+- Surface color (cards, panels) → surface
+- Primary text color → text
+- Muted text color (labels, captions) → textMuted
+- Font families in use (heading, body)
+- Approximate spacing rhythm (4px or 8px base?)
+- Border radius style (sharp / medium / rounded / pill)
+
+### From a live URL
+1. Call RenderMockup with the URL to capture a screenshot
+2. Analyze the screenshot as above
+
+### From a codebase
+Search for and read:
+- CSS custom properties (` + "`--color-*`" + `, ` + "`--font-*`" + `, ` + "`--spacing-*`" + `, ` + "`--radius-*`" + `)
+- Tailwind config (` + "`tailwind.config.js`" + ` / ` + "`tailwind.config.ts`" + `) → ` + "`theme.extend`" + `
+- Theme files (` + "`theme.ts`" + `, ` + "`tokens.ts`" + `, ` + "`colors.ts`" + `, ` + "`design-tokens.json`" + `)
+- Styled-components / Emotion theme objects
+
+### From brand assets (SVG / fonts)
+- Read SVG files: extract ` + "`fill`" + ` and ` + "`stroke`" + ` hex values
+- Font metadata: extract family names from ` + "`font-face`" + ` declarations or font file names
+
+### From a description
+Derive a coherent palette and type system from the description. Make explicit choices and state them.
+
+## Step 3 — Build the Token Object
+
+Produce a JSON object with this exact schema:
+
+` + "```json" + `
+{
+  "colors": {
+    "primary":    "#hex",
+    "secondary":  "#hex",
+    "accent":     "#hex",
+    "background": "#hex",
+    "surface":    "#hex",
+    "text":       "#hex",
+    "textMuted":  "#hex"
+  },
+  "fonts": {
+    "heading": "Font Name",
+    "body":    "Font Name",
+    "mono":    "Font Name"
+  },
+  "spacing": {
+    "xs":  "4px",
+    "sm":  "8px",
+    "md":  "16px",
+    "lg":  "24px",
+    "xl":  "40px",
+    "2xl": "64px"
+  },
+  "radius": {
+    "sm":   "4px",
+    "md":   "8px",
+    "lg":   "16px",
+    "full": "9999px"
+  },
+  "shadows": {
+    "sm": "0 1px 2px rgba(0,0,0,0.05)",
+    "md": "0 4px 6px rgba(0,0,0,0.1)",
+    "lg": "0 10px 15px rgba(0,0,0,0.15)"
+  }
+}
+` + "```" + `
+
+Rules:
+- All color values must be hex (e.g. #1a1a2e) — no rgb(), no hsl()
+- Font names must be quoted strings ready for CSS font-family
+- Spacing and radius values must be px strings
+- Shadow values must be valid CSS box-shadow strings
+- If a token cannot be determined, use a sensible default and note it
+
+## Step 4 — Save Output
+
+Save the JSON to: ` + "`~/.claudio/designs/design-system.json`" + `
+
+Use the Write tool with that exact path.
+
+## Step 5 — Confirm
+
+Report:
+- Total token count (count all leaf values)
+- Palette preview: print each color key with its hex value
+- Font choices
+- Output path confirmed`
+
+var mockupSkillContent = `You are generating a complete multi-screen HTML mockup. Follow this workflow exactly.
+
+## Step 1 — Brief Clarification
+
+Ask the user for:
+1. **Product brief** — what is this product? Who uses it? What is the core action?
+2. **Target screens** — which screens to generate? Default if not specified: Landing, Dashboard, Detail, Settings
+3. **Design tokens** — path to a design-system.json file (optional; if not provided, you will define tokens inline)
+4. **Platform** — web (desktop-first), web (mobile-first), or both? Default: web desktop-first
+
+If the user has already provided these, skip asking and proceed.
+
+## Step 2 — Design Direction
+
+Before generating any HTML, state your design direction in one paragraph:
+- Aesthetic (e.g. "clean SaaS, light mode, generous whitespace, Inter font, blue primary")
+- Layout approach (e.g. "sidebar nav, content area, card-based data display")
+- Color mood (e.g. "professional, trustworthy, calm")
+
+Commit to one direction. Do not hedge or offer alternatives at this stage.
+
+## Step 3 — Load or Define Tokens
+
+If a design-system.json path was provided:
+- Read the file
+- Extract colors, fonts, spacing, radius, shadows
+
+If no file provided, define inline tokens matching your stated direction:
+` + "```json" + `
+{
+  "colors": { "primary": "#hex", "background": "#hex", "surface": "#hex", "text": "#hex", "textMuted": "#hex" },
+  "fonts":  { "heading": "Inter", "body": "Inter", "mono": "JetBrains Mono" }
+}
+` + "```" + `
+
+## Step 4 — Generate Screens
+
+For each screen (most important first):
+
+1. Generate a self-contained HTML file: ` + "`screen-{name}.html`" + `
+   - Use Tailwind CSS via CDN: ` + "`<script src=\"https://cdn.tailwindcss.com\"></script>`" + `
+   - Apply design tokens as inline Tailwind config in a ` + "`<script>`" + ` block
+   - Include realistic placeholder content (not lorem ipsum — use actual product-relevant text)
+   - Include navigation, header, main content area, and footer as appropriate
+   - Make it visually complete — no "TODO" sections, no blank areas
+
+2. Save the file using the Write tool
+
+Screen naming convention:
+- Landing → ` + "`screen-landing.html`" + `
+- Dashboard → ` + "`screen-dashboard.html`" + `
+- Detail → ` + "`screen-detail.html`" + `
+- Settings → ` + "`screen-settings.html`" + `
+
+## Step 5 — Generate Artboard Canvas
+
+After all screen files are written, generate ` + "`index.html`" + `:
+
+- Single HTML file
+- Each screen embedded as: ` + "`<div data-artboard=\"{name}\" style=\"width:1440px; margin-bottom:80px;\">` + `<iframe src=\"screen-{name}.html\" ...></iframe></div>`" + `
+- Screens stacked vertically
+- Artboard labels above each screen
+- Light gray background (#f5f5f5) for the canvas
+
+Save as ` + "`index.html`" + ` in the same directory as the screen files.
+
+## Step 6 — Render and Verify
+
+1. Call ` + "`RenderMockup`" + ` with the path to ` + "`index.html`" + `
+2. Call ` + "`VerifyMockup`" + ` with the full-canvas screenshot path returned by RenderMockup
+
+If ` + "`pass: false`" + `:
+- Read the ` + "`issues`" + ` list from VerifyMockup output
+- Fix each blocking issue in the relevant screen HTML file(s)
+- Re-render and re-verify
+- Repeat up to 3 cycles maximum
+- After 3 cycles, report remaining issues to the user and stop
+
+If ` + "`pass: true`" + `: proceed to Step 7.
+
+## Step 7 — Bundle
+
+Call ` + "`BundleMockup`" + ` with:
+- ` + "`indexPath`" + `: path to ` + "`index.html`" + `
+- ` + "`embedCDN`" + `: true
+
+## Step 8 — Report
+
+Tell the user:
+- Final output directory path
+- List of all screen files generated
+- Bundle path
+- Overall VerifyMockup score
+- Any issues that could not be auto-fixed (if any)`
+
+var handoffSkillContent = `You are generating a developer handoff package from a completed mockup. Follow this workflow exactly.
+
+## Step 1 — Locate Mockup
+
+Ask the user for the mockup directory path (the directory containing ` + "`index.html`" + ` and ` + "`screen-*.html`" + ` files).
+
+If no path is provided, check for a recent mockup in ` + "`~/.claudio/designs/`" + ` and ask to confirm.
+
+## Step 2 — Inventory Components
+
+Read each ` + "`screen-*.html`" + ` file and identify all UI components used:
+- Navigation elements (navbar, sidebar, breadcrumb, tabs)
+- Layout containers (card, panel, modal, drawer, section)
+- Form elements (input, select, checkbox, radio, toggle, button, form)
+- Data display (table, list, badge, tag, avatar, tooltip, chart placeholder)
+- Feedback elements (alert, toast, spinner, progress, empty state)
+
+For each component: note which screens use it, any props/variants visible, interaction states visible (hover, active, disabled, error).
+
+## Step 3 — Token Audit
+
+If a ` + "`design-system.json`" + ` exists in the mockup directory or ` + "`~/.claudio/designs/`" + `:
+- Read the full token set
+- Scan screen HTML files for token values (hex colors, font names, spacing values)
+- Build a map: token name → locations where it is used
+
+Output a ` + "`handoff/tokens-used.json`" + ` file:
+` + "```json" + `
+{
+  "colors": {
+    "primary": ["screen-landing.html: CTA button", "screen-dashboard.html: sidebar active state"],
+    "background": ["all screens: page background"]
+  },
+  "fonts": {
+    "heading": ["screen-landing.html: hero H1, H2", "screen-dashboard.html: section titles"]
+  }
+}
+` + "```" + `
+
+## Step 4 — Interaction Spec
+
+For each screen, identify interactive elements and specify expected behavior:
+- Buttons: what action do they trigger?
+- Links / nav items: where do they navigate?
+- Form inputs: validation rules visible, placeholder hints
+- Hover states: any visible state changes?
+- Modals / drawers: what triggers open/close?
+
+## Step 5 — Generate spec.md
+
+Write ` + "`handoff/spec.md`" + ` with these sections:
+
+` + "```markdown" + `
+# Developer Handoff Spec
+
+## Component Inventory
+
+| Component | Screens | Props / Variants | Notes |
+|-----------|---------|-----------------|-------|
+| ...       | ...     | ...             | ...   |
+
+## Design Token Usage
+
+| Token | Value | Used In |
+|-------|-------|---------|
+| ...   | ...   | ...     |
+
+## Interaction Spec
+
+### [Screen Name]
+- [Element]: [Expected behavior]
+- ...
+
+## Asset List
+
+- Fonts: [list font families and suggested Google Fonts / system stack fallbacks]
+- Icons: [list icon sets referenced, e.g. Heroicons, Lucide]
+- Images: [list any image placeholders and recommended dimensions]
+
+## Implementation Notes
+
+- Framework: [framework-agnostic recommendations]
+- Responsive breakpoints: [from design tokens or inferred]
+- Accessibility notes: [ARIA roles, focus order, color contrast flags]
+` + "```" + `
+
+## Step 6 — Save Files
+
+Save both files using the Write tool:
+- ` + "`{mockup-dir}/handoff/spec.md`" + `
+- ` + "`{mockup-dir}/handoff/tokens-used.json`" + `
+
+## Step 7 — Confirm
+
+Report:
+- Handoff package location
+- Component count
+- Token count audited
+- Any accessibility or contrast issues flagged`
