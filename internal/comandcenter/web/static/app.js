@@ -94,11 +94,34 @@
 
   // --- WebSocket ---
 
+  var wsConnected = false;
+  var wsInstance = null;
+
+  function reloadMessages() {
+    if (!msgs) return;
+    fetch('/partials/messages/' + sessionId)
+      .then(function(res) { return res.text(); })
+      .then(function(html) {
+        msgs.innerHTML = html;
+        // Re-append typing bubble (it lives outside the messages list).
+        var bubble = document.getElementById('typing-bubble');
+        if (bubble) msgs.appendChild(bubble);
+        msgs.scrollTop = msgs.scrollHeight;
+        lastMsgDate = new Date().toDateString();
+      })
+      .catch(function() {});
+  }
+
   function initWS() {
     var ws = new WebSocket(proto + '//' + location.host + '/ws/ui?session_id=' + sessionId);
+    wsInstance = ws;
 
     ws.onopen = function () {
+      var wasDisconnected = !wsConnected;
+      wsConnected = true;
       hideBanner();
+      // Reload messages to catch anything missed while disconnected.
+      if (wasDisconnected) reloadMessages();
     };
 
     ws.onmessage = function (e) {
@@ -145,11 +168,25 @@
     };
 
     ws.onclose = function () {
+      wsConnected = false;
       showBanner();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(initWS, 3000);
     };
   }
+
+  // On app resume (phone unlock / tab focus), reconnect immediately.
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      var dead = !wsInstance ||
+                 wsInstance.readyState === WebSocket.CLOSED ||
+                 wsInstance.readyState === WebSocket.CLOSING;
+      if (dead) {
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        initWS();
+      }
+    }
+  });
 
   initWS();
 })();
