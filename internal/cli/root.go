@@ -944,6 +944,7 @@ func runInteractive() error {
 			SystemPrompt: agentDef.SystemPrompt,
 			Model:        agentDef.Model,
 			DisallowedTools: agentDef.DisallowedTools,
+			Capabilities: agentDef.Capabilities,
 		}
 		model = model.ApplyAgentPersonaAtStartup(msg)
 	}
@@ -986,6 +987,7 @@ func runInteractive() error {
 						SystemPrompt:    def.SystemPrompt,
 						Model:           def.Model,
 						DisallowedTools: def.DisallowedTools,
+						Capabilities:    def.Capabilities,
 					})
 					return
 				}
