@@ -73,9 +73,10 @@ type AgentStatusPayload struct {
 
 // UserMsgPayload for EventMsgUser.
 type UserMsgPayload struct {
-	Content     string       `json:"content"`
-	Attachments []Attachment `json:"attachments,omitempty"`
-	FromSession string       `json:"from_session,omitempty"`
+	Content       string       `json:"content"`
+	Attachments   []Attachment `json:"attachments,omitempty"`
+	FromSession   string       `json:"from_session,omitempty"`
+	ModelOverride string       `json:"model_override,omitempty"`
 }
 
 // Attachment in UserMsgPayload.

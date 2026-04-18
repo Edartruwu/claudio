@@ -429,6 +429,11 @@ func runHeadlessAttach(args []string) error {
 	for {
 		select {
 		case payload := <-appInstance.InjectCh:
+			var prevModel string
+			if payload.ModelOverride != "" {
+				prevModel = appInstance.API.GetModel()
+				appInstance.API.SetModel(payload.ModelOverride)
+			}
 			turnCtx, turnCancel := context.WithCancel(ctx)
 			engineDone := make(chan struct{})
 			// Monitor goroutine: cancel the turn context if an interrupt arrives.
@@ -456,6 +461,10 @@ func runHeadlessAttach(args []string) error {
 			}
 			close(engineDone) // signal monitor goroutine to exit
 			turnCancel()      // no-op if already cancelled; ensures context cleanup
+			// Restore model if it was overridden for this turn.
+			if prevModel != "" {
+				appInstance.API.SetModel(prevModel)
+			}
 			// Drain any stale interrupt signal so the next turn starts clean.
 			select {
 			case <-appInstance.InterruptCh:

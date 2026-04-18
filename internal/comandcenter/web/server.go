@@ -34,6 +34,15 @@ import (
 // Group 1 = session name, Group 2 = message body.
 var mentionRe = regexp.MustCompile(`^@(\w[\w\s]*?)\s+(.+)$`)
 
+var modelAliases = map[string]string{
+	"haiku":         "claude-haiku-4-5-20251001",
+	"sonnet":        "claude-sonnet-4-6",
+	"opus":          "claude-opus-4-6",
+	"claude-haiku":  "claude-haiku-4-5-20251001",
+	"claude-sonnet": "claude-sonnet-4-6",
+	"claude-opus":   "claude-opus-4-6",
+}
+
 //go:embed templates static
 var staticFS embed.FS
 
@@ -684,6 +693,40 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse /alias query — model override for this turn.
+	var modelOverride string
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "/") {
+		rest := trimmed[1:]
+		var alias, query string
+		if idx := strings.IndexAny(rest, " \n\t"); idx != -1 {
+			alias = strings.ToLower(rest[:idx])
+			query = strings.TrimSpace(rest[idx+1:])
+		} else {
+			alias = strings.ToLower(rest)
+			query = ""
+		}
+		if fullModel, ok := modelAliases[alias]; ok {
+			modelOverride = fullModel
+			content = query
+			if content == "" {
+				// No query — just confirm the model switch without sending a message.
+				confirm := cc.Message{
+					ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+					SessionID: sessionID,
+					Role:      "assistant",
+					AgentName: "system",
+					Content:   "Model set to " + fullModel + " for next turn ✓",
+					CreatedAt: time.Now(),
+				}
+				_ = ws.storage.InsertMessage(confirm)
+				ws.pushMsgBubble(sessionID, confirm)
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+	}
+
 	// Intercept /clear — wipe history, confirm, return early.
 	if strings.TrimSpace(content) == "/clear" {
 		if err := ws.storage.DeleteMessages(sessionID); err != nil {
@@ -720,7 +763,7 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Normal (non-@mention) path — existing behavior.
-	payload, _ := json.Marshal(attach.UserMsgPayload{Content: content})
+	payload, _ := json.Marshal(attach.UserMsgPayload{Content: content, ModelOverride: modelOverride})
 	env := attach.Envelope{Type: attach.EventMsgUser, Payload: payload}
 	if err := ws.hub.Send(sessionID, env); err != nil {
 		http.Error(w, "session not connected", http.StatusServiceUnavailable)

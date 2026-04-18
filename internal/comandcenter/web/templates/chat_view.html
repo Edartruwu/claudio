@@ -615,12 +615,13 @@
   window.ccSendCommand = async function(cmd) {
     document.getElementById('plus-popover').classList.add('hidden');
     var sessionId = '{{.Session.ID}}';
-    var token = localStorage.getItem('cc_token') || '';
     try {
+      var params = new URLSearchParams();
+      params.append('content', cmd);
       var res = await fetch('/api/sessions/' + sessionId + '/message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({ content: cmd })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
       });
       ccToast(res.ok ? cmd + ' sent' : 'Failed', res.ok);
     } catch (e) {
