@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,11 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
+
+// knownCapabilities is the set of valid capability tokens agents may declare.
+var knownCapabilities = map[string]bool{
+	"design": true,
+}
 
 var (
 	customDirsMu sync.RWMutex
@@ -391,6 +397,12 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 					Capabilities:    fm.GetList("capabilities"),
 				}
 
+				for _, cap := range def.Capabilities {
+					if !knownCapabilities[cap] {
+						fmt.Fprintf(os.Stderr, "warning: agent %q declares unknown capability %q (ignored)\n", agentType, cap)
+					}
+				}
+
 				if len(def.Tools) == 0 {
 					def.Tools = []string{"*"}
 				}
@@ -451,6 +463,12 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 				SourceSession:   fm.Get("sourceSession"),
 				SourceProject:   fm.Get("sourceProject"),
 				Capabilities:    fm.GetList("capabilities"),
+			}
+
+			for _, cap := range def.Capabilities {
+				if !knownCapabilities[cap] {
+					fmt.Fprintf(os.Stderr, "warning: agent %q declares unknown capability %q (ignored)\n", agentType, cap)
+				}
 			}
 
 			if len(def.Tools) == 0 {

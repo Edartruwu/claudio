@@ -241,7 +241,7 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 		tokensPath := RemapPathForWorktree(ctx, in.DesignTokens)
 		raw, err := os.ReadFile(tokensPath)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("could not read design_tokens %q: %v", tokensPath, err))
+			return &Result{Content: fmt.Sprintf("could not read design_tokens %q: %v", tokensPath, err), IsError: true}, nil
 		} else {
 			var allTokens map[string]interface{}
 			if err := json.Unmarshal(raw, &allTokens); err != nil {

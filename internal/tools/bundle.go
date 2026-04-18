@@ -187,7 +187,7 @@ func (t *BundleMockupTool) Execute(_ context.Context, input json.RawMessage) (*R
 				return match
 			}
 
-			body, err := io.ReadAll(resp.Body)
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10 MB cap
 			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("CDN read failed for %q: %v — leaving as-is", url, err))
 				remainingCDN++
