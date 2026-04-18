@@ -20,10 +20,12 @@ import (
 	"time"
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -254,13 +256,14 @@ type MessageView struct {
 
 // WebServer serves the browser UI for ComandCenter.
 type WebServer struct {
-	storage        *cc.Storage
-	hub            *cc.Hub
-	password       string
-	uploadsDir     string
-	vapidPublicKey string
-	cronStore      *tasks.CronStore
-	apiClient      *api.Client
+	storage          *cc.Storage
+	hub              *cc.Hub
+	password         string
+	uploadsDir       string
+	vapidPublicKey   string
+	cronStore        *tasks.CronStore
+	apiClient        *api.Client
+	teamTemplatesDir string
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
@@ -321,6 +324,12 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushSubscribe)))
 	mux.Handle("DELETE /api/push/subscribe", ws.uiAuth(http.HandlerFunc(ws.handlePushUnsubscribe)))
 
+	// Agent/team discovery + live session config.
+	mux.Handle("GET /api/agents", ws.uiAuth(http.HandlerFunc(ws.handleAPIAgents)))
+	mux.Handle("GET /api/teams", ws.uiAuth(http.HandlerFunc(ws.handleAPITeams)))
+	mux.Handle("POST /api/sessions/{id}/set-agent", ws.uiAuth(http.HandlerFunc(ws.handleSetAgent)))
+	mux.Handle("POST /api/sessions/{id}/set-team", ws.uiAuth(http.HandlerFunc(ws.handleSetTeam)))
+
 	// Cron endpoints.
 	mux.Handle("GET /chat/{session_id}/crons", ws.uiAuth(http.HandlerFunc(ws.handleCronList)))
 	mux.Handle("DELETE /api/crons/{id}", ws.uiAuth(http.HandlerFunc(ws.handleCronDelete)))
@@ -334,6 +343,9 @@ func (ws *WebServer) SetCronStore(cs *tasks.CronStore) { ws.cronStore = cs }
 
 // SetAPIClient attaches an API client used for /compact command execution.
 func (ws *WebServer) SetAPIClient(c *api.Client) { ws.apiClient = c }
+
+// SetTeamTemplatesDir sets the directory where team template JSON files are stored.
+func (ws *WebServer) SetTeamTemplatesDir(dir string) { ws.teamTemplatesDir = dir }
 
 // handleVAPIDPublicKey returns the VAPID public key for browser push subscription.
 func (ws *WebServer) handleVAPIDPublicKey(w http.ResponseWriter, r *http.Request) {
@@ -1238,6 +1250,97 @@ func (ws *WebServer) handleAPISessions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sessions)
+}
+
+// handleAPIAgents returns all available agent definitions (built-in + custom) as JSON.
+// Response: [{"type":"...","description":"...","when_to_use":"...","model":"..."}]
+func (ws *WebServer) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
+	all := agents.AllAgents(agents.GetCustomDirs()...)
+	type agentJSON struct {
+		Type       string `json:"type"`
+		WhenToUse  string `json:"when_to_use"`
+		Model      string `json:"model"`
+	}
+	out := make([]agentJSON, 0, len(all))
+	for _, a := range all {
+		out = append(out, agentJSON{
+			Type:      a.Type,
+			WhenToUse: a.WhenToUse,
+			Model:     a.Model,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
+// handleAPITeams returns all available team templates as JSON.
+// Response: [{"name":"...","description":"..."}]
+func (ws *WebServer) handleAPITeams(w http.ResponseWriter, r *http.Request) {
+	all := teams.LoadTemplates(ws.teamTemplatesDir)
+	type teamJSON struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	out := make([]teamJSON, 0, len(all))
+	for _, t := range all {
+		out = append(out, teamJSON{Name: t.Name, Description: t.Description})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
+// handleSetAgent switches the active agent for a running session.
+// Body: {"agent_type": "string"} (empty = clear/default)
+func (ws *WebServer) handleSetAgent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		AgentType string `json:"agent_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := ws.hub.SetAgent(id, body.AgentType); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	// Persist: read current team template then update both config fields.
+	sess, err := ws.storage.GetSession(id)
+	if err != nil {
+		// Session not in DB yet; best-effort persist using empty team.
+		_ = ws.storage.UpdateSessionConfig(id, body.AgentType, "")
+	} else {
+		_ = ws.storage.UpdateSessionConfig(id, body.AgentType, sess.TeamTemplate)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleSetTeam switches the active team for a running session.
+// Body: {"team_name": "string"} (empty = clear/default)
+func (ws *WebServer) handleSetTeam(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		TeamName string `json:"team_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := ws.hub.SetTeam(id, body.TeamName); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	// Persist: read current agent type then update both config fields.
+	sess, err := ws.storage.GetSession(id)
+	if err != nil {
+		// Session not in DB yet; best-effort persist using empty agent.
+		_ = ws.storage.UpdateSessionConfig(id, "", body.TeamName)
+	} else {
+		_ = ws.storage.UpdateSessionConfig(id, sess.AgentType, body.TeamName)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 // buildSessionRows fetches the last message for each session and unread count.

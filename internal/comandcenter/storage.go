@@ -146,6 +146,10 @@ func (s *Storage) migrate() error {
 		`ALTER TABLE cc_messages ADD COLUMN reply_to_session TEXT`,
 		// 13 — idempotent retry: same for quoted_content (migration 8).
 		`ALTER TABLE cc_messages ADD COLUMN quoted_content TEXT`,
+		// 14 — agent type override per session.
+		`ALTER TABLE cc_sessions ADD COLUMN agent_type TEXT`,
+		// 15 — team template name per session.
+		`ALTER TABLE cc_sessions ADD COLUMN team_template TEXT`,
 	}
 
 	for i, m := range migrations {
@@ -204,17 +208,19 @@ func (s *Storage) UpsertSession(sess Session) error {
 		master = 1
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO cc_sessions (id, name, path, model, master, status, created_at, last_active_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO cc_sessions (id, name, path, model, master, status, created_at, last_active_at, agent_type, team_template)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			path=excluded.path,
 			model=excluded.model,
 			master=excluded.master,
 			status=excluded.status,
-			last_active_at=excluded.last_active_at
+			last_active_at=excluded.last_active_at,
+			agent_type=excluded.agent_type,
+			team_template=excluded.team_template
 	`, sess.ID, sess.Name, sess.Path, sess.Model, master, sess.Status,
-		sess.CreatedAt, sess.LastActiveAt)
+		sess.CreatedAt, sess.LastActiveAt, sess.AgentType, sess.TeamTemplate)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
 	}
@@ -229,6 +235,19 @@ func (s *Storage) SetSessionStatus(id, status string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("set session status: %w", err)
+	}
+	return nil
+}
+
+// UpdateSessionConfig persists the agent type and team template overrides for a session.
+// Pass empty strings to clear the overrides.
+func (s *Storage) UpdateSessionConfig(id, agentType, teamTemplate string) error {
+	_, err := s.db.Exec(
+		`UPDATE cc_sessions SET agent_type=?, team_template=? WHERE id=?`,
+		agentType, teamTemplate, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update session config: %w", err)
 	}
 	return nil
 }
@@ -276,13 +295,13 @@ func (s *Storage) ListSessions(filter string) ([]Session, error) {
 	var query string
 	switch filter {
 	case "active":
-		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
 			FROM cc_sessions WHERE status = 'active' ORDER BY last_active_at DESC`
 	case "inactive":
-		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
 			FROM cc_sessions WHERE status != 'active' AND status != 'archived' ORDER BY last_active_at DESC`
 	default:
-		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+		query = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
 			FROM cc_sessions WHERE status != 'archived' ORDER BY last_active_at DESC`
 	}
 	rows, err := s.db.Query(query)
@@ -296,7 +315,8 @@ func (s *Storage) ListSessions(filter string) ([]Session, error) {
 		var sess Session
 		var master int
 		if err := rows.Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
-			&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt); err != nil {
+			&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
+			&sess.AgentType, &sess.TeamTemplate); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		sess.Master = master == 1
@@ -310,10 +330,11 @@ func (s *Storage) GetSession(id string) (Session, error) {
 	var sess Session
 	var master int
 	err := s.db.QueryRow(`
-		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
 		FROM cc_sessions WHERE id=?
 	`, id).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
-		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt)
+		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
+		&sess.AgentType, &sess.TeamTemplate)
 	if err == sql.ErrNoRows {
 		return Session{}, fmt.Errorf("session %s not found", id)
 	}
@@ -329,10 +350,11 @@ func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 	var sess Session
 	var master int
 	err := s.db.QueryRow(`
-		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at
+		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
 		FROM cc_sessions WHERE name=? ORDER BY created_at DESC LIMIT 1
 	`, name).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
-		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt)
+		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
+		&sess.AgentType, &sess.TeamTemplate)
 	if err == sql.ErrNoRows {
 		return Session{}, false, nil
 	}

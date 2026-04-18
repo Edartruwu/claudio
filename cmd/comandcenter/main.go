@@ -154,6 +154,7 @@ func main() {
 	webSrv := web.NewWebServer(storage, hub, *password, *dataDir)
 	webSrv.SetCronStore(cronStore)
 	webSrv.SetAPIClient(sharedAPIClient)
+	webSrv.SetTeamTemplatesDir(filepath.Join(claudioDir, "team-templates"))
 	if pk, _, err := storage.GetOrCreateVAPIDKeys(); err == nil && pk != "" {
 		webSrv.SetVAPIDPublicKey(pk)
 	}

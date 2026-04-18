@@ -16,6 +16,8 @@ type Session struct {
 	Status       string // active|inactive
 	CreatedAt    time.Time
 	LastActiveAt time.Time
+	AgentType    string // active agent type override (empty = default)
+	TeamTemplate string // active team template name (empty = none)
 }
 
 // Message is a stored conversation message for a session.
