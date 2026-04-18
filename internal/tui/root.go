@@ -1937,7 +1937,7 @@ func registerCapabilityTools(registry *tools.Registry, capabilities []string) {
 		paths := config.GetPaths()
 		registry.Register(tools.NewBundleMockupTool(paths.Designs))
 		// TODO: uncomment after render.go is merged (S2-B8)
-		// registry.Register(tools.NewRenderMockupTool(paths.Designs))
+		registry.Register(tools.NewRenderMockupTool(paths.Designs))
 		// VerifyMockup added in Sprint 3
 	}
 }
