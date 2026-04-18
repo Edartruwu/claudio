@@ -19,7 +19,8 @@ type Skill struct {
 	FilePath    string     `json:"file_path,omitempty"`
 	SkillDir    string     `json:"skill_dir,omitempty"` // directory containing the skill file; empty for flat .md files
 	Paths       []string   `json:"paths,omitempty"`
-	Hooks       []SkillHook `json:"hooks,omitempty"`
+	Hooks        []SkillHook `json:"hooks,omitempty"`
+	Capabilities []string    `json:"capabilities,omitempty"`
 }
 
 // SkillHook defines a hook that auto-registers when the skill is invoked.
@@ -74,6 +75,48 @@ func (r *Registry) All() []*Skill {
 		return result[i].Name < result[j].Name
 	})
 	return result
+}
+
+// Clone returns a deep copy of the registry.
+func (r *Registry) Clone() *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	c := NewRegistry()
+	for k, v := range r.skills {
+		c.skills[k] = v
+	}
+	return c
+}
+
+// Remove deletes a skill by name. No-op if not found.
+func (r *Registry) Remove(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.skills, name)
+}
+
+// FilterByCapabilities returns a new registry containing only skills whose
+// Capabilities list is empty (available to all agents) OR contains at least
+// one capability from agentCaps. If agentCaps is empty, only skills with no
+// capability requirements are included.
+func (r *Registry) FilterByCapabilities(agentCaps []string) *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := NewRegistry()
+	for _, s := range r.skills {
+		if len(s.Capabilities) == 0 {
+			out.skills[s.Name] = s
+			continue
+		}
+		for _, ac := range agentCaps {
+			for _, sc := range s.Capabilities {
+				if ac == sc {
+					out.skills[s.Name] = s
+				}
+			}
+		}
+	}
+	return out
 }
 
 // LoadAll loads skills from all sources: bundled, user, project.
@@ -313,28 +356,32 @@ func bundledSkills() []*Skill {
 			Source:      "bundled",
 		},
 		{
-			Name:        "design-system",
-			Description: "Extract a design token system from reference assets, URLs, or descriptions",
-			Content:     designSystemSkillContent,
-			Source:      "bundled",
+			Name:         "design-system",
+			Description:  "Extract a design token system from reference assets, URLs, or descriptions",
+			Content:      designSystemSkillContent,
+			Source:       "bundled",
+			Capabilities: []string{"design"},
 		},
 		{
-			Name:        "mockup",
-			Description: "Generate a complete multi-screen HTML mockup from a product brief",
-			Content:     mockupSkillContent,
-			Source:      "bundled",
+			Name:         "mockup",
+			Description:  "Generate a complete multi-screen HTML mockup from a product brief",
+			Content:      mockupSkillContent,
+			Source:       "bundled",
+			Capabilities: []string{"design"},
 		},
 		{
-			Name:        "handoff",
-			Description: "Generate a developer handoff package from a completed mockup",
-			Content:     handoffSkillContent,
-			Source:      "bundled",
+			Name:         "handoff",
+			Description:  "Generate a developer handoff package from a completed mockup",
+			Content:      handoffSkillContent,
+			Source:       "bundled",
+			Capabilities: []string{"design"},
 		},
 		{
-			Name:        "hifi",
-			Description: "Generate high-fidelity mockups with multiple design variations and a live Tweaks panel for toggling colors, fonts, density, and dark mode",
-			Content:     hifiSkillContent,
-			Source:      "bundled",
+			Name:         "hifi",
+			Description:  "Generate high-fidelity mockups with multiple design variations and a live Tweaks panel for toggling colors, fonts, density, and dark mode",
+			Content:      hifiSkillContent,
+			Source:       "bundled",
+			Capabilities: []string{"design"},
 		},
 	}
 }
