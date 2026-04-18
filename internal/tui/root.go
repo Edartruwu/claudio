@@ -2427,6 +2427,15 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			filtered = append(filtered, msg)
 		}
 		m.messages = filtered
+
+		// Reset all streaming state so the re-stream starts clean.
+		// Without this, pendingToolCount double-counts tool_start events
+		// (original + re-stream), causing pendingPostToolText to never flush
+		// and pre-tool streamText to duplicate on the second pass.
+		m.pendingToolCount = 0
+		m.pendingPostToolText.Reset()
+		m.streamText.Reset()
+
 		m.spinText = "Retrying with extended output..."
 		m.spinner.SetText(m.spinText)
 		m.refreshViewport()

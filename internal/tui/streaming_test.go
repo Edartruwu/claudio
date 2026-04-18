@@ -9,7 +9,8 @@ import (
 // It initialises streamText and leaves session nil (persistMessage is nil-safe).
 func newStreamingModel() *Model {
 	return &Model{
-		streamText: &strings.Builder{},
+		streamText:          &strings.Builder{},
+		pendingPostToolText: &strings.Builder{},
 	}
 }
 
@@ -442,6 +443,84 @@ func TestPendingToolText_SequentialTurns(t *testing.T) {
 		if m.messages[i].Type != want {
 			t.Errorf("messages[%d].Type = %v, want %v", i, m.messages[i].Type, want)
 		}
+	}
+}
+
+// simulateRetry mirrors what handleEngineEvent does for "retry": drops partial
+// tool cards and resets all streaming state so the re-stream starts clean.
+func simulateRetry(m *Model, ids ...string) {
+	retryIDs := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		retryIDs[id] = true
+	}
+	filtered := m.messages[:0]
+	for _, msg := range m.messages {
+		if msg.Type == MsgToolUse && retryIDs[msg.ToolUseID] {
+			continue
+		}
+		filtered = append(filtered, msg)
+	}
+	m.messages = filtered
+	m.pendingToolCount = 0
+	m.pendingPostToolText.Reset()
+	m.streamText.Reset()
+}
+
+// TestRetry_ResetsStreamingState verifies that a retry (max_tokens escalation)
+// resets pendingToolCount and both text buffers so the re-stream does not
+// double-count tool_start events or duplicate pre-tool text.
+func TestRetry_ResetsStreamingState(t *testing.T) {
+	m := newStreamingModel()
+
+	// First stream: text → tool_start (hits max_tokens here, retry fires)
+	simulateTextDelta(m, "pre-tool text")
+	simulateToolStart(m, "id1", "Read")
+
+	// Sanity: pendingToolCount is 1, streamText has been finalized to a message
+	if m.pendingToolCount != 1 {
+		t.Fatalf("pre-retry pendingToolCount = %d, want 1", m.pendingToolCount)
+	}
+
+	simulateRetry(m, "id1")
+
+	if m.pendingToolCount != 0 {
+		t.Errorf("after retry pendingToolCount = %d, want 0", m.pendingToolCount)
+	}
+	if m.pendingPostToolText.Len() != 0 {
+		t.Errorf("after retry pendingPostToolText not cleared: %q", m.pendingPostToolText.String())
+	}
+	if m.streamText.Len() != 0 {
+		t.Errorf("after retry streamText not cleared: %q", m.streamText.String())
+	}
+}
+
+// TestRetry_ReStreamDoesNotDoubleCount verifies the full retry cycle: after a
+// retry resets state, the re-stream's tool_start events bring pendingToolCount
+// back to exactly 1 (not 2), so post-tool text flushes correctly on tool_end.
+func TestRetry_ReStreamDoesNotDoubleCount(t *testing.T) {
+	m := newStreamingModel()
+
+	// First stream (aborted at max_tokens)
+	simulateTextDelta(m, "pre-tool")
+	simulateToolStart(m, "id1", "Read")
+
+	// Retry fires
+	simulateRetry(m, "id1")
+
+	// Re-stream: same tool fires again, then text after tool, then tool ends
+	simulateToolStart(m, "id1", "Read")
+	simulateTextDelta(m, "post-tool commentary") // buffered while tool in-flight
+	simulateToolEnd(m, "id1", "ok")
+
+	if m.pendingToolCount != 0 {
+		t.Errorf("after re-stream tool_end, pendingToolCount = %d, want 0", m.pendingToolCount)
+	}
+	if m.pendingPostToolText.Len() != 0 {
+		t.Errorf("pendingPostToolText not flushed after re-stream tool_end: %q", m.pendingPostToolText.String())
+	}
+	last := m.messages[len(m.messages)-1]
+	if last.Type != MsgAssistant || last.Content != "post-tool commentary" {
+		t.Errorf("last message = {%v %q}, want MsgAssistant %q", last.Type, last.Content, "post-tool commentary")
 	}
 }
 
