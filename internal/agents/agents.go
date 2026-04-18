@@ -322,7 +322,7 @@ func DesignAgent() AgentDefinition {
 		Capabilities: []string{"design"},
 		WhenToUse:    "UI/UX design agent that generates interactive mockups as self-contained HTML. Use for creating app screens, landing pages, dashboards, and design system exploration. Produces verified, exportable HTML prototypes.",
 		Tools:        []string{"*"},
-		DisallowedTools: []string{"ExitPlanMode"},
+		DisallowedTools: []string{"EnterPlanMode", "ExitPlanMode"},
 		SystemPrompt: designSystemPrompt,
 	}
 }
