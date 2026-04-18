@@ -89,3 +89,40 @@ func TestEnsureDirs(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Paths.Designs — new field for Claudio Design feature
+// ---------------------------------------------------------------------------
+
+func TestGetPaths_DesignsNonEmpty(t *testing.T) {
+	paths := config.GetPaths()
+	if paths.Designs == "" {
+		t.Error("expected non-empty Designs path")
+	}
+}
+
+func TestGetPaths_DesignsAbsolutePath(t *testing.T) {
+	paths := config.GetPaths()
+	if !filepath.IsAbs(paths.Designs) {
+		t.Errorf("expected Designs to be absolute path, got %q", paths.Designs)
+	}
+}
+
+func TestGetPaths_DesignsEndsWithDesigns(t *testing.T) {
+	paths := config.GetPaths()
+	base := filepath.Base(paths.Designs)
+	if base != "designs" {
+		t.Errorf("expected Designs path to end with 'designs', got %q (base=%q)", paths.Designs, base)
+	}
+}
+
+func TestEnsureDirs_CreatesDesignsDir(t *testing.T) {
+	err := config.EnsureDirs()
+	if err != nil {
+		t.Fatalf("EnsureDirs failed: %v", err)
+	}
+	paths := config.GetPaths()
+	if _, err := os.Stat(paths.Designs); os.IsNotExist(err) {
+		t.Errorf("expected designs directory to exist at %s", paths.Designs)
+	}
+}
