@@ -29,6 +29,7 @@ func NewBundleMockupTool(designsDir string) *BundleMockupTool {
 type BundleMockupInput struct {
 	EntryHTML  string            `json:"entry_html"`
 	OutputPath string            `json:"output_path"`
+	SessionDir string            `json:"session_dir"` // optional: reuse existing session dir instead of creating new timestamp
 	Files      map[string]string `json:"files"`
 	EmbedCDN   *bool             `json:"embed_cdn"` // pointer so we can detect omission
 }
@@ -65,7 +66,11 @@ func (t *BundleMockupTool) InputSchema() json.RawMessage {
 			},
 			"output_path": {
 				"type": "string",
-				"description": "Where to write the bundled HTML. Defaults to {designsDir}/{timestamp}/bundle/mockup.html."
+				"description": "Exact output file path. Takes precedence over session_dir."
+			},
+			"session_dir": {
+				"type": "string",
+				"description": "Session directory to write bundle into ({session_dir}/bundle/mockup.html). Pass the same session_dir used for RenderMockup to keep all outputs together. Defaults to a new {designsDir}/{timestamp} dir."
 			},
 			"files": {
 				"type": "object",
@@ -211,8 +216,11 @@ func (t *BundleMockupTool) Execute(_ context.Context, input json.RawMessage) (*R
 	// --- 3. Resolve output path ---
 	outPath := in.OutputPath
 	if outPath == "" {
-		ts := time.Now().Format("20060102-150405")
-		outPath = filepath.Join(t.designsDir, ts, "bundle", "mockup.html")
+		sessionDir := in.SessionDir
+		if sessionDir == "" {
+			sessionDir = filepath.Join(t.designsDir, time.Now().Format("20060102-150405"))
+		}
+		outPath = filepath.Join(sessionDir, "bundle", "mockup.html")
 	}
 
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {

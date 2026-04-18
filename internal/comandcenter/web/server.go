@@ -1642,7 +1642,8 @@ type DesignSession struct {
 
 // DesignGalleryData is the template data for the designs gallery page.
 type DesignGalleryData struct {
-	Sessions []DesignSession
+	Sessions  []DesignSession
+	SessionID string
 }
 
 // handleDesignGallery lists all design sessions from ~/.claudio/designs/.

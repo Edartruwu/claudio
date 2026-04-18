@@ -27,6 +27,7 @@ func NewExportHandoffTool(designsDir string) *ExportHandoffTool {
 // ExportHandoffInput is the JSON input schema for this tool.
 type ExportHandoffInput struct {
 	MockupDir    string `json:"mockup_dir"`    // path to dir containing index.html + screen HTMLs
+	SessionDir   string `json:"session_dir"`   // optional: reuse existing session dir for handoff output
 	Framework    string `json:"framework"`     // "react" | "vue" | "svelte" | "vanilla" — default: "react"
 	DesignTokens string `json:"design_tokens"` // optional path to design-system.json
 	ProjectName  string `json:"project_name"`  // used in spec header
@@ -63,6 +64,10 @@ func (t *ExportHandoffTool) InputSchema() json.RawMessage {
 		"mockup_dir": {
 			"type": "string",
 			"description": "Absolute path to the mockup directory containing index.html and screen-*.html files."
+		},
+		"session_dir": {
+			"type": "string",
+			"description": "Session directory to write handoff into ({session_dir}/handoff/). Pass the same session_dir used for RenderMockup/BundleMockup to keep all outputs together."
 		},
 		"framework": {
 			"type": "string",
@@ -257,8 +262,12 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 		}
 	}
 
-	// 10. Create handoff dir
-	handoffDir := filepath.Join(mockupDir, "handoff")
+	// 10. Create handoff dir — prefer session_dir if provided, else nest under mockupDir
+	handoffBase := mockupDir
+	if in.SessionDir != "" {
+		handoffBase = in.SessionDir
+	}
+	handoffDir := filepath.Join(handoffBase, "handoff")
 	if err := os.MkdirAll(handoffDir, 0755); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to create handoff dir: %v", err), IsError: true}, nil
 	}

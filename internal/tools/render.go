@@ -27,6 +27,7 @@ func NewRenderMockupTool(designsDir string) *RenderMockupTool {
 // RenderMockupInput is the JSON input schema for this tool.
 type RenderMockupInput struct {
 	HTMLPath       string `json:"html_path"`
+	SessionDir     string `json:"session_dir"`     // optional: reuse existing session dir instead of creating new timestamp
 	ViewportWidth  int    `json:"viewport_width"`  // default: 1440
 	ViewportHeight int    `json:"viewport_height"` // default: 900
 	DeviceScale    int    `json:"device_scale"`    // default: 2
@@ -80,6 +81,10 @@ func (t *RenderMockupTool) InputSchema() json.RawMessage {
 			"html_path": {
 				"type": "string",
 				"description": "Absolute or relative path to the HTML file to render."
+			},
+			"session_dir": {
+				"type": "string",
+				"description": "Session directory to write screenshots into ({session_dir}/screenshots/). Pass the same session_dir used for BundleMockup to keep all outputs together. Defaults to a new {designsDir}/{timestamp} dir."
 			},
 			"viewport_width": {
 				"type": "integer",
@@ -162,9 +167,12 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		captureScreens = *in.CaptureScreens
 	}
 
-	// 3. Create output dir: {designsDir}/{timestamp}/screenshots/
-	ts := time.Now().Format("20060102-150405")
-	outDir := filepath.Join(t.designsDir, ts, "screenshots")
+	// 3. Create output dir: {sessionDir}/screenshots/ or {designsDir}/{timestamp}/screenshots/
+	sessionDir := in.SessionDir
+	if sessionDir == "" {
+		sessionDir = filepath.Join(t.designsDir, time.Now().Format("20060102-150405"))
+	}
+	outDir := filepath.Join(sessionDir, "screenshots")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to create output dir: %v", err), IsError: true}, nil
 	}
