@@ -330,6 +330,12 @@ func bundledSkills() []*Skill {
 			Content:     handoffSkillContent,
 			Source:      "bundled",
 		},
+		{
+			Name:        "hifi",
+			Description: "Generate high-fidelity mockups with multiple design variations and a live Tweaks panel for toggling colors, fonts, density, and dark mode",
+			Content:     hifiSkillContent,
+			Source:      "bundled",
+		},
 	}
 }
 
@@ -2065,3 +2071,245 @@ Report:
 - Component count
 - Token count audited
 - Any accessibility or contrast issues flagged`
+
+var hifiSkillContent = `You are generating high-fidelity mockups with named design variations and a live Tweaks panel. Follow this workflow exactly.
+
+## Step 1 — Clarification
+
+Ask the user:
+1. **Product name** — what is this product called?
+2. **Audience** — who are the primary users?
+3. **Brand / existing design system** — provide a design-system.json path, a URL, or a description. If none, you will invent tokens.
+4. **Tone** — playful / serious / corporate / other?
+5. **Variation count** — how many named design directions? Default: 3.
+6. **Variation briefs** — one sentence per variation describing its visual direction (e.g. "Minimal light", "Bold dark", "Warm editorial"). If not provided, invent distinct directions.
+
+If the user has already answered these, skip asking and proceed.
+
+## Step 2 — Define CSS Variable Tokens
+
+Before writing any HTML, define the token set for each variation. Every variation must have its own palette block. Use only CSS custom properties — no hardcoded hex, px, or font-name values anywhere in the final HTML.
+
+Required token names (add more as needed):
+
+` + "```" + `
+--color-bg
+--color-surface
+--color-surface-alt
+--color-primary
+--color-primary-hover
+--color-on-primary
+--color-text
+--color-muted
+--color-border
+--color-accent
+--font-family
+--font-family-heading
+--spacing-unit
+--radius-sm
+--radius-md
+--radius-lg
+--shadow-sm
+--shadow-md
+--shadow-lg
+` + "```" + `
+
+## Step 3 — Generate Single HTML File with Tab Strip
+
+Generate one file: ` + "`hifi.html`" + `
+
+### Tab strip (top of ` + "`<body>`" + `)
+
+` + "```html" + `
+<nav id="variation-tabs" style="position:sticky;top:0;z-index:1000;display:flex;gap:0;background:var(--color-surface);border-bottom:1px solid var(--color-border);">
+  <button class="tab-btn active" data-target="variation-0" onclick="showVariation(0)" style="padding:0.75rem 1.5rem;border:none;cursor:pointer;font-family:var(--font-family);background:var(--color-primary);color:var(--color-on-primary);">Variation 1 Name</button>
+  <button class="tab-btn" data-target="variation-1" onclick="showVariation(1)" style="padding:0.75rem 1.5rem;border:none;cursor:pointer;font-family:var(--font-family);background:var(--color-surface);color:var(--color-text);">Variation 2 Name</button>
+  <button class="tab-btn" data-target="variation-2" onclick="showVariation(2)" style="padding:0.75rem 1.5rem;border:none;cursor:pointer;font-family:var(--font-family);background:var(--color-surface);color:var(--color-text);">Variation 3 Name</button>
+</nav>
+` + "```" + `
+
+### Variation containers
+
+Wrap each variation in:
+
+` + "```html" + `
+<div id="variation-0" class="variation" style="display:block;">
+  <!-- full page content for variation 1 -->
+</div>
+<div id="variation-1" class="variation" style="display:none;">
+  <!-- full page content for variation 2 -->
+</div>
+<div id="variation-2" class="variation" style="display:none;">
+  <!-- full page content for variation 3 -->
+</div>
+` + "```" + `
+
+Tab switching script:
+
+` + "```html" + `
+<script>
+function showVariation(idx) {
+  document.querySelectorAll('.variation').forEach(function(el, i) {
+    el.style.display = i === idx ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(function(btn, i) {
+    btn.style.background = i === idx ? 'var(--color-primary)' : 'var(--color-surface)';
+    btn.style.color = i === idx ? 'var(--color-on-primary)' : 'var(--color-text)';
+  });
+}
+</script>
+` + "```" + `
+
+Each variation must be a **complete, realistic page** with navigation, hero or header, content sections, and footer. Use product-relevant copy — not lorem ipsum.
+
+## Step 4 — Embed Live Tweaks Panel
+
+Embed the following snippet verbatim inside ` + "`<body>`" + ` before ` + "`</body>`" + `. Populate the ` + "`palettes`" + ` object using your actual variation token values:
+
+` + "```html" + `
+<div id="tweaks-panel" style="position:fixed;bottom:1rem;right:1rem;z-index:9999;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:var(--spacing-unit);font-family:var(--font-family);font-size:0.75rem;box-shadow:var(--shadow-lg);min-width:200px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:calc(var(--spacing-unit) * 0.5);">
+    <strong style="color:var(--color-text);">Live Tweaks</strong>
+    <button id="tweaks-toggle" onclick="var b=document.getElementById('tweaks-body');b.style.display=b.style.display==='none'?'block':'none'" style="background:none;border:none;cursor:pointer;color:var(--color-text);font-size:1rem;">&#8963;</button>
+  </div>
+  <div id="tweaks-body">
+    <label style="display:block;margin-bottom:calc(var(--spacing-unit) * 0.5);color:var(--color-text);">Palette
+      <select id="palette-select" onchange="applyPalette(this.value)" style="display:block;width:100%;margin-top:0.25rem;padding:0.25rem;font-family:var(--font-family);border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-alt);color:var(--color-text);">
+        <option value="default">Default</option>
+        <option value="warm">Warm</option>
+        <option value="cool">Cool</option>
+        <option value="high-contrast">High Contrast</option>
+      </select>
+    </label>
+    <label style="display:block;margin-bottom:calc(var(--spacing-unit) * 0.5);color:var(--color-text);">Font
+      <select onchange="applyFont(this.value)" style="display:block;width:100%;margin-top:0.25rem;padding:0.25rem;font-family:var(--font-family);border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-alt);color:var(--color-text);">
+        <option value="sans">Sans</option>
+        <option value="serif">Serif</option>
+        <option value="mono">Mono</option>
+      </select>
+    </label>
+    <label style="display:block;margin-bottom:calc(var(--spacing-unit) * 0.5);color:var(--color-text);">Density
+      <select onchange="applyDensity(this.value)" style="display:block;width:100%;margin-top:0.25rem;padding:0.25rem;font-family:var(--font-family);border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-alt);color:var(--color-text);">
+        <option value="comfortable" selected>Comfortable</option>
+        <option value="compact">Compact</option>
+        <option value="spacious">Spacious</option>
+      </select>
+    </label>
+    <button onclick="toggleDark()" style="display:block;width:100%;padding:0.375rem var(--spacing-unit);background:var(--color-primary);color:var(--color-on-primary);border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-family);">Toggle Dark / Light</button>
+  </div>
+</div>
+<script>
+(function() {
+  var R = document.documentElement;
+  var dark = false;
+  // REPLACE these palette values with your actual design tokens
+  var palettes = {
+    'default':       {'--color-bg':'#ffffff','--color-surface':'#f8f9fa','--color-surface-alt':'#f1f3f5','--color-primary':'#2563eb','--color-primary-hover':'#1d4ed8','--color-on-primary':'#ffffff','--color-text':'#111827','--color-muted':'#6b7280','--color-border':'#e5e7eb','--color-accent':'#7c3aed'},
+    'warm':          {'--color-bg':'#fffbf5','--color-surface':'#fef3e2','--color-surface-alt':'#fde8c8','--color-primary':'#ea580c','--color-primary-hover':'#c2410c','--color-on-primary':'#ffffff','--color-text':'#1c0a00','--color-muted':'#92400e','--color-border':'#fcd9aa','--color-accent':'#d97706'},
+    'cool':          {'--color-bg':'#f0f9ff','--color-surface':'#e0f2fe','--color-surface-alt':'#bae6fd','--color-primary':'#0284c7','--color-primary-hover':'#0369a1','--color-on-primary':'#ffffff','--color-text':'#0c1a2e','--color-muted':'#475569','--color-border':'#7dd3fc','--color-accent':'#6366f1'},
+    'high-contrast': {'--color-bg':'#000000','--color-surface':'#1a1a1a','--color-surface-alt':'#2a2a2a','--color-primary':'#facc15','--color-primary-hover':'#eab308','--color-on-primary':'#000000','--color-text':'#ffffff','--color-muted':'#d1d5db','--color-border':'#404040','--color-accent':'#f472b6'}
+  };
+  var fonts = {
+    'sans':  'Inter, system-ui, -apple-system, sans-serif',
+    'serif': 'Georgia, "Times New Roman", serif',
+    'mono':  '"JetBrains Mono", "Fira Code", "Courier New", monospace'
+  };
+  var densities = {
+    'compact':     '0.75rem',
+    'comfortable': '1rem',
+    'spacious':    '1.5rem'
+  };
+  window.applyPalette = function(name) {
+    var p = palettes[name] || palettes['default'];
+    Object.keys(p).forEach(function(k) { R.style.setProperty(k, p[k]); });
+  };
+  window.applyFont = function(name) {
+    R.style.setProperty('--font-family', fonts[name] || fonts['sans']);
+    R.style.setProperty('--font-family-heading', fonts[name] || fonts['sans']);
+  };
+  window.applyDensity = function(name) {
+    R.style.setProperty('--spacing-unit', densities[name] || densities['comfortable']);
+  };
+  window.toggleDark = function() {
+    dark = !dark;
+    if (dark) {
+      R.style.setProperty('--color-bg', '#0f172a');
+      R.style.setProperty('--color-surface', '#1e293b');
+      R.style.setProperty('--color-surface-alt', '#334155');
+      R.style.setProperty('--color-text', '#f1f5f9');
+      R.style.setProperty('--color-muted', '#94a3b8');
+      R.style.setProperty('--color-border', '#334155');
+    } else {
+      window.applyPalette(document.getElementById('palette-select').value || 'default');
+    }
+  };
+})();
+</script>
+` + "```" + `
+
+## Step 5 — CSS Token Block
+
+At the top of ` + "`<style>`" + ` in ` + "`<head>`" + `, set default token values using ` + "`:root`" + `. Example structure:
+
+` + "```html" + `
+<style>
+  :root {
+    --color-bg: #ffffff;
+    --color-surface: #f8f9fa;
+    --color-surface-alt: #f1f3f5;
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-on-primary: #ffffff;
+    --color-text: #111827;
+    --color-muted: #6b7280;
+    --color-border: #e5e7eb;
+    --color-accent: #7c3aed;
+    --font-family: Inter, system-ui, sans-serif;
+    --font-family-heading: Inter, system-ui, sans-serif;
+    --spacing-unit: 1rem;
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 1rem;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.10);
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-family);
+    margin: 0;
+  }
+  /* All subsequent rules reference only var(--token-name) — no hardcoded values */
+</style>
+` + "```" + `
+
+## Step 6 — Render and Verify
+
+1. Save ` + "`hifi.html`" + ` to ` + "`~/.claudio/designs/{timestamp}/`" + ` using the Write tool (generate timestamp as YYYYMMDD-HHMMSS)
+2. Call ` + "`RenderMockup`" + ` with the path to ` + "`hifi.html`" + `
+3. Call ` + "`VerifyMockup`" + ` with the screenshot path returned by RenderMockup and ` + "`threshold: 75`" + `
+
+If ` + "`pass: false`" + `:
+- Read the ` + "`issues`" + ` list
+- Fix each blocking issue in ` + "`hifi.html`" + `
+- Re-render and re-verify
+- Repeat up to 3 cycles; after 3, report remaining issues and stop
+
+If ` + "`pass: true`" + `: proceed to Step 7.
+
+## Step 7 — Bundle
+
+Call ` + "`BundleMockup`" + ` with:
+- ` + "`indexPath`" + `: path to ` + "`hifi.html`" + `
+- ` + "`embedCDN`" + `: true
+
+Output path: ` + "`~/.claudio/designs/{timestamp}/bundle/hifi.html`" + `
+
+## Step 8 — Report
+
+Tell the user:
+- Bundle path
+- Variation names and their design directions
+- VerifyMockup score
+- Any unfixed issues`
