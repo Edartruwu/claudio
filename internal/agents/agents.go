@@ -70,6 +70,11 @@ type AgentDefinition struct {
 	// SourceProject is the project directory this agent was originally created in.
 	SourceProject string
 
+	// Capabilities lists opt-in tool sets this agent can access.
+	// Known values: "design" (enables RenderMockup, VerifyMockup, BundleMockup).
+	// Built-in agents set this in code; custom agents set it via frontmatter.
+	Capabilities []string
+
 	// MaxTurns limits the number of agentic turns (API calls) for this agent.
 	// 0 means unlimited. Prevents runaway agents from consuming excessive tokens.
 	MaxTurns int
@@ -82,6 +87,7 @@ func BuiltInAgents() []AgentDefinition {
 		ExploreAgent(),
 		PlanAgent(),
 		VerificationAgent(),
+		DesignAgent(),
 	}
 }
 
@@ -301,6 +307,20 @@ Include command output as evidence. Do not omit failures.`,
 	}
 }
 
+// DesignAgent returns the design agent definition.
+func DesignAgent() AgentDefinition {
+	return AgentDefinition{
+		Type:         "design",
+		MaxTurns:     80,
+		Model:        "claude-sonnet-4-6",
+		Capabilities: []string{"design"},
+		WhenToUse:    "UI/UX design agent that generates interactive mockups as self-contained HTML. Use for creating app screens, landing pages, dashboards, and design system exploration. Produces verified, exportable HTML prototypes.",
+		Tools:        []string{"*"},
+		DisallowedTools: []string{"Agent", "ExitPlanMode"},
+		SystemPrompt: designSystemPrompt,
+	}
+}
+
 // LoadCustomAgents loads agent definitions from markdown files in a directory.
 // Custom agents use frontmatter for configuration and markdown body for the system prompt.
 //
@@ -368,6 +388,7 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 					Model:           fm.Get("model"),
 					SourceSession:   fm.Get("sourceSession"),
 					SourceProject:   fm.Get("sourceProject"),
+					Capabilities:    fm.GetList("capabilities"),
 				}
 
 				if len(def.Tools) == 0 {
@@ -429,6 +450,7 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 				Model:           fm.Get("model"),
 				SourceSession:   fm.Get("sourceSession"),
 				SourceProject:   fm.Get("sourceProject"),
+				Capabilities:    fm.GetList("capabilities"),
 			}
 
 			if len(def.Tools) == 0 {
