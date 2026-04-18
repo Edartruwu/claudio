@@ -153,6 +153,18 @@
           var msgsEl = document.getElementById('messages');
           if (msgsEl) msgsEl.innerHTML = '';
 
+        } else if (type === 'messages.compacted') {
+          // Reload full message list from server (compact replaced all messages).
+          var msgsEl = document.getElementById('messages');
+          if (msgsEl && sessionId) {
+            fetch('/partials/messages/' + sessionId, { credentials: 'include' })
+              .then(function(r) { return r.text(); })
+              .then(function(html) { msgsEl.innerHTML = html; msgsEl.scrollTop = msgsEl.scrollHeight; })
+              .catch(function() {});
+          }
+          var loader = document.getElementById('compact-loading');
+          if (loader) loader.style.display = 'none';
+
         } else if (type === 'new_message' && data.html) {
           // Backward-compat path (legacy event type).
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;
