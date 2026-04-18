@@ -1,9 +1,11 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 
@@ -199,10 +201,28 @@ func (t *SpawnSessionTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 	cmd.Env = env
 
-	// Start in background (detached) — do not wait for it
-	// Use Start() not Run() so we can return immediately
-	err := cmd.Start()
-	if err != nil {
+	// Pre-register the session as "active" in ComandCenter storage so the web UI
+	// shows it immediately — before the child process has had time to connect and
+	// send EventSessionHello (which normally triggers the status flip).
+	if password != "" {
+		preBody, _ := json.Marshal(map[string]any{
+			"name":   in.Name,
+			"path":   in.Path,
+			"master": false,
+		})
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, t.AttachURL+"/api/sessions", bytes.NewReader(preBody))
+		if reqErr == nil {
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+password)
+			resp, doErr := http.DefaultClient.Do(req)
+			if doErr == nil {
+				resp.Body.Close()
+			}
+		}
+	}
+
+	// Start in background (detached) — do not wait for it.
+	if err := cmd.Start(); err != nil {
 		return &Result{
 			Content: fmt.Sprintf("Failed to spawn session: %v", err),
 			IsError: true,

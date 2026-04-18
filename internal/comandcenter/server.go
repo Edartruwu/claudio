@@ -68,6 +68,7 @@ func (s *Server) routes() {
 	// Auth-gated routes.
 	s.mux.Handle("GET /ws/attach", s.auth(http.HandlerFunc(s.handleWSAttach)))
 	s.mux.Handle("GET /api/sessions", s.auth(http.HandlerFunc(s.handleListSessions)))
+	s.mux.Handle("POST /api/sessions", s.auth(http.HandlerFunc(s.handlePreRegisterSession)))
 	s.mux.Handle("GET /api/sessions/{id}/messages", s.auth(http.HandlerFunc(s.handleListMessages)))
 
 	// Push notification routes.
@@ -133,6 +134,51 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		sessions = []Session{}
 	}
 	writeJSON(w, http.StatusOK, sessions)
+}
+
+// POST /api/sessions — pre-register a session so it appears "active" before the claudio
+// process has had time to connect and send EventSessionHello. SpawnSession calls this
+// immediately after launching the child process to avoid the "off" flash in the web UI.
+func (s *Server) handlePreRegisterSession(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name   string `json:"name"`
+		Path   string `json:"path"`
+		Master bool   `json:"master,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+
+	// Reuse existing session ID if one exists for this name (so history is preserved).
+	existing, found, err := s.storage.GetSessionByName(body.Name)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	now := time.Now()
+	sess := Session{
+		Name:         body.Name,
+		Path:         body.Path,
+		Master:       body.Master,
+		Status:       "active",
+		CreatedAt:    now,
+		LastActiveAt: now,
+	}
+	if found {
+		sess.ID = existing.ID
+		sess.CreatedAt = existing.CreatedAt
+		sess.Model = existing.Model
+	} else {
+		sess.ID = newID()
+	}
+
+	if err := s.storage.UpsertSession(sess); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, sess)
 }
 
 // GET /api/sessions/{id}/messages?limit=50
