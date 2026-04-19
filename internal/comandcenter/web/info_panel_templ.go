@@ -40,9 +40,9 @@ func InfoPanel(data InfoPageData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("width:40px;height:40px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:15.2px;")
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("width:52px;height:52px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:19.76px;")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 17, Col: 197}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 17, Col: 198}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -61,7 +61,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><span style=\"position:absolute;bottom:1px;right:1px;width:10.4px;height:10.4px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;\"></span></div><div style=\"flex:1;min-width:0;\"><p style=\"color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><span style=\"position:absolute;bottom:1px;right:1px;width:13.52px;height:13.52px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;\"></span></div><div style=\"flex:1;min-width:0;\"><p style=\"color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -93,7 +93,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p></div></header><!-- Info strip --><div style=\"margin:12px 16px;background:var(--color-surface);border-radius:16px;padding:12px 16px;border:1px solid var(--color-border);\"><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Path</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p></div></header><!-- Info strip --><div style=\"margin:12px 16px;background:var(--color-surface);border-radius:16px;padding:12px 16px;border:1px solid var(--color-border);box-shadow:0 0 0 1px rgba(42,49,51,0.8);\"><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Path</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
