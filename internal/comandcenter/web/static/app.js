@@ -1,9 +1,17 @@
 (function () {
   var _gen = 0; // incremented on every startChat call; stale closures check this
+  var _activeWS = null; // single active WS; closed before each new startChat
 
   function startChat(sessionId) {
     if (!sessionId) return;
     var _myGen = ++_gen;
+    // Close previous WS immediately so its onmessage/appendMessage never fires again.
+    if (_activeWS && _activeWS.readyState <= 1) {
+      _activeWS.onmessage = null;
+      _activeWS.onclose = null;
+      _activeWS.close();
+      _activeWS = null;
+    }
 
   var msgs = document.getElementById('messages');
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -148,6 +156,7 @@
   function initWS() {
     var ws = new WebSocket(proto + '//' + location.host + '/ws/ui?session_id=' + sessionId);
     wsInstance = ws;
+    _activeWS = ws;
 
     ws.onopen = function () {
       var wasDisconnected = !wsConnected;
