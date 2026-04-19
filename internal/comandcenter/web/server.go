@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -511,6 +512,12 @@ func (ws *WebServer) handleCronDelete(w http.ResponseWriter, r *http.Request) {
 // uiAuth checks the "auth" HttpOnly cookie.
 func (ws *WebServer) uiAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Trust same-machine requests (e.g. Playwright fidelity tool)
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if host == "127.0.0.1" || host == "::1" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		c, err := r.Cookie("auth")
 		if err != nil || !ws.validPassword(c.Value) {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
