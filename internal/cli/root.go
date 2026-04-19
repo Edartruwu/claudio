@@ -391,12 +391,13 @@ func runHeadlessAttach(args []string) error {
 		}
 	}
 
-	// Fall back to stored agent/team config when CLI flags are absent.
+	// DB-stored values win over CLI flags — preserves manual web UI changes.
+	// CLI flags (from cc-config.json) only apply on first creation when DB has nothing.
 	if cur := sess.Current(); cur != nil {
-		if flagAgent == "" {
+		if cur.AgentType != "" {
 			flagAgent = cur.AgentType
 		}
-		if flagTeam == "" {
+		if cur.TeamTemplate != "" {
 			flagTeam = cur.TeamTemplate
 		}
 	}
