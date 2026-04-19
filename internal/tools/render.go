@@ -51,7 +51,7 @@ type RenderMockupInput struct {
 	SessionDir     string `json:"session_dir"`     // optional: reuse existing session dir instead of creating new timestamp
 	ViewportWidth  int    `json:"viewport_width"`  // default: 1440
 	ViewportHeight int    `json:"viewport_height"` // default: 900
-	DeviceScale    int    `json:"device_scale"`    // default: 2
+	DeviceScale    int    `json:"device_scale"`    // default: 3
 	CaptureScreens *bool  `json:"capture_screens"` // pointer so we can detect omission; default true
 }
 
@@ -117,7 +117,7 @@ func (t *RenderMockupTool) InputSchema() json.RawMessage {
 			},
 			"device_scale": {
 				"type": "integer",
-				"description": "Device pixel ratio (1 = normal, 2 = retina). Default: 2."
+				"description": "Device pixel ratio (1 = normal, 2 = retina, 3 = high-res phone). Default: 3."
 			},
 			"capture_screens": {
 				"type": "boolean",
@@ -240,7 +240,7 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		in.ViewportHeight = 900
 	}
 	if in.DeviceScale == 0 {
-		in.DeviceScale = 2
+		in.DeviceScale = 3
 	}
 	captureScreens := true
 	if in.CaptureScreens != nil {
