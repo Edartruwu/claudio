@@ -124,6 +124,10 @@ templ layoutCSS() {
 		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 3px solid var(--color-cron); border-radius: 4px 16px 16px 16px; }
 		#messages { scroll-behavior: smooth; }
 		.chat-header { padding-top: env(safe-area-inset-top); }
+		@media (min-width: 768px) {
+			.chat-header { padding: 16px 20px !important; gap: 16px !important; }
+			.input-bar { padding: 12px 16px !important; padding-bottom: 12px !important; }
+		}
 		.input-bar { padding-bottom: env(safe-area-inset-bottom); }
 		.htmx-indicator { display: none; }
 		.htmx-request .htmx-indicator { display: inline; }
