@@ -852,6 +852,14 @@ func TestHandleSendMessage_Compact_NoAPIClient(t *testing.T) {
 		t.Fatalf("seed message: %v", err)
 	}
 
+	seedNativeTables(t, storage, "compact-sess-1")
+	if err := storage.ExecRaw(
+		`INSERT INTO messages (session_id, role, content, type) VALUES (?, 'user', 'hello', 'text')`,
+		"compact-sess-1",
+	); err != nil {
+		t.Fatalf("seed native message: %v", err)
+	}
+
 	form := url.Values{"content": {"/compact"}}
 	r := authedRequest(http.MethodPost, "/api/sessions/compact-sess-1/message")
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1013,5 +1021,56 @@ func TestHandleSendMessage_Compact_ReadsNativeMessages(t *testing.T) {
 	// 503 proves the API client check fired (data was found; no client configured).
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("want 503 (no API client), got %d\nbody: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestHandleSendMessage_Compact_NothingToCompact verifies /compact with empty
+// messages table returns 202 and inserts a "Nothing to compact" bubble.
+func TestHandleSendMessage_Compact_NothingToCompact(t *testing.T) {
+	storage, mux := newTestEnv(t) // no API client
+
+	const sid = "compact-empty-1"
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           sid,
+		Name:         "CompactEmptyAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	// Create native tables + session row, but insert NO messages.
+	seedNativeTables(t, storage, sid)
+
+	form := url.Values{"content": {"/compact"}}
+	r := authedRequest(http.MethodPost, "/api/sessions/"+sid+"/message")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+
+	msgs, err := storage.ListMessages(sid, 10)
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if len(msgs) == 0 {
+		t.Fatal("want confirmation bubble, got no messages")
+	}
+	found := false
+	for _, m := range msgs {
+		if strings.Contains(m.Content, "Nothing to compact") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a message containing %q, got: %+v", "Nothing to compact", msgs)
 	}
 }

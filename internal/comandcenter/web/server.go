@@ -844,11 +844,6 @@ func (ws *WebServer) handleSendMessageByName(w http.ResponseWriter, r *http.Requ
 // handleCompact runs the compact service on the session's message history,
 // replaces DB messages with compacted ones, and pushes a confirmation bubble.
 func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction string) {
-	if ws.apiClient == nil {
-		http.Error(w, "compact unavailable: no API client configured", http.StatusServiceUnavailable)
-		return
-	}
-
 	msgs, err := ws.storage.GetNativeMessages(sessionID, 1000)
 	if err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
@@ -866,6 +861,11 @@ func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction
 		_ = ws.storage.InsertMessage(confirm)
 		ws.pushMsgBubble(sessionID, confirm)
 		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
+	if ws.apiClient == nil {
+		http.Error(w, "compact unavailable: no API client configured", http.StatusServiceUnavailable)
 		return
 	}
 
