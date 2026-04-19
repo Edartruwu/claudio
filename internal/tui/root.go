@@ -513,9 +513,6 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 					conversation.WriteString("\n\n")
 				}
 			}
-			if conversation.Len() == 0 {
-				return "No conversation to consolidate.", nil
-			}
 			// Get project/memory dirs
 			cwd, _ := os.Getwd()
 			projectRoot := config.FindGitRoot(cwd)
