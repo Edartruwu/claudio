@@ -170,84 +170,130 @@ func TestMigration_VersionTableNoCollision(t *testing.T) {
 	}
 }
 
-// TestMigration_CC_OnClaudiaDB_FullRoundtrip simulates the production scenario:
-// claudio.db fully migrated → comandcenter opens the same file → both read/write
-// their respective tables without interference.
-func TestMigration_CC_OnClaudiaDB_FullRoundtrip(t *testing.T) {
+// TestMigration_SharedDB_TasksFromNativeTable verifies the production scenario:
+// CC opens claudio.db → ListTasks reads from team_tasks (claudio's native table)
+// → no cc_tasks sync required, zero lag, full description round-trip.
+func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 	raw := openRawSQLite(t)
 	simulateClaudioDB(t, raw, 22)
 
+	// Seed team_tasks directly (as claudio's TaskCreate tool would).
+	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		subject TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		assigned_to TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id, session_id)
+	)`); err != nil {
+		t.Fatalf("create team_tasks: %v", err)
+	}
+
+	now := time.Now()
+	_, err := raw.Exec(`
+		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"tt-1", "sess-native", "Implement auth middleware",
+		"**Details:**\n- JWT\n- 24h expiry", "in_progress", "prab", now, now)
+	if err != nil {
+		t.Fatalf("seed team_tasks: %v", err)
+	}
+
+	// Open CC storage on same DB.
 	s := openStorageOnDB(t, raw)
 
-	// CC writes a session + task.
+	// CC sessions table tracks the session.
 	sess := Session{
-		ID: "rt-sess-1", Name: "roundtrip", Path: "/home/user/proj",
-		Model: "claude-opus-4-6", Master: true, Status: "active",
-		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+		ID: "sess-native", Name: "main", Path: "/proj", Status: "active",
+		CreatedAt: now, LastActiveAt: now,
 	}
 	if err := s.UpsertSession(sess); err != nil {
 		t.Fatalf("UpsertSession: %v", err)
 	}
 
-	task := Task{
-		ID: "rt-task-1", SessionID: sess.ID, Title: "do the thing",
-		Description: "**details here**", Status: "pending",
-		AssignedTo: "prab", CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-	if err := s.UpsertTask(task); err != nil {
-		t.Fatalf("UpsertTask: %v", err)
-	}
-
-	// Verify CC reads back correctly.
-	tasks, err := s.ListTasks(sess.ID)
+	// ListTasks must read from team_tasks, not cc_tasks.
+	tasks, err := s.ListTasks("sess-native")
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
 	if len(tasks) != 1 {
-		t.Fatalf("expected 1 task, got %d", len(tasks))
+		t.Fatalf("expected 1 task from team_tasks, got %d", len(tasks))
 	}
-	if tasks[0].Description != "**details here**" {
-		t.Errorf("Description: got %q, want %q", tasks[0].Description, "**details here**")
+	if tasks[0].Title != "Implement auth middleware" {
+		t.Errorf("Title: got %q, want %q", tasks[0].Title, "Implement auth middleware")
+	}
+	if tasks[0].Description != "**Details:**\n- JWT\n- 24h expiry" {
+		t.Errorf("Description: got %q, want %q", tasks[0].Description, "**Details:**\n- JWT\n- 24h expiry")
 	}
 
-	// Claudio's sessions table is still intact and independent.
-	var claudiaSessionCount int
-	if err := raw.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&claudiaSessionCount); err != nil {
-		t.Fatalf("count claudio sessions: %v", err)
+	// GetTask must also read from team_tasks.
+	got, err := s.GetTask("tt-1")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
 	}
-	if claudiaSessionCount != 0 {
-		t.Errorf("claudio sessions table contaminated: got %d rows, want 0", claudiaSessionCount)
+	if got.Status != "in_progress" {
+		t.Errorf("Status: got %q, want in_progress", got.Status)
+	}
+	if got.AssignedTo != "prab" {
+		t.Errorf("AssignedTo: got %q, want prab", got.AssignedTo)
 	}
 }
 
-// TestMigration_CC_TaskDescription verifies migration 9 (description column)
-// runs correctly and the field survives a round-trip.
-func TestMigration_CC_TaskDescription(t *testing.T) {
-	s := newTestStorage(t)
+// TestMigration_SharedDB_DeletedTasksFiltered verifies ListTasks excludes
+// deleted tasks when reading from team_tasks.
+func TestMigration_SharedDB_DeletedTasksFiltered(t *testing.T) {
+	raw := openRawSQLite(t)
+	simulateClaudioDB(t, raw, 22)
 
-	sess := Session{
-		ID: "desc-sess-1", Name: "s", Path: "/tmp", Status: "active",
-		CreatedAt: time.Now(), LastActiveAt: time.Now(),
+	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		subject TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		assigned_to TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id, session_id)
+	)`); err != nil {
+		t.Fatalf("create team_tasks: %v", err)
 	}
+
+	now := time.Now()
+	for _, row := range []struct{ id, status string }{
+		{"t1", "pending"},
+		{"t2", "deleted"},
+		{"t3", "done"},
+	} {
+		if _, err := raw.Exec(
+			`INSERT INTO team_tasks (id, session_id, subject, status, created_at, updated_at)
+			 VALUES (?, 'sess-del', ?, ?, ?, ?)`,
+			row.id, "task "+row.id, row.status, now, now,
+		); err != nil {
+			t.Fatalf("seed %s: %v", row.id, err)
+		}
+	}
+
+	s := openStorageOnDB(t, raw)
+	sess := Session{ID: "sess-del", Name: "s", Path: "/tmp", Status: "active", CreatedAt: now, LastActiveAt: now}
 	if err := s.UpsertSession(sess); err != nil {
 		t.Fatalf("UpsertSession: %v", err)
 	}
 
-	task := Task{
-		ID: "desc-task-1", SessionID: sess.ID, Title: "task with description",
-		Description: "line1\n**bold**\n- item", Status: "in_progress",
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-	if err := s.UpsertTask(task); err != nil {
-		t.Fatalf("UpsertTask: %v", err)
-	}
-
-	got, err := s.GetTask(task.ID)
+	tasks, err := s.ListTasks("sess-del")
 	if err != nil {
-		t.Fatalf("GetTask: %v", err)
+		t.Fatalf("ListTasks: %v", err)
 	}
-	if got.Description != task.Description {
-		t.Errorf("Description: got %q, want %q", got.Description, task.Description)
+	if len(tasks) != 2 {
+		t.Errorf("expected 2 tasks (deleted excluded), got %d", len(tasks))
+	}
+	for _, tk := range tasks {
+		if tk.Status == "deleted" {
+			t.Errorf("deleted task %q leaked into ListTasks", tk.ID)
+		}
 	}
 }
 
@@ -296,39 +342,4 @@ func TestMigration_CC_ToolFields(t *testing.T) {
 	}
 }
 
-// TestMigration_CC_DeletedTasksFiltered verifies ListTasks excludes deleted tasks.
-func TestMigration_CC_DeletedTasksFiltered(t *testing.T) {
-	s := newTestStorage(t)
 
-	sess := Session{
-		ID: "del-sess-1", Name: "s", Path: "/tmp", Status: "active",
-		CreatedAt: time.Now(), LastActiveAt: time.Now(),
-	}
-	if err := s.UpsertSession(sess); err != nil {
-		t.Fatalf("UpsertSession: %v", err)
-	}
-
-	now := time.Now()
-	for _, tk := range []Task{
-		{ID: "del-1", SessionID: sess.ID, Title: "keep me", Status: "pending", CreatedAt: now, UpdatedAt: now},
-		{ID: "del-2", SessionID: sess.ID, Title: "delete me", Status: "deleted", CreatedAt: now, UpdatedAt: now},
-		{ID: "del-3", SessionID: sess.ID, Title: "also keep", Status: "done", CreatedAt: now, UpdatedAt: now},
-	} {
-		if err := s.UpsertTask(tk); err != nil {
-			t.Fatalf("UpsertTask %s: %v", tk.ID, err)
-		}
-	}
-
-	tasks, err := s.ListTasks(sess.ID)
-	if err != nil {
-		t.Fatalf("ListTasks: %v", err)
-	}
-	if len(tasks) != 2 {
-		t.Errorf("expected 2 tasks (deleted excluded), got %d", len(tasks))
-	}
-	for _, tk := range tasks {
-		if tk.Status == "deleted" {
-			t.Errorf("deleted task %q appeared in ListTasks result", tk.ID)
-		}
-	}
-}

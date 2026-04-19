@@ -401,37 +401,6 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 		}
 		_ = h.storage.UpdateMessageOutput(sessionID, p.ToolUseID, p.Output)
 
-	case attach.EventTaskCreated:
-		var p attach.TaskCreatedPayload
-		if err := env.UnmarshalPayload(&p); err != nil {
-			return
-		}
-		_ = h.storage.UpsertTask(Task{
-			ID:          p.ID,
-			SessionID:   sessionID,
-			Title:       p.Title,
-			Description: p.Description,
-			Status:      p.Status,
-			AssignedTo:  p.AssignedTo,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		})
-
-	case attach.EventTaskUpdated:
-		var p attach.TaskUpdatedPayload
-		if err := env.UnmarshalPayload(&p); err != nil {
-			return
-		}
-		_ = h.storage.UpsertTask(Task{
-			ID:          p.ID,
-			SessionID:   sessionID,
-			Title:       p.Title,
-			Description: p.Description,
-			AssignedTo:  p.AssignedTo,
-			Status:      p.Status,
-			UpdatedAt:   now,
-		})
-
 	case attach.EventAgentStatus:
 		var p attach.AgentStatusPayload
 		if err := env.UnmarshalPayload(&p); err != nil {

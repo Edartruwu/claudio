@@ -25,6 +25,20 @@ func newTestEnv(t *testing.T) (*cc.Storage, *http.ServeMux) {
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
 	}
+	// Simulate claudio's team_tasks table (normally in shared claudio.db).
+	if err := storage.ExecRaw(`CREATE TABLE IF NOT EXISTS team_tasks (
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		subject TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		assigned_to TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id, session_id)
+	)`); err != nil {
+		t.Fatalf("create team_tasks: %v", err)
+	}
 	t.Cleanup(func() { storage.Close() })
 
 	hub := cc.NewHub(storage)
@@ -32,6 +46,17 @@ func newTestEnv(t *testing.T) (*cc.Storage, *http.ServeMux) {
 	mux := http.NewServeMux()
 	ws.RegisterRoutes(mux)
 	return storage, mux
+}
+
+func seedTask(t *testing.T, s *cc.Storage, tk cc.Task) {
+	t.Helper()
+	if err := s.ExecRaw(`
+		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		tk.ID, tk.SessionID, tk.Title, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
+	); err != nil {
+		t.Fatalf("seedTask %s: %v", tk.ID, err)
+	}
 }
 
 // authedRequest creates a request with the auth cookie set.
@@ -308,16 +333,14 @@ func TestWebServer_SessionInfo_Renders(t *testing.T) {
 	}
 
 	// Seed a task and agent.
-	if err := storage.UpsertTask(cc.Task{
+	seedTask(t, storage, cc.Task{
 		ID:        "info-task-1",
 		SessionID: "info-sess-1",
 		Title:     "Build feature",
 		Status:    "in_progress",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("seed task: %v", err)
-	}
+	})
 	if err := storage.UpsertAgent(cc.Agent{
 		ID:        "info-agent-1",
 		SessionID: "info-sess-1",
@@ -342,8 +365,12 @@ func TestWebServer_SessionInfo_Renders(t *testing.T) {
 	if !strings.Contains(body, "Build feature") {
 		t.Error("response body does not contain task title 'Build feature'")
 	}
-	if !strings.Contains(body, "worker") {
-		t.Error("response body does not contain agent name 'worker'")
+	// Team tab is HTMX-lazy — check it via the team endpoint directly.
+	r2 := authedRequest(http.MethodGet, "/api/sessions/info-sess-1/team")
+	w2 := httptest.NewRecorder()
+	mux.ServeHTTP(w2, r2)
+	if !strings.Contains(w2.Body.String(), "worker") {
+		t.Error("team endpoint does not contain agent name 'worker'")
 	}
 	if !strings.Contains(body, "Tasks") {
 		t.Error("response body does not contain 'Tasks' tab")
@@ -384,7 +411,7 @@ func TestWebServer_TaskDetail_Renders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
-	err = storage.UpsertTask(cc.Task{
+	seedTask(t, storage, cc.Task{
 		ID:          "td-task-1",
 		SessionID:   "td-sess-1",
 		Title:       "Detail Task",
@@ -394,9 +421,6 @@ func TestWebServer_TaskDetail_Renders(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	})
-	if err != nil {
-		t.Fatalf("seed task: %v", err)
-	}
 
 	r := authedRequest(http.MethodGet, "/chat/td-sess-1/tasks/td-task-1")
 	w := httptest.NewRecorder()

@@ -11,8 +11,35 @@ func newTestStorage(t *testing.T) *Storage {
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
 	}
+	// Create team_tasks (normally created by claudio migrations).
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		subject TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		assigned_to TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id, session_id)
+	)`); err != nil {
+		t.Fatalf("create team_tasks: %v", err)
+	}
 	t.Cleanup(func() { s.Close() })
 	return s
+}
+
+// seedTask inserts a task directly into team_tasks (claudio's native table).
+func seedTask(t *testing.T, s *Storage, tk Task) {
+	t.Helper()
+	_, err := s.db.Exec(`
+		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		tk.ID, tk.SessionID, tk.Title, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
+	)
+	if err != nil {
+		t.Fatalf("seedTask %s: %v", tk.ID, err)
+	}
 }
 
 func TestStorage_UpsertSession(t *testing.T) {
@@ -406,9 +433,7 @@ func TestStorage_ListTasks(t *testing.T) {
 		CreatedAt: now.Add(-1 * time.Hour), UpdatedAt: now,
 	}
 	for _, tk := range []Task{t1, t2} {
-		if err := s.UpsertTask(tk); err != nil {
-			t.Fatalf("UpsertTask %s: %v", tk.ID, err)
-		}
+		seedTask(t, s, tk)
 	}
 
 	tasks, err = s.ListTasks(sess.ID)
@@ -442,12 +467,10 @@ func TestStorage_ListTasks_IsolatedBySession(t *testing.T) {
 		}
 	}
 
-	if err := s.UpsertTask(Task{
+	seedTask(t, s, Task{
 		ID: "task-a", SessionID: "sess-a", Title: "Task A",
 		Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("UpsertTask: %v", err)
-	}
+	})
 
 	tasks, err := s.ListTasks("sess-b")
 	if err != nil {
@@ -475,9 +498,7 @@ func TestStorage_GetTask(t *testing.T) {
 		AssignedTo: "agent-x",
 		CreatedAt:  time.Now(), UpdatedAt: time.Now(),
 	}
-	if err := s.UpsertTask(task); err != nil {
-		t.Fatalf("UpsertTask: %v", err)
-	}
+	seedTask(t, s, task)
 
 	got, err := s.GetTask("task-get-1")
 	if err != nil {

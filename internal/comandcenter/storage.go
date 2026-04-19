@@ -16,6 +16,12 @@ type Storage struct {
 	db *sql.DB
 }
 
+// ExecRaw executes arbitrary SQL. Used by tests to seed native claudio tables.
+func (s *Storage) ExecRaw(query string, args ...any) error {
+	_, err := s.db.Exec(query, args...)
+	return err
+}
+
 // Open creates or opens the ComandCenter SQLite database at path.
 func Open(path string) (*Storage, error) {
 	conn, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_busy_timeout=5000")
@@ -472,30 +478,12 @@ func (s *Storage) DeleteMessages(sessionID string) error {
 	return nil
 }
 
-// UpsertTask inserts or updates a task.
-func (s *Storage) UpsertTask(task Task) error {
-	_, err := s.db.Exec(`
-		INSERT INTO cc_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			status=excluded.status,
-			description=excluded.description,
-			assigned_to=excluded.assigned_to,
-			updated_at=excluded.updated_at
-	`, task.ID, task.SessionID, task.Title, task.Description, task.Status, task.AssignedTo,
-		task.CreatedAt, task.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("upsert task: %w", err)
-	}
-	return nil
-}
-
-// GetTask returns a single task by ID, or an error if not found.
+// GetTask returns a single task by ID from team_tasks (claudio's native table).
 func (s *Storage) GetTask(id string) (Task, error) {
 	var t Task
 	err := s.db.QueryRow(`
-		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
-		FROM cc_tasks WHERE id=?
+		SELECT id, session_id, subject, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
+		FROM team_tasks WHERE id=?
 	`, id).Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
 		&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
@@ -549,11 +537,11 @@ func (s *Storage) MarkRead(sessionID string) error {
 	return nil
 }
 
-// ListTasks returns all tasks for a session ordered by created_at DESC.
+// ListTasks returns all tasks for a session from team_tasks (claudio's native table).
 func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 	rows, err := s.db.Query(`
-		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
-		FROM cc_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
+		SELECT id, session_id, subject, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
+		FROM team_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
 	`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
