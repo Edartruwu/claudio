@@ -103,7 +103,7 @@ func (e *EventProxy) OnTurnComplete(usage api.Usage) {
 
 	if e.client != nil {
 		_ = e.client.SendEvent(attach.EventTokenUsage, attach.TokenUsagePayload{
-			ContextTokens: usage.InputTokens,
+			ContextTokens: usage.InputTokens + usage.CacheRead + usage.CacheCreate,
 		})
 	}
 }
