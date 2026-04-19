@@ -196,7 +196,7 @@ index.html skeleton:
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mockup</title>
 </head>
-<body style="margin:0;padding:0;background:#111;">
+<body style="margin:0;padding:0;background:transparent;">
   <div id="root"></div>
 
   <!-- 1. React 18 -->
@@ -215,7 +215,7 @@ index.html skeleton:
   <!-- 6. Mount -->
   <script type="text/babel">
     const App = () => (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S.xl, padding: S.xl, background: '#0a0a0a', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S.xl, padding: S.xl, background: 'transparent', minHeight: '100vh' }}>
         {/* render each screen here */}
       </div>
     )
