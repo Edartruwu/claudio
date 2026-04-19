@@ -436,15 +436,7 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 		// transient streaming delta — never persisted
 
 	default:
-		// unknown event — store raw as user message for auditability
-		raw, _ := json.Marshal(env)
-		_ = h.storage.InsertMessage(Message{
-			ID:        newID(),
-			SessionID: sessionID,
-			Role:      "user",
-			Content:   string(raw),
-			CreatedAt: now,
-		})
+		// unknown/internal events are silently dropped
 	}
 }
 
