@@ -210,6 +210,7 @@
 
         } else if (type === 'agent_status') {
           showAgentToast(data.name, data.status);
+          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
 
         } else if (type === 'new_message' && data.html) {
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;
