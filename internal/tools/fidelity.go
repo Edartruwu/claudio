@@ -37,6 +37,7 @@ type ReviewDesignFidelityInput struct {
 	ViewportWidth  int                     `json:"viewport_width"`  // default 1440
 	ViewportHeight int                     `json:"viewport_height"` // default 900
 	DeviceScale    int                     `json:"device_scale"`    // default 2
+	CSSPaths       []string                `json:"css_paths"`       // optional CSS files to inline before rendering
 }
 
 // ScreenTemplateMapping maps a design screen name to a local HTML template file.
@@ -112,10 +113,56 @@ func (t *ReviewDesignFidelityTool) InputSchema() json.RawMessage {
 		"device_scale": {
 			"type": "integer",
 			"description": "Device pixel ratio for HiDPI rendering. Default: 2."
+		},
+		"css_paths": {
+			"type": "array",
+			"items": {"type": "string"},
+			"description": "Paths to CSS files to inject into each template before rendering (e.g. Tailwind CSS, app.css). Solves CSS custom property issues when templates depend on vars defined in a layout file."
 		}
 	},
 	"required": ["screens"]
 }`)
+}
+
+// patchTemplateWithCSS inlines CSS files as <style> blocks prepended to the template HTML.
+// Returns (patchedPath, isTempFile, error). If cssPaths is empty, returns original path unchanged.
+func patchTemplateWithCSS(ctx context.Context, templatePath string, cssPaths []string) (string, bool, error) {
+	if len(cssPaths) == 0 {
+		return templatePath, false, nil
+	}
+
+	originalHTML, err := os.ReadFile(templatePath)
+	if err != nil {
+		return templatePath, false, fmt.Errorf("patchTemplateWithCSS: read template: %w", err)
+	}
+
+	var styleBlocks strings.Builder
+	for _, p := range cssPaths {
+		remapped := RemapPathForWorktree(ctx, p)
+		cssBytes, readErr := os.ReadFile(remapped)
+		if readErr != nil {
+			// non-fatal: skip missing CSS file
+			continue
+		}
+		styleBlocks.WriteString("<style>\n")
+		styleBlocks.Write(cssBytes)
+		styleBlocks.WriteString("\n</style>\n")
+	}
+
+	combined := append([]byte(styleBlocks.String()), originalHTML...)
+
+	tmp, err := os.CreateTemp("", "claudio-fidelity-patched-*.html")
+	if err != nil {
+		return templatePath, false, fmt.Errorf("patchTemplateWithCSS: create temp: %w", err)
+	}
+	if _, err := tmp.Write(combined); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return templatePath, false, fmt.Errorf("patchTemplateWithCSS: write temp: %w", err)
+	}
+	tmp.Close()
+
+	return tmp.Name(), true, nil
 }
 
 func (t *ReviewDesignFidelityTool) IsReadOnly() bool { return false }
@@ -276,11 +323,19 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		}
 
 		// 4b. Run renderScript via node with --capture-screens false (full-page only).
-		templatePath := RemapPathForWorktree(ctx, screen.TemplatePath)
+		renderPath, isTemp, patchErr := patchTemplateWithCSS(ctx, RemapPathForWorktree(ctx, screen.TemplatePath), in.CSSPaths)
+		if patchErr != nil {
+			// non-fatal: fall back to original
+			renderPath = RemapPathForWorktree(ctx, screen.TemplatePath)
+			isTemp = false
+		}
+		if isTemp {
+			defer os.Remove(renderPath)
+		}
 		cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		//nolint:gosec // script path is a temp file we just wrote
 		cmd := exec.CommandContext(cmdCtx, "node", tmpScript.Name(),
-			"--html", templatePath,
+			"--html", renderPath,
 			"--out-dir", tmpOutDir,
 			"--viewport-w", strconv.Itoa(in.ViewportWidth),
 			"--viewport-h", strconv.Itoa(in.ViewportHeight),
