@@ -289,33 +289,35 @@
     if (name === 'config') loadConfig();
   }
 
-  var _configLoaded = false;
   function loadConfig() {
-    if (_configLoaded) return;
-    _configLoaded = true;
     var currentAgent = {{printf "%q" .Session.AgentType}};
     var currentTeam  = {{printf "%q" .Session.TeamTemplate}};
 
-    fetch('/api/agents').then(function(r){ return r.json(); }).then(function(agents) {
-      var sel = document.getElementById('agent-select');
+    var agentSel = document.getElementById('agent-select');
+    var teamSel  = document.getElementById('team-select');
+
+    // Reset to placeholder before repopulating.
+    agentSel.innerHTML = '<option value="">Default (no agent)</option>';
+    teamSel.innerHTML  = '<option value="">Default (no team)</option>';
+
+    fetch('/api/agents', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(agents) {
       (agents || []).forEach(function(a) {
         var opt = document.createElement('option');
         opt.value = a.type;
         opt.textContent = a.type;
-        if (a.type === currentAgent) opt.selected = true;
-        sel.appendChild(opt);
+        agentSel.appendChild(opt);
       });
+      agentSel.value = currentAgent;
     }).catch(function(){});
 
-    fetch('/api/teams').then(function(r){ return r.json(); }).then(function(teams) {
-      var sel = document.getElementById('team-select');
+    fetch('/api/teams', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(teams) {
       (teams || []).forEach(function(t) {
         var opt = document.createElement('option');
         opt.value = t.name;
         opt.textContent = t.name;
-        if (t.name === currentTeam) opt.selected = true;
-        sel.appendChild(opt);
+        teamSel.appendChild(opt);
       });
+      teamSel.value = currentTeam;
     }).catch(function(){});
   }
 
