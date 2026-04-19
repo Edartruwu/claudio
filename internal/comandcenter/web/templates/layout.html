@@ -24,7 +24,21 @@
   </script>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <style>
-    body { background: #161717; padding-top: env(safe-area-inset-top); }
+    :root {
+      --color-bg:            #0B0E0F;
+      --color-surface:       #151A1B;
+      --color-surfaceHigh:   #1E2527;
+      --color-border:        #2A3133;
+      --color-brand:         #00C48C;
+      --color-ai:            #3B9EFF;
+      --color-tool:          #F0A500;
+      --color-cron:          #9B6FE0;
+      --color-textPrimary:   #D4DDE8;
+      --color-textSecondary: #8A9BA0;
+      --color-textMuted:     #4E6268;
+      --color-error:         #E05050;
+    }
+    body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', monospace; padding-top: env(safe-area-inset-top); }
     .msg-bubble-assistant { background: #1C1C1E; border-radius: 0 12px 12px 12px; }
     .msg-bubble-user { background: #075E54; border-radius: 12px 0 12px 12px; color: #FFFFFF; }
     .msg-bubble-tool { background: #2C2C2E; border-radius: 8px; font-style: italic; font-size: 0.75rem; }
@@ -333,6 +347,7 @@
     };
   })();
   </script>
+  {{block "bottom-nav" .}}{{end}}
   <script src="/static/app.js"></script>
   <script>
   if ('serviceWorker' in navigator) {

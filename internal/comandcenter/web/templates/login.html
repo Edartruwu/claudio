@@ -1,49 +1,224 @@
 {{define "login.html"}}{{template "layout" .}}{{end}}
 
 {{define "content"}}
-<div class="flex flex-col items-center justify-center min-h-screen px-4" style="background:#161717;">
-  <div class="rounded-2xl p-8 w-full max-w-sm" style="background:#1C1C1E;">
-    <div class="text-center mb-6">
-      <div class="rounded-full flex items-center justify-center mx-auto mb-3" style="width:64px;height:64px;background:#25D366;">
-        <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.52 3.66 1.43 5.18L2 22l4.93-1.41A9.953 9.953 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
-        </svg>
-      </div>
-      <h1 class="text-2xl font-bold text-white">ComandCenter</h1>
-      <p class="text-sm mt-1" style="color:#8E8E93;">AI Session Manager</p>
-    </div>
+<style>
+  .login-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg);
+    padding: 24px 16px;
+    padding-top: calc(env(safe-area-inset-top) + 24px);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+  }
+  .login-icon {
+    width: 88px;
+    height: 88px;
+    border-radius: 22px;
+    background: var(--color-surfaceHigh);
+    border: 2px solid var(--color-brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+  .login-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--color-textPrimary);
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+  .login-subtitle {
+    font-size: 13px;
+    color: var(--color-textSecondary);
+    text-align: center;
+    margin-bottom: 40px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--color-surface);
+    border-radius: 20px;
+    padding: 24px 20px;
+    border: 1px solid var(--color-border);
+  }
+  .login-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-textMuted);
+    margin-bottom: 10px;
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .login-input-wrap {
+    position: relative;
+    margin-bottom: 16px;
+  }
+  .login-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--color-surfaceHigh);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 14px 48px 14px 16px;
+    font-size: 16px;
+    color: var(--color-textPrimary);
+    font-family: 'JetBrains Mono', monospace;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .login-input::placeholder {
+    color: var(--color-textMuted);
+  }
+  .login-input:focus {
+    border-color: var(--color-brand);
+  }
+  .eye-toggle {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-textMuted);
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .eye-toggle:hover { color: var(--color-textSecondary); }
+  .login-btn {
+    width: 100%;
+    background: var(--color-brand);
+    color: #0B0E0F;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: opacity 0.15s;
+  }
+  .login-btn:hover { opacity: 0.9; }
+  .login-btn:active { opacity: 0.8; }
+  .login-error {
+    background: rgba(224,80,80,0.12);
+    border: 1px solid rgba(224,80,80,0.3);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--color-error);
+    margin-bottom: 16px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .login-footer {
+    margin-top: 28px;
+    text-align: center;
+  }
+  .login-footer-muted {
+    font-size: 12px;
+    color: var(--color-textMuted);
+    font-family: 'JetBrains Mono', monospace;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .login-footer-path {
+    font-size: 12px;
+    color: var(--color-brand);
+    font-family: 'JetBrains Mono', monospace;
+  }
+</style>
 
+<div class="login-page">
+  <!-- App Icon -->
+  <div class="login-icon">
+    <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 6C8 6 36 6 36 6C36 6 36 28 36 28C36 28 26 28 26 28L20 34L20 28L8 28C8 28 8 6 8 6Z" fill="none" stroke="#00C48C" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <line x1="14" y1="14" x2="30" y2="14" stroke="#00C48C" stroke-width="2" stroke-linecap="round"/>
+      <line x1="14" y1="20" x2="26" y2="20" stroke="#00C48C" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <!-- Title -->
+  <h1 class="login-title">ComandCenter</h1>
+  <p class="login-subtitle">AI agent control panel</p>
+
+  <!-- Form Card -->
+  <div class="login-card">
     {{with .Error}}{{if .}}
-    <div class="rounded-lg px-4 py-2 mb-4 text-sm" style="background:#3A1C1C;border:1px solid #5C2626;color:#FF6B6B;">
-      {{.}}
-    </div>
+    <div class="login-error">{{.}}</div>
     {{end}}{{end}}
 
-    <form method="POST" action="/login" class="space-y-4" id="login-form">
-      <div>
-        <label class="block text-sm font-medium mb-1" style="color:#8E8E93;">Password</label>
+    <form
+      id="login-form"
+      hx-post="/login"
+      hx-target="body"
+      hx-swap="outerHTML"
+    >
+      <label class="login-label" for="password-input">Access Password</label>
+      <div class="login-input-wrap">
         <input
+          id="password-input"
           type="password"
           name="password"
           placeholder="Enter password"
           autofocus
-          class="w-full rounded-lg px-4 py-2 text-base outline-none text-white"
-          style="background:#2C2C2E;border:1px solid #3A3A3C;"
+          autocomplete="current-password"
+          class="login-input"
         >
+        <button type="button" class="eye-toggle" onclick="toggleEye(this)" aria-label="Toggle password visibility">
+          <!-- Eye icon (show) -->
+          <svg id="eye-icon-show" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <!-- Eye-off icon (hide), hidden initially -->
+          <svg id="eye-icon-hide" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+            <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
       </div>
-      <button
-        type="submit"
-        class="w-full text-white rounded-lg py-2 font-semibold text-sm"
-        style="background:#25D366;"
-      >
-        Sign In
-      </button>
+      <button type="submit" class="login-btn">Connect</button>
     </form>
   </div>
+
+  <!-- Footer -->
+  <div class="login-footer">
+    <span class="login-footer-muted">Set your password in</span>
+    <span class="login-footer-path">~/.claudio/cc-config.json</span>
+  </div>
 </div>
+
 <script>
+  function toggleEye(btn) {
+    var input = document.getElementById('password-input');
+    var showIcon = document.getElementById('eye-icon-show');
+    var hideIcon = document.getElementById('eye-icon-hide');
+    if (input.type === 'password') {
+      input.type = 'text';
+      showIcon.style.display = 'none';
+      hideIcon.style.display = 'block';
+    } else {
+      input.type = 'password';
+      showIcon.style.display = 'block';
+      hideIcon.style.display = 'none';
+    }
+  }
+
+  // Save token for WebSocket auth on successful login
   document.getElementById('login-form').addEventListener('submit', function () {
-    var pass = document.querySelector('input[name=password]').value;
+    var pass = document.getElementById('password-input').value;
     if (pass) localStorage.setItem('cc_token', pass);
   });
 </script>
