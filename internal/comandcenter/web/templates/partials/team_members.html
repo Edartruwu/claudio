@@ -1,22 +1,31 @@
 {{define "team-members"}}
 {{range .}}
-<div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:#1C1C1E;">
+<div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:var(--color-surfaceHigh);">
   <div class="rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-       style="width:36px;height:36px;background:{{avatarColor .Name}};color:#fff;">
+       style="width:36px;height:36px;background:{{avatarColor .Name}};color:#000;">
     {{firstChar .Name}}
   </div>
   <div class="flex-1 min-w-0">
-    <p class="text-sm text-white truncate">{{.Name}}</p>
+    <p class="text-sm truncate" style="color:var(--color-textPrimary);">{{.Name}}</p>
     <div class="flex items-center gap-2 mt-1">
-      <span class="inline-block w-2 h-2 rounded-full flex-shrink-0 {{agentStatusDot .Status}}{{if eq .Status "working"}} animate-pulse{{end}}"></span>
-      <span class="text-xs {{agentStatusColor .Status}}">{{.Status}}</span>
+      {{if or (eq .Status "active") (eq .Status "working")}}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+            style="background:var(--color-brand);color:#000;">
+        {{if eq .Status "working"}}working{{else}}active{{end}}
+      </span>
+      {{else}}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
+            style="background:var(--color-surfaceHigh);color:var(--color-textMuted);border:1px solid var(--color-border);">
+        {{.Status}}
+      </span>
+      {{end}}
       {{if .CurrentTaskID}}
-      <span class="text-xs" style="color:#8E8E93;">· task {{truncate 8 .CurrentTaskID}}</span>
+      <span class="text-xs" style="color:var(--color-textMuted);">· {{truncate 8 .CurrentTaskID}}</span>
       {{end}}
     </div>
   </div>
 </div>
 {{else}}
-<div class="text-center text-sm mt-8" style="color:#8E8E93;">No agents yet</div>
+<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No agents yet</div>
 {{end}}
 {{end}}

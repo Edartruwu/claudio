@@ -1,29 +1,33 @@
 {{define "task-detail"}}
-<div class="mt-3 pt-3 border-t border-white/10 text-sm">
-  <div class="flex items-center gap-2 mb-2">
+<div class="mt-3 pt-3 text-sm" style="border-top:1px solid var(--color-border);">
+  <div class="flex items-center gap-2 mb-2 flex-wrap">
     {{if eq .Task.Status "done"}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style="background:#1a3a2a;color:#25D366;">✓ done</span>
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+            style="background:var(--color-surfaceHigh);color:#25D366;">✓ done</span>
     {{else if eq .Task.Status "in_progress"}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style="background:#1a2a3a;color:#3B9EFF;">● in progress</span>
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+            style="background:var(--color-surfaceHigh);color:var(--color-ai);">● in progress</span>
     {{else if eq .Task.Status "blocked"}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style="background:#3a1a1a;color:#FF453A;">✕ blocked</span>
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+            style="background:var(--color-surfaceHigh);color:var(--color-error);">× blocked</span>
     {{else}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style="background:#2a2a2a;color:#8E8E93;">○ pending</span>
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+            style="background:var(--color-surfaceHigh);color:var(--color-textMuted);">○ pending</span>
     {{end}}
     {{if .Task.AssignedTo}}
-    <span style="color:#8E8E93;">→ {{.Task.AssignedTo}}</span>
+    <span style="color:var(--color-textMuted);">→ {{.Task.AssignedTo}}</span>
     {{end}}
   </div>
-  <div class="flex gap-4 text-xs mb-3" style="color:#8E8E93;">
+  <div class="flex gap-4 text-xs mb-3" style="color:var(--color-textMuted);">
     <span>Created {{relTime .Task.CreatedAt}}</span>
     <span>Updated {{relTime .Task.UpdatedAt}}</span>
   </div>
   {{if .DescHTML}}
-  <div class="prose prose-invert text-xs leading-relaxed task-desc-html" style="color:#e5e5e5;">
+  <div class="prose prose-invert text-xs leading-relaxed task-desc-html" style="color:var(--color-textPrimary);">
     {{.DescHTML}}
   </div>
   {{else}}
-  <p style="color:#8E8E93;" class="text-xs italic">No description.</p>
+  <p class="text-xs italic" style="color:var(--color-textMuted);">No description.</p>
   {{end}}
 </div>
 {{end}}
