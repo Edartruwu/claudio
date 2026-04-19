@@ -45,7 +45,7 @@ Create all tokens before writing any component code. Export via Object.assign(wi
 
 Token groups: C (colors), TYPE (typography scale), S (spacing), R (border radii), SHADOW (shadows).
 
-Use oklch() for all color values — it provides better perceptual uniformity and is safe in all modern browsers.
+Always use hex (#RRGGBB) for all color values — never oklch, never hsl, never rgb(). Hex is required for downstream CSS variables, Tailwind config, and tokens.css.
 
 **Step 4 — Build primitive components in primitives.jsx.**
 Primitives are generic, reusable base components: Button, Input, Card, Badge, Avatar, Icon, Divider, Stack, etc. They consume tokens only (no raw values). Export via Object.assign(window, ...).
@@ -94,16 +94,16 @@ Define all tokens in tokens.jsx before any component code. Exact format:
 ` + "```" + `js
 // tokens.jsx
 const C = {
-  brand:      'oklch(55% 0.20 260)',
-  brandLight: 'oklch(80% 0.12 260)',
-  brandDark:  'oklch(35% 0.22 260)',
-  surface:    'oklch(14% 0.02 260)',
-  surfaceHigh:'oklch(20% 0.03 260)',
-  onSurface:  'oklch(95% 0.01 260)',
-  onSurfaceMuted: 'oklch(65% 0.03 260)',
-  accent:     'oklch(70% 0.18 55)',
-  error:      'oklch(60% 0.22 25)',
-  success:    'oklch(65% 0.18 145)',
+  brand:      '#4A5FD8',
+  brandLight: '#B8C7F0',
+  brandDark:  '#1E2E7A',
+  surface:    '#1A1B1F',
+  surfaceHigh:'#242630',
+  onSurface:  '#F2F2F4',
+  onSurfaceMuted: '#888892',
+  accent:     '#D4A547',
+  error:      '#D94844',
+  success:    '#5CA85E',
 }
 
 const TYPE = {
@@ -120,9 +120,9 @@ const S = { xs: 4, sm: 8, md: 16, lg: 24, xl: 40, xxl: 64 }
 const R = { sm: 6, md: 12, lg: 20, xl: 32, pill: 999 }
 
 const SHADOW = {
-  card:  '0 2px 12px oklch(0% 0 0 / 0.15)',
-  modal: '0 8px 40px oklch(0% 0 0 / 0.30)',
-  glow:  '0 0 24px oklch(55% 0.20 260 / 0.40)',
+  card:  '0 2px 12px rgba(0, 0, 0, 0.15)',
+  modal: '0 8px 40px rgba(0, 0, 0, 0.30)',
+  glow:  '0 0 24px rgba(74, 95, 216, 0.40)',
 }
 
 Object.assign(window, { C, TYPE, S, R, SHADOW })
@@ -178,7 +178,7 @@ tokens.json      — plain JSON snapshot of all design tokens (MUST be written a
 **tokens.json is mandatory.** Every time you write tokens.jsx, you MUST also write a tokens.json file in the same session directory using the Bash tool (e.g.: bash -c 'cat > SESSION_DIR/tokens.json << EOF ... EOF'). Do not use backtick characters in the file content.
 
 The JSON structure must have these top-level keys:
-- 'colors': object mapping each semantic color name to its value string (e.g. 'brand': 'oklch(55% 0.20 260)', 'surface': 'oklch(14% 0.02 260)')
+- 'colors': object mapping each semantic color name to its value string (e.g. 'brand': '#4A5FD8', 'surface': '#1A1B1F') — always hex, never oklch/hsl/rgb
 - 'typography': object mapping each TYPE scale name to an object with 'size', 'weight', and 'lineHeight' string fields (e.g. 'body': {'size': '16px', 'weight': '400', 'lineHeight': '1.6'})
 - 'spacing': object mapping each S token name to a pixel string (e.g. 'xs': '4px', 'sm': '8px', 'md': '16px', 'lg': '24px', 'xl': '40px')
 - 'radii': object mapping each R token name to a pixel string (e.g. 'sm': '6px', 'md': '12px', 'lg': '20px', 'full': '9999px')
