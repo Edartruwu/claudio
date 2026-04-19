@@ -474,6 +474,22 @@ func runHeadlessAttach(args []string) error {
 
 	// Subscribe to teammate completion events and inject them into the engine's message loop.
 	// This wakes the engine immediately when a teammate finishes — no human input needed.
+	// A buffered relay goroutine ensures no notification is dropped if the engine is mid-turn.
+	notifQueue := make(chan string, 32)
+	go func() {
+		for {
+			select {
+			case msg := <-notifQueue:
+				select {
+				case appInstance.InjectCh <- attach.UserMsgPayload{Content: msg}:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 	unsubTeammate := appInstance.Bus.Subscribe(attach.EventAgentStatus, func(e bus.Event) {
 		if e.SessionID != currentSessionID {
 			return // ignore events from other sessions
@@ -483,11 +499,11 @@ func runHeadlessAttach(args []string) error {
 		if p.Status != "done" && p.Status != "failed" {
 			return // only act on terminal states
 		}
-		msg := fmt.Sprintf("[System: teammate '%s' %s.\nResult: %s\nContinue work — check TaskList for next steps.]", p.Name, p.Status, p.Result)
+		msg := fmt.Sprintf("[System: teammate '%s' %s.\nResult: %s\nContinue — check TaskList for next steps.]", p.Name, p.Status, p.Result)
 		select {
-		case appInstance.InjectCh <- attach.UserMsgPayload{Content: msg}:
+		case notifQueue <- msg:
 		default:
-			// engine busy; notification dropped — state visible via TaskList
+			// notifQueue full (32 cap); drop — extremely unlikely under normal load
 		}
 	})
 	defer unsubTeammate()
