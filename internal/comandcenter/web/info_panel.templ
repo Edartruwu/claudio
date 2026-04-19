@@ -30,14 +30,14 @@ templ InfoPanel(data InfoPageData) {
 			</div>
 		</header>
 		<!-- Info strip -->
-		<div style="margin:12px 16px;background:var(--color-surfaceHigh);border-radius:16px;padding:12px 16px;border:1px solid var(--color-border);">
+		<div style="margin:12px 16px;background:var(--color-surface);border-radius:16px;padding:12px 16px;border:1px solid var(--color-border);">
 			<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
 				<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Path</span>
 				<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Path }</span>
 			</div>
 			<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
 				<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Status</span>
-				<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">&#9679; { data.Session.Status }</span>
+				<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="color:var(--color-brand);">&#9679;</span> { data.Session.Status }</span>
 			</div>
 			<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
 				<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Connected</span>
@@ -49,7 +49,7 @@ templ InfoPanel(data InfoPageData) {
 			</div>
 		</div>
 		<!-- Tab bar -->
-		<div id="info-tab-bar" style="display:flex;background:var(--color-surfaceHigh);margin:0 16px;border-radius:12px;overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;">
+		<div id="info-tab-bar" style="display:flex;background:var(--color-surface);margin:0 16px;border-radius:12px;overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;">
 			@infoTab(data.Session.ID, "tasks", "Tasks", data.ActiveTab, infoTabIconTasks())
 			@infoTab(data.Session.ID, "team", "Team", data.ActiveTab, infoTabIconTeam())
 			@infoTab(data.Session.ID, "media", "Media", data.ActiveTab, infoTabIconMedia())
@@ -190,7 +190,7 @@ templ infoTabIconConfig() {
 templ TabTasks(data InfoPageData) {
 	<div class="flex flex-col">
 		for _, task := range data.Tasks {
-			<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;margin-bottom:4px;">
+			<div style="background:var(--color-surface);border-radius:12px;padding:12px 14px;margin-bottom:4px;">
 				<div
 					class="flex items-start cursor-pointer select-none task-row"
 					style="gap:16px;"

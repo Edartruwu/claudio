@@ -93,7 +93,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p></div></header><!-- Info strip --><div style=\"margin:12px 16px;background:var(--color-surfaceHigh);border-radius:16px;padding:12px 16px;border:1px solid var(--color-border);\"><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Path</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p></div></header><!-- Info strip --><div style=\"margin:12px 16px;background:var(--color-surface);border-radius:16px;padding:12px 16px;border:1px solid var(--color-border);\"><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Path</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -106,14 +106,14 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</span></div><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Status</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">&#9679; ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</span></div><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Status</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\"><span style=\"color:var(--color-brand);\">&#9679;</span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(data.Session.Status)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 40, Col: 176}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 40, Col: 223}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -145,7 +145,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span></div></div><!-- Tab bar --><div id=\"info-tab-bar\" style=\"display:flex;background:var(--color-surfaceHigh);margin:0 16px;border-radius:12px;overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span></div></div><!-- Tab bar --><div id=\"info-tab-bar\" style=\"display:flex;background:var(--color-surface);margin:0 16px;border-radius:12px;overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -459,7 +459,7 @@ func TabTasks(data InfoPageData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, task := range data.Tasks {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;margin-bottom:4px;\"><div class=\"flex items-start cursor-pointer select-none task-row\" style=\"gap:16px;\" hx-get=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div style=\"background:var(--color-surface);border-radius:12px;padding:12px 14px;margin-bottom:4px;\"><div class=\"flex items-start cursor-pointer select-none task-row\" style=\"gap:16px;\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
