@@ -21,6 +21,7 @@ type TaskStore struct {
 	nextID         int
 	db             *sql.DB
 	currentSession string
+	bus            *bus.Bus
 }
 
 // Task represents a tracked work item.
@@ -133,6 +134,21 @@ func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
 			t.UpdatedAt = time.Now()
 			s.saveToDB(t)
 			affected = append(affected, t)
+			
+			// Publish EventTaskUpdated
+			if s.bus != nil {
+				payload, _ := json.Marshal(attach.TaskUpdatedPayload{
+					ID:          t.ID,
+					Title:       t.Subject,
+					Description: t.Description,
+					AssignedTo:  t.AssignedTo,
+					Status:      t.Status,
+				})
+				s.bus.Publish(bus.Event{
+					Type:    attach.EventTaskUpdated,
+					Payload: payload,
+				})
+			}
 		}
 	}
 	return affected
@@ -150,6 +166,21 @@ func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
 			t.UpdatedAt = time.Now()
 			s.saveToDB(t)
 			affected = append(affected, t)
+			
+			// Publish EventTaskUpdated
+			if s.bus != nil {
+				payload, _ := json.Marshal(attach.TaskUpdatedPayload{
+					ID:          t.ID,
+					Title:       t.Subject,
+					Description: t.Description,
+					AssignedTo:  t.AssignedTo,
+					Status:      t.Status,
+				})
+				s.bus.Publish(bus.Event{
+					Type:    attach.EventTaskUpdated,
+					Payload: payload,
+				})
+			}
 		}
 	}
 	return affected

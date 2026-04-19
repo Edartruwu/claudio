@@ -309,6 +309,8 @@ func (r *Registry) SetBus(b *bus.Bus) {
 			tu.bus = b
 		}
 	}
+	// Inject bus into TaskStore for task completion events
+	GlobalTaskStore.bus = b
 }
 
 // Names returns the names of all registered tools.
