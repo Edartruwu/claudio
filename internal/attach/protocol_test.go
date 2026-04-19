@@ -324,6 +324,118 @@ func TestEnvelope_UnmarshalPayload_HelloPayload(t *testing.T) {
 	}
 }
 
+func TestNewEnvelope_ClearHistoryPayload(t *testing.T) {
+	payload := ClearHistoryPayload{SessionID: "sess-abc"}
+
+	env, err := NewEnvelope(EventClearHistory, payload)
+	if err != nil {
+		t.Fatalf("NewEnvelope failed: %v", err)
+	}
+	if env.Type != EventClearHistory {
+		t.Errorf("Type = %s, want %s", env.Type, EventClearHistory)
+	}
+
+	data, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+	var unmarshaled Envelope
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+	var got ClearHistoryPayload
+	if err := unmarshaled.UnmarshalPayload(&got); err != nil {
+		t.Fatalf("UnmarshalPayload failed: %v", err)
+	}
+	if got.SessionID != payload.SessionID {
+		t.Errorf("SessionID = %q, want %q", got.SessionID, payload.SessionID)
+	}
+}
+
+func TestNewEnvelope_ConfigChangedPayload(t *testing.T) {
+	payload := ConfigChangedPayload{SessionID: "sess-abc", Model: "claude-opus-4-6"}
+
+	env, err := NewEnvelope(EventConfigChanged, payload)
+	if err != nil {
+		t.Fatalf("NewEnvelope failed: %v", err)
+	}
+	if env.Type != EventConfigChanged {
+		t.Errorf("Type = %s, want %s", env.Type, EventConfigChanged)
+	}
+
+	data, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+	var unmarshaled Envelope
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+	var got ConfigChangedPayload
+	if err := unmarshaled.UnmarshalPayload(&got); err != nil {
+		t.Fatalf("UnmarshalPayload failed: %v", err)
+	}
+	if got.SessionID != payload.SessionID || got.Model != payload.Model {
+		t.Errorf("Payload mismatch: got %+v, want %+v", got, payload)
+	}
+}
+
+func TestNewEnvelope_AgentChangedPayload(t *testing.T) {
+	payload := AgentChangedPayload{SessionID: "sess-abc", AgentType: "prab"}
+
+	env, err := NewEnvelope(EventAgentChanged, payload)
+	if err != nil {
+		t.Fatalf("NewEnvelope failed: %v", err)
+	}
+	if env.Type != EventAgentChanged {
+		t.Errorf("Type = %s, want %s", env.Type, EventAgentChanged)
+	}
+
+	data, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+	var unmarshaled Envelope
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+	var got AgentChangedPayload
+	if err := unmarshaled.UnmarshalPayload(&got); err != nil {
+		t.Fatalf("UnmarshalPayload failed: %v", err)
+	}
+	if got.SessionID != payload.SessionID || got.AgentType != payload.AgentType {
+		t.Errorf("Payload mismatch: got %+v, want %+v", got, payload)
+	}
+}
+
+func TestNewEnvelope_TeamChangedPayload(t *testing.T) {
+	payload := TeamChangedPayload{SessionID: "sess-abc", TeamTemplate: "backend-team"}
+
+	env, err := NewEnvelope(EventTeamChanged, payload)
+	if err != nil {
+		t.Fatalf("NewEnvelope failed: %v", err)
+	}
+	if env.Type != EventTeamChanged {
+		t.Errorf("Type = %s, want %s", env.Type, EventTeamChanged)
+	}
+
+	data, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+	var unmarshaled Envelope
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+	var got TeamChangedPayload
+	if err := unmarshaled.UnmarshalPayload(&got); err != nil {
+		t.Fatalf("UnmarshalPayload failed: %v", err)
+	}
+	if got.SessionID != payload.SessionID || got.TeamTemplate != payload.TeamTemplate {
+		t.Errorf("Payload mismatch: got %+v, want %+v", got, payload)
+	}
+}
+
 // TestAgentStatusPayload_ResultField verifies that the Result string field
 // on AgentStatusPayload survives a JSON marshal → unmarshal roundtrip.
 func TestAgentStatusPayload_ResultField(t *testing.T) {

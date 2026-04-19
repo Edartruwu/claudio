@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/bus"
@@ -362,6 +363,81 @@ func TestTaskCreateTool_PublishesEvent(t *testing.T) {
 		}
 	case <-make(chan struct{}): // timeout
 		t.Error("event not published")
+	}
+}
+
+func TestTaskStore_CompleteByIDs_PublishesEvent(t *testing.T) {
+	store := freshStore()
+	store.tasks["1"] = &Task{ID: "1", Subject: "t", Status: "pending"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "t", Status: "in_progress"}
+
+	b := bus.New()
+	store.bus = b
+
+	events := make(chan bus.Event, 2)
+	unsub := b.Subscribe(attach.EventTaskUpdated, func(e bus.Event) { events <- e })
+	defer unsub()
+
+	affected := store.CompleteByIDs([]string{"1", "2"}, "completed")
+	if len(affected) != 2 {
+		t.Fatalf("expected 2 affected tasks, got %d", len(affected))
+	}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case evt := <-events:
+			if evt.Type != attach.EventTaskUpdated {
+				t.Errorf("event %d: Type = %q, want %q", i, evt.Type, attach.EventTaskUpdated)
+			}
+			var payload attach.TaskUpdatedPayload
+			if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+				t.Fatalf("event %d: unmarshal payload: %v", i, err)
+			}
+			if payload.Status != "completed" {
+				t.Errorf("event %d: Status = %q, want %q", i, payload.Status, "completed")
+			}
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for event %d", i)
+		}
+	}
+}
+
+func TestTaskStore_CompleteByAssignee_PublishesEvent(t *testing.T) {
+	store := freshStore()
+	store.tasks["1"] = &Task{ID: "1", Subject: "t", Status: "pending", AssignedTo: "agent-x"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "t", Status: "in_progress", AssignedTo: "agent-x"}
+
+	b := bus.New()
+	store.bus = b
+
+	events := make(chan bus.Event, 2)
+	unsub := b.Subscribe(attach.EventTaskUpdated, func(e bus.Event) { events <- e })
+	defer unsub()
+
+	affected := store.CompleteByAssignee("agent-x", "failed")
+	if len(affected) != 2 {
+		t.Fatalf("expected 2 affected tasks, got %d", len(affected))
+	}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case evt := <-events:
+			if evt.Type != attach.EventTaskUpdated {
+				t.Errorf("event %d: Type = %q, want %q", i, evt.Type, attach.EventTaskUpdated)
+			}
+			var payload attach.TaskUpdatedPayload
+			if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+				t.Fatalf("event %d: unmarshal payload: %v", i, err)
+			}
+			if payload.Status != "failed" {
+				t.Errorf("event %d: Status = %q, want %q", i, payload.Status, "failed")
+			}
+			if payload.AssignedTo != "agent-x" {
+				t.Errorf("event %d: AssignedTo = %q, want %q", i, payload.AssignedTo, "agent-x")
+			}
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("timeout waiting for event %d", i)
+		}
 	}
 }
 

@@ -1,11 +1,26 @@
 package app
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/storage"
 )
+
+func openTestDB(t *testing.T) *storage.DB {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := storage.Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("openTestDB: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
 
 // TestApp_InjectMessage_Delivers verifies that InjectMessage sends content to the inject channel.
 func TestApp_InjectMessage_Delivers(t *testing.T) {
@@ -61,6 +76,40 @@ func TestApp_InjectMessage_NonBlocking(t *testing.T) {
 		t.Fatalf("expected dropped message, but got %q", p.Content)
 	default:
 		// correct — message was dropped
+	}
+}
+
+// TestApp_ClearHistory_PublishesEvent verifies that ClearHistory publishes EventClearHistory on the bus.
+func TestApp_ClearHistory_PublishesEvent(t *testing.T) {
+	db := openTestDB(t)
+
+	sess, err := db.CreateSession("/tmp/test-project", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	b := bus.New()
+	events := make(chan bus.Event, 1)
+	unsub := b.Subscribe(attach.EventClearHistory, func(e bus.Event) { events <- e })
+	defer unsub()
+
+	a := &App{DB: db, Bus: b}
+	a.ClearHistory(sess.ID)
+
+	select {
+	case evt := <-events:
+		if evt.Type != attach.EventClearHistory {
+			t.Errorf("Type = %q, want %q", evt.Type, attach.EventClearHistory)
+		}
+		var payload attach.ClearHistoryPayload
+		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if payload.SessionID != sess.ID {
+			t.Errorf("SessionID = %q, want %q", payload.SessionID, sess.ID)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for EventClearHistory")
 	}
 }
 
