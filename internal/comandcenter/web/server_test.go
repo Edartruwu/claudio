@@ -866,3 +866,152 @@ func TestHandleSendMessage_Compact_NoAPIClient(t *testing.T) {
 		t.Errorf("expected body to contain %q, got: %s", "compact unavailable", w.Body.String())
 	}
 }
+
+// seedNativeTables creates the native sessions and messages tables and inserts
+// a session row so that FK constraints on messages.session_id are satisfied.
+func seedNativeTables(t *testing.T, s *cc.Storage, sessionID string) {
+	t.Helper()
+	if err := s.ExecRaw(`CREATE TABLE IF NOT EXISTS sessions (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		path TEXT NOT NULL DEFAULT '',
+		model TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_active_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		t.Fatalf("seedNativeTables create sessions: %v", err)
+	}
+	if err := s.ExecRaw(`CREATE TABLE IF NOT EXISTS messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		session_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		content TEXT NOT NULL,
+		type TEXT NOT NULL DEFAULT 'text',
+		tool_use_id TEXT DEFAULT '',
+		tool_name TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+	)`); err != nil {
+		t.Fatalf("seedNativeTables create messages: %v", err)
+	}
+	if err := s.ExecRaw(`INSERT OR IGNORE INTO sessions (id, name) VALUES (?, ?)`, sessionID, "test"); err != nil {
+		t.Fatalf("seedNativeTables insert session: %v", err)
+	}
+}
+
+// TestHandleSendMessage_Clear_AlsoClearsNativeMessages verifies /clear deletes
+// rows from the native messages table in addition to cc_messages.
+func TestHandleSendMessage_Clear_AlsoClearsNativeMessages(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	const sid = "clear-native-1"
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           sid,
+		Name:         "ClearNativeAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	seedNativeTables(t, storage, sid)
+
+	// Insert 2 native messages (no id — autoincrement).
+	for _, content := range []string{"native-one", "native-two"} {
+		if err := storage.ExecRaw(
+			`INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)`,
+			sid, "user", content,
+		); err != nil {
+			t.Fatalf("insert native message: %v", err)
+		}
+	}
+
+	// Insert 2 cc_messages.
+	for i, content := range []string{"cc-one", "cc-two"} {
+		if err := storage.InsertMessage(cc.Message{
+			ID:        "clr-cc-msg-" + string(rune('0'+i)),
+			SessionID: sid,
+			Role:      "user",
+			Content:   content,
+			CreatedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("InsertMessage: %v", err)
+		}
+	}
+
+	form := url.Values{"content": {"/clear"}}
+	r := authedRequest(http.MethodPost, "/api/sessions/"+sid+"/message")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+
+	// Native messages table must be empty.
+	nativeMsgs, err := storage.GetNativeMessages(sid, 100)
+	if err != nil {
+		t.Fatalf("GetNativeMessages after /clear: %v", err)
+	}
+	if len(nativeMsgs) != 0 {
+		t.Errorf("expected 0 native messages after /clear, got %d", len(nativeMsgs))
+	}
+
+	// cc_messages: only the confirmation bubble remains.
+	ccMsgs, err := storage.ListMessages(sid, 100)
+	if err != nil {
+		t.Fatalf("ListMessages after /clear: %v", err)
+	}
+	if len(ccMsgs) != 1 {
+		t.Errorf("expected 1 cc_message (confirmation) after /clear, got %d", len(ccMsgs))
+	}
+}
+
+// TestHandleSendMessage_Compact_ReadsNativeMessages verifies /compact reads from
+// the native messages table. When messages exist there but cc_messages is empty,
+// compact reaches the "no API client" error path (503) rather than "Nothing to compact".
+func TestHandleSendMessage_Compact_ReadsNativeMessages(t *testing.T) {
+	storage, mux := newTestEnv(t) // no API client
+
+	const sid = "compact-native-1"
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           sid,
+		Name:         "CompactNativeAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	seedNativeTables(t, storage, sid)
+
+	// Insert 2 native messages — do NOT insert any cc_messages.
+	for _, content := range []string{"native-msg-a", "native-msg-b"} {
+		if err := storage.ExecRaw(
+			`INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)`,
+			sid, "user", content,
+		); err != nil {
+			t.Fatalf("insert native message: %v", err)
+		}
+	}
+
+	form := url.Values{"content": {"/compact"}}
+	r := authedRequest(http.MethodPost, "/api/sessions/"+sid+"/message")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	// 503 proves the API client check fired (data was found; no client configured).
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 (no API client), got %d\nbody: %s", w.Code, w.Body.String())
+	}
+}

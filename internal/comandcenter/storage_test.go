@@ -932,6 +932,105 @@ func TestStorage_ListMessages_ReplyAndQuotedFields(t *testing.T) {
 	}
 }
 
+const createNativeSessionsSQL = `CREATE TABLE IF NOT EXISTS sessions (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	path TEXT NOT NULL DEFAULT '',
+	model TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	last_active_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`
+
+const createNativeMessagesSQL = `CREATE TABLE IF NOT EXISTS messages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id TEXT NOT NULL,
+	role TEXT NOT NULL,
+	content TEXT NOT NULL,
+	type TEXT NOT NULL DEFAULT 'text',
+	tool_use_id TEXT DEFAULT '',
+	tool_name TEXT DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`
+
+func TestStorage_DeleteNativeMessages(t *testing.T) {
+	s := newTestStorage(t)
+
+	const sid = "native-del-1"
+
+	// Create native tables.
+	if err := s.ExecRaw(createNativeSessionsSQL); err != nil {
+		t.Fatalf("create sessions table: %v", err)
+	}
+	if err := s.ExecRaw(createNativeMessagesSQL); err != nil {
+		t.Fatalf("create messages table: %v", err)
+	}
+
+	// Seed session row (FK requirement).
+	if err := s.ExecRaw(`INSERT INTO sessions (id, name) VALUES (?, ?)`, sid, "test"); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	// Insert 3 messages without specifying id (autoincrement).
+	for _, content := range []string{"alpha", "beta", "gamma"} {
+		if err := s.ExecRaw(
+			`INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)`,
+			sid, "user", content,
+		); err != nil {
+			t.Fatalf("insert message %q: %v", content, err)
+		}
+	}
+
+	if err := s.DeleteNativeMessages(sid); err != nil {
+		t.Fatalf("DeleteNativeMessages: %v", err)
+	}
+
+	msgs, err := s.GetNativeMessages(sid, 100)
+	if err != nil {
+		t.Fatalf("GetNativeMessages after delete: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 native messages after delete, got %d", len(msgs))
+	}
+}
+
+func TestStorage_InsertNativeMessage(t *testing.T) {
+	s := newTestStorage(t)
+
+	const sid = "native-ins-1"
+
+	// Create native tables.
+	if err := s.ExecRaw(createNativeSessionsSQL); err != nil {
+		t.Fatalf("create sessions table: %v", err)
+	}
+	if err := s.ExecRaw(createNativeMessagesSQL); err != nil {
+		t.Fatalf("create messages table: %v", err)
+	}
+
+	// Seed session row.
+	if err := s.ExecRaw(`INSERT INTO sessions (id, name) VALUES (?, ?)`, sid, "test"); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	if err := s.InsertNativeMessage(sid, "assistant", "hello world", time.Now()); err != nil {
+		t.Fatalf("InsertNativeMessage: %v", err)
+	}
+
+	msgs, err := s.GetNativeMessages(sid, 10)
+	if err != nil {
+		t.Fatalf("GetNativeMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 native message, got %d", len(msgs))
+	}
+	if msgs[0].Role != "assistant" {
+		t.Errorf("Role: got %q, want %q", msgs[0].Role, "assistant")
+	}
+	if msgs[0].Content != "hello world" {
+		t.Errorf("Content: got %q, want %q", msgs[0].Content, "hello world")
+	}
+}
+
 func TestMigration_Idempotent(t *testing.T) {
 	s, err := Open(":memory:")
 	if err != nil {
