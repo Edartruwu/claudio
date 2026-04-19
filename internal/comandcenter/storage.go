@@ -551,7 +551,7 @@ func (s *Storage) MarkRead(sessionID string) error {
 func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 	rows, err := s.db.Query(`
 		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
-		FROM cc_tasks WHERE session_id=? ORDER BY created_at DESC
+		FROM cc_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
 	`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)

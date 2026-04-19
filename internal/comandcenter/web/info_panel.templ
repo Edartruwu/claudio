@@ -187,7 +187,12 @@ templ infoTabIconConfig() {
 }
 
 templ TabTasks(data InfoPageData) {
-	<div class="flex flex-col">
+	<div
+		class="flex flex-col"
+		hx-get={ fmt.Sprintf("/chat/%s/info?tab=tasks", data.Session.ID) }
+		hx-trigger="every 3s, refresh from:body"
+		hx-swap="outerHTML"
+	>
 		for _, task := range data.Tasks {
 			<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;margin-bottom:4px;">
 				<div
