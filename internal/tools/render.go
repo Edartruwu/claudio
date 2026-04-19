@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -156,6 +158,65 @@ func (t *RenderMockupTool) checkPrerequisites() error {
 	return nil
 }
 
+// inlineLocalScripts rewrites an HTML file so that every
+//
+//	<script ... src="relative/local/path.jsx">
+//
+// tag is replaced by an inline <script ...> block with the file's content.
+// Remote URLs (http/https//) are left untouched.
+// Returns a path to a temp file containing the inlined HTML; the caller is
+// responsible for removing it.
+var scriptSrcRe = regexp.MustCompile(`(?i)<script([^>]*?)\ssrc="([^"]+)"([^>]*)>\s*</script>`)
+
+func inlineLocalScripts(htmlPath string) (string, error) {
+	htmlBytes, err := os.ReadFile(htmlPath)
+	if err != nil {
+		return "", fmt.Errorf("read html: %w", err)
+	}
+	baseDir := filepath.Dir(htmlPath)
+
+	replaced := scriptSrcRe.ReplaceAllFunc(htmlBytes, func(match []byte) []byte {
+		m := scriptSrcRe.FindSubmatch(match)
+		if m == nil {
+			return match
+		}
+		before, src, after := string(m[1]), string(m[2]), string(m[3])
+
+		// Leave remote URLs alone.
+		if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "//") {
+			return match
+		}
+
+		absPath := src
+		if !filepath.IsAbs(src) {
+			absPath = filepath.Join(baseDir, src)
+		}
+		content, err := os.ReadFile(absPath)
+		if err != nil {
+			// Can't read the file — leave the original tag; Playwright will
+			// surface the actual error in console_errors.
+			return match
+		}
+
+		// Rebuild tag without src, with inlined content.
+		// Preserve all other attributes (e.g. type="text/babel").
+		attrs := strings.TrimSpace(before + " " + after)
+		return []byte(fmt.Sprintf("<script %s>\n%s\n</script>", attrs, string(content)))
+	})
+
+	tmp, err := os.CreateTemp("", "claudio-inlined-*.html")
+	if err != nil {
+		return "", fmt.Errorf("create temp html: %w", err)
+	}
+	if _, err := tmp.Write(replaced); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("write temp html: %w", err)
+	}
+	tmp.Close()
+	return tmp.Name(), nil
+}
+
 func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	// 1. Prerequisites.
 	if err := t.checkPrerequisites(); err != nil {
@@ -196,6 +257,13 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		return &Result{Content: fmt.Sprintf("Failed to create output dir: %v", err), IsError: true}, nil
 	}
 
+	// 3b. Inline any local <script src="..."> references to avoid file:// CORS.
+	inlinedHTML, err := inlineLocalScripts(in.HTMLPath)
+	if err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to inline scripts: %v", err), IsError: true}, nil
+	}
+	defer os.Remove(inlinedHTML)
+
 	// 4. Write the embedded Node.js script to a temp file.
 	tmpScript, err := os.CreateTemp("", "claudio-render-*.js")
 	if err != nil {
@@ -220,7 +288,7 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 
 	//nolint:gosec // script path is a temp file we just wrote
 	cmd := exec.CommandContext(cmdCtx, "node", tmpScript.Name(),
-		"--html", in.HTMLPath,
+		"--html", inlinedHTML,
 		"--out-dir", outDir,
 		"--viewport-w", strconv.Itoa(in.ViewportWidth),
 		"--viewport-h", strconv.Itoa(in.ViewportHeight),
