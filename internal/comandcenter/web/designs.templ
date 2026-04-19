@@ -44,7 +44,7 @@ templ DesignsContent(data DesignGalleryData) {
 				<!-- Session grid -->
 				<div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));">
 					for _, sess := range data.Sessions {
-						@designCard(sess)
+						@designCard(sess, data.PublicURL)
 					}
 				</div>
 			}
@@ -70,13 +70,13 @@ templ DesignsContent(data DesignGalleryData) {
 	</div>
 }
 
-templ designCard(sess DesignSession) {
+templ designCard(sess DesignSession, publicURL string) {
 	<div class="rounded-xl overflow-hidden border border-[#2C2C2E] flex flex-col" style="background:#1C1C1E;">
 		<!-- Thumbnail -->
 		<div class="relative w-full overflow-hidden flex items-center justify-center" style="aspect-ratio:16/9;background:#0D1117;">
 			if len(sess.Screenshots) > 0 {
 				<img
-					src={ fmt.Sprintf("/designs/static/%s/screenshots/%s", sess.ID, sess.Screenshots[0]) }
+					src={ fmt.Sprintf("/designs/project/%s/screenshots/%s", sess.ID, sess.Screenshots[0]) }
 					alt="Screenshot preview"
 					loading="lazy"
 					class="w-full h-full object-cover screenshot-thumb"
@@ -139,7 +139,7 @@ templ designCard(sess DesignSession) {
 			<div class="flex gap-2 mt-auto pt-1">
 				if sess.HasBundle {
 					<a
-						href={ templ.SafeURL(fmt.Sprintf("/designs/static/%s/bundle/mockup.html", sess.ID)) }
+						href={ templ.SafeURL(fmt.Sprintf("%s/designs/project/%s/bundle/mockup.html", publicURL, sess.ID)) }
 						target="_blank"
 						rel="noopener"
 						class="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
@@ -153,7 +153,7 @@ templ designCard(sess DesignSession) {
 				}
 				if sess.HasHandoff {
 					<a
-						href={ templ.SafeURL(fmt.Sprintf("/designs/static/%s/handoff/spec.md", sess.ID)) }
+						href={ templ.SafeURL(fmt.Sprintf("/designs/project/%s/handoff/spec.md", sess.ID)) }
 						download
 						class="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
 						style="background:#2C2C2E;color:#EBEBF5;"

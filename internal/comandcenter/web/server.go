@@ -1818,6 +1818,7 @@ type DesignSession struct {
 type DesignGalleryData struct {
 	Sessions  []DesignSession
 	SessionID string
+	PublicURL string
 }
 
 // handleDesignGallery lists all design sessions from project-scoped dirs.
@@ -1870,7 +1871,7 @@ func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request)
 		return sessions[i].ID > sessions[j].ID
 	})
 
-	templ.Handler(Designs(DesignGalleryData{Sessions: sessions})).ServeHTTP(w, r)
+	templ.Handler(Designs(DesignGalleryData{Sessions: sessions, PublicURL: ws.publicURL})).ServeHTTP(w, r)
 }
 
 // handleDesignStatic serves static assets (screenshots, etc.) from the designs dir.

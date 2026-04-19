@@ -254,7 +254,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if ToolInput(msg.Content) != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<div><p style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;\">Input</p><pre style=\"font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<details open><summary style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;\">▾ Input</summary><pre style=\"font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -267,13 +267,13 @@ func MessageBubble(msg MessageView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</pre></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</pre></details> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if msg.Output != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"tool-output-section\"><p style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;\">Output</p><pre style=\"font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<details open class=\"tool-output-section\"><summary style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;\">▾ Output</summary><pre style=\"font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -286,7 +286,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</pre></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</pre></details>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
