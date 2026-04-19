@@ -17,7 +17,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/api"
 )
 
-// ReviewDesignFidelityTool compares a live running app's UI against saved
+// ReviewDesignFidelityTool compares rendered HTML templates against saved
 // design session screenshots using a vision-capable model.
 type ReviewDesignFidelityTool struct {
 	designsDir string
@@ -32,24 +32,24 @@ func NewReviewDesignFidelityTool(designsDir string, client *api.Client, model st
 
 // ReviewDesignFidelityInput is the JSON input schema.
 type ReviewDesignFidelityInput struct {
-	URL            string             `json:"url"`             // single URL — compare to all design screens
-	Screens        []ScreenURLMapping `json:"screens"`         // OR per-screen [{name, url}]
-	SessionName    string             `json:"session_name"`    // optional, default = latest
-	ViewportWidth  int                `json:"viewport_width"`  // default 1440
-	ViewportHeight int                `json:"viewport_height"` // default 900
+	Screens        []ScreenTemplateMapping `json:"screens"`         // required: [{name, template_path}]
+	SessionName    string                  `json:"session_name"`    // optional, default = latest
+	ViewportWidth  int                     `json:"viewport_width"`  // default 1440
+	ViewportHeight int                     `json:"viewport_height"` // default 900
+	DeviceScale    int                     `json:"device_scale"`    // default 2
 }
 
-// ScreenURLMapping maps a design screen name to a live URL.
-type ScreenURLMapping struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
+// ScreenTemplateMapping maps a design screen name to a local HTML template file.
+type ScreenTemplateMapping struct {
+	Name         string `json:"name"`          // must match design session screen name
+	TemplatePath string `json:"template_path"` // abs or relative path to .html template file
 }
 
 // ReviewDesignFidelityOutput is the structured result.
 type ReviewDesignFidelityOutput struct {
-	OverallScore int                   `json:"overall_score"`
-	Pass         bool                  `json:"pass"`
-	SessionName  string                `json:"session_name"`
+	OverallScore int                    `json:"overall_score"`
+	Pass         bool                   `json:"pass"`
+	SessionName  string                 `json:"session_name"`
 	Screens      []ScreenFidelityResult `json:"screens"`
 }
 
@@ -57,7 +57,7 @@ type ReviewDesignFidelityOutput struct {
 type ScreenFidelityResult struct {
 	Name             string   `json:"name"`
 	DesignScreenshot string   `json:"design_screenshot"`
-	LiveScreenshot   string   `json:"live_screenshot"`
+	LiveScreenshot   string   `json:"live_screenshot"` // rendered template screenshot
 	FidelityScore    int      `json:"fidelity_score"`
 	Gaps             []string `json:"gaps"`
 	Suggestions      []string `json:"suggestions"`
@@ -70,47 +70,31 @@ type fidelityVisionResponse struct {
 	Suggestions   []string `json:"suggestions"`
 }
 
-// screenJob is an internal work item: one design screen + its target URL.
-type screenJob struct {
-	name                string
-	designScreenshotPath string
-	targetURL           string
-}
-
 func (t *ReviewDesignFidelityTool) Name() string { return "ReviewDesignFidelity" }
 
 func (t *ReviewDesignFidelityTool) Description() string {
-	return `Compare a live running app's UI against saved design session screenshots.
+	return `Compares design session screenshots against rendered HTML templates using vision-capable Haiku. Provide template file paths mapped to design screen names; the tool renders each via Playwright and scores visual fidelity 0-100.
 
-Captures a live screenshot of the provided URL using Playwright (headless Chromium),
-then sends both the design mockup image and the live screenshot to a vision-capable
-model for fidelity scoring.
-
-Returns a 0-100 fidelity score per screen plus gaps and suggestions.
 Pass threshold: overall_score >= 75.
 
 Requires Node.js >= 18 and Playwright installed:
-  npm install -g playwright  (or npx playwright install chromium)`
+  npx playwright install chromium`
 }
 
 func (t *ReviewDesignFidelityTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"url": {
-			"type": "string",
-			"description": "Single URL to screenshot and compare against all design screens."
-		},
 		"screens": {
 			"type": "array",
-			"description": "Per-screen mappings [{name, url}]. Use instead of url for different URLs per screen.",
+			"description": "Per-screen mappings. Each entry maps a design screen name to a local HTML template file path.",
 			"items": {
 				"type": "object",
 				"properties": {
-					"name": { "type": "string" },
-					"url":  { "type": "string" }
+					"name":          { "type": "string", "description": "Design screen name (must match a screen in the session)." },
+					"template_path": { "type": "string", "description": "Absolute or relative path to the HTML template file." }
 				},
-				"required": ["name", "url"]
+				"required": ["name", "template_path"]
 			}
 		},
 		"session_name": {
@@ -124,8 +108,13 @@ func (t *ReviewDesignFidelityTool) InputSchema() json.RawMessage {
 		"viewport_height": {
 			"type": "integer",
 			"description": "Browser viewport height in CSS pixels. Default: 900."
+		},
+		"device_scale": {
+			"type": "integer",
+			"description": "Device pixel ratio for HiDPI rendering. Default: 2."
 		}
-	}
+	},
+	"required": ["screens"]
 }`)
 }
 
@@ -224,40 +213,6 @@ func (t *ReviewDesignFidelityTool) resolveSession(sessionName string) (*DesignSe
 	return &sessions[0], nil
 }
 
-// captureScreenshot runs the fidelity Node.js script and returns the live screenshot path.
-func (t *ReviewDesignFidelityTool) captureScreenshot(ctx context.Context, scriptPath, targetURL, outDir string, viewportW, viewportH int) (string, error) {
-	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	//nolint:gosec // scriptPath is a temp file we just wrote
-	cmd := exec.CommandContext(cmdCtx, "node", scriptPath,
-		"--url", targetURL,
-		"--out-dir", outDir,
-		"--viewport-w", strconv.Itoa(viewportW),
-		"--viewport-h", strconv.Itoa(viewportH),
-		"--scale", "2",
-	)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	_ = cmd.Run()
-
-	var nodeOut nodeScriptOutput
-	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &nodeOut); err != nil {
-		return "", fmt.Errorf("Node.js script produced no valid JSON.\nstdout: %s\nstderr: %s",
-			stdout.String(), stderr.String())
-	}
-	if !nodeOut.Success || len(nodeOut.Screenshots) == 0 {
-		errMsg := strings.Join(nodeOut.Errors, "; ")
-		if errMsg == "" {
-			errMsg = "no screenshots captured"
-		}
-		return "", fmt.Errorf("playwright capture failed: %s", errMsg)
-	}
-	return nodeOut.Screenshots[0].Path, nil
-}
-
 // Execute implements the tool.
 func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in ReviewDesignFidelityInput
@@ -265,15 +220,18 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
 
-	// 1. Validate input.
-	if in.URL == "" && len(in.Screens) == 0 {
-		return &Result{Content: "either url or screens is required", IsError: true}, nil
+	// 1. Validate input and apply defaults.
+	if len(in.Screens) == 0 {
+		return &Result{Content: "screens is required and must not be empty", IsError: true}, nil
 	}
 	if in.ViewportWidth == 0 {
 		in.ViewportWidth = 1440
 	}
 	if in.ViewportHeight == 0 {
 		in.ViewportHeight = 900
+	}
+	if in.DeviceScale == 0 {
+		in.DeviceScale = 2
 	}
 
 	// 2. Resolve design session.
@@ -282,106 +240,123 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		return &Result{Content: err.Error(), IsError: true}, nil
 	}
 
-	// 3. Build screen jobs.
-	var jobs []screenJob
-	if len(in.Screens) > 0 {
-		for _, sm := range in.Screens {
-			jobs = append(jobs, screenJob{
-				name:                 sm.Name,
-				designScreenshotPath: filepath.Join(session.ScreenshotsDir, sm.Name+".png"),
-				targetURL:            sm.URL,
-			})
-		}
-	} else {
-		for _, screen := range session.Screens {
-			jobs = append(jobs, screenJob{
-				name:                 screen,
-				designScreenshotPath: filepath.Join(session.ScreenshotsDir, screen+".png"),
-				targetURL:            in.URL,
-			})
-		}
-	}
-	if len(jobs) == 0 {
-		return &Result{Content: "design session has no screens; cannot compare", IsError: true}, nil
-	}
-
-	// 4. Check prerequisites.
+	// 3. Check prerequisites.
 	if err := t.checkPrerequisites(); err != nil {
 		return &Result{Content: err.Error(), IsError: true}, nil
 	}
 
-	// 5. Write embedded script to temp file once; reuse across all jobs.
+	// 4. Write renderScript (package var from render_script.go) to a temp file once; reuse across all screens.
 	tmpScript, err := os.CreateTemp("", "claudio-fidelity-*.js")
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to create temp script: %v", err), IsError: true}, nil
 	}
 	defer os.Remove(tmpScript.Name())
-	if _, err := tmpScript.WriteString(fidelityScript); err != nil {
+	if _, err := tmpScript.WriteString(renderScript); err != nil {
 		tmpScript.Close()
 		return &Result{Content: fmt.Sprintf("Failed to write temp script: %v", err), IsError: true}, nil
 	}
 	tmpScript.Close()
 
-	// Temp dir for live screenshots.
-	liveDir, err := os.MkdirTemp("", "claudio-fidelity-live-*")
-	if err != nil {
-		return &Result{Content: fmt.Sprintf("Failed to create temp dir: %v", err), IsError: true}, nil
-	}
-	// Note: we don't remove liveDir — paths are returned in result for caller use.
-
 	var results []ScreenFidelityResult
 	totalScore := 0
 
-	for _, job := range jobs {
+	for _, screen := range in.Screens {
 		res := ScreenFidelityResult{
-			Name:             job.name,
-			DesignScreenshot: job.designScreenshotPath,
+			Name:             screen.Name,
+			DesignScreenshot: filepath.Join(session.ScreenshotsDir, screen.Name+".png"),
 		}
 
-		// 5a. Capture live screenshot.
-		screenOutDir := filepath.Join(liveDir, job.name)
-		livePath, captureErr := t.captureScreenshot(ctx, tmpScript.Name(), job.targetURL, screenOutDir, in.ViewportWidth, in.ViewportHeight)
-		if captureErr != nil {
-			res.Gaps = []string{fmt.Sprintf("live capture failed: %s", captureErr.Error())}
+		// 4a. Create per-screen temp output dir.
+		tmpOutDir, mkErr := os.MkdirTemp("", "claudio-fidelity-render-*")
+		if mkErr != nil {
+			res.Gaps = []string{fmt.Sprintf("failed to create temp dir: %s", mkErr.Error())}
 			res.Suggestions = []string{}
 			results = append(results, res)
 			continue
 		}
-		res.LiveScreenshot = livePath
 
-		// 5b. Read design screenshot — remap for worktree support.
-		designPath := RemapPathForWorktree(ctx, job.designScreenshotPath)
+		// 4b. Run renderScript via node with --capture-screens false (full-page only).
+		templatePath := RemapPathForWorktree(ctx, screen.TemplatePath)
+		cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		//nolint:gosec // script path is a temp file we just wrote
+		cmd := exec.CommandContext(cmdCtx, "node", tmpScript.Name(),
+			"--html", templatePath,
+			"--out-dir", tmpOutDir,
+			"--viewport-w", strconv.Itoa(in.ViewportWidth),
+			"--viewport-h", strconv.Itoa(in.ViewportHeight),
+			"--scale", strconv.Itoa(in.DeviceScale),
+			"--capture-screens", "false",
+		)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		_ = cmd.Run()
+		cancel()
+
+		// 4c. Parse stdout JSON → get first screenshot path (prefer "full-canvas").
+		var nodeOut nodeScriptOutput
+		if jsonErr := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &nodeOut); jsonErr != nil {
+			os.RemoveAll(tmpOutDir)
+			res.Gaps = []string{fmt.Sprintf("render script produced no valid JSON.\nstdout: %s\nstderr: %s",
+				stdout.String(), stderr.String())}
+			res.Suggestions = []string{}
+			results = append(results, res)
+			continue
+		}
+		if !nodeOut.Success || len(nodeOut.Screenshots) == 0 {
+			os.RemoveAll(tmpOutDir)
+			errMsg := strings.Join(nodeOut.Errors, "; ")
+			if errMsg == "" {
+				errMsg = "no screenshots captured"
+			}
+			res.Gaps = []string{fmt.Sprintf("playwright render failed: %s", errMsg)}
+			res.Suggestions = []string{}
+			results = append(results, res)
+			continue
+		}
+		renderedPath := nodeOut.Screenshots[0].Path
+		for _, s := range nodeOut.Screenshots {
+			if s.Name == "full-canvas" {
+				renderedPath = s.Path
+				break
+			}
+		}
+		res.LiveScreenshot = renderedPath
+
+		// 4d. Load design screenshot.
+		designPath := RemapPathForWorktree(ctx, res.DesignScreenshot)
 		designBytes, readErr := os.ReadFile(designPath)
 		if readErr != nil {
-			res.Gaps = []string{"design screenshot not found"}
+			os.RemoveAll(tmpOutDir)
+			res.Gaps = []string{"design screenshot not found for screen"}
 			res.Suggestions = []string{}
 			results = append(results, res)
 			continue
 		}
 
-		// 5c. Read live screenshot.
-		liveBytes, readErr := os.ReadFile(livePath)
+		// 4e. Read rendered screenshot, crop + base64 encode both images.
+		renderedBytes, readErr := os.ReadFile(renderedPath)
 		if readErr != nil {
-			res.Gaps = []string{fmt.Sprintf("live screenshot unreadable: %s", readErr.Error())}
+			os.RemoveAll(tmpOutDir)
+			res.Gaps = []string{fmt.Sprintf("rendered screenshot unreadable: %s", readErr.Error())}
 			res.Suggestions = []string{}
 			results = append(results, res)
 			continue
 		}
-
-		// 5d. Crop + base64 encode both images.
 		designBytes = cropImageIfNeeded(designBytes)
-		liveBytes = cropImageIfNeeded(liveBytes)
+		renderedBytes = cropImageIfNeeded(renderedBytes)
 		designBase64 := base64.StdEncoding.EncodeToString(designBytes)
-		liveBase64 := base64.StdEncoding.EncodeToString(liveBytes)
+		renderedBase64 := base64.StdEncoding.EncodeToString(renderedBytes)
 
-		// 5e. Build vision message with both image blocks.
+		// 4f. Build vision message: two image blocks + text prompt.
 		contentBlocks := []api.UserContentBlock{
 			api.NewImageBlock("image/png", designBase64),
-			api.NewImageBlock("image/png", liveBase64),
-			api.NewTextBlock("Image 1 is the design mockup. Image 2 is the live implementation. Score fidelity 0-100 and list gaps and suggestions. Respond JSON only: {\"fidelity_score\": <int>, \"gaps\": [], \"suggestions\": []}"),
+			api.NewImageBlock("image/png", renderedBase64),
+			api.NewTextBlock(`Image 1 is the design mockup. Image 2 is the rendered HTML template implementation. Score fidelity 0-100 and list specific visual gaps and suggestions. Respond JSON only: {"fidelity_score": <int>, "gaps": [], "suggestions": []}`),
 		}
 		contentJSON, marshalErr := json.Marshal(contentBlocks)
 		if marshalErr != nil {
+			os.RemoveAll(tmpOutDir)
 			return nil, fmt.Errorf("failed to marshal content blocks: %w", marshalErr)
 		}
 
@@ -389,21 +364,21 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			{Role: "user", Content: json.RawMessage(contentJSON)},
 		}
 
-		// 5f. Call LLM.
 		resp, llmErr := t.client.SendMessage(ctx, &api.MessagesRequest{
 			Model:     t.fidelityModel(),
-			System:    "You are a design fidelity reviewer. Compare design mockups to live implementations and return structured JSON.",
+			System:    "You are a design fidelity reviewer. Be specific about visual differences.",
 			Messages:  messages,
 			MaxTokens: 4096,
 		})
 		if llmErr != nil {
+			os.RemoveAll(tmpOutDir)
 			res.Gaps = []string{fmt.Sprintf("vision API call failed: %s", llmErr.Error())}
 			res.Suggestions = []string{}
 			results = append(results, res)
 			continue
 		}
 
-		// 5g. Extract text from response.
+		// 4g. Extract text from response.
 		var responseText string
 		for _, block := range resp.Content {
 			if block.Type == "text" && block.Text != "" {
@@ -411,7 +386,7 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			}
 		}
 
-		// 5h. Strip markdown fences, parse JSON.
+		// Strip markdown fences, parse JSON.
 		cleaned := strings.TrimSpace(responseText)
 		if strings.HasPrefix(cleaned, "```") {
 			if idx := strings.Index(cleaned, "\n"); idx != -1 {
@@ -425,6 +400,7 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 
 		var vr fidelityVisionResponse
 		if parseErr := json.Unmarshal([]byte(cleaned), &vr); parseErr != nil {
+			os.RemoveAll(tmpOutDir)
 			res.Gaps = []string{fmt.Sprintf("failed to parse vision response: %s\nraw: %s", parseErr.Error(), responseText)}
 			res.Suggestions = []string{}
 			results = append(results, res)
@@ -444,9 +420,12 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		res.Suggestions = vr.Suggestions
 		totalScore += vr.FidelityScore
 		results = append(results, res)
+
+		// 6. Clean up rendered screenshot temp dir.
+		os.RemoveAll(tmpOutDir)
 	}
 
-	// 6. Aggregate.
+	// 5. Aggregate.
 	overallScore := 0
 	if len(results) > 0 {
 		overallScore = totalScore / len(results)
