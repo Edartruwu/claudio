@@ -25,7 +25,7 @@ func TestRegistry(t *testing.T) {
 		"EnterWorktree", "ExitWorktree",
 		"TaskStop", "TaskOutput",
 		"TeamCreate", "TeamDelete", "SendMessage",
-		"SpawnTeammate", "SaveTeamTemplate", "InstantiateTeam",
+		"SpawnTeammate", "SaveTeamTemplate", "InstantiateTeam", "PurgeTeammates",
 		"SendToSession", "SpawnSession",
 		"Memory", "Recall",
 		"CronCreate", "CronDelete", "CronList",
