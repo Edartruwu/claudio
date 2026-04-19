@@ -273,3 +273,341 @@ func TestExportHandoffTool_ComponentDetection_BtnAndCard(t *testing.T) {
 		t.Error("spec.md should contain 'Card' component")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// parseComponentAnnotations — COMPONENT: ... annotation parsing
+// ---------------------------------------------------------------------------
+
+func TestParseComponentAnnotations_Empty(t *testing.T) {
+	files := []fileContent{{path: "index.html", name: "index.html", content: ""}}
+	specs := parseComponentAnnotations(files)
+	if len(specs) != 0 {
+		t.Errorf("expected 0 component specs from empty HTML, got %d", len(specs))
+	}
+}
+
+func TestParseComponentAnnotations_Single(t *testing.T) {
+	html := `<!-- COMPONENT: Button
+states: default, hover, active
+breakpoints: mobile, desktop
+tokens: primary-blue, neutral-gray
+measurements: 44px height min
+-->
+<button class="btn">Click</button>`
+	files := []fileContent{{path: "screen-1.html", name: "screen-1.html", content: html}}
+	specs := parseComponentAnnotations(files)
+
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 spec, got %d", len(specs))
+	}
+	spec := specs[0]
+	if spec.Name != "Button" {
+		t.Errorf("expected Name=Button, got %s", spec.Name)
+	}
+	if len(spec.States) != 3 {
+		t.Errorf("expected 3 states, got %d: %v", len(spec.States), spec.States)
+	}
+	if spec.States[0] != "default" {
+		t.Errorf("expected states[0]=default, got %s", spec.States[0])
+	}
+	if len(spec.Breakpoints) != 2 {
+		t.Errorf("expected 2 breakpoints, got %d: %v", len(spec.Breakpoints), spec.Breakpoints)
+	}
+	if len(spec.Tokens) != 2 {
+		t.Errorf("expected 2 tokens, got %d: %v", len(spec.Tokens), spec.Tokens)
+	}
+	if spec.Measurements != "44px height min" {
+		t.Errorf("expected measurements='44px height min', got %q", spec.Measurements)
+	}
+	if len(spec.ScreenNames) != 1 || spec.ScreenNames[0] != "1" {
+		t.Errorf("expected ScreenNames=[1], got %v", spec.ScreenNames)
+	}
+}
+
+func TestParseComponentAnnotations_MultipleAnnotations(t *testing.T) {
+	html := `<!-- COMPONENT: Button
+states: default, hover
+-->
+<button>Btn1</button>
+<!-- COMPONENT: Card
+states: default
+-->
+<div class="card">Card1</div>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	specs := parseComponentAnnotations(files)
+
+	if len(specs) != 2 {
+		t.Fatalf("expected 2 specs, got %d", len(specs))
+	}
+	if specs[0].Name != "Button" || specs[1].Name != "Card" {
+		t.Errorf("expected Button then Card, got %s then %s", specs[0].Name, specs[1].Name)
+	}
+}
+
+func TestParseComponentAnnotations_MissingOptionalFields(t *testing.T) {
+	// Only Name + Measurements, no states/breakpoints/tokens
+	html := `<!-- COMPONENT: Modal
+measurements: 600px × 400px
+-->
+<div class="modal">Content</div>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	specs := parseComponentAnnotations(files)
+
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 spec, got %d", len(specs))
+	}
+	spec := specs[0]
+	if spec.Name != "Modal" {
+		t.Errorf("expected Name=Modal, got %s", spec.Name)
+	}
+	if len(spec.States) != 0 {
+		t.Errorf("expected 0 states when field absent, got %d", len(spec.States))
+	}
+	if len(spec.Breakpoints) != 0 {
+		t.Errorf("expected 0 breakpoints when field absent, got %d", len(spec.Breakpoints))
+	}
+	if len(spec.Tokens) != 0 {
+		t.Errorf("expected 0 tokens when field absent, got %d", len(spec.Tokens))
+	}
+	if spec.Measurements != "600px × 400px" {
+		t.Errorf("expected measurements='600px × 400px', got %q", spec.Measurements)
+	}
+}
+
+func TestParseComponentAnnotations_MultilineAnnotationMultipleFiles(t *testing.T) {
+	// Same component name in two files → merged ScreenNames
+	html1 := `<!-- COMPONENT: Button
+states: default, hover
+breakpoints: mobile
+--><button>B1</button>`
+	html2 := `<!-- COMPONENT: Button
+states: active
+breakpoints: desktop
+--><button>B2</button>`
+	files := []fileContent{
+		{path: "screen-a.html", name: "screen-a.html", content: html1},
+		{path: "screen-b.html", name: "screen-b.html", content: html2},
+	}
+	specs := parseComponentAnnotations(files)
+
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 merged spec, got %d", len(specs))
+	}
+	spec := specs[0]
+	if spec.Name != "Button" {
+		t.Errorf("expected Name=Button, got %s", spec.Name)
+	}
+	if len(spec.ScreenNames) != 2 {
+		t.Errorf("expected 2 screen names, got %d: %v", len(spec.ScreenNames), spec.ScreenNames)
+	}
+	// States should merge uniquely
+	if len(spec.States) != 3 || !containsString(spec.States, "default") || !containsString(spec.States, "hover") || !containsString(spec.States, "active") {
+		t.Errorf("expected merged states [default, hover, active], got %v", spec.States)
+	}
+	// Breakpoints should merge uniquely
+	if len(spec.Breakpoints) != 2 || !containsString(spec.Breakpoints, "mobile") || !containsString(spec.Breakpoints, "desktop") {
+		t.Errorf("expected merged breakpoints [mobile, desktop], got %v", spec.Breakpoints)
+	}
+}
+
+func TestParseComponentAnnotations_MalformedAnnotation(t *testing.T) {
+	// No closing comment — regex requires --> so no match
+	html := `<!-- COMPONENT: Button
+states: default
+<button>Btn</button>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	specs := parseComponentAnnotations(files)
+
+	// Regex won't match unclosed (no -->), so 0 specs expected
+	if len(specs) != 0 {
+		t.Errorf("expected 0 specs for unclosed annotation, got %d", len(specs))
+	}
+}
+
+func TestParseComponentAnnotations_FieldsCaseInsensitive(t *testing.T) {
+	html := `<!-- COMPONENT: Label
+STATES: on, off
+BreakPoints: tablet
+Tokens: color-primary
+Measurements: 16px wide
+-->
+<label>Lbl</label>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	specs := parseComponentAnnotations(files)
+
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 spec, got %d", len(specs))
+	}
+	spec := specs[0]
+	if len(spec.States) != 2 {
+		t.Errorf("expected case-insensitive STATES parsed, got %d states", len(spec.States))
+	}
+	if len(spec.Breakpoints) != 1 {
+		t.Errorf("expected case-insensitive BreakPoints parsed, got %d", len(spec.Breakpoints))
+	}
+	if len(spec.Tokens) != 1 {
+		t.Errorf("expected case-insensitive Tokens parsed, got %d", len(spec.Tokens))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseInteractionAnnotations — INTERACTION: ... annotation parsing
+// ---------------------------------------------------------------------------
+
+func TestParseInteractionAnnotations_Empty(t *testing.T) {
+	files := []fileContent{{path: "index.html", name: "index.html", content: ""}}
+	interactions := parseInteractionAnnotations(files)
+	if len(interactions) != 0 {
+		t.Errorf("expected 0 interactions from empty HTML, got %d", len(interactions))
+	}
+}
+
+func TestParseInteractionAnnotations_Single(t *testing.T) {
+	html := `<!-- INTERACTION: button.submit → click → validate form → show success message -->
+<button class="submit">Submit</button>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	interactions := parseInteractionAnnotations(files)
+
+	if len(interactions) != 1 {
+		t.Fatalf("expected 1 interaction, got %d", len(interactions))
+	}
+	ia := interactions[0]
+	if ia.Element != "button.submit" {
+		t.Errorf("expected Element=button.submit, got %q", ia.Element)
+	}
+	if ia.Trigger != "click" {
+		t.Errorf("expected Trigger=click, got %q", ia.Trigger)
+	}
+	if ia.Action != "validate form" {
+		t.Errorf("expected Action=validate form, got %q", ia.Action)
+	}
+	if ia.Result != "show success message" {
+		t.Errorf("expected Result=show success message, got %q", ia.Result)
+	}
+}
+
+func TestParseInteractionAnnotations_MultipleInteractions(t *testing.T) {
+	html := `<!-- INTERACTION: button.login → click → authenticate → redirect to dashboard -->
+<button>Login</button>
+<!-- INTERACTION: input.email → focus → clear error → enable submit -->
+<input type="email" />`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	interactions := parseInteractionAnnotations(files)
+
+	if len(interactions) != 2 {
+		t.Fatalf("expected 2 interactions, got %d", len(interactions))
+	}
+	if interactions[0].Element != "button.login" {
+		t.Errorf("expected first element=button.login")
+	}
+	if interactions[1].Element != "input.email" {
+		t.Errorf("expected second element=input.email")
+	}
+}
+
+func TestParseInteractionAnnotations_WithTransition(t *testing.T) {
+	html := `<!-- INTERACTION: modal.delete → click → close modal → shown hidden | transition: fade-out 300ms -->
+<div class="modal">Delete?</div>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	interactions := parseInteractionAnnotations(files)
+
+	if len(interactions) != 1 {
+		t.Fatalf("expected 1 interaction, got %d", len(interactions))
+	}
+	ia := interactions[0]
+	if ia.Element != "modal.delete" {
+		t.Errorf("expected Element=modal.delete, got %q", ia.Element)
+	}
+	if ia.Action != "close modal" {
+		t.Errorf("expected Action=close modal, got %q", ia.Action)
+	}
+	if ia.Result != "shown hidden" {
+		t.Errorf("expected Result=shown hidden, got %q", ia.Result)
+	}
+	if ia.Transition != "fade-out 300ms" {
+		t.Errorf("expected Transition=fade-out 300ms, got %q", ia.Transition)
+	}
+}
+
+func TestParseInteractionAnnotations_PartialFields(t *testing.T) {
+	// Only element and trigger, no action/result
+	html := `<!-- INTERACTION: link.home → click -->
+<a href="/">Home</a>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	interactions := parseInteractionAnnotations(files)
+
+	if len(interactions) != 1 {
+		t.Fatalf("expected 1 interaction, got %d", len(interactions))
+	}
+	ia := interactions[0]
+	if ia.Element != "link.home" {
+		t.Errorf("expected Element=link.home, got %q", ia.Element)
+	}
+	if ia.Trigger != "click" {
+		t.Errorf("expected Trigger=click, got %q", ia.Trigger)
+	}
+	if ia.Action != "" {
+		t.Errorf("expected empty Action, got %q", ia.Action)
+	}
+	if ia.Result != "" {
+		t.Errorf("expected empty Result, got %q", ia.Result)
+	}
+}
+
+func TestParseInteractionAnnotations_DeduplicateIdentical(t *testing.T) {
+	// Exact same raw annotation in two files — should deduplicate
+	html1 := `<!-- INTERACTION: button.submit → click → send form → success -->
+<button>Submit</button>`
+	html2 := `<!-- INTERACTION: button.submit → click → send form → success -->
+<button>Submit</button>`
+	files := []fileContent{
+		{path: "screen-a.html", name: "screen-a.html", content: html1},
+		{path: "screen-b.html", name: "screen-b.html", content: html2},
+	}
+	interactions := parseInteractionAnnotations(files)
+
+	if len(interactions) != 1 {
+		t.Errorf("expected 1 deduplicated interaction, got %d", len(interactions))
+	}
+}
+
+func TestParseInteractionAnnotations_MalformedArrow(t *testing.T) {
+	// Wrong separator (dash instead of arrow) — should still parse with empty/partial fields
+	html := `<!-- INTERACTION: button - click - send - ok -->
+<button>Click</button>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	interactions := parseInteractionAnnotations(files)
+
+	// Should parse as single-part element with no split
+	if len(interactions) != 1 {
+		t.Fatalf("expected 1 interaction, got %d", len(interactions))
+	}
+	ia := interactions[0]
+	// All in element field since no " → " found
+	if ia.Element == "" {
+		t.Errorf("expected Element to be populated")
+	}
+}
+
+func TestParseInteractionAnnotations_SkipsTraceback(t *testing.T) {
+	// Should parse without panic on empty result
+	html := `<!-- INTERACTION: -->
+<div></div>`
+	files := []fileContent{{path: "screen.html", name: "screen.html", content: html}}
+	interactions := parseInteractionAnnotations(files)
+
+	// Empty INTERACTION comment should still match regex but parse to empty
+	if len(interactions) > 1 {
+		t.Errorf("expected at most 1 (or 0) interactions, got %d", len(interactions))
+	}
+}
+
+// Helper: containsString checks if a slice contains a value
+func containsString(slice []string, val string) bool {
+	for _, s := range slice {
+		if s == val {
+			return true
+		}
+	}
+	return false
+}
