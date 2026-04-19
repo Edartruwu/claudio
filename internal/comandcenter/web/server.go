@@ -600,6 +600,7 @@ type InfoPageData struct {
 	Tasks           []cc.Task
 	Agents          []cc.Agent
 	SessionID       string
+	ActiveTab       string            // which tab is active (tasks/team/media/crons/config)
 	Images          []cc.Attachment   // image attachments for media grid
 	Docs            []cc.Attachment   // non-image attachments for document list
 	Crons           []tasks.CronEntry // scheduled tasks for this session
@@ -705,21 +706,36 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	for _, t := range allTeamTpls {
 		teamNames = append(teamNames, t.Name)
 	}
-	infoTmplName := "info_panel.html"
-	if r.Header.Get("HX-Request") == "true" {
-		infoTmplName = "main"
+	activeTab := r.URL.Query().Get("tab")
+	if activeTab == "" {
+		activeTab = "tasks"
 	}
-	infoTmpl.execute(w, infoTmplName, InfoPageData{
+
+	data := InfoPageData{
 		Session:         sess,
 		Tasks:           sessionTasks,
 		Agents:          agents,
 		SessionID:       id,
+		ActiveTab:       activeTab,
 		Images:          images,
 		Docs:            docs,
 		Crons:           crons,
 		AvailableAgents: allAgentDefs,
 		AvailableTeams:  teamNames,
-	})
+	}
+
+	// If ?tab= is set on an HTMX request, return just the tab content fragment.
+	if r.Header.Get("HX-Request") == "true" && r.URL.Query().Get("tab") != "" {
+		tmplName := "tab-" + activeTab
+		infoTmpl.execute(w, tmplName, data)
+		return
+	}
+
+	infoTmplName := "info_panel.html"
+	if r.Header.Get("HX-Request") == "true" {
+		infoTmplName = "main"
+	}
+	infoTmpl.execute(w, infoTmplName, data)
 }
 
 func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {

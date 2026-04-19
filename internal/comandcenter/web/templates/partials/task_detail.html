@@ -1,33 +1,29 @@
 {{define "task-detail"}}
-<div class="mt-3 pt-3 text-sm" style="border-top:1px solid var(--color-border);">
-  <div class="flex items-center gap-2 mb-2 flex-wrap">
+<div style="margin-top:12px;padding-top:12px;font-size:13px;border-top:1px solid var(--color-border);">
+  <div class="flex items-center gap-2 flex-wrap" style="margin-bottom:8px;">
     {{if eq .Task.Status "done"}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
-            style="background:var(--color-surfaceHigh);color:#25D366;">✓ done</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-brand);">&#10003; done</span>
     {{else if eq .Task.Status "in_progress"}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
-            style="background:var(--color-surfaceHigh);color:var(--color-ai);">● in progress</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-ai);">&#9679; in progress</span>
     {{else if eq .Task.Status "blocked"}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
-            style="background:var(--color-surfaceHigh);color:var(--color-error);">× blocked</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-error);">&#10005; blocked</span>
     {{else}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
-            style="background:var(--color-surfaceHigh);color:var(--color-textMuted);">○ pending</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-textMuted);">&#9675; pending</span>
     {{end}}
     {{if .Task.AssignedTo}}
-    <span style="color:var(--color-textMuted);">→ {{.Task.AssignedTo}}</span>
+    <span style="color:var(--color-textMuted);font-size:11px;">&rarr; {{.Task.AssignedTo}}</span>
     {{end}}
   </div>
-  <div class="flex gap-4 text-xs mb-3" style="color:var(--color-textMuted);">
+  <div class="flex gap-4" style="font-size:11px;color:var(--color-textMuted);margin-bottom:12px;">
     <span>Created {{relTime .Task.CreatedAt}}</span>
     <span>Updated {{relTime .Task.UpdatedAt}}</span>
   </div>
   {{if .DescHTML}}
-  <div class="prose prose-invert text-xs leading-relaxed task-desc-html" style="color:var(--color-textPrimary);">
+  <div class="prose prose-invert leading-relaxed task-desc-html" style="font-size:13px;color:var(--color-textPrimary);">
     {{.DescHTML}}
   </div>
   {{else}}
-  <p class="text-xs italic" style="color:var(--color-textMuted);">No description.</p>
+  <p style="font-size:11px;font-style:italic;color:var(--color-textMuted);">No description.</p>
   {{end}}
 </div>
 {{end}}

@@ -1,26 +1,22 @@
 {{define "team-members"}}
 {{range .}}
-<div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:var(--color-surfaceHigh);">
-  <div class="rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-       style="width:36px;height:36px;background:{{avatarColor .Name}};color:#000;">
+<div class="flex items-center gap-3" style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;">
+  <div class="flex items-center justify-center font-bold flex-shrink-0"
+       style="width:36px;height:36px;border-radius:9999px;background:{{avatarColor .Name}};color:#000;font-size:13px;">
     {{firstChar .Name}}
   </div>
-  <div class="flex-1 min-w-0">
-    <p class="text-sm truncate" style="color:var(--color-textPrimary);">{{.Name}}</p>
-    <div class="flex items-center gap-2 mt-1">
-      {{if or (eq .Status "active") (eq .Status "working")}}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-            style="background:var(--color-brand);color:#000;">
-        {{if eq .Status "working"}}working{{else}}active{{end}}
-      </span>
+  <div style="flex:1;min-width:0;">
+    <p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{.Name}}</p>
+    <div class="flex items-center gap-2" style="margin-top:4px;">
+      {{if eq .Status "working"}}
+      <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-tool);color:#000;">working</span>
+      {{else if eq .Status "active"}}
+      <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-brand);color:#000;">active</span>
       {{else}}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
-            style="background:var(--color-surfaceHigh);color:var(--color-textMuted);border:1px solid var(--color-border);">
-        {{.Status}}
-      </span>
+      <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;background:var(--color-surfaceHigh);color:var(--color-textMuted);border:1px solid var(--color-border);">{{.Status}}</span>
       {{end}}
       {{if .CurrentTaskID}}
-      <span class="text-xs" style="color:var(--color-textMuted);">· {{truncate 8 .CurrentTaskID}}</span>
+      <span style="font-size:11px;color:var(--color-textMuted);">&#183; {{truncate 8 .CurrentTaskID}}</span>
       {{end}}
     </div>
   </div>
