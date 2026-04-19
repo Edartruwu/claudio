@@ -13,11 +13,21 @@ import (
 	"time"
 )
 
+
 // BundleMockupTool reads an HTML entry file, inlines local <script src="...">
 // references, optionally fetches and embeds CDN script tags, then writes a
 // single self-contained HTML file. Pure Go — no CGO, no exec.Command.
 type BundleMockupTool struct {
 	designsDir string
+	renderer   *RenderMockupTool // optional: render bundle after writing + push screenshots
+}
+
+// WithRenderer wires a RenderMockupTool so BundleMockup auto-renders the
+// bundled file after writing it and pushes fresh screenshots to CC chat.
+// Returns receiver for fluent chaining.
+func (t *BundleMockupTool) WithRenderer(r *RenderMockupTool) *BundleMockupTool {
+	t.renderer = r
+	return t
 }
 
 // NewBundleMockupTool creates a BundleMockupTool that defaults output under designsDir.
@@ -96,7 +106,7 @@ var localScriptRe = regexp.MustCompile(`(?i)<script([^>]*)\bsrc="([^"]+)"([^>]*)
 // cdnScriptRe matches <script src="https://..."> or <script src="http://...">.
 var cdnScriptRe = regexp.MustCompile(`(?i)<script([^>]*)\bsrc="(https?://[^"]+)"([^>]*)>(\s*</script>)?`)
 
-func (t *BundleMockupTool) Execute(_ context.Context, input json.RawMessage) (*Result, error) {
+func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in BundleMockupInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
@@ -256,6 +266,17 @@ func (t *BundleMockupTool) Execute(_ context.Context, input json.RawMessage) (*R
 			sb.WriteString(w)
 			sb.WriteString("\n")
 		}
+	}
+
+	// Render the final bundle and push screenshots so CC chat shows the
+	// exact output the user will open — not a stale pre-bundle render.
+	if t.renderer != nil {
+		renderInput, _ := json.Marshal(map[string]interface{}{
+			"html_path":   outPath,
+			"session_dir": filepath.Dir(filepath.Dir(outPath)), // {sessionDir}/bundle/mockup.html → {sessionDir}
+		})
+		// Best-effort — ignore errors, bundle result already returned above.
+		_, _ = t.renderer.Execute(ctx, renderInput)
 	}
 
 	return &Result{Content: sb.String()}, nil

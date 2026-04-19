@@ -12,12 +12,14 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 	for _, cap := range capabilities {
 		if cap == "design" {
 			paths := config.GetPaths()
-			registry.Register(NewBundleMockupTool(paths.Designs))
 			renderTool := NewRenderMockupTool(paths.Designs)
 			if pusher != nil {
 				renderTool = renderTool.WithPusher(pusher, sessionID)
 			}
 			registry.Register(renderTool)
+			// Wire renderer into bundle so BundleMockup auto-renders the final
+			// file and pushes fresh screenshots — CC chat shows exact bundle output.
+			registry.Register(NewBundleMockupTool(paths.Designs).WithRenderer(renderTool))
 			registry.Register(NewVerifyMockupTool(paths.Designs, client, ""))
 			registry.Register(NewExportHandoffTool(paths.Designs))
 			return
