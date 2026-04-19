@@ -25,27 +25,75 @@
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <style>
     :root {
+      /* Surfaces */
       --color-bg:            #0B0E0F;
       --color-surface:       #151A1B;
       --color-surfaceHigh:   #1E2527;
+      --color-surfaceFloat:  #232B2D;
+      /* Borders */
       --color-border:        #2A3133;
+      --color-borderSubtle:  #1E2527;
+      /* Accent colors */
       --color-brand:         #00C48C;
+      --color-brandDim:      #003D2E;
+      --color-brandGlow:     rgba(0,196,140,0.15);
       --color-ai:            #3B9EFF;
+      --color-aiDim:         #0A1F3A;
       --color-tool:          #F0A500;
+      --color-toolDim:       #2A1C00;
       --color-cron:          #9B6FE0;
-      --color-textPrimary:   #D4DDE8;
+      --color-cronDim:       #1A0F30;
+      /* Text */
+      --color-textPrimary:   #D4DDE0;
       --color-textSecondary: #8A9BA0;
       --color-textMuted:     #4E6268;
+      --color-textInverse:   #0B0E0F;
+      /* Semantic */
       --color-error:         #E05050;
+      --color-errorDim:      #2A0F0F;
+      --color-success:       #00C48C;
+      --color-warning:       #F0A500;
+      /* Bubble backgrounds */
+      --color-bubbleUser:    #003D2E;
+      --color-bubbleAI:      #151A1B;
+      --color-bubbleTool:    #0F1410;
+      --color-bubbleCron:    #130E20;
+      /* Shadows */
+      --shadow-card:         0 2px 8px rgba(0,0,0,0.4);
+      --shadow-modal:        0 16px 48px rgba(0,0,0,0.7);
+      --shadow-glow:         0 0 20px rgba(0,196,140,0.25);
+      --shadow-aiGlow:       0 0 20px rgba(59,158,255,0.2);
+      --shadow-float:        0 8px 32px rgba(0,0,0,0.6);
+      /* Typography scale */
+      --text-body:           15px;
+      --text-small:          13px;
+      --text-label:          11px;
+      --text-heading:        16px;
+      --text-title:          18px;
+      --text-code:           13px;
+      /* Spacing */
+      --space-xs:  4px;
+      --space-sm:  8px;
+      --space-md:  16px;
+      --space-lg:  24px;
+      --space-xl:  40px;
+      --space-xxl: 64px;
+      /* Radii */
+      --radius-xs:   4px;
+      --radius-sm:   8px;
+      --radius-md:   12px;
+      --radius-lg:   16px;
+      --radius-xl:   24px;
+      --radius-pill: 9999px;
     }
     body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', monospace; padding-top: env(safe-area-inset-top); }
-    .msg-bubble-assistant { background: #1a3a38; border-radius: 0 12px 12px 12px; }
-    .msg-bubble-user { background: #075E54; border-radius: 12px 0 12px 12px; color: #FFFFFF; }
-    .msg-bubble-tool { background: var(--color-surfaceHigh); border-radius: 8px; }
+    .msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 3px solid var(--color-ai); border-radius: 4px 16px 16px 16px; }
+    .msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; }
+    .msg-bubble-tool { background: var(--color-bubbleTool); border-left: 3px solid var(--color-tool); border-radius: 4px 12px 12px 12px; }
     .msg-bubble-tool details summary { user-select: none; }
     .msg-bubble-tool details .tool-chevron { transition: transform 0.2s ease; }
     .msg-bubble-tool details[open] .tool-chevron { transform: rotate(90deg); }
-    .msg-bubble-cron { background: #1E1B2E; border-radius: 0 12px 12px 12px; border-left: 3px solid #7C3AED; }
+    .msg-bubble-cron { background: var(--color-bubbleCron); border-left: 3px solid var(--color-cron); border-radius: 4px 16px 16px 16px; }
     #messages { scroll-behavior: smooth; }
     .chat-header { padding-top: env(safe-area-inset-top); }
     .input-bar { padding-bottom: env(safe-area-inset-bottom); }
