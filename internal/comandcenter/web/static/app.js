@@ -53,7 +53,7 @@
     if (textEl) textEl.textContent = label;
     bubble.classList.remove('hidden');
     msgs.appendChild(bubble);
-    msgs.scrollTop = msgs.scrollHeight;
+    if (isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
   }
 
   function removeTypingBubble() {
@@ -144,10 +144,11 @@
     fetch('/partials/messages/' + sessionId)
       .then(function(res) { return res.text(); })
       .then(function(html) {
+        var near = isNearBottom();
         msgs.innerHTML = html;
         var bubble = document.getElementById('typing-bubble');
         if (bubble) msgs.appendChild(bubble);
-        msgs.scrollTop = msgs.scrollHeight;
+        if (near) msgs.scrollTop = msgs.scrollHeight;
         lastMsgDate = new Date().toDateString();
       })
       .catch(function() {});
@@ -235,7 +236,7 @@
           if (msgsEl && sessionId) {
             fetch('/partials/messages/' + sessionId, { credentials: 'include' })
               .then(function(r) { return r.text(); })
-              .then(function(html) { msgsEl.innerHTML = html; msgsEl.scrollTop = msgsEl.scrollHeight; })
+              .then(function(html) { var nb = msgsEl.scrollTop >= msgsEl.scrollHeight - msgsEl.clientHeight - 100; msgsEl.innerHTML = html; if (nb) msgsEl.scrollTop = msgsEl.scrollHeight; })
               .catch(function() {});
           }
 
@@ -260,7 +261,7 @@
             agentNotif.style.color = '#8E8E93';
             agentNotif.textContent = agentIcon + ' ' + data.name + ' — ' + data.status;
             msgs.appendChild(agentNotif);
-            msgs.scrollTop = msgs.scrollHeight;
+            if (isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
           }
 
         } else if (type === 'config.changed') {
