@@ -1101,12 +1101,6 @@ func (ws *WebServer) fanout() {
 			}
 			ws.pushToSessionClients(ev.SessionID, payload)
 
-			// Also trigger a full reload so any user messages sent from TUI
-			// (which fire no separate WS event) appear before the assistant reply.
-			if reloadPayload, err2 := json.Marshal(map[string]string{"type": "messages.reload"}); err2 == nil {
-				ws.pushToSessionClients(ev.SessionID, reloadPayload)
-			}
-
 		case attach.EventMsgToolUse:
 			// 1. Permanent tool-use bubble in chat history.
 			msg := envelopeToMessage(ev)
