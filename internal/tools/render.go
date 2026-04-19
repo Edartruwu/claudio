@@ -67,12 +67,86 @@ type ScreenshotInfo struct {
 	InteractionsPath    string `json:"interactions_path,omitempty"`
 }
 
+// ViewportSize holds the width and height of a browser viewport in CSS pixels.
+type ViewportSize struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// ScreenManifest holds metadata for a single artboard screen in a design session.
+type ScreenManifest struct {
+	Name        string       `json:"name"`
+	Breakpoint  string       `json:"breakpoint"`            // "mobile" | "desktop" | "tablet" | "unknown"
+	Viewport    ViewportSize `json:"viewport"`
+	Description string       `json:"description,omitempty"`
+}
+
+// inferScreenManifest returns a ScreenManifest for name, inferring breakpoint
+// and viewport from name keywords.
+func inferScreenManifest(name string) ScreenManifest {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "mobile"):
+		return ScreenManifest{Name: name, Breakpoint: "mobile", Viewport: ViewportSize{390, 844}}
+	case strings.Contains(lower, "desktop"):
+		return ScreenManifest{Name: name, Breakpoint: "desktop", Viewport: ViewportSize{1440, 900}}
+	case strings.Contains(lower, "tablet"):
+		return ScreenManifest{Name: name, Breakpoint: "tablet", Viewport: ViewportSize{768, 1024}}
+	default:
+		return ScreenManifest{Name: name, Breakpoint: "unknown", Viewport: ViewportSize{390, 844}}
+	}
+}
+
 // ManifestJSON represents the design session manifest.
 type ManifestJSON struct {
-	ProjectPath string   `json:"project_path"`
-	SessionDir  string   `json:"session_dir"`
-	CreatedAt   string   `json:"created_at"`
-	Screens     []string `json:"screens"`
+	ProjectPath string           `json:"project_path"`
+	SessionDir  string           `json:"session_dir"`
+	CreatedAt   string           `json:"created_at"`
+	Screens     []ScreenManifest `json:"screens"`
+}
+
+// UnmarshalJSON implements backward-compat deserialization for ManifestJSON.
+// Old manifests have "screens": ["name1", "name2"]; new ones have full objects.
+func (m *ManifestJSON) UnmarshalJSON(data []byte) error {
+	// Use an alias to avoid infinite recursion.
+	type manifestAlias struct {
+		ProjectPath string          `json:"project_path"`
+		SessionDir  string          `json:"session_dir"`
+		CreatedAt   string          `json:"created_at"`
+		Screens     json.RawMessage `json:"screens"`
+	}
+	var alias manifestAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	m.ProjectPath = alias.ProjectPath
+	m.SessionDir = alias.SessionDir
+	m.CreatedAt = alias.CreatedAt
+
+	if len(alias.Screens) == 0 || string(alias.Screens) == "null" {
+		m.Screens = nil
+		return nil
+	}
+
+	// Try new format first: []ScreenManifest
+	var screens []ScreenManifest
+	if err := json.Unmarshal(alias.Screens, &screens); err == nil {
+		// Validate: if any element has a non-empty Name we assume it's the new format.
+		// (An empty array or all-zero structs from string unmarshal would fail below anyway.)
+		m.Screens = screens
+		return nil
+	}
+
+	// Fall back to old format: []string
+	var names []string
+	if err := json.Unmarshal(alias.Screens, &names); err != nil {
+		return fmt.Errorf("manifest screens field is neither []ScreenManifest nor []string: %w", err)
+	}
+	m.Screens = make([]ScreenManifest, 0, len(names))
+	for _, n := range names {
+		m.Screens = append(m.Screens, inferScreenManifest(n))
+	}
+	return nil
 }
 
 // RenderMockupOutput is the JSON result returned by this tool.
@@ -435,62 +509,63 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 
 // writeManifest writes or merges manifest.json in sessionDir.
 // Creates new manifest on first write, merges screens on subsequent calls.
+// Preserves existing ScreenManifest data (breakpoint/viewport/description);
+// only infers metadata for screens not already present in the manifest.
 func (t *RenderMockupTool) writeManifest(sessionDir string, screenshots []ScreenshotInfo) error {
 	manifestPath := filepath.Join(sessionDir, "manifest.json")
 
-	// Extract screen names from screenshots (use Name field if present)
-	var newScreens []string
-	seen := make(map[string]bool)
+	// Collect unique new screen names from screenshots.
+	var newNames []string
+	seenNames := make(map[string]bool)
 	for _, s := range screenshots {
-		screenName := s.Name
-		if screenName == "" || screenName == "full-canvas" {
+		if s.Name == "" || s.Name == "full-canvas" {
 			continue
 		}
-		if !seen[screenName] {
-			seen[screenName] = true
-			newScreens = append(newScreens, screenName)
+		if !seenNames[s.Name] {
+			seenNames[s.Name] = true
+			newNames = append(newNames, s.Name)
 		}
 	}
 
-	// Get project path
 	projectPath, _ := os.Getwd()
 
-	// Check if manifest exists
 	var manifest ManifestJSON
 	if data, err := os.ReadFile(manifestPath); err == nil {
-		// Manifest exists — merge
+		// Manifest exists — unmarshal (handles both old []string and new []ScreenManifest).
 		if err := json.Unmarshal(data, &manifest); err != nil {
-			// If unmarshal fails, start fresh
+			// Corrupt manifest — start fresh.
 			manifest = ManifestJSON{
 				ProjectPath: projectPath,
 				SessionDir:  sessionDir,
 				CreatedAt:   time.Now().UTC().Format(time.RFC3339),
-				Screens:     newScreens,
 			}
-		} else {
-			// Merge screens into existing manifest
-			screenMap := make(map[string]bool)
-			for _, s := range manifest.Screens {
-				screenMap[s] = true
-			}
-			for _, s := range newScreens {
-				if !screenMap[s] {
-					screenMap[s] = true
-					manifest.Screens = append(manifest.Screens, s)
-				}
+		}
+		// Build index of existing screens by name to preserve their metadata.
+		existing := make(map[string]bool, len(manifest.Screens))
+		for _, sm := range manifest.Screens {
+			existing[sm.Name] = true
+		}
+		// Append only new screens, inferring metadata for each.
+		for _, name := range newNames {
+			if !existing[name] {
+				existing[name] = true
+				manifest.Screens = append(manifest.Screens, inferScreenManifest(name))
 			}
 		}
 	} else {
-		// Create new manifest
+		// New manifest — infer metadata for all screens.
+		screens := make([]ScreenManifest, 0, len(newNames))
+		for _, name := range newNames {
+			screens = append(screens, inferScreenManifest(name))
+		}
 		manifest = ManifestJSON{
 			ProjectPath: projectPath,
 			SessionDir:  sessionDir,
 			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
-			Screens:     newScreens,
+			Screens:     screens,
 		}
 	}
 
-	// Write manifest atomically
 	manifestJSON, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err

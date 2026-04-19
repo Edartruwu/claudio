@@ -27,14 +27,14 @@ type ListDesignsInput struct {
 
 // DesignSession represents a single design session with its metadata.
 type DesignSession struct {
-	Session       string   `json:"session"`         // dir basename e.g. "20260418-login"
-	SessionDir    string   `json:"session_dir"`     // abs path
-	Screens       []string `json:"screens"`         // artboard names from manifest
-	CreatedAt     string   `json:"created_at"`      // RFC3339 timestamp
-	HandoffDir    string   `json:"handoff_dir"`     // {sessionDir}/handoff
-	HasHandoff    bool     `json:"has_handoff"`     // spec.md exists in handoff dir
-	BundlePath    string   `json:"bundle_path"`     // {sessionDir}/bundle/mockup.html if exists
-	ScreenshotsDir string  `json:"screenshots_dir"` // {sessionDir}/screenshots
+	Session        string           `json:"session"`         // dir basename e.g. "20260418-login"
+	SessionDir     string           `json:"session_dir"`     // abs path
+	Screens        []ScreenManifest `json:"screens"`         // artboard screen metadata from manifest
+	CreatedAt      string           `json:"created_at"`      // RFC3339 timestamp
+	HandoffDir     string           `json:"handoff_dir"`     // {sessionDir}/handoff
+	HasHandoff     bool             `json:"has_handoff"`     // spec.md exists in handoff dir
+	BundlePath     string           `json:"bundle_path"`     // {sessionDir}/bundle/mockup.html if exists
+	ScreenshotsDir string           `json:"screenshots_dir"` // {sessionDir}/screenshots
 }
 
 // ListDesignsOutput is the JSON result returned by this tool.

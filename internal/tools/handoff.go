@@ -618,8 +618,10 @@ type fileContent struct {
 	content string
 }
 
-// readManifestScreens reads screen names from {sessionDir}/manifest.json.
+// readManifestScreens reads screen metadata from {sessionDir}/manifest.json.
 // Returns nil if the file doesn't exist or can't be parsed.
+// Handles both old ([]string) and new ([]ScreenManifest) manifest formats via
+// ManifestJSON.UnmarshalJSON backward-compat logic.
 func readManifestScreens(sessionDir string) []screenInfo {
 	if sessionDir == "" {
 		return nil
@@ -629,15 +631,13 @@ func readManifestScreens(sessionDir string) []screenInfo {
 	if err != nil {
 		return nil
 	}
-	var m struct {
-		Screens []string `json:"screens"`
-	}
+	var m ManifestJSON
 	if err := json.Unmarshal(raw, &m); err != nil || len(m.Screens) == 0 {
 		return nil
 	}
 	screens := make([]screenInfo, 0, len(m.Screens))
-	for _, name := range m.Screens {
-		screens = append(screens, screenInfo{Name: name, File: name + ".png"})
+	for _, sm := range m.Screens {
+		screens = append(screens, screenInfo{Name: sm.Name, File: sm.Name + ".png"})
 	}
 	return screens
 }
