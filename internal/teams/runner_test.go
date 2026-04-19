@@ -1459,3 +1459,130 @@ func TestTeammateRunner_PublishesResult(t *testing.T) {
 		t.Errorf("Status = %q, want %q", p.Status, "done")
 	}
 }
+
+// --- Grandchild routing regression tests ---
+// These tests guard against the bug where teammates spawned by teammates
+// were having their completions injected into the main engine.
+
+// TestTeammateRunner_SpawnStoresParentAgentID verifies that ParentAgentID from
+// SpawnConfig is persisted on the TeammateState, so downstream consumers (e.g.
+// the EventAgentStatus subscriber in root.go) can identify grandchildren.
+func TestTeammateRunner_SpawnStoresParentAgentID(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:      "test-team",
+		AgentName:     "grandchild",
+		Prompt:        "sub-task",
+		ParentAgentID: "agent-alex-id",
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	if state.ParentAgentID != "agent-alex-id" {
+		t.Errorf("ParentAgentID = %q, want %q", state.ParentAgentID, "agent-alex-id")
+	}
+}
+
+// TestTeammateRunner_SpawnWithParent_NotLead verifies that an agent spawned with a
+// ParentAgentID is NOT marked as lead. Only direct children of the main session
+// (no parent) are leads.
+func TestTeammateRunner_SpawnWithParent_NotLead(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	// Direct child — no parent → should be lead.
+	directChild, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "direct-child",
+		Prompt:    "top-level task",
+	})
+	if err != nil {
+		t.Fatalf("Spawn direct child: %v", err)
+	}
+	runner.WaitForOne(directChild.Identity.AgentID, 5*time.Second)
+
+	if !directChild.Identity.IsLead {
+		t.Error("direct child (no parent) must be marked as lead")
+	}
+
+	// Grandchild — has parent → must NOT be lead.
+	grandchild, err := runner.Spawn(SpawnConfig{
+		TeamName:      "test-team",
+		AgentName:     "grandchild",
+		Prompt:        "sub-task",
+		ParentAgentID: directChild.Identity.AgentID,
+	})
+	if err != nil {
+		t.Fatalf("Spawn grandchild: %v", err)
+	}
+	runner.WaitForOne(grandchild.Identity.AgentID, 5*time.Second)
+
+	if grandchild.Identity.IsLead {
+		t.Error("grandchild (has parent) must NOT be marked as lead")
+	}
+}
+
+// TestTeammateRunner_PublishesParentAgentID is the critical regression test.
+//
+// When a teammate (grandchild) completes, the EventAgentStatus payload MUST
+// carry its ParentAgentID so the root.go subscriber can filter it out and avoid
+// injecting the result into the main engine's injectCh.
+func TestTeammateRunner_PublishesParentAgentID(t *testing.T) {
+	b := bus.New()
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "grandchild done", nil
+	})
+	runner.SetBus(b)
+	runner.SetSessionID("sess-xyz")
+
+	type captured struct {
+		payload attach.AgentStatusPayload
+		done    chan struct{}
+	}
+	cap := &captured{done: make(chan struct{})}
+	var once sync.Once
+
+	b.Subscribe(attach.EventAgentStatus, func(event bus.Event) {
+		var p attach.AgentStatusPayload
+		if err := json.Unmarshal(event.Payload, &p); err != nil {
+			return
+		}
+		if p.Status == "done" && p.Name == "grandchild" {
+			once.Do(func() {
+				cap.payload = p
+				close(cap.done)
+			})
+		}
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:      "test-team",
+		AgentName:     "grandchild",
+		Prompt:        "sub-task",
+		ParentAgentID: "agent-alex-id",
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	runner.WaitForOne(state.Identity.AgentID, 5*time.Second)
+
+	select {
+	case <-cap.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no done event published for grandchild")
+	}
+
+	if cap.payload.ParentAgentID != "agent-alex-id" {
+		t.Errorf("EventAgentStatus.ParentAgentID = %q, want %q",
+			cap.payload.ParentAgentID, "agent-alex-id")
+	}
+	if cap.payload.Status != "done" {
+		t.Errorf("Status = %q, want %q", cap.payload.Status, "done")
+	}
+}
