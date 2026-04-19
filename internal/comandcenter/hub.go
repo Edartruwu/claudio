@@ -318,8 +318,9 @@ func (h *Hub) handleConn(conn wsConn) {
 		return
 	}
 
-	// Persist CLI-supplied agent/team flags on first connect.
-	if hello.AgentType != "" || hello.TeamTemplate != "" {
+	// Persist CLI-supplied agent/team flags only on first connect.
+	// On reconnect, preserve whatever the user set manually in the Config tab.
+	if !found && (hello.AgentType != "" || hello.TeamTemplate != "") {
 		_ = h.storage.UpdateSessionConfig(sessionID, hello.AgentType, hello.TeamTemplate)
 	}
 
