@@ -271,6 +271,7 @@ type TeammateRunner struct {
 	PluginsSection     string // injected into every sub-agent's system prompt
 	Settings           *config.Settings // optional; used to inject caveman prefix
 	eventBus           *bus.Bus // optional; used to publish agent status events
+	sessionID          string   // principal session ID; set on bus events for routing
 
 	childrenMu sync.Mutex
 	children   map[string][]string // parentAgentID → []childAgentID
@@ -325,6 +326,12 @@ func (r *TeammateRunner) SetTaskCompleter(fn TaskCompleter) {
 // SetBus sets the event bus for publishing agent status events.
 func (r *TeammateRunner) SetBus(b *bus.Bus) {
 	r.eventBus = b
+}
+
+// SetSessionID sets the principal session ID that is stamped on bus events,
+// allowing subscribers to filter notifications for the correct session.
+func (r *TeammateRunner) SetSessionID(id string) {
+	r.sessionID = id
 }
 
 // EmitEvent sends an event to the registered handler.
@@ -758,15 +765,23 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	status := state.Status
 	state.mu.Unlock()
 
-	// Publish agent status event
+	// Publish agent status event.
+	// Normalize internal MemberStatus to the protocol status vocabulary:
+	// StatusComplete → "done" (matches attach.AgentStatusPayload comment: idle|working|done|waiting).
 	if r.eventBus != nil {
+		protocolStatus := string(status)
+		if status == StatusComplete {
+			protocolStatus = "done"
+		}
 		payload, _ := json.Marshal(attach.AgentStatusPayload{
 			Name:   state.Identity.AgentName,
-			Status: string(status),
+			Status: protocolStatus,
+			Result: state.Result,
 		})
 		r.eventBus.Publish(bus.Event{
-			Type:    attach.EventAgentStatus,
-			Payload: payload,
+			Type:      attach.EventAgentStatus,
+			Payload:   payload,
+			SessionID: r.sessionID,
 		})
 	}
 

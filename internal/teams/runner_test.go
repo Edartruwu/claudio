@@ -2,11 +2,15 @@ package teams
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/bus"
 )
 
 // --- TeammateState unit tests ---
@@ -1348,5 +1352,110 @@ func TestTeammateRunner_Spawn_FallsBackToPlainRunner_NoMemoryRunnerSet(t *testin
 	}
 	if state.Result != "plain-only" {
 		t.Errorf("expected plain result, got %q", state.Result)
+	}
+}
+
+// TestTeammateRunner_PublishesSessionID verifies that after SetSessionID("sess-123"),
+// the bus.Event published on completion carries e.SessionID == "sess-123".
+func TestTeammateRunner_PublishesSessionID(t *testing.T) {
+	b := bus.New()
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "result text", nil
+	})
+	runner.SetBus(b)
+	runner.SetSessionID("sess-123")
+
+	var gotEvent bus.Event
+	var once sync.Once
+	done := make(chan struct{})
+
+	b.Subscribe(attach.EventAgentStatus, func(event bus.Event) {
+		once.Do(func() {
+			gotEvent = event
+			close(done)
+		})
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "worker",
+		Prompt:    "do work",
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if !runner.WaitForOne(state.Identity.AgentID, 5*time.Second) {
+		t.Fatal("timeout waiting for teammate")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no bus event published")
+	}
+
+	if gotEvent.SessionID != "sess-123" {
+		t.Errorf("SessionID = %q, want %q", gotEvent.SessionID, "sess-123")
+	}
+}
+
+// TestTeammateRunner_PublishesResult verifies that AgentStatusPayload.Result
+// contains the teammate's output text when status is done.
+func TestTeammateRunner_PublishesResult(t *testing.T) {
+	const wantResult = "task finished successfully"
+	b := bus.New()
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return wantResult, nil
+	})
+	runner.SetBus(b)
+	runner.SetSessionID("sess-abc")
+
+	type captured struct {
+		event bus.Event
+		done  chan struct{}
+	}
+	cap := &captured{done: make(chan struct{})}
+	var once sync.Once
+
+	b.Subscribe(attach.EventAgentStatus, func(event bus.Event) {
+		var p attach.AgentStatusPayload
+		if err := json.Unmarshal(event.Payload, &p); err != nil {
+			return
+		}
+		if p.Status == "done" {
+			once.Do(func() {
+				cap.event = event
+				close(cap.done)
+			})
+		}
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "worker",
+		Prompt:    "do work",
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if !runner.WaitForOne(state.Identity.AgentID, 5*time.Second) {
+		t.Fatal("timeout waiting for teammate")
+	}
+
+	select {
+	case <-cap.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no done event published")
+	}
+
+	var p attach.AgentStatusPayload
+	if err := json.Unmarshal(cap.event.Payload, &p); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if p.Result != wantResult {
+		t.Errorf("Result = %q, want %q", p.Result, wantResult)
+	}
+	if p.Status != "done" {
+		t.Errorf("Status = %q, want %q", p.Status, "done")
 	}
 }

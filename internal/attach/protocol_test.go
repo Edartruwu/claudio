@@ -323,3 +323,37 @@ func TestEnvelope_UnmarshalPayload_HelloPayload(t *testing.T) {
 		t.Errorf("Payload mismatch: got %+v, want %+v", got, payload)
 	}
 }
+
+// TestAgentStatusPayload_ResultField verifies that the Result string field
+// on AgentStatusPayload survives a JSON marshal → unmarshal roundtrip.
+func TestAgentStatusPayload_ResultField(t *testing.T) {
+	want := AgentStatusPayload{
+		Name:   "alex",
+		Status: "done",
+		Result: "merged cleanly into main",
+	}
+
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	if !json.Valid(data) {
+		t.Fatal("marshaled data is not valid JSON")
+	}
+
+	var got AgentStatusPayload
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	if got.Result != want.Result {
+		t.Errorf("Result = %q, want %q", got.Result, want.Result)
+	}
+	if got.Name != want.Name {
+		t.Errorf("Name = %q, want %q", got.Name, want.Name)
+	}
+	if got.Status != want.Status {
+		t.Errorf("Status = %q, want %q", got.Status, want.Status)
+	}
+}
