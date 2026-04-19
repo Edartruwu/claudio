@@ -1215,6 +1215,50 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			ws.pushToSessionClients(ev.SessionID, payload)
+
+		case attach.EventConfigChanged:
+			var p attach.ConfigChangedPayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			payload, err := json.Marshal(map[string]string{
+				"type":            "config.changed",
+				"model":           p.Model,
+				"permission_mode": p.PermissionMode,
+				"output_style":    p.OutputStyle,
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
+
+		case attach.EventAgentChanged:
+			var p attach.AgentChangedPayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			payload, err := json.Marshal(map[string]string{
+				"type":       "agent.changed",
+				"agent_type": p.AgentType,
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
+
+		case attach.EventTeamChanged:
+			var p attach.TeamChangedPayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			payload, err := json.Marshal(map[string]string{
+				"type":          "team.changed",
+				"team_template": p.TeamTemplate,
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
 		}
 	}
 }

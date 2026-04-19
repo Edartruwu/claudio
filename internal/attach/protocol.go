@@ -18,6 +18,9 @@ const (
 	EventDesignBundleReady  = "design.bundle_ready"
 	EventMsgStreamDelta     = "message.stream_delta"
 	EventMsgToolResult      = "message.tool_result"
+	EventConfigChanged      = "config.changed"
+	EventAgentChanged       = "agent.changed"
+	EventTeamChanged        = "team.changed"
 )
 
 // Events: ComandCenter → Claudio
@@ -134,6 +137,26 @@ type StreamDeltaPayload struct {
 type DesignScreenshotPayload struct {
 	FilePath string `json:"file_path"`
 	Filename string `json:"filename"`
+}
+
+// ConfigChangedPayload for EventConfigChanged.
+type ConfigChangedPayload struct {
+	SessionID      string `json:"session_id"`
+	Model          string `json:"model,omitempty"`
+	PermissionMode string `json:"permission_mode,omitempty"`
+	OutputStyle    string `json:"output_style,omitempty"`
+}
+
+// AgentChangedPayload for EventAgentChanged.
+type AgentChangedPayload struct {
+	SessionID string `json:"session_id"`
+	AgentType string `json:"agent_type"`
+}
+
+// TeamChangedPayload for EventTeamChanged.
+type TeamChangedPayload struct {
+	SessionID    string `json:"session_id"`
+	TeamTemplate string `json:"team_template"`
 }
 
 // UserMsgPayload for EventMsgUser.

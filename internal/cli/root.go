@@ -172,6 +172,21 @@ security, and hackability.`,
 						if err := json.Unmarshal(event.Payload, &p); err == nil {
 							_ = attachClient.SendEvent(attach.EventClearHistory, p)
 						}
+					case attach.EventConfigChanged:
+						var p attach.ConfigChangedPayload
+						if err := json.Unmarshal(event.Payload, &p); err == nil {
+							_ = attachClient.SendEvent(attach.EventConfigChanged, p)
+						}
+					case attach.EventAgentChanged:
+						var p attach.AgentChangedPayload
+						if err := json.Unmarshal(event.Payload, &p); err == nil {
+							_ = attachClient.SendEvent(attach.EventAgentChanged, p)
+						}
+					case attach.EventTeamChanged:
+						var p attach.TeamChangedPayload
+						if err := json.Unmarshal(event.Payload, &p); err == nil {
+							_ = attachClient.SendEvent(attach.EventTeamChanged, p)
+						}
 					}
 				})
 			}
@@ -1046,6 +1061,7 @@ func runInteractive() error {
 		}
 	}
 	appCtx := &tui.AppContext{
+		Bus:         appInstance.Bus,
 		Session:     sess,
 		Memory:      appInstance.Memory,
 		Config:      appInstance.Config,
@@ -1076,6 +1092,16 @@ func runInteractive() error {
 		tuiOpts = append(tuiOpts, tui.WithScreenshotPusher(attachclient.NewAttachScreenshotPusher(attachClient)))
 	}
 	model := tui.New(appInstance.API, reg, systemPrompt, sess, tuiOpts...)
+
+	// Fall back to stored agent/team config when CLI flags are absent (matches headless resume).
+	if cur := sess.Current(); cur != nil {
+		if flagAgent == "" {
+			flagAgent = cur.AgentType
+		}
+		if flagTeam == "" {
+			flagTeam = cur.TeamTemplate
+		}
+	}
 
 	// Apply --agent flag if specified
 	if flagAgent != "" {

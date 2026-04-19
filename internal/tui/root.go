@@ -15,6 +15,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/attach"
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/api"
@@ -1809,6 +1811,16 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 	}
 	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Agent persona: %s", label)})
 	m.refreshViewport()
+
+	// Persist agent to DB and notify attached interfaces.
+	if m.db != nil && m.session != nil && m.session.Current() != nil {
+		_ = m.db.UpdateSessionAgentType(m.session.Current().ID, msg.AgentType)
+	}
+	m.publishToBus(attach.EventAgentChanged, attach.AgentChangedPayload{
+		SessionID: m.sessionID(),
+		AgentType: msg.AgentType,
+	})
+
 	return m
 }
 
@@ -1910,6 +1922,16 @@ The team is ready. Use SpawnTeammate to assign tasks to each member.`,
 	}
 	m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Team context: %s", label)})
 	m.refreshViewport()
+
+	// Persist team to DB and notify attached interfaces.
+	if !msg.IsEphemeral && m.db != nil && m.session != nil && m.session.Current() != nil {
+		_ = m.db.UpdateSessionTeamTemplate(m.session.Current().ID, msg.TemplateName)
+	}
+	m.publishToBus(attach.EventTeamChanged, attach.TeamChangedPayload{
+		SessionID:    m.sessionID(),
+		TeamTemplate: msg.TemplateName,
+	})
+
 	return m
 }
 
@@ -5312,6 +5334,52 @@ func (m *Model) applyConfigChange(key, value string) {
 	}
 	// Other settings (autoMemoryExtract, memorySelection, compactMode, etc.)
 	// are read from config at the point of use, so saving to disk is sufficient.
+
+	// Publish config change to bus so attached interfaces (ComandCenter) see it.
+	m.publishConfigChanged()
+}
+
+// sessionID returns the current session ID or empty string.
+func (m *Model) sessionID() string {
+	if m.session != nil && m.session.Current() != nil {
+		return m.session.Current().ID
+	}
+	return ""
+}
+
+// publishToBus marshals payload as JSON and publishes to the event bus.
+// No-op if bus is nil (TUI-only mode without attach).
+func (m *Model) publishToBus(eventType string, payload any) {
+	if m.appCtx == nil || m.appCtx.Bus == nil {
+		return
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	m.appCtx.Bus.Publish(bus.Event{
+		Type:      eventType,
+		Payload:   data,
+		SessionID: m.sessionID(),
+	})
+}
+
+// publishConfigChanged emits EventConfigChanged with current config values.
+func (m *Model) publishConfigChanged() {
+	permMode := ""
+	if m.engineConfig != nil {
+		permMode = m.engineConfig.PermissionMode
+	}
+	outputStyle := ""
+	if m.appCtx != nil && m.appCtx.Config != nil {
+		outputStyle = m.appCtx.Config.OutputStyle
+	}
+	m.publishToBus(attach.EventConfigChanged, attach.ConfigChangedPayload{
+		SessionID:      m.sessionID(),
+		Model:          m.model,
+		PermissionMode: permMode,
+		OutputStyle:    outputStyle,
+	})
 }
 
 func (m *Model) closePanel() {
