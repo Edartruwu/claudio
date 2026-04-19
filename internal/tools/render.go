@@ -52,6 +52,7 @@ func (t *RenderMockupTool) WithPusher(pusher ScreenshotPusher, sessionID string)
 type RenderMockupInput struct {
 	HTMLPath       string `json:"html_path"`
 	SessionDir     string `json:"session_dir"`     // optional: reuse existing session dir instead of creating new timestamp
+	ForceNew       bool   `json:"force_new"`       // if true, always create a new timestamped session dir even if one exists
 	ViewportWidth  int    `json:"viewport_width"`  // default: 1440
 	ViewportHeight int    `json:"viewport_height"` // default: 900
 	DeviceScale    int    `json:"device_scale"`    // default: 3
@@ -118,7 +119,11 @@ func (t *RenderMockupTool) InputSchema() json.RawMessage {
 			},
 			"session_dir": {
 				"type": "string",
-				"description": "Session directory to write screenshots into ({session_dir}/screenshots/). Pass the same session_dir used for BundleMockup to keep all outputs together. Defaults to a new {designsDir}/{timestamp} dir."
+				"description": "Session directory to write screenshots into ({session_dir}/screenshots/). Pass the same session_dir used for BundleMockup to keep all outputs together. If omitted, the tool reuses the most recent existing session for this project, or creates a new one if none exists."
+			},
+			"force_new": {
+				"type": "boolean",
+				"description": "If true, always create a new timestamped session directory even if one already exists. Use this only when the user explicitly wants to start a brand new design from scratch. Default: false."
 			},
 			"viewport_width": {
 				"type": "integer",
@@ -180,6 +185,36 @@ func (t *RenderMockupTool) checkPrerequisites() error {
 // Returns a path to a temp file containing the inlined HTML; the caller is
 // responsible for removing it.
 var scriptSrcRe = regexp.MustCompile(`(?i)<script([^>]*?)\ssrc="([^"]+)"([^>]*)>\s*</script>`)
+
+// latestSessionDir returns the most recently modified session directory under
+// designsDir that contains an index.html file (i.e. a real design session).
+// Returns "" if no qualifying session is found.
+func latestSessionDir(designsDir string) string {
+	entries, err := os.ReadDir(designsDir)
+	if err != nil {
+		return ""
+	}
+	var best string
+	var bestTime time.Time
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(designsDir, e.Name())
+		if _, err := os.Stat(filepath.Join(candidate, "index.html")); err != nil {
+			continue // not a design session
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(bestTime) {
+			bestTime = info.ModTime()
+			best = candidate
+		}
+	}
+	return best
+}
 
 func inlineLocalScripts(htmlPath string) (string, error) {
 	htmlBytes, err := os.ReadFile(htmlPath)
@@ -260,10 +295,16 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		captureScreens = *in.CaptureScreens
 	}
 
-	// 3. Create output dir: {sessionDir}/screenshots/ or {designsDir}/{timestamp}/screenshots/
+	// 3. Resolve session directory.
+	// Priority: explicit session_dir > auto-detect existing > create new timestamped.
 	sessionDir := in.SessionDir
 	if sessionDir == "" {
-		sessionDir = filepath.Join(t.designsDir, time.Now().Format("20060102-150405"))
+		if !in.ForceNew {
+			sessionDir = latestSessionDir(t.designsDir)
+		}
+		if sessionDir == "" {
+			sessionDir = filepath.Join(t.designsDir, time.Now().Format("20060102-150405"))
+		}
 	}
 	outDir := filepath.Join(sessionDir, "screenshots")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
