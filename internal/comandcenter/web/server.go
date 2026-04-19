@@ -132,6 +132,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /", ws.uiAuth(http.HandlerFunc(ws.handleChatList)))
 	mux.Handle("GET /chat/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handleChatView)))
 	mux.Handle("GET /chat/{session_id}/info", ws.uiAuth(http.HandlerFunc(ws.handleSessionInfo)))
+	mux.Handle("GET /chat/{session_id}/tasks", ws.uiAuth(http.HandlerFunc(ws.handleTaskList)))
 	mux.Handle("GET /chat/{session_id}/tasks/{task_id}", ws.uiAuth(http.HandlerFunc(ws.handleTaskDetail)))
 	mux.Handle("GET /partials/sessions", ws.uiAuth(http.HandlerFunc(ws.handlePartialSessions)))
 	mux.Handle("GET /partials/messages/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handlePartialMessages)))
@@ -537,6 +538,16 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	InfoPanel(data).Render(r.Context(), w)
+}
+
+func (ws *WebServer) handleTaskList(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	tasks, err := ws.storage.ListTasks(sessionID)
+	if err != nil {
+		tasks = nil
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	TaskRows(tasks, sessionID).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {

@@ -407,13 +407,14 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			return
 		}
 		_ = h.storage.UpsertTask(Task{
-			ID:         p.ID,
-			SessionID:  sessionID,
-			Title:      p.Title,
-			Status:     p.Status,
-			AssignedTo: p.AssignedTo,
-			CreatedAt:  now,
-			UpdatedAt:  now,
+			ID:          p.ID,
+			SessionID:   sessionID,
+			Title:       p.Title,
+			Description: p.Description,
+			Status:      p.Status,
+			AssignedTo:  p.AssignedTo,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		})
 
 	case attach.EventTaskUpdated:
@@ -422,10 +423,13 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			return
 		}
 		_ = h.storage.UpsertTask(Task{
-			ID:        p.ID,
-			SessionID: sessionID,
-			Status:    p.Status,
-			UpdatedAt: now,
+			ID:          p.ID,
+			SessionID:   sessionID,
+			Title:       p.Title,
+			Description: p.Description,
+			AssignedTo:  p.AssignedTo,
+			Status:      p.Status,
+			UpdatedAt:   now,
 		})
 
 	case attach.EventAgentStatus:

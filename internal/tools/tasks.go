@@ -225,10 +225,11 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	// Publish event
 	if t.bus != nil {
 		payload, _ := json.Marshal(attach.TaskCreatedPayload{
-			ID:         id,
-			Title:      in.Subject,
-			AssignedTo: in.AssignedTo,
-			Status:     "pending",
+			ID:          id,
+			Title:       in.Subject,
+			Description: in.Description,
+			AssignedTo:  in.AssignedTo,
+			Status:      "pending",
 		})
 		t.bus.Publish(bus.Event{
 			Type:    attach.EventTaskCreated,
@@ -365,8 +366,11 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	// Publish event
 	if t.bus != nil {
 		payload, _ := json.Marshal(attach.TaskUpdatedPayload{
-			ID:     in.TaskID,
-			Status: task.Status,
+			ID:          in.TaskID,
+			Title:       task.Subject,
+			Description: task.Description,
+			AssignedTo:  task.AssignedTo,
+			Status:      task.Status,
 		})
 		t.bus.Publish(bus.Event{
 			Type:    attach.EventTaskUpdated,

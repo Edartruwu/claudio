@@ -28,7 +28,7 @@ import (
 func main() {
 	password   := flag.String("password", "", "shared secret for bearer auth (required)")
 	port       := flag.Int("port", 8080, "HTTP port to listen on")
-	dbPath     := flag.String("db", "", "path to SQLite database (default: ~/.claudio/comandcenter.db)")
+	dbPath     := flag.String("db", "", "path to SQLite database (default: ~/.claudio/claudio.db)")
 	dataDir    := flag.String("data-dir", "", "path to uploads directory (default: ~/.claudio/uploads/)")
 	configPath := flag.String("config", "", "path to cc-config.json (default: ~/.claudio/cc-config.json)")
 	publicURL  := flag.String("public-url", "", "public base URL for bundle links (e.g. https://macbook-pro.taila6d76.ts.net)")
@@ -47,7 +47,7 @@ func main() {
 	claudioDir := filepath.Join(home, ".claudio")
 
 	if *dbPath == "" {
-		*dbPath = filepath.Join(claudioDir, "comandcenter.db")
+		*dbPath = filepath.Join(claudioDir, "claudio.db")
 	}
 	if *dataDir == "" {
 		*dataDir = filepath.Join(claudioDir, "uploads")

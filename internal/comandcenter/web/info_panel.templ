@@ -187,56 +187,57 @@ templ infoTabIconConfig() {
 }
 
 templ TabTasks(data InfoPageData) {
-	<div
-		class="flex flex-col"
-		hx-get={ fmt.Sprintf("/chat/%s/info?tab=tasks", data.Session.ID) }
-		hx-trigger="every 3s, refresh from:body"
-		hx-swap="outerHTML"
-	>
-		for _, task := range data.Tasks {
-			<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;margin-bottom:4px;">
-				<div
-					class="flex items-start cursor-pointer select-none task-row"
-					style="gap:16px;"
-					hx-get={ fmt.Sprintf("/chat/%s/tasks/%s", data.Session.ID, task.ID) }
-					hx-trigger="click"
-					hx-swap="innerHTML"
-					hx-target="next .task-detail"
-					onclick="toggleTaskDetail(this)"
-				>
-					if task.Status == "done" {
-						<span style="color:var(--color-brand);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#10003;</span>
-						<div style="flex:1;min-width:0;">
-							<p style="color:var(--color-textMuted);font-size:15px;text-decoration:line-through;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p>
-						</div>
-					} else if task.Status == "in_progress" {
-						<span style="color:var(--color-ai);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#9679;</span>
-						<div style="flex:1;min-width:0;">
-							<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">{ task.Title }</p>
-							if task.AssignedTo != "" {
-								<p style="color:var(--color-textMuted);font-size:13px;margin-top:2px;">&rarr; { task.AssignedTo }</p>
-							}
-						</div>
-					} else if task.Status == "blocked" {
-						<span style="color:var(--color-error);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#10005;</span>
-						<div style="flex:1;min-width:0;">
-							<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p>
-						</div>
-					} else {
-						<span style="color:var(--color-textMuted);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#9675;</span>
-						<div style="flex:1;min-width:0;">
-							<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p>
-						</div>
-					}
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2" style="flex-shrink:0;" class="task-chevron"><path d="M9 5l7 7-7 7"></path></svg>
-				</div>
-				<div class="task-detail hidden"></div>
-			</div>
-		}
-		if len(data.Tasks) == 0 {
-			<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No tasks yet</div>
-		}
+	<div class="flex flex-col">
+		<div
+			id="tasks-list"
+			hx-get={ fmt.Sprintf("/chat/%s/tasks", data.Session.ID) }
+			hx-trigger="every 3s, refresh from:body"
+			hx-swap="innerHTML"
+		>
+		@TaskRows(data.Tasks, data.Session.ID)
+		</div>
 	</div>
+}
+
+// TaskRows renders just the task rows — used by polling endpoint so the detail panel isn't destroyed.
+templ TaskRows(tasks []cc.Task, sessionID string) {
+	for _, task := range tasks {
+		<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;margin-bottom:4px;" data-task-id={ task.ID }>
+			<div
+				class="flex items-start cursor-pointer select-none task-row"
+				style="gap:16px;"
+				hx-get={ fmt.Sprintf("/chat/%s/tasks/%s", sessionID, task.ID) }
+				hx-trigger="click"
+				hx-swap="innerHTML"
+				hx-target="next .task-detail"
+				onclick="toggleTaskDetail(this)"
+			>
+				if task.Status == "done" {
+					<span style="color:var(--color-brand);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#10003;</span>
+					<div style="flex:1;min-width:0;"><p style="color:var(--color-textMuted);font-size:15px;text-decoration:line-through;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
+				} else if task.Status == "in_progress" {
+					<span style="color:var(--color-ai);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#9679;</span>
+					<div style="flex:1;min-width:0;">
+						<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">{ task.Title }</p>
+						if task.AssignedTo != "" {
+							<p style="color:var(--color-textMuted);font-size:13px;margin-top:2px;">&rarr; { task.AssignedTo }</p>
+						}
+					</div>
+				} else if task.Status == "blocked" {
+					<span style="color:var(--color-error);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#10005;</span>
+					<div style="flex:1;min-width:0;"><p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
+				} else {
+					<span style="color:var(--color-textMuted);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#9675;</span>
+					<div style="flex:1;min-width:0;"><p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
+				}
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2" style="flex-shrink:0;" class="task-chevron"><path d="M9 5l7 7-7 7"></path></svg>
+			</div>
+			<div class="task-detail hidden"></div>
+		</div>
+	}
+	if len(tasks) == 0 {
+		<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No tasks yet</div>
+	}
 }
 
 templ TabTeam(data InfoPageData) {
