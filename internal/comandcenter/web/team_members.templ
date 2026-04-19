@@ -4,7 +4,7 @@ import cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 
 templ TeamMembers(agents []cc.Agent) {
 	for _, agent := range agents {
-		<div class="flex items-center gap-3" style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;">
+		<div class="flex items-center gap-3" style="background:var(--color-surface);border-radius:12px;padding:12px 14px;">
 			<div
 				class="flex items-center justify-center font-bold flex-shrink-0"
 				style={ "width:36px;height:36px;border-radius:9999px;color:#000;font-size:13px;background:" + AvatarColor(agent.Name) }

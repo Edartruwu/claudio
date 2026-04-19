@@ -32,7 +32,7 @@ func TeamMembers(agents []cc.Agent) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, agent := range agents {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex items-center gap-3\" style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;\"><div class=\"flex items-center justify-center font-bold flex-shrink-0\" style=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex items-center gap-3\" style=\"background:var(--color-surface);border-radius:12px;padding:12px 14px;\"><div class=\"flex items-center justify-center font-bold flex-shrink-0\" style=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
