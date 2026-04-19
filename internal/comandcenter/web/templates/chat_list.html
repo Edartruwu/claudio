@@ -22,7 +22,7 @@
           hx-swap="innerHTML"
           class="flex items-center justify-center rounded-full"
           style="width:40px;height:40px;background:var(--color-brand);border:none;cursor:pointer;">
-          <svg style="width:18px;height:18px;color:#fff;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <svg style="width:18px;height:18px;color:#000;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
           </svg>
         </button>
@@ -30,7 +30,7 @@
     </div>
     <!-- Search bar -->
     <div class="px-4 pb-2">
-      <div class="flex items-center rounded-lg px-3" style="background:var(--color-surfaceHigh);height:36px;border-radius:10px;">
+      <div class="flex items-center rounded-lg px-3" style="background:var(--color-surface);border:1px solid var(--color-border);height:36px;border-radius:10px;">
         <svg style="width:14px;height:14px;margin-right:8px;flex-shrink:0;color:var(--color-textMuted);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
         </svg>
@@ -52,13 +52,13 @@
     <div id="filter-chips" class="flex gap-2 px-4 pb-3 overflow-x-auto no-scrollbar">
       <button data-filter-chip=""
         onclick="ccSetFilter('');htmx.ajax('GET','/partials/sessions?filter=',{target:'#session-list',swap:'innerHTML'})"
-        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:var(--color-brand);color:#fff;border:none;cursor:pointer;">All</button>
+        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:var(--color-brand);color:#000;border:none;cursor:pointer;">All</button>
       <button data-filter-chip="active"
         onclick="ccSetFilter('active');htmx.ajax('GET','/partials/sessions?filter=active',{target:'#session-list',swap:'innerHTML'})"
-        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;">Active</button>
+        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:transparent;color:var(--color-textMuted);border:none;cursor:pointer;">Active</button>
       <button data-filter-chip="inactive"
         onclick="ccSetFilter('inactive');htmx.ajax('GET','/partials/sessions?filter=inactive',{target:'#session-list',swap:'innerHTML'})"
-        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;">Inactive</button>
+        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:transparent;color:var(--color-textMuted);border:none;cursor:pointer;">Inactive</button>
       <!-- Project chips injected by JS -->
     </div>
     <script>
@@ -74,7 +74,7 @@
             btn.dataset.filterChip = f;
             btn.dataset.projectChip = '1';
             btn.className = 'font-medium rounded-full whitespace-nowrap flex items-center gap-1';
-            btn.style.cssText = 'font-size:13px;padding:6px 16px;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;';
+            btn.style.cssText = 'font-size:13px;padding:6px 16px;background:transparent;color:var(--color-textMuted);border:none;cursor:pointer;';
             btn.innerHTML = '<svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>'
               + '<span>' + p.name + '</span>'
               + '<span style="font-size:11px;opacity:.6;margin-left:2px;">' + p.count + '</span>';

@@ -114,7 +114,14 @@ func funcMap() template.FuncMap {
 			return string(r[:n]) + "…"
 		},
 		"avatarColor": func(s string) string {
-			colors := []string{"#25D366", "#128C7E", "#075E54", "#34B7F1", "#8E44AD"}
+			// 0=brand, 1=ai, 2=tool, 3=cron, 4=error — matched by len(name)%5
+			colors := []string{
+				"var(--color-brand)",
+				"var(--color-ai)",
+				"var(--color-tool)",
+				"var(--color-cron)",
+				"var(--color-error)",
+			}
 			if len(s) == 0 {
 				return colors[0]
 			}

@@ -42,7 +42,7 @@
       <!-- Avatar -->
       <div style="position:relative;flex-shrink:0;margin-right:12px;">
         <div style="width:56px;height:56px;background:{{avatarColor .Session.Name}};border-radius:50%;display:flex;align-items:center;justify-content:center;">
-          <span style="color:#fff;font-size:1.25rem;font-weight:600;">{{firstChar .Session.Name}}</span>
+          <span style="color:#fff;font-size:1.25rem;font-weight:700;">{{firstChar .Session.Name}}</span>
         </div>
         <!-- Status dot: green=active, gray=inactive -->
         {{if eq .Session.Status "active"}}
@@ -63,7 +63,7 @@
         <div style="margin-top:3px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <span style="font-size:14px;color:var(--color-textSecondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{if .LastMessage}}{{.LastMessage}}{{else}}No messages{{end}}</span>
           {{if .UnreadCount}}
-          <span style="background:var(--color-brand);min-width:20px;height:20px;padding:0 6px;border-radius:9999px;color:#fff;font-size:0.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{.UnreadCount}}</span>
+          <span style="background:var(--color-brand);min-width:20px;height:20px;padding:0 6px;border-radius:9999px;color:#000;font-size:0.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{.UnreadCount}}</span>
           {{end}}
         </div>
       </div>
