@@ -9,13 +9,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 )
 
 // SubmitMsg is sent when the user presses Enter to submit their input.
 type SubmitMsg struct {
-	Text string
+	Text   string
+	Images []api.UserContentBlock
 }
 
 // VimEscapeMsg signals that Escape was consumed by vim (switch to Normal).

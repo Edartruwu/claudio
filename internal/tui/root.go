@@ -1264,7 +1264,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case prompt.SubmitMsg:
-		return m.handleSubmit(msg.Text)
+		return m.handleSubmit(msg.Text, msg.Images...)
 
 	case commandpalette.SelectMsg:
 		m.palette.Deactivate()
@@ -2134,7 +2134,7 @@ When all team work is complete, call PurgeTeammates to clean up agent worktrees 
 
 // ── Handlers ─────────────────────────────────────────────
 
-func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
+func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (tea.Model, tea.Cmd) {
 	m.palette.Deactivate()
 	m.filePicker.Deactivate()
 
@@ -2176,6 +2176,7 @@ func (m Model) handleSubmit(text string) (tea.Model, tea.Cmd) {
 
 	// Collect image attachments before clearing them
 	var imageBlocks []api.UserContentBlock
+	imageBlocks = append(imageBlocks, extraImages...)
 	for _, img := range m.prompt.Images() {
 		imageBlocks = append(imageBlocks, api.NewImageBlock(img.MediaType, img.Data))
 	}

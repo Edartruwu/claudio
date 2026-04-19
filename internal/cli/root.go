@@ -1147,7 +1147,15 @@ func runInteractive() error {
 	// message follows the exact same path as local keyboard input.
 	if attachClient != nil && p != nil {
 		attachClient.OnUserMessage(func(payload attach.UserMsgPayload) {
-			p.Send(prompt.SubmitMsg{Text: payload.Content})
+			var images []api.UserContentBlock
+			for _, att := range payload.Attachments {
+				data, err := os.ReadFile(att.FilePath)
+				if err != nil {
+					continue
+				}
+				images = append(images, api.NewImageBlock(att.MimeType, base64.StdEncoding.EncodeToString(data)))
+			}
+			p.Send(prompt.SubmitMsg{Text: payload.Content, Images: images})
 		})
 
 		// Wire agent/team changes from ComandCenter → TUI.
