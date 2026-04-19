@@ -14,3 +14,7 @@ deploy/*.crt
 deploy/*.key
 deploy/com.caddy.server.plist
 .claudio/
+
+# Playwright
+/test-results/
+/playwright-report/
