@@ -465,6 +465,17 @@ templ filterAndSwipeScript() {
 			}
 		});
 
+		document.addEventListener('click', function(e) {
+			var link = e.target.closest('.session-row-link');
+			if (!link) return;
+			var id = link.dataset.sessionId;
+			var main = document.getElementById('main');
+			if (main && window.innerWidth >= 768) {
+				e.preventDefault();
+				htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true});
+			}
+			// mobile: let href navigate naturally
+		});
 		window.ccToggleRowMenu = function (btn, e) {
 			if (e) e.stopPropagation();
 			var dd = btn.nextElementSibling;
