@@ -167,6 +167,11 @@ security, and hackability.`,
 						if err := json.Unmarshal(event.Payload, &p); err == nil {
 							_ = attachClient.SendEvent(attach.EventAgentStatus, p)
 						}
+					case attach.EventClearHistory:
+						var p attach.ClearHistoryPayload
+						if err := json.Unmarshal(event.Payload, &p); err == nil {
+							_ = attachClient.SendEvent(attach.EventClearHistory, p)
+						}
 					}
 				})
 			}

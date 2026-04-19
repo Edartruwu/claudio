@@ -76,6 +76,11 @@ type ToolResultPayload struct {
 	AgentName string `json:"agent_name,omitempty"`
 }
 
+// ClearHistoryPayload for EventClearHistory (Claudio → ComandCenter direction).
+type ClearHistoryPayload struct {
+	SessionID string `json:"session_id"`
+}
+
 // TaskCreatedPayload for EventTaskCreated.
 type TaskCreatedPayload struct {
 	ID          string `json:"id"`

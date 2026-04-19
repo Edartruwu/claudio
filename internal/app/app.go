@@ -656,6 +656,10 @@ func (a *App) ClearHistory(sessionID string) {
 		return
 	}
 	_ = a.DB.DeleteAllMessages(sessionID)
+	if a.Bus != nil {
+		payload, _ := json.Marshal(attach.ClearHistoryPayload{SessionID: sessionID})
+		a.Bus.Publish(bus.Event{Type: attach.EventClearHistory, Payload: payload})
+	}
 }
 
 // MemoryExtractor returns a callback for background memory extraction at end-of-turn.
