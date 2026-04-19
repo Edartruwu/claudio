@@ -547,6 +547,22 @@ func (s *Storage) DeleteMessages(sessionID string) error {
 	return nil
 }
 
+// DeleteNativeMessages deletes all messages for a session from the native claudio messages table.
+func (s *Storage) DeleteNativeMessages(sessionID string) error {
+	_, err := s.db.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID)
+	return err
+}
+
+// InsertNativeMessage inserts a text message into the native claudio messages table.
+func (s *Storage) InsertNativeMessage(sessionID, role, content string, ts time.Time) error {
+	id := fmt.Sprintf("%d", ts.UnixNano())
+	_, err := s.db.Exec(
+		`INSERT INTO messages (id, session_id, role, content, type, tool_use_id, tool_name, created_at) VALUES (?, ?, ?, ?, 'text', '', '', ?)`,
+		id, sessionID, role, content, ts,
+	)
+	return err
+}
+
 // GetTask returns a single task by ID from team_tasks (claudio's native table).
 func (s *Storage) GetTask(id string) (Task, error) {
 	var t Task

@@ -661,6 +661,7 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "storage error", http.StatusInternalServerError)
 			return
 		}
+		_ = ws.storage.DeleteNativeMessages(sessionID)
 		confirm := cc.Message{
 			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
 			SessionID: sessionID,
@@ -848,7 +849,7 @@ func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction
 		return
 	}
 
-	msgs, err := ws.storage.ListMessages(sessionID, 1000)
+	msgs, err := ws.storage.GetNativeMessages(sessionID, 1000)
 	if err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
 		return
@@ -910,6 +911,7 @@ func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction
 
 		// Replace DB messages with compacted set.
 		_ = ws.storage.DeleteMessages(sessionID)
+		_ = ws.storage.DeleteNativeMessages(sessionID)
 		now := time.Now()
 		for i, am := range compacted {
 			cm := cc.Message{
@@ -921,6 +923,7 @@ func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction
 				CreatedAt: now.Add(time.Duration(i) * time.Millisecond),
 			}
 			_ = ws.storage.InsertMessage(cm)
+			_ = ws.storage.InsertNativeMessage(sessionID, cm.Role, cm.Content, cm.CreatedAt)
 		}
 
 		confirmText := "Conversation compacted. ✓"
