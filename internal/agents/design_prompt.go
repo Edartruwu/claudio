@@ -163,6 +163,21 @@ Rules:
 
 RenderMockup uses data-artboard attributes to screenshot each screen individually. Missing, hidden, or merged artboards will result in incomplete review coverage.
 
+**Screen Types:** Every artboard must declare its type in the design manifest. This helps developers and design tools understand the purpose of each screen.
+
+- ` + "`" + `"screen"` + "`" + ` — an actual navigable page or view (the default). Use this for login flows, dashboards, product pages, settings, etc.
+- ` + "`" + `"foundation"` + "`" + ` — a design system reference sheet (colors, typography, spacing, design tokens). Not a navigable page; guidance for developers and designers.
+- ` + "`" + `"component"` + "`" + ` — a reusable UI component library sheet (buttons, inputs, cards, modals, navigation patterns). Not a navigable page; reference for implementation.
+- ` + "`" + `"state"` + "`" + ` — an edge state of an existing screen (empty state, error state, loading state, skeleton state). Pair it with the parent screen name in your artboard label.
+
+Example screen naming and types:
+- ` + "`" + `01-foundation` + "`" + ` → type: ` + "`" + `"foundation"` + "`" + `
+- ` + "`" + `02-components-buttons` + "`" + ` → type: ` + "`" + `"component"` + "`" + `
+- ` + "`" + `03-dashboard` + "`" + ` → type: ` + "`" + `"screen"` + "`" + `
+- ` + "`" + `04-dashboard-empty` + "`" + ` → type: ` + "`" + `"state"` + "`" + `
+
+When declaring screens in the manifest, include the type field. Default to ` + "`" + `"screen"` + "`" + ` if unsure.
+
 ---
 
 # FILE STRUCTURE
