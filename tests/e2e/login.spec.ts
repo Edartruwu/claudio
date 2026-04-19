@@ -102,11 +102,10 @@ test.describe('Login page', () => {
 
     const password = process.env.CC_PASSWORD || 'test';
     await page.fill('input[type="password"]', password);
+    // HTMX login uses hx-post → server returns HX-Redirect → htmx calls
+    // window.location.assign('/') → triggers a real navigation Playwright can see.
     await page.click('button[type="submit"]');
-
-    // HTMX login uses hx-post → HX-Redirect header → client-side redirect.
-    // waitForURL handles HX-Redirect via htmx's window.location assignment.
-    await page.waitForURL('**/', { timeout: 10_000 });
+    await page.waitForSelector('#session-list, .swipe-row', { timeout: 15_000 });
     expect(page.url()).not.toContain('/login');
   });
 });

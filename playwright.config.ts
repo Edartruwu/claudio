@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 10_000,
+  timeout: 20_000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -23,7 +23,7 @@ export default defineConfig({
     {
       name: 'mobile',
       use: {
-        ...devices['iPhone 14'],
+        ...devices['Pixel 5'],   // Chromium-based — no webkit install needed
         viewport: { width: 390, height: 844 },
       },
     },

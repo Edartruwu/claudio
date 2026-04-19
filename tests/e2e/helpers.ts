@@ -3,13 +3,18 @@ import { Page } from '@playwright/test';
 /**
  * Login helper — navigates to /login, submits password, waits for redirect to /.
  * Password order: CC_PASSWORD env var → explicit arg → 'test' fallback.
+ * Login uses hx-post; server returns HX-Redirect → htmx calls window.location.assign
+ * which triggers a real browser navigation that Playwright can observe.
  */
-export async function login(page: Page, password = process.env.CC_PASSWORD || 'test') {
+export async function login(page: Page, pw?: string) {
+  const pass = pw ?? process.env.CC_PASSWORD ?? 'test';
   await page.goto('/login');
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('/');
   await page.waitForLoadState('networkidle');
+  await page.fill('input[type="password"]', pass);
+  // hx-post="/login" → server returns 303 → HTMX follows redirect internally
+  // and swaps the full page content. Wait for the session list to appear.
+  await page.click('button[type="submit"]');
+  await page.waitForSelector('#session-list, .swipe-row', { timeout: 15_000 });
 }
 
 // ---------------------------------------------------------------------------

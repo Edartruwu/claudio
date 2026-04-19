@@ -1,6 +1,7 @@
 # CLAUDIO.md
 
 This file provides guidance to Claudio (github.com/Abraxas-365/claudio) when working with code in this repository.
+Env(db credentials, server port, etc) variables in Makefile.
 
 ## Build & Test
 
