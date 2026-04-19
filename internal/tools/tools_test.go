@@ -29,7 +29,7 @@ func TestRegistry(t *testing.T) {
 		"SendToSession", "SpawnSession",
 		"Memory", "Recall",
 		"CronCreate", "CronDelete", "CronList",
-		"AskUser",
+		"AskUser", "ListDesigns",
 	}
 
 	// Test full definitions (no deferral)

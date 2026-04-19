@@ -37,15 +37,16 @@ type ExportHandoffInput struct {
 
 // ExportHandoffOutput is the JSON result returned by this tool.
 type ExportHandoffOutput struct {
-	Success        bool     `json:"success"`
-	HandoffDir     string   `json:"handoff_dir"`      // path to handoff/ subdir
-	SpecPath       string   `json:"spec_path"`        // handoff/spec.md
-	TokensUsedPath string   `json:"tokens_used_path"` // handoff/tokens-used.json
-	TokensJsonPath string   `json:"tokens_json_path"` // handoff/tokens.json (copied from session dir)
-	TokensCSSPath  string   `json:"tokens_css_path"`  // handoff/tokens.css (generated CSS vars)
-	ComponentCount int      `json:"component_count"`
-	AssetCount     int      `json:"asset_count"`
-	Warnings       []string `json:"warnings"`
+	Success           bool     `json:"success"`
+	HandoffDir        string   `json:"handoff_dir"`        // path to handoff/ subdir
+	SpecPath          string   `json:"spec_path"`          // handoff/spec.md
+	TokensUsedPath    string   `json:"tokens_used_path"`   // handoff/tokens-used.json
+	TokensJsonPath    string   `json:"tokens_json_path"`   // handoff/tokens.json (copied from session dir)
+	TokensCSSPath     string   `json:"tokens_css_path"`    // handoff/tokens.css (generated CSS vars)
+	TailwindConfigPath string  `json:"tailwind_config_path"` // handoff/tailwind.config.js (generated Tailwind config)
+	ComponentCount    int      `json:"component_count"`
+	AssetCount        int      `json:"asset_count"`
+	Warnings          []string `json:"warnings"`
 }
 
 func (t *ExportHandoffTool) Name() string { return "ExportHandoff" }
@@ -307,6 +308,17 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 		tokensCSSPath = ""
 	}
 
+	// 11c. Generate tailwind.config.js from tokensJsonData
+	tailwindConfigPath := ""
+	if tokensJsonData != nil {
+		configPath, err := generateTailwindConfig(tokensJsonData, handoffDir)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("tailwind.config.js write failed: %v", err))
+		} else {
+			tailwindConfigPath = configPath
+		}
+	}
+
 	// 12. Write spec.md
 	sessionDirForSpec := in.SessionDir
 	specPath := filepath.Join(handoffDir, "spec.md")
@@ -338,15 +350,16 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 
 	// 14. Build and return output
 	out := ExportHandoffOutput{
-		Success:        true,
-		HandoffDir:     handoffDir,
-		SpecPath:       specPath,
-		TokensUsedPath: tokensPath,
-		TokensJsonPath: tokensJsonDest,
-		TokensCSSPath:  tokensCSSPath,
-		ComponentCount: len(components),
-		AssetCount:     len(assets),
-		Warnings:       warnings,
+		Success:            true,
+		HandoffDir:         handoffDir,
+		SpecPath:           specPath,
+		TokensUsedPath:     tokensPath,
+		TokensJsonPath:     tokensJsonDest,
+		TokensCSSPath:      tokensCSSPath,
+		TailwindConfigPath: tailwindConfigPath,
+		ComponentCount:     len(components),
+		AssetCount:         len(assets),
+		Warnings:           warnings,
 	}
 	if out.Warnings == nil {
 		out.Warnings = []string{}
@@ -480,6 +493,91 @@ func generateTokensCSS(tokens map[string]interface{}) string {
 
 	sb.WriteString("}\n")
 	return sb.String()
+}
+
+// generateTailwindConfig emits a tailwind.config.js file from a parsed tokens.json map.
+func generateTailwindConfig(tokens map[string]interface{}, handoffDir string) (string, error) {
+	var sb strings.Builder
+	sb.WriteString("/** @type {import('tailwindcss').Config} */\n")
+	sb.WriteString("module.exports = {\n")
+	sb.WriteString("  theme: {\n")
+	sb.WriteString("    extend: {\n")
+
+	// Colors
+	if v, ok := tokens["colors"]; ok {
+		if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+			sb.WriteString("      colors: {\n")
+			for _, k := range sortedKeys(m) {
+				kb := camelCaseToKebab(k)
+				sb.WriteString(fmt.Sprintf("        '%s': '%v',\n", kb, m[k]))
+			}
+			sb.WriteString("      },\n")
+		}
+	}
+
+	// Spacing
+	if v, ok := tokens["spacing"]; ok {
+		if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+			sb.WriteString("      spacing: {\n")
+			for _, k := range sortedKeys(m) {
+				kb := camelCaseToKebab(k)
+				sb.WriteString(fmt.Sprintf("        '%s': '%v',\n", kb, m[k]))
+			}
+			sb.WriteString("      },\n")
+		}
+	}
+
+	// Border Radius
+	if v, ok := tokens["radii"]; ok {
+		if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+			sb.WriteString("      borderRadius: {\n")
+			for _, k := range sortedKeys(m) {
+				kb := camelCaseToKebab(k)
+				sb.WriteString(fmt.Sprintf("        '%s': '%v',\n", kb, m[k]))
+			}
+			sb.WriteString("      },\n")
+		}
+	}
+
+	// Box Shadow
+	if v, ok := tokens["shadows"]; ok {
+		if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+			sb.WriteString("      boxShadow: {\n")
+			for _, k := range sortedKeys(m) {
+				kb := camelCaseToKebab(k)
+				sb.WriteString(fmt.Sprintf("        '%s': '%v',\n", kb, m[k]))
+			}
+			sb.WriteString("      },\n")
+		}
+	}
+
+	// Font Size
+	if v, ok := tokens["typography"]; ok {
+		if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+			sb.WriteString("      fontSize: {\n")
+			for _, k := range sortedKeys(m) {
+				kb := camelCaseToKebab(k)
+				if styleMap, ok := m[k].(map[string]interface{}); ok {
+					size, _ := styleMap["fontSize"]
+					lineHeight, _ := styleMap["lineHeight"]
+					fontWeight, _ := styleMap["fontWeight"]
+					sb.WriteString(fmt.Sprintf("        '%s': ['%v', { lineHeight: '%v', fontWeight: '%v' }],\n", kb, size, lineHeight, fontWeight))
+				}
+			}
+			sb.WriteString("      },\n")
+		}
+	}
+
+	sb.WriteString("    }\n")
+	sb.WriteString("  }\n")
+	sb.WriteString("}\n")
+
+	configPath := filepath.Join(handoffDir, "tailwind.config.js")
+	if err := os.WriteFile(configPath, []byte(sb.String()), 0644); err != nil {
+		return "", err
+	}
+
+	return configPath, nil
 }
 
 // copyRenderedDir copies all files (non-recursive) from srcDir to dstDir.
@@ -753,6 +851,7 @@ func buildSpecMarkdown(
 	sb.WriteString("- Screenshots: screenshots/\n")
 	sb.WriteString("- Tokens JSON: handoff/tokens.json\n")
 	sb.WriteString("- Tokens CSS: handoff/tokens.css\n")
+	sb.WriteString("- Tailwind Config: handoff/tailwind.config.js\n")
 	sb.WriteString("- Rendered screens: handoff/rendered/\n")
 	sb.WriteString("\n")
 
