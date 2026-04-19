@@ -371,6 +371,16 @@ func runHeadlessAttach(args []string) error {
 		}
 	}
 
+	// Fall back to stored agent/team config when CLI flags are absent.
+	if cur := sess.Current(); cur != nil {
+		if flagAgent == "" {
+			flagAgent = cur.AgentType
+		}
+		if flagTeam == "" {
+			flagTeam = cur.TeamTemplate
+		}
+	}
+
 	// --- Gap 2: Auto-instantiate team from --team flag in headless mode ---
 	if flagTeam != "" {
 		templatesDir := config.GetPaths().TeamTemplates
