@@ -191,12 +191,18 @@ func itoa(n int) string {
 // renderMarkdown converts markdown to sanitized HTML safe for template.HTML use.
 var mdParser = goldmark.New(goldmark.WithExtensions(extension.Table, extension.Strikethrough, extension.TaskList))
 
+var mdPolicy = func() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	p.AllowAttrs("target").Matching(regexp.MustCompile(`^_blank$`)).OnElements("a")
+	return p
+}()
+
 func renderMarkdown(s string) template.HTML {
 	var buf bytes.Buffer
 	if err := mdParser.Convert([]byte(s), &buf); err != nil {
 		return template.HTML(template.HTMLEscapeString(s))
 	}
-	safe := bluemonday.UGCPolicy().SanitizeBytes(buf.Bytes())
+	safe := mdPolicy.SanitizeBytes(buf.Bytes())
 	return template.HTML(safe)
 }
 
@@ -1288,7 +1294,7 @@ func (ws *WebServer) handleScreenshotPush(sessionID string, p attach.DesignScree
 func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundlePayload) {
 	now := time.Now()
 	// Content is markdown — renderMD in the bubble template will turn the link into an <a>.
-	content := fmt.Sprintf("🎨 **Bundle ready** — [View mockup →](%s)", p.BundleURL)
+	content := fmt.Sprintf("🎨 **Bundle ready** — <a href=\"%s\" target=\"_blank\">View mockup →</a>", p.BundleURL)
 	if p.SessionName != "" {
 		content = fmt.Sprintf("🎨 **Bundle ready** (`%s`) — [View mockup →](%s)", p.SessionName, p.BundleURL)
 	}
