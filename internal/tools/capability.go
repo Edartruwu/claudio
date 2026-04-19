@@ -32,4 +32,10 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 			return
 		}
 	}
+
+	// ReviewDesignFidelity: available to all agents regardless of capabilities.
+	{
+		wd, _ := os.Getwd()
+		registry.Register(NewReviewDesignFidelityTool(config.ProjectDesignsDir(wd), client, ""))
+	}
 }
