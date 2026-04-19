@@ -428,10 +428,18 @@ func runHeadlessAttach(args []string) error {
 		handler = attachclient.NewEventProxy(handler, attachClient)
 	}
 
+	// Capture session ID for bus filtering and runner stamping.
+	currentSessionID := ""
+	if cur := sess.Current(); cur != nil {
+		currentSessionID = cur.ID
+	}
+	appInstance.TeamRunner.SetSessionID(currentSessionID)
+
 	engineCfg := query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,
 		TaskRuntime:     appInstance.TaskRuntime,
+		SessionID:       currentSessionID,
 		Model:           appInstance.Config.Model,
 		PermissionMode:  appInstance.Config.PermissionMode,
 		PermissionRules: appInstance.Config.PermissionRules,
@@ -463,6 +471,26 @@ func runHeadlessAttach(args []string) error {
 	if len(args) > 0 {
 		appInstance.InjectPayload(attach.UserMsgPayload{Content: strings.Join(args, " ")})
 	}
+
+	// Subscribe to teammate completion events and inject them into the engine's message loop.
+	// This wakes the engine immediately when a teammate finishes — no human input needed.
+	unsubTeammate := appInstance.Bus.Subscribe(attach.EventAgentStatus, func(e bus.Event) {
+		if e.SessionID != currentSessionID {
+			return // ignore events from other sessions
+		}
+		var p attach.AgentStatusPayload
+		_ = json.Unmarshal(e.Payload, &p)
+		if p.Status != "done" && p.Status != "failed" {
+			return // only act on terminal states
+		}
+		msg := fmt.Sprintf("[System: teammate '%s' %s.\nResult: %s\nContinue work — check TaskList for next steps.]", p.Name, p.Status, p.Result)
+		select {
+		case appInstance.InjectCh <- attach.UserMsgPayload{Content: msg}:
+		default:
+			// engine busy; notification dropped — state visible via TaskList
+		}
+	})
+	defer unsubTeammate()
 
 	// --- Message loop: one persistent engine across all turns ---
 	for {

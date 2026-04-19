@@ -257,6 +257,9 @@ func (e *Engine) Messages() []api.Message {
 	return e.messages
 }
 
+// SessionID returns the session ID associated with this engine.
+func (e *Engine) SessionID() string { return e.sessionID }
+
 // SetMessages replaces the conversation messages (used after compaction).
 func (e *Engine) SetMessages(msgs []api.Message) {
 	e.messages = msgs

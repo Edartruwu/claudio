@@ -86,6 +86,7 @@ type AgentStatusPayload struct {
 	Name        string `json:"name"`
 	Status      string `json:"status"` // idle|working|done|waiting
 	CurrentTask string `json:"current_task,omitempty"`
+	Result      string `json:"result,omitempty"` // final output text when status is done/failed
 }
 
 // DesignBundlePayload for EventDesignBundleReady.
