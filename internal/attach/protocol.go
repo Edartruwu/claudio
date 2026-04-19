@@ -21,6 +21,7 @@ const (
 	EventConfigChanged      = "config.changed"
 	EventAgentChanged       = "agent.changed"
 	EventTeamChanged        = "team.changed"
+	EventTokenUsage         = "session.token_usage"
 )
 
 // Events: ComandCenter → Claudio
@@ -151,6 +152,11 @@ type ConfigChangedPayload struct {
 type AgentChangedPayload struct {
 	SessionID string `json:"session_id"`
 	AgentType string `json:"agent_type"`
+}
+
+// TokenUsagePayload for EventTokenUsage.
+type TokenUsagePayload struct {
+	ContextTokens int `json:"context_tokens"`
 }
 
 // TeamChangedPayload for EventTeamChanged.

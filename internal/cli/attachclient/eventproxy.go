@@ -100,6 +100,12 @@ func (e *EventProxy) OnTurnComplete(usage api.Usage) {
 	if e.inner != nil {
 		e.inner.OnTurnComplete(usage)
 	}
+
+	if e.client != nil {
+		_ = e.client.SendEvent(attach.EventTokenUsage, attach.TokenUsagePayload{
+			ContextTokens: usage.InputTokens,
+		})
+	}
 }
 
 // OnError flushes accumulated text, calls inner if not nil.

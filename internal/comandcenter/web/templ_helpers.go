@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
 	"strconv"
 	"strings"
@@ -107,6 +108,17 @@ func ToolInput(s string) string {
 		return strings.TrimSpace(s[i+2:])
 	}
 	return ""
+}
+
+// FormatTokens formats a token count for display: "—" if 0, raw number if <1000, "1.2K" if ≥1000.
+func FormatTokens(n int) string {
+	if n == 0 {
+		return "—"
+	}
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	return fmt.Sprintf("%.1fK", float64(n)/1000)
 }
 
 // sidebarHiddenClass returns CSS classes to hide sidebar on mobile when a session is active.

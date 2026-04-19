@@ -163,6 +163,8 @@ func (s *Storage) migrate() error {
 		`ALTER TABLE cc_messages ADD COLUMN tool_use_id TEXT`,
 		// 17 — output stores tool result content.
 		`ALTER TABLE cc_messages ADD COLUMN output TEXT`,
+		// 18 — context token count per session (latest input tokens sent to Claude).
+		`ALTER TABLE cc_sessions ADD COLUMN context_tokens INTEGER DEFAULT 0`,
 	}
 
 	for i, m := range migrations {
@@ -265,6 +267,18 @@ func (s *Storage) UpdateSessionConfig(id, agentType, teamTemplate string) error 
 	return nil
 }
 
+// UpdateContextTokens stores the latest context window token count for a session.
+func (s *Storage) UpdateContextTokens(sessionID string, tokens int) error {
+	_, err := s.db.Exec(
+		`UPDATE cc_sessions SET context_tokens=?, last_active_at=? WHERE id=?`,
+		tokens, time.Now(), sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("update context tokens: %w", err)
+	}
+	return nil
+}
+
 // ArchiveSession sets a session's status to 'archived'.
 // Archived sessions are excluded from ListSessions.
 func (s *Storage) ArchiveSession(id string) error {
@@ -338,7 +352,7 @@ func (s *Storage) ListProjects() ([]Project, error) {
 // filter: "" = all, "active" = status='active', "inactive" = status not 'active' and not 'archived',
 // "project:<path>" = sessions where path = <path>.
 func (s *Storage) ListSessions(filter string) ([]Session, error) {
-	const sel = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')`
+	const sel = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)`
 	var (
 		query string
 		args  []any
@@ -367,7 +381,7 @@ func (s *Storage) ListSessions(filter string) ([]Session, error) {
 		var master int
 		if err := rows.Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
 			&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
-			&sess.AgentType, &sess.TeamTemplate); err != nil {
+			&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		sess.Master = master == 1
@@ -381,11 +395,11 @@ func (s *Storage) GetSession(id string) (Session, error) {
 	var sess Session
 	var master int
 	err := s.db.QueryRow(`
-		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
+		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)
 		FROM cc_sessions WHERE id=?
 	`, id).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
 		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
-		&sess.AgentType, &sess.TeamTemplate)
+		&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens)
 	if err == sql.ErrNoRows {
 		return Session{}, fmt.Errorf("session %s not found", id)
 	}
@@ -401,11 +415,11 @@ func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 	var sess Session
 	var master int
 	err := s.db.QueryRow(`
-		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,'')
+		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)
 		FROM cc_sessions WHERE name=? ORDER BY created_at DESC LIMIT 1
 	`, name).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
 		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
-		&sess.AgentType, &sess.TeamTemplate)
+		&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens)
 	if err == sql.ErrNoRows {
 		return Session{}, false, nil
 	}

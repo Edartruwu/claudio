@@ -425,6 +425,13 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 	case attach.EventDesignBundleReady:
 		// handled by web server fanout; no DB storage needed here
 
+	case attach.EventTokenUsage:
+		var p attach.TokenUsagePayload
+		if err := env.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		_ = h.storage.UpdateContextTokens(sessionID, p.ContextTokens)
+
 	case attach.EventMsgStreamDelta:
 		// transient streaming delta — never persisted
 
