@@ -18,13 +18,12 @@
     {{if .Content}}<p class="text-sm leading-relaxed whitespace-pre-wrap text-white">{{.Content}}</p>{{end}}
     {{range .Attachments}}
       {{if isImage .MimeType}}
-        <a href="/uploads/{{.SessionID}}/{{.Filename}}" target="_blank">
-          <img src="/uploads/{{.SessionID}}/{{.Filename}}"
-               alt="{{.OriginalName}}"
-               class="mt-2 rounded-lg object-cover cursor-pointer"
-               style="max-width:240px;max-height:240px;"
-               loading="lazy">
-        </a>
+        <img src="/uploads/{{.SessionID}}/{{.Filename}}"
+             alt="{{.OriginalName}}"
+             class="mt-2 rounded-lg object-cover cursor-pointer"
+             style="max-width:240px;max-height:240px;"
+             loading="lazy"
+             onclick="openAnnotator(this)">
       {{else}}
         <a href="/uploads/{{.SessionID}}/{{.Filename}}"
            download="{{.OriginalName}}"
@@ -48,13 +47,12 @@
     <div class="text-sm leading-relaxed text-white md-content">{{renderMD .Content}}</div>
     {{range .Attachments}}
       {{if isImage .MimeType}}
-        <a href="/uploads/{{.SessionID}}/{{.Filename}}" target="_blank">
-          <img src="/uploads/{{.SessionID}}/{{.Filename}}"
-               alt="{{.OriginalName}}"
-               class="mt-2 rounded-lg object-cover cursor-pointer"
-               style="max-width:240px;max-height:240px;"
-               loading="lazy">
-        </a>
+        <img src="/uploads/{{.SessionID}}/{{.Filename}}"
+             alt="{{.OriginalName}}"
+             class="mt-2 rounded-lg object-cover cursor-pointer"
+             style="max-width:240px;max-height:240px;"
+             loading="lazy"
+             onclick="openAnnotator(this)">
       {{else}}
         <a href="/uploads/{{.SessionID}}/{{.Filename}}"
            download="{{.OriginalName}}"
