@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -1491,6 +1492,82 @@ func (r *TeammateRunner) FormatStatus() string {
 	}
 
 	return sb.String()
+}
+
+// PurgeDone removes all completed and failed agents and cleans up their git
+// worktrees. Children are removed before their parents. Returns the number of
+// agents removed.
+func (r *TeammateRunner) PurgeDone() int {
+	// Snapshot done agents under read lock.
+	r.mu.RLock()
+	doneStates := make(map[string]*TeammateState)
+	for id, s := range r.teammates {
+		if s.Status == StatusComplete || s.Status == StatusFailed {
+			doneStates[id] = s
+		}
+	}
+	r.mu.RUnlock()
+
+	if len(doneStates) == 0 {
+		return 0
+	}
+
+	// Topological sort: children before parents using post-order DFS.
+	// r.children maps parentAgentID → []childAgentID.
+	ordered := make([]string, 0, len(doneStates))
+	visited := make(map[string]bool, len(doneStates))
+
+	r.childrenMu.Lock()
+	childrenSnapshot := make(map[string][]string, len(r.children))
+	for k, v := range r.children {
+		childrenSnapshot[k] = v
+	}
+	r.childrenMu.Unlock()
+
+	var visit func(id string)
+	visit = func(id string) {
+		if visited[id] {
+			return
+		}
+		visited[id] = true
+		for _, childID := range childrenSnapshot[id] {
+			if _, isDone := doneStates[childID]; isDone {
+				visit(childID)
+			}
+		}
+		ordered = append(ordered, id)
+	}
+
+	for id := range doneStates {
+		visit(id)
+	}
+
+	count := 0
+	for _, id := range ordered {
+		state := doneStates[id]
+
+		// Remove git worktree from disk.
+		if state.WorktreePath != "" {
+			root := state.WorktreeMainRoot
+			if root == "" {
+				root, _ = os.Getwd()
+			}
+			cmd := exec.Command("git", "worktree", "remove", "--force", state.WorktreePath)
+			cmd.Dir = root
+			_ = cmd.Run() // ignore error — worktree may already be gone
+
+			// Delete the branch.
+			if state.WorktreeBranch != "" {
+				bcmd := exec.Command("git", "branch", "-D", state.WorktreeBranch)
+				bcmd.Dir = root
+				_ = bcmd.Run() // ignore error — branch may already be gone
+			}
+		}
+
+		_ = r.RemoveAgent(id)
+		count++
+	}
+	return count
 }
 
 // containsQuestion returns true when the agent result contains a QUESTION: marker,

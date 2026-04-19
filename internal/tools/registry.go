@@ -327,6 +327,7 @@ var TeamToolNames = []string{
 	"SpawnTeammate",
 	"SaveTeamTemplate",
 	"InstantiateTeam",
+	"PurgeTeammates",
 }
 
 // DefaultRegistry creates a registry with all core tools.
@@ -393,6 +394,7 @@ func DefaultRegistry() *Registry {
 	r.Register(&SpawnTeammateTool{deferrable: newDeferrable("spawn teammate agent background parallel named")})
 	r.Register(&SaveTeamTemplateTool{deferrable: newDeferrable("save team template reuse composition")})
 	r.Register(&InstantiateTeamTool{deferrable: newDeferrable("instantiate team template load roster")})
+	r.Register(&PurgeTeammatesTool{deferrable: newDeferrable("purge remove completed failed agents worktrees")})
 
 	// Master session coordination (AttachClient/AttachURL injected later)
 	r.Register(&SendToSessionTool{deferrable: newDeferrable("send message to master session ComandCenter")})
