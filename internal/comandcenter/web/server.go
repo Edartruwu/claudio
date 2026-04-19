@@ -430,7 +430,10 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 	}
 	// Mark as read when chat view opens.
 	_ = ws.storage.MarkRead(id)
-	msgs, err := ws.storage.GetNativeMessages(id, 100)
+	// cc_messages is the authoritative store for ComandCenter sessions.
+	// Hub writes all incoming events to cc_messages; the native messages table
+	// is only populated by headless TUI sessions and is empty for CC sessions.
+	msgs, err := ws.storage.ListMessages(id, 100)
 	if err != nil {
 		msgs = nil
 	}
