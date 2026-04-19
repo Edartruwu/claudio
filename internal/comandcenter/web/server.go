@@ -229,6 +229,7 @@ func init() {
 		"templates/layout.html",
 		"templates/chat_view.html",
 		"templates/components/message_bubble.html",
+		"templates/partials/messages.html",
 	)
 	sessionsTmpl = mustParseFS(
 		"templates/partials/sessions.html",
@@ -625,7 +626,11 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
 
-	chatViewTmpl.execute(w, "chat_view.html", map[string]any{
+	tmplName := "chat_view.html"
+	if r.Header.Get("HX-Request") == "true" {
+		tmplName = "main"
+	}
+	chatViewTmpl.execute(w, tmplName, map[string]any{
 		"Session":   sess,
 		"Messages":  views,
 		"SessionID": id,

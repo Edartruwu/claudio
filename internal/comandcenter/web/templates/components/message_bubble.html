@@ -91,7 +91,7 @@
 <div class="flex justify-start mb-2">
   <div class="rounded-2xl rounded-tl-sm p-3 {{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}}" style="max-width:80%;background:var(--color-surface);border-left:4px solid {{if and .AgentName (hasPrefix .AgentName "⏰")}}var(--color-cron){{else}}var(--color-ai){{end}};">
     {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:{{if hasPrefix .AgentName "⏰"}}var(--color-cron){{else}}var(--color-ai){{end}};">{{.AgentName}}</p>{{end}}
-    <div class="text-sm leading-relaxed md-content" style="color:var(--color-textPrimary);">{{renderMD .Content}}<span class="streaming-cursor"></span></div>
+    <div class="text-sm leading-relaxed md-content" style="color:var(--color-textPrimary);">{{renderMD .Content}}</div>
     {{range .Attachments}}
       {{if isImage .MimeType}}
         <img src="/uploads/{{.SessionID}}/{{.Filename}}"

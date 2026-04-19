@@ -104,7 +104,9 @@ test.describe('Login page', () => {
     await page.fill('input[type="password"]', password);
     await page.click('button[type="submit"]');
 
-    await page.waitForURL('/', { timeout: 5000 });
-    expect(page.url()).toMatch(/\/$/);
+    // HTMX login uses hx-post → HX-Redirect header → client-side redirect.
+    // waitForURL handles HX-Redirect via htmx's window.location assignment.
+    await page.waitForURL('**/', { timeout: 10_000 });
+    expect(page.url()).not.toContain('/login');
   });
 });
