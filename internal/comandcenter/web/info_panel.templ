@@ -9,47 +9,46 @@ import (
 templ InfoPanel(data InfoPageData) {
 	<div class="flex flex-col h-full" style="background:var(--color-bg);">
 		<!-- Header -->
-		<header class="flex items-center gap-2 px-2 flex-shrink-0" style="background:var(--color-surface);padding:48px 8px 12px;">
-			<button onclick="history.back()" class="flex items-center justify-center flex-shrink-0" style="width:40px;height:40px;min-width:40px;border-radius:9999px;background:transparent;border:none;cursor:pointer;color:var(--color-textPrimary);">
-				<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"></path></svg>
-			</button>
+		<header class="info-panel-header flex-shrink-0" style="background:var(--color-surface);padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;border-bottom:1px solid var(--color-border);">
 			<div style="position:relative;flex-shrink:0;">
-				<div class="flex items-center justify-center font-bold flex-shrink-0" style={ "width:40px;height:40px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:15.2px;" }>
+				<div class="flex items-center justify-center font-bold flex-shrink-0" style="width:64px;height:64px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:24px;">
 					{ FirstChar(data.Session.Name) }
 				</div>
-				<span style="position:absolute;bottom:1px;right:1px;width:10.4px;height:10.4px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;"></span>
+				if data.Session.Status == "active" {
+					<span style="position:absolute;bottom:1px;right:1px;width:16.64px;height:16.64px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;"></span>
+				}
 			</div>
-			<div style="flex:1;min-width:0;">
+			<div style="text-align:center;">
 				<p style="color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;">
 					if data.Session.Master {
 						<span style="color:#F0A500;">&#9733; </span>
 					}
 					{ data.Session.Name }
 				</p>
-				<p style="color:var(--color-textMuted);font-size:13px;margin:0;">{ data.Session.Path }</p>
+				if data.Session.Status == "active" {
+					<p style="color:var(--color-brand);font-size:13px;margin:0;"><span style="display:inline-block;width:6px;height:6px;border-radius:9999px;background:var(--color-brand);margin-right:4px;vertical-align:middle;"></span>online</p>
+				} else {
+					<p style="color:var(--color-textMuted);font-size:13px;margin:0;">offline</p>
+				}
+			</div>
+			<!-- Info card -->
+			<div style="background:var(--color-surface);border-radius:12px;padding:10px 14px;width:100%;border:1px solid var(--color-border);">
+				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Path</span>
+					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Path }</span>
+				</div>
+				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Model</span>
+					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Model }</span>
+				</div>
+				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Connected</span>
+					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ RelTime(data.Session.CreatedAt) }</span>
+				</div>
 			</div>
 		</header>
-		<!-- Info strip -->
-		<div style="margin:12px 16px;background:var(--color-surfaceHigh);border-radius:16px;padding:12px 16px;border:1px solid var(--color-border);">
-			<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-				<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Path</span>
-				<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Path }</span>
-			</div>
-			<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-				<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Status</span>
-				<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">&#9679; { data.Session.Status }</span>
-			</div>
-			<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-				<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Connected</span>
-				<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ RelTime(data.Session.CreatedAt) }</span>
-			</div>
-			<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-				<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Model</span>
-				<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Model }</span>
-			</div>
-		</div>
 		<!-- Tab bar -->
-		<div id="info-tab-bar" style="display:flex;background:var(--color-surfaceHigh);margin:0 16px;border-radius:12px;overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;">
+		<div id="info-tab-bar" style="display:flex;background:var(--color-surfaceHigh);border-bottom:1px solid var(--color-border);flex-shrink:0;">
 			@infoTab(data.Session.ID, "tasks", "Tasks", data.ActiveTab, infoTabIconTasks())
 			@infoTab(data.Session.ID, "team", "Team", data.ActiveTab, infoTabIconTeam())
 			@infoTab(data.Session.ID, "media", "Media", data.ActiveTab, infoTabIconMedia())
