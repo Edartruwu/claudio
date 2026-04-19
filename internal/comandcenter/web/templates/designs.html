@@ -42,7 +42,8 @@
             src="/designs/static/{{.ID}}/screenshots/{{index .Screenshots 0}}"
             alt="Screenshot preview"
             loading="lazy"
-            class="w-full h-full object-cover"
+            class="w-full h-full object-cover screenshot-thumb"
+            style="cursor:zoom-in;"
             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"
           >
           <div class="hidden absolute inset-0 items-center justify-center" style="color:#3A3A3C;">
@@ -130,5 +131,25 @@
 
     {{end}}
   </main>
+
+  <!-- Lightbox for full-screen image viewing -->
+  <div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999;cursor:zoom-out;align-items:center;justify-content:center;" onclick="if(event.target===this)this.style.display='none';">
+    <img id="lightbox-img" style="max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain;">
+  </div>
+
+  <script>
+    document.querySelectorAll('.screenshot-thumb').forEach(img => {
+      img.addEventListener('click', e => {
+        e.stopPropagation();
+        document.getElementById('lightbox-img').src = img.src;
+        document.getElementById('lightbox').style.display = 'flex';
+      });
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        document.getElementById('lightbox').style.display = 'none';
+      }
+    });
+  </script>
 </div>
 {{end}}
