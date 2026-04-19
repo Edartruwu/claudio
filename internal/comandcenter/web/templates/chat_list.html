@@ -1,49 +1,65 @@
 {{define "chat_list.html"}}{{template "layout" .}}{{end}}
 
 {{define "sidebar"}}
-<div class="flex flex-col h-full" style="background:#161717;">
+<div class="flex flex-col h-full" style="background:var(--color-bg);">
   <!-- Header -->
-  <div class="chat-header flex-shrink-0" style="background:#1C1C1E;">
+  <div class="chat-header flex-shrink-0" style="background:var(--color-surface);border-bottom:1px solid var(--color-border);">
     <div class="flex justify-between items-center px-4 pt-3 pb-2">
-      <h1 class="text-white font-bold" style="font-size:34px;line-height:1.1;">ComandCenter</h1>
+      <h1 style="font-size:28px;line-height:1.1;font-weight:700;color:var(--color-textPrimary);">ComandCenter</h1>
       <div class="flex items-center gap-2">
         <!-- Designs link -->
-        <a href="/designs" class="flex items-center justify-center rounded-full" style="width:44px;height:44px;background:#2C2C2E;" title="Designs">
-          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <a href="/designs" class="flex items-center justify-center rounded-full" style="width:40px;height:40px;background:var(--color-surfaceHigh);" title="Designs">
+          <svg style="width:18px;height:18px;color:var(--color-textSecondary);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <rect x="3" y="3" width="18" height="18" rx="2"/>
             <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none"/>
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 15l-5-5L5 21"/>
           </svg>
         </a>
-        <!-- New session button -->
-        <a href="/" class="flex items-center justify-center rounded-full" style="width:44px;height:44px;background:#25D366;">
-          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <!-- New session FAB -->
+        <button
+          hx-get="/sessions/new"
+          hx-target="#modal"
+          hx-swap="innerHTML"
+          class="flex items-center justify-center rounded-full"
+          style="width:40px;height:40px;background:var(--color-brand);border:none;cursor:pointer;">
+          <svg style="width:18px;height:18px;color:#fff;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
           </svg>
-        </a>
+        </button>
       </div>
     </div>
     <!-- Search bar -->
     <div class="px-4 pb-2">
-      <div class="flex items-center rounded-lg px-3" style="background:#2C2C2E;height:36px;border-radius:10px;">
-        <svg class="w-4 h-4 mr-2 flex-shrink-0" style="color:#8E8E93;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="flex items-center rounded-lg px-3" style="background:var(--color-surfaceHigh);height:36px;border-radius:10px;">
+        <svg style="width:14px;height:14px;margin-right:8px;flex-shrink:0;color:var(--color-textMuted);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
         </svg>
-        <input type="text" placeholder="Search" class="bg-transparent text-white text-base flex-1 outline-none" style="color:#FFFFFF;" />
+        <input
+          type="text"
+          name="q"
+          placeholder="Search"
+          autocomplete="off"
+          hx-get="/partials/sessions"
+          hx-trigger="keyup changed delay:300ms"
+          hx-target="#session-list"
+          hx-swap="innerHTML"
+          hx-include="this"
+          class="bg-transparent flex-1 outline-none text-base"
+          style="color:var(--color-textPrimary);font-family:inherit;" />
       </div>
     </div>
     <!-- Filter chips -->
     <div id="filter-chips" class="flex gap-2 px-4 pb-3 overflow-x-auto no-scrollbar">
       <button data-filter-chip=""
         onclick="ccSetFilter('');htmx.ajax('GET','/partials/sessions?filter=',{target:'#session-list',swap:'innerHTML'})"
-        class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#25D366;">All</button>
+        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:var(--color-brand);color:#fff;border:none;cursor:pointer;">All</button>
       <button data-filter-chip="active"
         onclick="ccSetFilter('active');htmx.ajax('GET','/partials/sessions?filter=active',{target:'#session-list',swap:'innerHTML'})"
-        class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Active</button>
+        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;">Active</button>
       <button data-filter-chip="inactive"
         onclick="ccSetFilter('inactive');htmx.ajax('GET','/partials/sessions?filter=inactive',{target:'#session-list',swap:'innerHTML'})"
-        class="text-white font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:#2C2C2E;">Inactive</button>
-      <!-- Project chips injected by JS below -->
+        class="font-medium rounded-full whitespace-nowrap" style="font-size:13px;padding:6px 16px;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;">Inactive</button>
+      <!-- Project chips injected by JS -->
     </div>
     <script>
     (function() {
@@ -51,15 +67,14 @@
         fetch('/api/projects').then(function(r){ return r.json(); }).then(function(projects) {
           var bar = document.getElementById('filter-chips');
           if (!bar) return;
-          // Remove old project chips.
           bar.querySelectorAll('[data-project-chip]').forEach(function(el){ el.remove(); });
           projects.forEach(function(p) {
             var f = 'project:' + p.path;
             var btn = document.createElement('button');
             btn.dataset.filterChip = f;
             btn.dataset.projectChip = '1';
-            btn.className = 'text-white font-medium rounded-full whitespace-nowrap flex items-center gap-1';
-            btn.style.cssText = 'font-size:13px;padding:6px 16px;background:#2C2C2E;';
+            btn.className = 'font-medium rounded-full whitespace-nowrap flex items-center gap-1';
+            btn.style.cssText = 'font-size:13px;padding:6px 16px;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;';
             btn.innerHTML = '<svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>'
               + '<span>' + p.name + '</span>'
               + '<span style="font-size:11px;opacity:.6;margin-left:2px;">' + p.count + '</span>';
@@ -72,7 +87,6 @@
         }).catch(function(){});
       }
       loadProjectChips();
-      // Refresh project chips every 10s in case new sessions appear.
       setInterval(loadProjectChips, 10000);
     })();
     </script>
@@ -82,55 +96,88 @@
   <main class="flex-1 overflow-y-auto">
     <div id="session-list"
          hx-get="/partials/sessions"
-         hx-trigger="every 3s"
+         hx-trigger="load, every 3s"
          hx-swap="innerHTML"
          hx-indicator=".htmx-indicator">
       {{range .Rows}}
         {{template "session-row" .}}
       {{else}}
-        <!-- Empty state -->
-        <div class="flex flex-col items-center justify-center py-20">
-          <svg class="mb-3" style="width:40px;height:40px;color:#8E8E93;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+        <div class="flex flex-col items-center justify-center py-20 px-6 text-center">
+          <svg style="width:48px;height:48px;color:var(--color-textMuted);margin-bottom:12px;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
           </svg>
-          <p style="color:#8E8E93;font-size:15px;">No sessions yet</p>
+          <p style="color:var(--color-textSecondary);font-size:14px;margin-bottom:4px;">No sessions yet.</p>
+          <p style="color:var(--color-textMuted);font-size:13px;line-height:1.5;">Start a Claudio session<br>from your terminal.</p>
+          <code style="background:var(--color-surface);color:var(--color-brand);padding:8px 14px;border-radius:8px;font-size:13px;margin-top:14px;display:inline-block;border:1px solid var(--color-border);">claudio --attach ...</code>
         </div>
       {{end}}
     </div>
-    <span class="htmx-indicator block text-center text-xs py-1" style="color:#8E8E93;">↻</span>
+    <span class="htmx-indicator block text-center text-xs py-1" style="color:var(--color-textMuted);">↻</span>
   </main>
 
   <!-- Bottom tab bar — mobile only -->
-  <nav class="md:hidden flex flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;padding-bottom:env(safe-area-inset-bottom);">
-    <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:#25D366;">
-      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
-        <path d="M7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/>
+  <nav class="md:hidden flex flex-shrink-0" style="background:var(--color-surface);border-top:1px solid var(--color-border);padding-bottom:env(safe-area-inset-bottom);">
+    <!-- Sessions (active) -->
+    <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:var(--color-brand);">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
       </svg>
       <span style="font-size:10px;" class="mt-1">Sessions</span>
     </a>
-    <a href="/designs" class="flex-1 flex flex-col items-center py-2" style="color:#8E8E93;">
-      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
-        <path d="M0 0h24v24H0z" fill="none"/>
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" fill="none"/>
-        <path d="M21 3H3v18h18V3zm-10 14H9V7h2v10zm4 0h-2V7h2v10z" fill="none"/>
-        <path d="M20.97 8.23l-7.02-5.27c-.57-.43-1.32-.43-1.89 0L4.97 8.23C4.37 8.67 4 9.38 4 10.14V20c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-9.86c0-.76-.37-1.47-.97-1.91zM12 13c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm0-4c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
+    <!-- Designs -->
+    <a href="/designs" class="flex-1 flex flex-col items-center py-2" style="color:var(--color-textMuted);">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 15l-5-5L5 21"/>
       </svg>
       <span style="font-size:10px;" class="mt-1">Designs</span>
     </a>
-    <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:#8E8E93;">
-      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-      </svg>
-      <span style="font-size:10px;" class="mt-1">Contacts</span>
-    </a>
-    <a href="/" class="flex-1 flex flex-col items-center py-2" style="color:#8E8E93;">
-      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/>
+    <!-- Settings -->
+    <a href="/settings" class="flex-1 flex flex-col items-center py-2" style="color:var(--color-textMuted);">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
       </svg>
       <span style="font-size:10px;" class="mt-1">Settings</span>
     </a>
   </nav>
+</div>
+
+<!-- Modal target (fixed overlay, populated by htmx) -->
+<div id="modal"></div>
+{{end}}
+
+{{define "main"}}
+<div class="flex flex-1 flex-col items-center justify-center px-6" style="background:var(--color-bg);">
+  <!-- Icon -->
+  <div style="width:96px;height:96px;background:var(--color-surfaceHigh);border-radius:24px;display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
+    <svg style="width:48px;height:48px;color:var(--color-brand);" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+    </svg>
+  </div>
+  <h2 style="font-size:26px;font-weight:700;color:var(--color-textPrimary);margin-bottom:10px;text-align:center;">Select a session</h2>
+  <p style="color:var(--color-textSecondary);font-size:14px;text-align:center;max-width:380px;line-height:1.6;margin-bottom:32px;">
+    Pick a session from the sidebar to start chatting.<br>
+    Or launch a new agent from your terminal.
+  </p>
+  <!-- Quick start -->
+  <div style="width:100%;max-width:460px;">
+    <p style="color:var(--color-textMuted);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">Quick Start</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <code style="color:var(--color-brand);font-size:13px;white-space:nowrap;">claudio</code>
+        <span style="color:var(--color-textSecondary);font-size:12px;text-align:right;">— Start default session</span>
+      </div>
+      <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <code style="color:var(--color-brand);font-size:13px;white-space:nowrap;">claudio --agent backend-sr</code>
+        <span style="color:var(--color-textSecondary);font-size:12px;text-align:right;">— Start with a specialist</span>
+      </div>
+      <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <code style="color:var(--color-brand);font-size:13px;white-space:nowrap;">claudio --team full-stack</code>
+        <span style="color:var(--color-textSecondary);font-size:12px;text-align:right;">— Spawn a team</span>
+      </div>
+    </div>
+  </div>
 </div>
 {{end}}
