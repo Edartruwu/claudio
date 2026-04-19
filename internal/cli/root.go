@@ -411,12 +411,15 @@ func runHeadlessAttach(args []string) error {
 
 	// Wire capability-gated tools (e.g. design tools) for headless+attach mode.
 	// In TUI mode this happens in applyAgentPersona; here we do it once at startup.
-	if flagAgent != "" {
-		agentDef := agents.GetAgent(flagAgent)
-		if len(agentDef.Capabilities) > 0 {
-			pusher := attachclient.NewAttachScreenshotPusher(attachClient)
-			tools.RegisterCapabilityTools(reg, agentDef.Capabilities, appInstance.API, pusher, sess.Current().ID)
+	// Always call RegisterCapabilityTools — ungated tools (e.g. ReviewDesignFidelity)
+	// must be available to all agents regardless of capabilities.
+	{
+		var caps []string
+		if flagAgent != "" {
+			caps = agents.GetAgent(flagAgent).Capabilities
 		}
+		pusher := attachclient.NewAttachScreenshotPusher(attachClient)
+		tools.RegisterCapabilityTools(reg, caps, appInstance.API, pusher, sess.Current().ID)
 	}
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
