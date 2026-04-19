@@ -691,7 +691,11 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	for _, t := range allTeamTpls {
 		teamNames = append(teamNames, t.Name)
 	}
-	infoTmpl.execute(w, "info_panel.html", InfoPageData{
+	infoTmplName := "info_panel.html"
+	if r.Header.Get("HX-Request") == "true" {
+		infoTmplName = "main"
+	}
+	infoTmpl.execute(w, infoTmplName, InfoPageData{
 		Session:         sess,
 		Tasks:           sessionTasks,
 		Agents:          agents,
