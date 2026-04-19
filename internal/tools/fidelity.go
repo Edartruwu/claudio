@@ -40,11 +40,32 @@ type ReviewDesignFidelityInput struct {
 	CSSPaths       []string                `json:"css_paths"`       // optional CSS files to inline before rendering
 }
 
-// ScreenTemplateMapping maps a design screen name to a local HTML template file.
+// ScreenTemplateMapping maps a design screen name to a local HTML template file or live URL.
 type ScreenTemplateMapping struct {
-	Name         string `json:"name"`          // must match design session screen name
-	TemplatePath string `json:"template_path"` // abs or relative path to .html template file
+	Name         string `json:"name"`                    // must match design session screen name
+	TemplatePath string `json:"template_path,omitempty"` // abs or relative path to .html template file
+	URL          string `json:"url,omitempty"`           // live URL to screenshot via Playwright
 }
+
+// urlScreenshotScript is the embedded Node.js script that navigates to a URL and captures a full-page screenshot.
+const urlScreenshotScript = `
+const { chromium } = require('playwright');
+const args = process.argv.slice(2);
+const url = args[args.indexOf('--url') + 1];
+const outDir = args[args.indexOf('--out-dir') + 1];
+const w = parseInt(args[args.indexOf('--viewport-w') + 1] || '1440');
+const h = parseInt(args[args.indexOf('--viewport-h') + 1] || '900');
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.setViewportSize({width: w, height: h});
+  await page.goto(url, {waitUntil: 'networkidle', timeout: 30000});
+  const p = require('path').join(outDir, 'live.png');
+  await page.screenshot({path: p, fullPage: true});
+  await browser.close();
+  console.log(JSON.stringify({success: true, screenshots: [{name: 'live', path: p}]}));
+})().catch(e => { console.log(JSON.stringify({success: false, errors: [e.message]})); process.exit(1); });
+`
 
 // ReviewDesignFidelityOutput is the structured result.
 type ReviewDesignFidelityOutput struct {
@@ -74,7 +95,7 @@ type fidelityVisionResponse struct {
 func (t *ReviewDesignFidelityTool) Name() string { return "ReviewDesignFidelity" }
 
 func (t *ReviewDesignFidelityTool) Description() string {
-	return `Compares design session screenshots against rendered HTML templates using vision-capable Haiku. Provide template file paths mapped to design screen names; the tool renders each via Playwright and scores visual fidelity 0-100.
+	return `Compares design session screenshots against live pages or rendered HTML templates using vision-capable Haiku. Accepts either a live URL (Playwright screenshots it) or a local template file path (rendered via Playwright). Use URL mode for Go html/template pages served by a running server. Scores visual fidelity 0-100.
 
 Pass threshold: overall_score >= 75.
 
@@ -93,9 +114,10 @@ func (t *ReviewDesignFidelityTool) InputSchema() json.RawMessage {
 				"type": "object",
 				"properties": {
 					"name":          { "type": "string", "description": "Design screen name (must match a screen in the session)." },
-					"template_path": { "type": "string", "description": "Absolute or relative path to the HTML template file." }
+					"template_path": { "type": "string", "description": "Absolute or relative path to the HTML template file." },
+					"url":           { "type": "string", "description": "URL of live page to screenshot (e.g. http://localhost:8080/sessions). Use for Go template pages — requires server running. Localhost requests bypass auth automatically." }
 				},
-				"required": ["name", "template_path"]
+				"required": ["name"]
 			}
 		},
 		"session_name": {
@@ -304,6 +326,18 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 	}
 	tmpScript.Close()
 
+	// Write urlScreenshotScript to a temp file once; used for URL-mode screens.
+	tmpURLScript, err := os.CreateTemp("", "claudio-fidelity-url-*.js")
+	if err != nil {
+		return &Result{Content: fmt.Sprintf("Failed to create URL screenshot script: %v", err), IsError: true}, nil
+	}
+	defer os.Remove(tmpURLScript.Name())
+	if _, err := tmpURLScript.WriteString(urlScreenshotScript); err != nil {
+		tmpURLScript.Close()
+		return &Result{Content: fmt.Sprintf("Failed to write URL screenshot script: %v", err), IsError: true}, nil
+	}
+	tmpURLScript.Close()
+
 	var results []ScreenFidelityResult
 	totalScore := 0
 
@@ -322,59 +356,103 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			continue
 		}
 
-		// 4b. Run renderScript via node with --capture-screens false (full-page only).
-		renderPath, isTemp, patchErr := patchTemplateWithCSS(ctx, RemapPathForWorktree(ctx, screen.TemplatePath), in.CSSPaths)
-		if patchErr != nil {
-			// non-fatal: fall back to original
-			renderPath = RemapPathForWorktree(ctx, screen.TemplatePath)
-			isTemp = false
-		}
-		if isTemp {
-			defer os.Remove(renderPath)
-		}
-		cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		//nolint:gosec // script path is a temp file we just wrote
-		cmd := exec.CommandContext(cmdCtx, "node", tmpScript.Name(),
-			"--html", renderPath,
-			"--out-dir", tmpOutDir,
-			"--viewport-w", strconv.Itoa(in.ViewportWidth),
-			"--viewport-h", strconv.Itoa(in.ViewportHeight),
-			"--scale", strconv.Itoa(in.DeviceScale),
-			"--capture-screens", "false",
-		)
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		_ = cmd.Run()
-		cancel()
+		// 4b. Determine rendered path: URL mode or template mode.
+		var renderedPath string
+		if screen.URL != "" {
+			// URL mode — screenshot live page via urlScreenshotScript.
+			cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			//nolint:gosec // script path is a temp file we just wrote
+			cmd := exec.CommandContext(cmdCtx, "node", tmpURLScript.Name(),
+				"--url", screen.URL,
+				"--out-dir", tmpOutDir,
+				"--viewport-w", strconv.Itoa(in.ViewportWidth),
+				"--viewport-h", strconv.Itoa(in.ViewportHeight),
+			)
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			_ = cmd.Run()
+			cancel()
 
-		// 4c. Parse stdout JSON → get first screenshot path (prefer "full-canvas").
-		var nodeOut nodeScriptOutput
-		if jsonErr := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &nodeOut); jsonErr != nil {
-			os.RemoveAll(tmpOutDir)
-			res.Gaps = []string{fmt.Sprintf("render script produced no valid JSON.\nstdout: %s\nstderr: %s",
-				stdout.String(), stderr.String())}
-			res.Suggestions = []string{}
-			results = append(results, res)
-			continue
-		}
-		if !nodeOut.Success || len(nodeOut.Screenshots) == 0 {
-			os.RemoveAll(tmpOutDir)
-			errMsg := strings.Join(nodeOut.Errors, "; ")
-			if errMsg == "" {
-				errMsg = "no screenshots captured"
+			var nodeOut nodeScriptOutput
+			if jsonErr := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &nodeOut); jsonErr != nil {
+				os.RemoveAll(tmpOutDir)
+				res.Gaps = []string{fmt.Sprintf("url screenshot script produced no valid JSON.\nstdout: %s\nstderr: %s",
+					stdout.String(), stderr.String())}
+				res.Suggestions = []string{}
+				results = append(results, res)
+				continue
 			}
-			res.Gaps = []string{fmt.Sprintf("playwright render failed: %s", errMsg)}
-			res.Suggestions = []string{}
-			results = append(results, res)
-			continue
-		}
-		renderedPath := nodeOut.Screenshots[0].Path
-		for _, s := range nodeOut.Screenshots {
-			if s.Name == "full-canvas" {
-				renderedPath = s.Path
-				break
+			if !nodeOut.Success || len(nodeOut.Screenshots) == 0 {
+				os.RemoveAll(tmpOutDir)
+				errMsg := strings.Join(nodeOut.Errors, "; ")
+				if errMsg == "" {
+					errMsg = "no screenshots captured"
+				}
+				res.Gaps = []string{fmt.Sprintf("playwright url screenshot failed: %s", errMsg)}
+				res.Suggestions = []string{}
+				results = append(results, res)
+				continue
 			}
+			renderedPath = nodeOut.Screenshots[0].Path
+		} else if screen.TemplatePath != "" {
+			// Template mode — existing patchTemplateWithCSS + renderScript path.
+			renderPath, isTemp, patchErr := patchTemplateWithCSS(ctx, RemapPathForWorktree(ctx, screen.TemplatePath), in.CSSPaths)
+			if patchErr != nil {
+				// non-fatal: fall back to original
+				renderPath = RemapPathForWorktree(ctx, screen.TemplatePath)
+				isTemp = false
+			}
+			if isTemp {
+				defer os.Remove(renderPath)
+			}
+			cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			//nolint:gosec // script path is a temp file we just wrote
+			cmd := exec.CommandContext(cmdCtx, "node", tmpScript.Name(),
+				"--html", renderPath,
+				"--out-dir", tmpOutDir,
+				"--viewport-w", strconv.Itoa(in.ViewportWidth),
+				"--viewport-h", strconv.Itoa(in.ViewportHeight),
+				"--scale", strconv.Itoa(in.DeviceScale),
+				"--capture-screens", "false",
+			)
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			_ = cmd.Run()
+			cancel()
+
+			var nodeOut nodeScriptOutput
+			if jsonErr := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &nodeOut); jsonErr != nil {
+				os.RemoveAll(tmpOutDir)
+				res.Gaps = []string{fmt.Sprintf("render script produced no valid JSON.\nstdout: %s\nstderr: %s",
+					stdout.String(), stderr.String())}
+				res.Suggestions = []string{}
+				results = append(results, res)
+				continue
+			}
+			if !nodeOut.Success || len(nodeOut.Screenshots) == 0 {
+				os.RemoveAll(tmpOutDir)
+				errMsg := strings.Join(nodeOut.Errors, "; ")
+				if errMsg == "" {
+					errMsg = "no screenshots captured"
+				}
+				res.Gaps = []string{fmt.Sprintf("playwright render failed: %s", errMsg)}
+				res.Suggestions = []string{}
+				results = append(results, res)
+				continue
+			}
+			renderedPath = nodeOut.Screenshots[0].Path
+			for _, s := range nodeOut.Screenshots {
+				if s.Name == "full-canvas" {
+					renderedPath = s.Path
+					break
+				}
+			}
+		} else {
+			os.RemoveAll(tmpOutDir)
+			results = append(results, ScreenFidelityResult{Name: screen.Name, Gaps: []string{"neither url nor template_path provided"}, Suggestions: []string{}})
+			continue
 		}
 		res.LiveScreenshot = renderedPath
 
