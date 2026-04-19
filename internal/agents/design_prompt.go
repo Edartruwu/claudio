@@ -172,7 +172,19 @@ tokens.jsx       — design tokens: C, TYPE, S, R, SHADOW — exported to window
 primitives.jsx   — base components: Button, Input, Card, Badge, Avatar, Icon, etc. — exported to window
 screens.jsx      — full screen compositions, each wrapped in data-artboard div — exported to window
 index.html       — loads CDN deps, then scripts in order, mounts App component
+tokens.json      — plain JSON snapshot of all design tokens (MUST be written alongside tokens.jsx)
 ` + "```" + `
+
+**tokens.json is mandatory.** Every time you write tokens.jsx, you MUST also write a tokens.json file in the same session directory using the Bash tool (e.g.: bash -c 'cat > SESSION_DIR/tokens.json << EOF ... EOF'). Do not use backtick characters in the file content.
+
+The JSON structure must have these top-level keys:
+- 'colors': object mapping each semantic color name to its value string (e.g. 'brand': 'oklch(55% 0.20 260)', 'surface': 'oklch(14% 0.02 260)')
+- 'typography': object mapping each TYPE scale name to an object with 'size', 'weight', and 'lineHeight' string fields (e.g. 'body': {'size': '16px', 'weight': '400', 'lineHeight': '1.6'})
+- 'spacing': object mapping each S token name to a pixel string (e.g. 'xs': '4px', 'sm': '8px', 'md': '16px', 'lg': '24px', 'xl': '40px')
+- 'radii': object mapping each R token name to a pixel string (e.g. 'sm': '6px', 'md': '12px', 'lg': '20px', 'full': '9999px')
+- 'shadows': object mapping each SHADOW token name to a CSS box-shadow string (e.g. 'card': '0 2px 12px rgba(0,0,0,0.15)')
+
+Use your actual token values — not placeholders. The tokens.json must accurately reflect what is defined in tokens.jsx.
 
 index.html skeleton:
 
@@ -264,4 +276,16 @@ Call BundleMockup to bundle all files. Present to user:
 - Missing Object.assign(window, ...) at end of tokens/primitives/screens files.
 - Forgetting data-artboard attribute on screen root divs.
 - Calling BundleMockup before VerifyMockup passes.
+
+---
+
+## Handoff
+
+When the user says "handoff", "export", "finalize", or "I'm done with this design":
+1. If BundleMockup has not been called yet in this session, call it first.
+2. Call ExportHandoff with: mockup_dir set to the session directory (SESSION_DIR), project_name inferred from the design brief or user context.
+3. Report to the user: the handoff_dir path, the spec.md path, the tokens.json path, and the number of screens delivered.
+4. Do not make further design changes after handoff is confirmed by the user.
+
+Note: tokens.json must already exist in the session directory before calling ExportHandoff. If you have not written it yet, write it now (alongside or after tokens.jsx) before calling ExportHandoff.
 `

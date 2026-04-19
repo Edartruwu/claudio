@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,8 +38,9 @@ type ExportHandoffInput struct {
 type ExportHandoffOutput struct {
 	Success        bool     `json:"success"`
 	HandoffDir     string   `json:"handoff_dir"`      // path to handoff/ subdir
-	SpecPath       string   `json:"spec_path"`         // handoff/spec.md
+	SpecPath       string   `json:"spec_path"`        // handoff/spec.md
 	TokensUsedPath string   `json:"tokens_used_path"` // handoff/tokens-used.json
+	TokensJsonPath string   `json:"tokens_json_path"` // handoff/tokens.json (copied from session dir)
 	ComponentCount int      `json:"component_count"`
 	AssetCount     int      `json:"asset_count"`
 	Warnings       []string `json:"warnings"`
@@ -272,14 +274,33 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 		return &Result{Content: fmt.Sprintf("Failed to create handoff dir: %v", err), IsError: true}, nil
 	}
 
-	// 11. Write spec.md
+	// 11. Find and copy tokens.json from session/mockup dir.
+	tokensJsonDest := filepath.Join(handoffDir, "tokens.json")
+	tokensJsonSrc := findTokensJson(mockupDir, in.SessionDir)
+	var tokensJsonData map[string]interface{}
+	if tokensJsonSrc != "" {
+		if err := copyFile(tokensJsonSrc, tokensJsonDest); err != nil {
+			warnings = append(warnings, fmt.Sprintf("tokens.json found at %q but copy failed: %v", tokensJsonSrc, err))
+			tokensJsonSrc = ""
+		} else {
+			// Parse for inline summary in spec.md.
+			raw, readErr := os.ReadFile(tokensJsonDest)
+			if readErr == nil {
+				_ = json.Unmarshal(raw, &tokensJsonData)
+			}
+		}
+	} else {
+		warnings = append(warnings, "tokens.json not found — design agent may not have written it yet")
+	}
+
+	// 12. Write spec.md
 	specPath := filepath.Join(handoffDir, "spec.md")
-	specContent := buildSpecMarkdown(in.ProjectName, in.Framework, screens, components, tokensUsed, assets, interactions, fonts, iconCDNs)
+	specContent := buildSpecMarkdown(in.ProjectName, in.Framework, screens, components, tokensUsed, tokensJsonData, assets, interactions, fonts, iconCDNs)
 	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to write spec.md: %v", err), IsError: true}, nil
 	}
 
-	// 12. Write tokens-used.json
+	// 13. Write tokens-used.json
 	tokensPath := filepath.Join(handoffDir, "tokens-used.json")
 	tokensJSON, err := json.MarshalIndent(tokensUsed, "", "  ")
 	if err != nil {
@@ -289,12 +310,13 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 		return &Result{Content: fmt.Sprintf("Failed to write tokens-used.json: %v", err), IsError: true}, nil
 	}
 
-	// 13. Build and return output
+	// 14. Build and return output
 	out := ExportHandoffOutput{
 		Success:        true,
 		HandoffDir:     handoffDir,
 		SpecPath:       specPath,
 		TokensUsedPath: tokensPath,
+		TokensJsonPath: tokensJsonDest,
 		ComponentCount: len(components),
 		AssetCount:     len(assets),
 		Warnings:       warnings,
@@ -511,12 +533,47 @@ func parseIconCDNs(html string) []string {
 	return cdns
 }
 
+// findTokensJson looks for tokens.json in mockupDir, then parent of mockupDir, then sessionDir.
+// Returns the first path found, or empty string if not found.
+func findTokensJson(mockupDir, sessionDir string) string {
+	candidates := []string{
+		filepath.Join(mockupDir, "tokens.json"),
+		filepath.Join(filepath.Dir(mockupDir), "tokens.json"),
+	}
+	if sessionDir != "" {
+		candidates = append(candidates, filepath.Join(sessionDir, "tokens.json"))
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// copyFile copies src to dst, creating dst if needed.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
 // buildSpecMarkdown assembles the spec.md content.
 func buildSpecMarkdown(
 	projectName, framework string,
 	screens []screenInfo,
 	components []componentInfo,
 	tokensUsed map[string]interface{},
+	tokensJsonData map[string]interface{},
 	assets []assetRef,
 	interactions []interactionPoint,
 	fonts []string,
@@ -525,24 +582,82 @@ func buildSpecMarkdown(
 	var sb strings.Builder
 	ts := time.Now().Format("2006-01-02 15:04:05")
 
-	sb.WriteString(fmt.Sprintf("# %s — Design Handoff\n\n", projectName))
+	sb.WriteString(fmt.Sprintf("# Design Spec: %s\n\n", projectName))
 	sb.WriteString(fmt.Sprintf("Generated: %s\n", ts))
 	sb.WriteString(fmt.Sprintf("Framework target: %s\n\n", framework))
 
-	// Screens
+	// Reference Files
+	sb.WriteString("## Reference Files\n\n")
+	sb.WriteString("- Bundle: bundle/mockup.html\n")
+	sb.WriteString("- Screenshots: screenshots/\n")
+	sb.WriteString("- Tokens: handoff/tokens.json\n")
+	sb.WriteString("\n")
+
+	// Screens — bullet list
 	sb.WriteString("## Screens\n\n")
-	sb.WriteString("| Screen | File |\n")
-	sb.WriteString("|--------|------|\n")
 	if len(screens) == 0 {
-		sb.WriteString("| (none detected) | — |\n")
+		sb.WriteString("- (none detected)\n")
 	}
 	for _, s := range screens {
-		sb.WriteString(fmt.Sprintf("| %s | %s |\n", s.Name, s.File))
+		sb.WriteString(fmt.Sprintf("- %s\n", s.Name))
 	}
 	sb.WriteString("\n")
 
+	// Design Tokens — inline color summary from tokens.json
+	sb.WriteString("## Design Tokens\n\n")
+	if tokensJsonData != nil {
+		// Colors
+		if colors, ok := tokensJsonData["colors"]; ok {
+			if colorMap, ok := colors.(map[string]interface{}); ok && len(colorMap) > 0 {
+				sb.WriteString("**Colors:**\n\n")
+				keys := make([]string, 0, len(colorMap))
+				for k := range colorMap {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					sb.WriteString(fmt.Sprintf("  %s: %v\n", k, colorMap[k]))
+				}
+				sb.WriteString("\n")
+			}
+		}
+		// Typography
+		if typo, ok := tokensJsonData["typography"]; ok {
+			if typoMap, ok := typo.(map[string]interface{}); ok && len(typoMap) > 0 {
+				sb.WriteString("**Typography:**\n\n")
+				keys := make([]string, 0, len(typoMap))
+				for k := range typoMap {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					v, _ := json.Marshal(typoMap[k])
+					sb.WriteString(fmt.Sprintf("  %s: %s\n", k, string(v)))
+				}
+				sb.WriteString("\n")
+			}
+		}
+		// Spacing
+		if spacing, ok := tokensJsonData["spacing"]; ok {
+			if spacingMap, ok := spacing.(map[string]interface{}); ok && len(spacingMap) > 0 {
+				sb.WriteString("**Spacing:**\n\n")
+				keys := make([]string, 0, len(spacingMap))
+				for k := range spacingMap {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					sb.WriteString(fmt.Sprintf("  %s: %v\n", k, spacingMap[k]))
+				}
+				sb.WriteString("\n")
+			}
+		}
+	} else {
+		sb.WriteString("See tokens.json (not yet generated)\n\n")
+	}
+
 	// Component Inventory
-	sb.WriteString("## Component Inventory\n\n")
+	sb.WriteString("## Components\n\n")
 	sb.WriteString("| Component | Count | Tailwind Classes | Notes |\n")
 	sb.WriteString("|-----------|-------|-----------------|-------|\n")
 	if len(components) == 0 {
@@ -554,7 +669,7 @@ func buildSpecMarkdown(
 	}
 	sb.WriteString("\n")
 
-	// Design Token Usage
+	// Design Token Usage (cross-referenced from design_tokens file)
 	sb.WriteString("## Design Token Usage\n\n")
 	if len(tokensUsed) == 0 {
 		sb.WriteString("_No design token file provided, or no tokens found in HTML._\n\n")
