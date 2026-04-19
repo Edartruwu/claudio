@@ -21,7 +21,7 @@ import (
 	"time"
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
-	"github.com/Abraxas-365/claudio/internal/agents"
+	agentspkg "github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
@@ -550,13 +550,15 @@ type sessionRow struct {
 
 // InfoPageData holds data for the session info panel.
 type InfoPageData struct {
-	Session   cc.Session
-	Tasks     []cc.Task
-	Agents    []cc.Agent
-	SessionID string
-	Images    []cc.Attachment    // image attachments for media grid
-	Docs      []cc.Attachment    // non-image attachments for document list
-	Crons     []tasks.CronEntry  // scheduled tasks for this session
+	Session         cc.Session
+	Tasks           []cc.Task
+	Agents          []cc.Agent
+	SessionID       string
+	Images          []cc.Attachment   // image attachments for media grid
+	Docs            []cc.Attachment   // non-image attachments for document list
+	Crons           []tasks.CronEntry // scheduled tasks for this session
+	AvailableAgents []agentspkg.AgentDefinition
+	AvailableTeams  []string
 }
 
 // TaskDetailData holds data for the task detail partial.
@@ -647,14 +649,22 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	allAgentDefs := agentspkg.AllAgents(agentspkg.GetCustomDirs()...)
+	allTeamTpls := teams.LoadTemplates(ws.teamTemplatesDir)
+	teamNames := make([]string, 0, len(allTeamTpls))
+	for _, t := range allTeamTpls {
+		teamNames = append(teamNames, t.Name)
+	}
 	infoTmpl.execute(w, "info_panel.html", InfoPageData{
-		Session:   sess,
-		Tasks:     sessionTasks,
-		Agents:    agents,
-		SessionID: id,
-		Images:    images,
-		Docs:      docs,
-		Crons:     crons,
+		Session:         sess,
+		Tasks:           sessionTasks,
+		Agents:          agents,
+		SessionID:       id,
+		Images:          images,
+		Docs:            docs,
+		Crons:           crons,
+		AvailableAgents: allAgentDefs,
+		AvailableTeams:  teamNames,
 	})
 }
 
@@ -1366,7 +1376,7 @@ func (ws *WebServer) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ws *WebServer) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
-	all := agents.AllAgents(agents.GetCustomDirs()...)
+	all := agentspkg.AllAgents(agentspkg.GetCustomDirs()...)
 	type agentJSON struct {
 		Type       string `json:"type"`
 		WhenToUse  string `json:"when_to_use"`

@@ -209,6 +209,7 @@
                 class="w-full rounded-lg px-3 py-2 text-sm text-white appearance-none"
                 style="background:#2C2C2E;border:1px solid #3A3A3C;outline:none;">
           <option value="">Default (no agent)</option>
+          {{range .AvailableAgents}}<option value="{{.Type}}"{{if eq .Type $.Session.AgentType}} selected{{end}}>{{.Type}}</option>{{end}}
         </select>
         <button onclick="applyAgent('{{.Session.ID}}')"
                 class="w-full py-2 rounded-lg text-sm font-semibold text-white transition-opacity active:opacity-70"
@@ -225,6 +226,7 @@
                 class="w-full rounded-lg px-3 py-2 text-sm text-white appearance-none"
                 style="background:#2C2C2E;border:1px solid #3A3A3C;outline:none;">
           <option value="">Default (no team)</option>
+          {{range .AvailableTeams}}<option value="{{.}}"{{if eq . $.Session.TeamTemplate}} selected{{end}}>{{.}}</option>{{end}}
         </select>
         <button onclick="applyTeam('{{.Session.ID}}')"
                 class="w-full py-2 rounded-lg text-sm font-semibold text-white transition-opacity active:opacity-70"
@@ -289,40 +291,7 @@
     if (name === 'config') loadConfig();
   }
 
-  function loadConfig() {
-    var currentAgent = {{printf "%q" .Session.AgentType}};
-    var currentTeam  = {{printf "%q" .Session.TeamTemplate}};
-
-    var agentSel = document.getElementById('agent-select');
-    var teamSel  = document.getElementById('team-select');
-
-    // Reset to placeholder before repopulating.
-    agentSel.innerHTML = '<option value="">Default (no agent)</option>';
-    teamSel.innerHTML  = '<option value="">Default (no team)</option>';
-
-    fetch('/api/agents', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(agents) {
-      (agents || []).forEach(function(a) {
-        var opt = document.createElement('option');
-        opt.value = a.type;
-        opt.textContent = a.type;
-        agentSel.appendChild(opt);
-      });
-      if (currentAgent) agentSel.value = currentAgent;
-      // If value didn't match any option, fall back to placeholder.
-      if (agentSel.value !== currentAgent) agentSel.value = '';
-    }).catch(function(){});
-
-    fetch('/api/teams', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(teams) {
-      (teams || []).forEach(function(t) {
-        var opt = document.createElement('option');
-        opt.value = t.name;
-        opt.textContent = t.name;
-        teamSel.appendChild(opt);
-      });
-      if (currentTeam) teamSel.value = currentTeam;
-      if (teamSel.value !== currentTeam) teamSel.value = '';
-    }).catch(function(){});
-  }
+  function loadConfig() { /* options rendered server-side, nothing to do */ }
 
   function _showFeedback(id, ok) {
     var el = document.getElementById(id);
