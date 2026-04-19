@@ -57,8 +57,10 @@ type RenderMockupInput struct {
 
 // ScreenshotInfo holds the name and file path of a captured screenshot.
 type ScreenshotInfo struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name                string `json:"name"`
+	Path                string `json:"path"`
+	RenderedHTMLPath    string `json:"rendered_html_path,omitempty"`
+	InteractionsPath    string `json:"interactions_path,omitempty"`
 }
 
 // ManifestJSON represents the design session manifest.
@@ -342,6 +344,16 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 	if out.Screenshots == nil {
 		out.Screenshots = []ScreenshotInfo{}
+	}
+
+	// Populate rendered HTML and interactions paths for each screenshot
+	renderedBaseDir := filepath.Join(sessionDir, "rendered")
+	for i := range out.Screenshots {
+		s := &out.Screenshots[i]
+		if s.Name != "" && s.Name != "full-canvas" {
+			s.RenderedHTMLPath = filepath.Join(renderedBaseDir, s.Name+".html")
+			s.InteractionsPath = filepath.Join(renderedBaseDir, s.Name+".interactions.json")
+		}
 	}
 
 	// Push each screenshot to ComandCenter chat if a pusher is configured.
