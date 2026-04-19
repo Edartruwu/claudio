@@ -403,7 +403,14 @@ function tryFit(attempts){
   var artboards=content.querySelectorAll('[data-artboard]');
   if(artboards.length>0&&artboards[0].offsetWidth>0){
     layoutHorizontal(artboards);
-    fitToScreen();
+    // Start zoomed in on first artboard at readable scale, not fit-all
+    var vw=window.innerWidth,vh=window.innerHeight;
+    var first=artboards[0];
+    var fw=first.offsetWidth||375,fh=first.offsetHeight||812;
+    scale=clamp(Math.min(vw/fw,vh/fh)*0.8,MIN,MAX);
+    tx=(vw-fw*scale)/2;
+    ty=(vh-fh*scale)/2;
+    applyTransform();updateZoomDisplay();
     return;
   }
   if(attempts>0)setTimeout(function(){tryFit(attempts-1);},300);
