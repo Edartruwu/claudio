@@ -61,6 +61,14 @@ type ScreenshotInfo struct {
 	Path string `json:"path"`
 }
 
+// ManifestJSON represents the design session manifest.
+type ManifestJSON struct {
+	ProjectPath string   `json:"project_path"`
+	SessionDir  string   `json:"session_dir"`
+	CreatedAt   string   `json:"created_at"`
+	Screens     []string `json:"screens"`
+}
+
 // RenderMockupOutput is the JSON result returned by this tool.
 type RenderMockupOutput struct {
 	Success         bool             `json:"success"`
@@ -355,8 +363,80 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		}
 	}
 
+	// Write/merge manifest.json to sessionDir
+	if err := t.writeManifest(sessionDir, out.Screenshots); err != nil {
+		// Manifest write failure is not fatal — don't block render result
+		// but could log if needed in future
+		_ = err
+	}
+
 	outJSON, _ := json.MarshalIndent(out, "", "  ")
 
 	isError := !nodeOut.Success
 	return &Result{Content: string(outJSON), IsError: isError}, nil
+}
+
+// writeManifest writes or merges manifest.json in sessionDir.
+// Creates new manifest on first write, merges screens on subsequent calls.
+func (t *RenderMockupTool) writeManifest(sessionDir string, screenshots []ScreenshotInfo) error {
+	manifestPath := filepath.Join(sessionDir, "manifest.json")
+
+	// Extract screen names from screenshots (use Name field if present)
+	var newScreens []string
+	seen := make(map[string]bool)
+	for _, s := range screenshots {
+		screenName := s.Name
+		if screenName == "" || screenName == "full-canvas" {
+			continue
+		}
+		if !seen[screenName] {
+			seen[screenName] = true
+			newScreens = append(newScreens, screenName)
+		}
+	}
+
+	// Get project path
+	projectPath, _ := os.Getwd()
+
+	// Check if manifest exists
+	var manifest ManifestJSON
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		// Manifest exists — merge
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			// If unmarshal fails, start fresh
+			manifest = ManifestJSON{
+				ProjectPath: projectPath,
+				SessionDir:  sessionDir,
+				CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+				Screens:     newScreens,
+			}
+		} else {
+			// Merge screens into existing manifest
+			screenMap := make(map[string]bool)
+			for _, s := range manifest.Screens {
+				screenMap[s] = true
+			}
+			for _, s := range newScreens {
+				if !screenMap[s] {
+					screenMap[s] = true
+					manifest.Screens = append(manifest.Screens, s)
+				}
+			}
+		}
+	} else {
+		// Create new manifest
+		manifest = ManifestJSON{
+			ProjectPath: projectPath,
+			SessionDir:  sessionDir,
+			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+			Screens:     newScreens,
+		}
+	}
+
+	// Write manifest atomically
+	manifestJSON, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(manifestPath, manifestJSON, 0644)
 }

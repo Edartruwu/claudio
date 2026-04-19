@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/tools/grepcache"
@@ -407,6 +408,10 @@ func DefaultRegistry() *Registry {
 
 	// AskUser (channels injected by TUI layer)
 	r.Register(&AskUserTool{deferrable: newDeferrable("ask user question options structured")})
+
+	// Design discovery tool (always available, not capability-gated)
+	paths := config.GetPaths()
+	r.Register(NewListDesignsTool(paths.Designs))
 
 	// Inject registry into ToolSearch so it can look up tools
 	ts.SetRegistry(r)
