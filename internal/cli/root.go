@@ -438,6 +438,11 @@ func runHeadlessAttach(args []string) error {
 	}
 	appInstance.TeamRunner.SetSessionID(currentSessionID)
 
+	// Wire clear history from ComandCenter → wipe engine messages
+	attachClient.OnClearHistory(func() {
+		appInstance.ClearHistory(currentSessionID)
+	})
+
 	engineCfg := query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,

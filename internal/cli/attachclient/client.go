@@ -22,10 +22,11 @@ type Client struct {
 	agentType    string
 	teamTemplate string
 	conn         *websocket.Conn
-	onUserMsg    func(attach.UserMsgPayload)
-	onInterrupt  func()
-	onSetAgent   func(attach.SetAgentPayload)
-	onSetTeam    func(attach.SetTeamPayload)
+	onUserMsg      func(attach.UserMsgPayload)
+	onInterrupt    func()
+	onSetAgent     func(attach.SetAgentPayload)
+	onSetTeam      func(attach.SetTeamPayload)
+	onClearHistory func()
 	mu           sync.Mutex
 	closed       bool
 	closedChan   chan struct{}
@@ -144,6 +145,13 @@ func (c *Client) OnSetAgent(fn func(attach.SetAgentPayload)) {
 	c.onSetAgent = fn
 }
 
+// OnClearHistory registers callback invoked when the server sends EventClearHistory.
+func (c *Client) OnClearHistory(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onClearHistory = fn
+}
+
 // OnSetTeam registers callback invoked when the server sends EventSetTeam.
 func (c *Client) OnSetTeam(fn func(attach.SetTeamPayload)) {
 	c.mu.Lock()
@@ -236,6 +244,14 @@ func (c *Client) readLoop() {
 			c.mu.Unlock()
 			if cb != nil {
 				cb(payload)
+			}
+
+		case attach.EventClearHistory:
+			c.mu.Lock()
+			cb := c.onClearHistory
+			c.mu.Unlock()
+			if cb != nil {
+				cb()
 			}
 		}
 	}

@@ -22,10 +22,11 @@ const (
 
 // Events: ComandCenter → Claudio
 const (
-	EventMsgUser   = "message.user"
-	EventInterrupt = "session.interrupt"
-	EventSetAgent  = "set_agent"
-	EventSetTeam   = "set_team"
+	EventMsgUser      = "message.user"
+	EventInterrupt    = "session.interrupt"
+	EventSetAgent     = "set_agent"
+	EventSetTeam      = "set_team"
+	EventClearHistory = "session.clear"
 )
 
 // SetAgentPayload for EventSetAgent.

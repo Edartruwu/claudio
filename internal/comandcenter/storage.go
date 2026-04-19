@@ -470,6 +470,11 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 }
 
 // DeleteMessages removes all messages for a session (used by /clear command).
+func (s *Storage) DeleteMessageByID(id string) error {
+	_, err := s.db.Exec(`DELETE FROM cc_messages WHERE id = ?`, id)
+	return err
+}
+
 func (s *Storage) DeleteMessages(sessionID string) error {
 	_, err := s.db.Exec(`DELETE FROM cc_messages WHERE session_id = ?`, sessionID)
 	if err != nil {

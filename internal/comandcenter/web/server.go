@@ -670,6 +670,9 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: time.Now(),
 		}
 		_ = ws.storage.InsertMessage(confirm)
+		// Forward EventClearHistory to the attached claudio engine.
+		clearEnv := attach.Envelope{Type: attach.EventClearHistory}
+		_ = ws.hub.Send(sessionID, clearEnv)
 		// Tell all connected clients to clear their message list, then show confirm bubble.
 		if p, err := json.Marshal(map[string]string{"type": "messages.cleared"}); err == nil {
 			ws.pushToSessionClients(sessionID, p)
@@ -861,62 +864,87 @@ func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction
 		}
 		_ = ws.storage.InsertMessage(confirm)
 		ws.pushMsgBubble(sessionID, confirm)
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusAccepted)
 		return
 	}
 
-	// ListMessages returns newest first; compact needs oldest first.
-	apiMsgs := ccMessagesToAPI(reverseMessages(msgs))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	compacted, summary, err := compact.Compact(ctx, ws.apiClient, apiMsgs, 10, instruction)
-	if err != nil {
-		http.Error(w, "compact failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Replace DB messages with compacted set.
-	if err := ws.storage.DeleteMessages(sessionID); err != nil {
-		http.Error(w, "storage error", http.StatusInternalServerError)
-		return
-	}
-	now := time.Now()
-	for i, am := range compacted {
-		cm := cc.Message{
-			ID:        fmt.Sprintf("%d-%d", now.UnixNano(), i),
-			SessionID: sessionID,
-			Role:      apiRoleToCC(am.Role),
-			Content:   apiMessageText(am),
-			AgentName: "system",
-			CreatedAt: now.Add(time.Duration(i) * time.Millisecond),
-		}
-		_ = ws.storage.InsertMessage(cm)
-	}
-
-	confirmText := "Conversation compacted. ✓"
-	if summary != "" {
-		runes := []rune(summary)
-		if len(runes) > 200 {
-			runes = runes[:200]
-		}
-		confirmText = "Conversation compacted. ✓\n\n" + string(runes) + "…"
-	}
-	confirm := cc.Message{
-		ID:        fmt.Sprintf("%dc", now.UnixNano()),
+	// Push an immediate "in progress" bubble so the user knows it started.
+	pending := cc.Message{
+		ID:        fmt.Sprintf("%dp", time.Now().UnixNano()),
 		SessionID: sessionID,
 		Role:      "assistant",
 		AgentName: "system",
-		Content:   confirmText,
-		CreatedAt: now.Add(time.Duration(len(compacted)) * time.Millisecond),
+		Content:   "Compacting conversation… ⏳",
+		CreatedAt: time.Now(),
 	}
-	_ = ws.storage.InsertMessage(confirm)
-	ws.pushMsgBubble(sessionID, confirm)
-	if p, err := json.Marshal(map[string]string{"type": "messages.compacted"}); err == nil {
-		ws.pushToSessionClients(sessionID, p)
-	}
-	w.WriteHeader(http.StatusNoContent)
+	_ = ws.storage.InsertMessage(pending)
+	ws.pushMsgBubble(sessionID, pending)
+
+	// Return 202 immediately — compact can take 30-120s.
+	w.WriteHeader(http.StatusAccepted)
+
+	// Run compact in background; push result via WS when done.
+	apiMsgs := ccMessagesToAPI(reverseMessages(msgs))
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		compacted, summary, err := compact.Compact(ctx, ws.apiClient, apiMsgs, 10, instruction)
+
+		// Remove the pending bubble.
+		_ = ws.storage.DeleteMessageByID(pending.ID)
+
+		if err != nil {
+			errMsg := cc.Message{
+				ID:        fmt.Sprintf("%de", time.Now().UnixNano()),
+				SessionID: sessionID,
+				Role:      "assistant",
+				AgentName: "system",
+				Content:   "Compact failed: " + err.Error(),
+				CreatedAt: time.Now(),
+			}
+			_ = ws.storage.InsertMessage(errMsg)
+			ws.pushMsgBubble(sessionID, errMsg)
+			return
+		}
+
+		// Replace DB messages with compacted set.
+		_ = ws.storage.DeleteMessages(sessionID)
+		now := time.Now()
+		for i, am := range compacted {
+			cm := cc.Message{
+				ID:        fmt.Sprintf("%d-%d", now.UnixNano(), i),
+				SessionID: sessionID,
+				Role:      apiRoleToCC(am.Role),
+				Content:   apiMessageText(am),
+				AgentName: "system",
+				CreatedAt: now.Add(time.Duration(i) * time.Millisecond),
+			}
+			_ = ws.storage.InsertMessage(cm)
+		}
+
+		confirmText := "Conversation compacted. ✓"
+		if summary != "" {
+			runes := []rune(summary)
+			if len(runes) > 200 {
+				runes = runes[:200]
+			}
+			confirmText = "Conversation compacted. ✓\n\n" + string(runes) + "…"
+		}
+		confirm := cc.Message{
+			ID:        fmt.Sprintf("%dc", now.UnixNano()),
+			SessionID: sessionID,
+			Role:      "assistant",
+			AgentName: "system",
+			Content:   confirmText,
+			CreatedAt: now.Add(time.Duration(len(compacted)) * time.Millisecond),
+		}
+		_ = ws.storage.InsertMessage(confirm)
+		ws.pushMsgBubble(sessionID, confirm)
+		if p, err := json.Marshal(map[string]string{"type": "messages.compacted"}); err == nil {
+			ws.pushToSessionClients(sessionID, p)
+		}
+	}()
 }
 
 // ccMessagesToAPI converts cc.Message records to api.Message format for the compact service.

@@ -649,6 +649,15 @@ func (a *App) Interrupt() {
 	}
 }
 
+// ClearHistory wipes the session message history from the DB.
+// Called when ComandCenter forwards an EventClearHistory from the web UI.
+func (a *App) ClearHistory(sessionID string) {
+	if a.DB == nil || sessionID == "" {
+		return
+	}
+	_ = a.DB.DeleteAllMessages(sessionID)
+}
+
 // MemoryExtractor returns a callback for background memory extraction at end-of-turn.
 // Returns nil if the app doesn't have the required dependencies or if disabled in config.
 func (a *App) MemoryExtractor() func(messages []api.Message) {
