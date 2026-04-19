@@ -98,6 +98,28 @@ templ MessageBubble(msg MessageView) {
 				</div>
 			</div>
 		</div>
+	} else if msg.Role == "bundle" {
+		<!-- BUNDLE CARD: left-aligned design card -->
+		<div class="flex flex-col items-start mb-1">
+			<div style="max-width:min(300px,85%);border-radius:12px;overflow:hidden;border:1px solid #3A3A3C;border-left:3px solid #BF5AF2;background:#1C1C1E;box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+				<div style="padding:12px 14px;">
+					<div class="flex items-center gap-2 mb-1">
+						<span style="font-size:18px;">🎨</span>
+						<p style="font-size:14px;font-weight:700;color:var(--color-textPrimary);margin:0;">Mockup Bundle Ready</p>
+					</div>
+					if msg.AgentName != "" {
+						<p style="font-size:12px;color:var(--color-textMuted);margin:0 0 10px 26px;">{ msg.AgentName }</p>
+					}
+					<a
+						href={ templ.SafeURL(msg.Content) }
+						target="_blank"
+						rel="noopener noreferrer"
+						style="display:block;margin-top:10px;padding:8px 14px;border-radius:8px;background:#0A84FF;color:#fff;font-size:13px;font-weight:600;text-align:center;text-decoration:none;"
+					>Open Bundle →</a>
+				</div>
+			</div>
+			<p style="color:var(--color-textMuted);font-size:11px;margin-top:4px;padding-left:2px;">{ RelTime(msg.CreatedAt) }</p>
+		</div>
 	} else {
 		<!-- ASSISTANT / CRON: left-aligned -->
 		<div class="flex flex-col items-start mb-1">

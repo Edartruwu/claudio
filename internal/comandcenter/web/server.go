@@ -1334,16 +1334,12 @@ func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundl
 	if ws.publicURL != "" && strings.HasPrefix(bundleURL, "/") {
 		bundleURL = strings.TrimRight(ws.publicURL, "/") + bundleURL
 	}
-	// Content is markdown — renderMD in the bubble template will turn the link into an <a>.
-	content := fmt.Sprintf("🎨 **Bundle ready** — <a href=\"%s\" target=\"_blank\">View mockup →</a>", bundleURL)
-	if p.SessionName != "" {
-		content = fmt.Sprintf("🎨 **Bundle ready** (`%s`) — [View mockup →](%s)", p.SessionName, bundleURL)
-	}
 	msg := cc.Message{
 		ID:        cc.NewID(),
 		SessionID: sessionID,
-		Role:      "assistant",
-		Content:   content,
+		Role:      "bundle",
+		Content:   bundleURL,
+		AgentName: p.SessionName,
 		CreatedAt: now,
 	}
 	if err := ws.storage.InsertMessage(msg); err != nil {
