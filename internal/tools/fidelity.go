@@ -78,12 +78,21 @@ const h = parseInt(args[args.indexOf('--viewport-h') + 1] || '900');
 })().catch(e => { console.log(JSON.stringify({success: false, errors: [e.message]})); process.exit(1); });
 `
 
+// BreakpointResult aggregates fidelity results for one breakpoint group.
+type BreakpointResult struct {
+	Breakpoint string                 `json:"breakpoint"`
+	Score      int                    `json:"overall_score"`
+	Pass       bool                   `json:"pass"`
+	Screens    []ScreenFidelityResult `json:"screens"`
+}
+
 // ReviewDesignFidelityOutput is the structured result.
 type ReviewDesignFidelityOutput struct {
-	OverallScore int                    `json:"overall_score"`
-	Pass         bool                   `json:"pass"`
-	SessionName  string                 `json:"session_name"`
-	Screens      []ScreenFidelityResult `json:"screens"`
+	OverallScore int                        `json:"overall_score"`
+	Pass         bool                       `json:"pass"`
+	SessionName  string                     `json:"session_name"`
+	Screens      []ScreenFidelityResult     `json:"screens"`
+	ByBreakpoint map[string]BreakpointResult `json:"by_breakpoint,omitempty"`
 }
 
 // ScreenFidelityResult holds the fidelity result for one screen.
@@ -304,12 +313,7 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 	if len(in.Screens) == 0 {
 		return &Result{Content: "screens is required and must not be empty", IsError: true}, nil
 	}
-	if in.ViewportWidth == 0 {
-		in.ViewportWidth = 1440
-	}
-	if in.ViewportHeight == 0 {
-		in.ViewportHeight = 900
-	}
+	// ViewportWidth/Height intentionally NOT defaulted here — 0 means "use manifest or default per screen".
 	if in.DeviceScale == 0 {
 		in.DeviceScale = 2
 	}
@@ -318,6 +322,12 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 	session, err := t.resolveSession(in.SessionName)
 	if err != nil {
 		return &Result{Content: err.Error(), IsError: true}, nil
+	}
+
+	// Build manifest lookup: screen name → ScreenManifest (for viewport + breakpoint).
+	manifestByName := make(map[string]ScreenManifest, len(session.Screens))
+	for _, sm := range session.Screens {
+		manifestByName[sm.Name] = sm
 	}
 
 	// 3. Check prerequisites.
@@ -358,6 +368,23 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			DesignScreenshot: filepath.Join(session.ScreenshotsDir, screen.Name+".png"),
 		}
 
+		// Resolve viewport: caller global > manifest > default 1440×900.
+		viewW, viewH := in.ViewportWidth, in.ViewportHeight
+		if viewW == 0 {
+			if sm, ok := manifestByName[screen.Name]; ok && sm.Viewport.Width > 0 {
+				viewW = sm.Viewport.Width
+				if viewH == 0 {
+					viewH = sm.Viewport.Height
+				}
+			}
+		}
+		if viewW == 0 {
+			viewW = 1440
+		}
+		if viewH == 0 {
+			viewH = 900
+		}
+
 		// 4a. Create per-screen temp output dir.
 		tmpOutDir, mkErr := os.MkdirTemp("", "claudio-fidelity-render-*")
 		if mkErr != nil {
@@ -376,8 +403,8 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			cmd := exec.CommandContext(cmdCtx, "node", tmpURLScript.Name(),
 				"--url", screen.URL,
 				"--out-dir", tmpOutDir,
-				"--viewport-w", strconv.Itoa(in.ViewportWidth),
-				"--viewport-h", strconv.Itoa(in.ViewportHeight),
+				"--viewport-w", strconv.Itoa(viewW),
+				"--viewport-h", strconv.Itoa(viewH),
 			)
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
@@ -436,8 +463,8 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			cmd := exec.CommandContext(cmdCtx, "node", tmpScript.Name(),
 				"--html", renderPath,
 				"--out-dir", tmpOutDir,
-				"--viewport-w", strconv.Itoa(in.ViewportWidth),
-				"--viewport-h", strconv.Itoa(in.ViewportHeight),
+				"--viewport-w", strconv.Itoa(viewW),
+				"--viewport-h", strconv.Itoa(viewH),
 				"--scale", strconv.Itoa(in.DeviceScale),
 				"--capture-screens", "false",
 			)
@@ -589,11 +616,34 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		overallScore = totalScore / len(results)
 	}
 
+	// 6. Group results by breakpoint.
+	byBreakpoint := make(map[string]BreakpointResult)
+	for _, r := range results {
+		bp := "unknown"
+		if sm, ok := manifestByName[r.Name]; ok && sm.Breakpoint != "" {
+			bp = sm.Breakpoint
+		}
+		existing := byBreakpoint[bp]
+		existing.Breakpoint = bp
+		existing.Screens = append(existing.Screens, r)
+		byBreakpoint[bp] = existing
+	}
+	for bp, bpr := range byBreakpoint {
+		bpTotal := 0
+		for _, r := range bpr.Screens {
+			bpTotal += r.FidelityScore
+		}
+		bpr.Score = bpTotal / len(bpr.Screens)
+		bpr.Pass = bpr.Score >= 75
+		byBreakpoint[bp] = bpr
+	}
+
 	out := ReviewDesignFidelityOutput{
 		OverallScore: overallScore,
 		Pass:         overallScore >= 75,
 		SessionName:  session.Session,
 		Screens:      results,
+		ByBreakpoint: byBreakpoint,
 	}
 
 	outJSON, _ := json.MarshalIndent(out, "", "  ")
