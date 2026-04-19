@@ -33,13 +33,25 @@ type StructuredMessage struct {
 // Mailbox handles reading and writing messages for a teammate.
 type Mailbox struct {
 	inboxDir string
+	notify   chan struct{} // buffered(1) wake signal; non-blocking send coalesces bursts
 }
 
 // NewMailbox creates a mailbox for the given team.
 func NewMailbox(teamsDir, teamName string) *Mailbox {
 	dir := filepath.Join(teamsDir, teamName, "inboxes")
 	os.MkdirAll(dir, 0700)
-	return &Mailbox{inboxDir: dir}
+	return &Mailbox{
+		inboxDir: dir,
+		notify:   make(chan struct{}, 1),
+	}
+}
+
+// NotifyChan returns a read-only channel that receives a signal whenever a
+// new message is written to any inbox in this mailbox. The channel is
+// buffered (size 1) so rapid sends coalesce — consumers should always
+// drain it with a non-blocking select and then read from disk.
+func (mb *Mailbox) NotifyChan() <-chan struct{} {
+	return mb.notify
 }
 
 // Send writes a message to a recipient's inbox (file-locked).
@@ -55,7 +67,16 @@ func (mb *Mailbox) Send(from, to string, msg Message) error {
 		msg.Summary = truncateForSummary(msg.Text, 50)
 	}
 
-	return mb.appendToInbox(to, msg)
+	if err := mb.appendToInbox(to, msg); err != nil {
+		return err
+	}
+	// Signal after file write (durability guarantee). Non-blocking: if the
+	// channel already holds a signal we don't need to add another.
+	select {
+	case mb.notify <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 // Broadcast sends a message to all inboxes in the team (except sender).

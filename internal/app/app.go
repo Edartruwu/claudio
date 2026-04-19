@@ -891,6 +891,8 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 			}
 			return result
 		})
+		// Wire the wake channel so pollMailbox can drain signals correctly.
+		engine.SetMailboxNotifyChan(mb.NotifyChan())
 	}
 
 	// If resume history was injected via context, restore it before running.

@@ -145,6 +145,11 @@ type Engine struct {
 	// Returns messages to inject as user messages. If a message signals "stop",
 	// it should return the message and the engine will stop after injecting it.
 	mailboxPoller func() []string
+
+	// mailboxNotifyChan is signalled by the Mailbox whenever a new message is
+	// written. The engine drains it in pollMailbox so stale signals do not
+	// accumulate between turns. Callers set this via SetMailboxNotifyChan.
+	mailboxNotifyChan <-chan struct{}
 }
 
 // defaultContextWindow is the context window size for all current Claude models.
@@ -333,6 +338,14 @@ func (e *Engine) SetCompactThreshold(t int) {
 // It should return messages to inject into the conversation.
 func (e *Engine) SetMailboxPoller(fn func() []string) {
 	e.mailboxPoller = fn
+}
+
+// SetMailboxNotifyChan wires the mailbox wake channel to the engine. The
+// channel should be the one returned by Mailbox.NotifyChan(). When set, the
+// engine drains it in pollMailbox() after each poll so that rapid signals
+// coalesce correctly and do not trigger spurious extra polls on the next turn.
+func (e *Engine) SetMailboxNotifyChan(ch <-chan struct{}) {
+	e.mailboxNotifyChan = ch
 }
 
 // SetPermissionRules replaces the engine's permission rules at runtime.
@@ -1174,9 +1187,23 @@ func (e *Engine) pollBackgroundTasks() {
 }
 
 // pollMailbox checks for incoming team messages and injects them into the conversation.
+// When a notify channel is wired (via SetMailboxNotifyChan) any pending wake
+// signal is drained non-blocking before reading, so rapid Send() calls coalesce
+// correctly and the channel never saturates. The turn-based loop that calls
+// pollMailbox() every API round-trip acts as the periodic fallback — no separate
+// ticker is required.
 func (e *Engine) pollMailbox() {
 	if e.mailboxPoller == nil {
 		return
+	}
+
+	// Drain any pending wake signal (non-blocking). This clears the buffered
+	// channel so the next real signal is never lost in noise from a burst.
+	if e.mailboxNotifyChan != nil {
+		select {
+		case <-e.mailboxNotifyChan:
+		default:
+		}
 	}
 
 	msgs := e.mailboxPoller()
