@@ -111,11 +111,6 @@ func (t *ListDesignsTool) Execute(ctx context.Context, input json.RawMessage) (*
 			continue
 		}
 
-		// Filter: only sessions for this project
-		if projectPath != "" && manifest.ProjectPath != projectPath {
-			continue
-		}
-
 		// Check handoff existence
 		handoffDir := filepath.Join(sessionDir, "handoff")
 		specPath := filepath.Join(handoffDir, "spec.md")

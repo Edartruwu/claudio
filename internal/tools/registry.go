@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/config"
@@ -410,8 +411,8 @@ func DefaultRegistry() *Registry {
 	r.Register(&AskUserTool{deferrable: newDeferrable("ask user question options structured")})
 
 	// Design discovery tool (always available, not capability-gated)
-	paths := config.GetPaths()
-	r.Register(NewListDesignsTool(paths.Designs))
+	wd, _ := os.Getwd()
+	r.Register(NewListDesignsTool(config.ProjectDesignsDir(wd)))
 
 	// Inject registry into ToolSearch so it can look up tools
 	ts.SetRegistry(r)

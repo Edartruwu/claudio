@@ -534,3 +534,11 @@ func ProjectMemoryDir(projectRoot string) string {
 	slug := SanitizeProjectPath(projectRoot)
 	return filepath.Join(p.Projects, slug, "memory")
 }
+
+// ProjectDesignsDir returns the designs directory for a specific project.
+// Uses the git root (or cwd) to create a stable, project-scoped path.
+func ProjectDesignsDir(projectRoot string) string {
+	p := GetPaths()
+	slug := SanitizeProjectPath(projectRoot)
+	return filepath.Join(p.Projects, slug, "designs")
+}
