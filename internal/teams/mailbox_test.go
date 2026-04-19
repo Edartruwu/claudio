@@ -217,3 +217,52 @@ func TestMailbox_ReadAll_NonexistentInbox(t *testing.T) {
 		t.Errorf("expected 0 messages for nonexistent inbox, got %d", len(msgs))
 	}
 }
+
+func TestMailbox_NotifyChan_SignaledOnSend(t *testing.T) {
+	mb := setupMailbox(t)
+
+	// Channel must be empty before any send.
+	select {
+	case <-mb.NotifyChan():
+		t.Fatal("expected empty notify channel before Send")
+	default:
+	}
+
+	if err := mb.Send("alice", "bob", Message{Text: "hi"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	select {
+	case <-mb.NotifyChan():
+		// signal received — pass
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for notify signal after Send")
+	}
+}
+
+func TestMailbox_NotifyChan_CoalescesBursts(t *testing.T) {
+	mb := setupMailbox(t)
+
+	for i := 0; i < 5; i++ {
+		if err := mb.Send("alice", "bob", Message{Text: "burst"}); err != nil {
+			t.Fatalf("Send %d: %v", i, err)
+		}
+	}
+
+	// Exactly 1 pending signal — channel is buffered(1).
+	if n := len(mb.NotifyChan()); n != 1 {
+		t.Fatalf("expected 1 pending signal, got %d", n)
+	}
+
+	// Drain.
+	select {
+	case <-mb.NotifyChan():
+	default:
+		t.Fatal("expected to drain one signal")
+	}
+
+	// Now empty.
+	if n := len(mb.NotifyChan()); n != 0 {
+		t.Fatalf("expected 0 signals after drain, got %d", n)
+	}
+}
