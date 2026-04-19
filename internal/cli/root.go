@@ -450,7 +450,7 @@ func runHeadlessAttach(args []string) error {
 			caps = agents.GetAgent(flagAgent).Capabilities
 		}
 		pusher := attachclient.NewAttachScreenshotPusher(attachClient)
-		tools.RegisterCapabilityTools(reg, caps, appInstance.API, pusher, sess.Current().ID)
+		tools.RegisterCapabilityTools(reg, caps, appInstance.API, pusher, sess.Current().ID, appInstance.Config)
 	}
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride

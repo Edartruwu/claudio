@@ -7,10 +7,24 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 )
 
+// ResolveToolModel returns the model to use for a named tool.
+// Fallback chain: toolModels.<name> → smallModel → hardcoded default.
+func ResolveToolModel(toolName string, cfg *config.Settings) string {
+	if cfg != nil {
+		if m, ok := cfg.ToolModels[toolName]; ok && m != "" {
+			return m
+		}
+		if cfg.SmallModel != "" {
+			return cfg.SmallModel
+		}
+	}
+	return "claude-haiku-4-5-20251001"
+}
+
 // RegisterCapabilityTools adds capability-gated tools to the registry based on
 // the active agent's declared capabilities. Called on both startup and agent switch.
 // Each capability maps to a set of tools; agents without that capability never see them.
-func RegisterCapabilityTools(registry *Registry, capabilities []string, client *api.Client, pusher ScreenshotPusher, sessionID string) {
+func RegisterCapabilityTools(registry *Registry, capabilities []string, client *api.Client, pusher ScreenshotPusher, sessionID string, cfg *config.Settings) {
 	for _, cap := range capabilities {
 		if cap == "design" {
 			wd, _ := os.Getwd()
@@ -30,7 +44,7 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 				bundleTool = bundleTool.WithPusher(pusher, sessionID)
 			}
 			registry.Register(bundleTool)
-			registry.Register(NewVerifyMockupTool(designsDir, client, ""))
+			registry.Register(NewVerifyMockupTool(designsDir, client, ResolveToolModel("VerifyMockup", cfg)))
 			registry.Register(NewExportHandoffTool(designsDir))
 			return
 		}
@@ -39,6 +53,6 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 	// ReviewDesignFidelity: available to all agents regardless of capabilities.
 	{
 		wd, _ := os.Getwd()
-		registry.Register(NewReviewDesignFidelityTool(config.ProjectDesignsDir(wd), client, ""))
+		registry.Register(NewReviewDesignFidelityTool(config.ProjectDesignsDir(wd), client, ResolveToolModel("ReviewDesignFidelity", cfg)))
 	}
 }

@@ -235,6 +235,11 @@ func FormatSettings(s *Settings, sources map[string]string) string {
 	sb.WriteString("Model & AI:\n")
 	writeField("model", s.Model, sources["model"])
 	writeField("smallModel", s.SmallModel, sources["smallModel"])
+	if len(s.ToolModels) > 0 {
+		writeField("toolModels", fmt.Sprintf("%d entry(s)", len(s.ToolModels)), "")
+	} else {
+		writeField("toolModels", "not set", "")
+	}
 
 	sb.WriteString("\nPermissions:\n")
 	writeField("permissionMode", s.PermissionMode, sources["permissionMode"])

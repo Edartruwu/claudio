@@ -13,8 +13,9 @@ import (
 // Settings represents the merged configuration from all sources.
 type Settings struct {
 	// AI model settings
-	Model        string `json:"model,omitempty"`
-	SmallModel   string `json:"smallModel,omitempty"`
+	Model        string            `json:"model,omitempty"`
+	SmallModel   string            `json:"smallModel,omitempty"`
+	ToolModels   map[string]string `json:"toolModels,omitempty"` // per-tool model override
 	ThinkingMode string `json:"thinkingMode,omitempty"` // "adaptive", "enabled", "disabled", "" (auto)
 	BudgetTokens int    `json:"budgetTokens,omitempty"` // thinking budget when mode is "enabled"
 	EffortLevel  string `json:"effortLevel,omitempty"`  // "low", "medium", "high", "" (default=medium)
@@ -334,6 +335,14 @@ func mergeFromFile(settings *Settings, path string) {
 	}
 	if len(overlay.AllowPaths) > 0 {
 		settings.AllowPaths = append(settings.AllowPaths, overlay.AllowPaths...)
+	}
+	if len(overlay.ToolModels) > 0 {
+		if settings.ToolModels == nil {
+			settings.ToolModels = make(map[string]string)
+		}
+		for k, v := range overlay.ToolModels {
+			settings.ToolModels[k] = v
+		}
 	}
 	if len(overlay.MCPServers) > 0 {
 		if settings.MCPServers == nil {

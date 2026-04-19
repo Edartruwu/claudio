@@ -551,7 +551,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		if rt, ok := recallTool.(*tools.RecallTool); ok {
 			rt.Store = memoryStore
 			rt.Client = apiClient
-			rt.Model = settings.SmallModel
+			rt.Model = tools.ResolveToolModel("Recall", settings)
 		}
 	}
 

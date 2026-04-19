@@ -1778,11 +1778,11 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 	if m.session != nil {
 		capSessID = m.session.Current().ID
 	}
-	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID)
 	var agentCfg *config.Settings
 	if m.appCtx != nil {
 		agentCfg = m.appCtx.Config
 	}
+	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID, agentCfg)
 	applySkillFiltering(filtered, msg.Capabilities, agentCfg, m.skills)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
@@ -1962,11 +1962,11 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	if m.session != nil && m.session.Current() != nil {
 		capSessID2 = m.session.Current().ID
 	}
-	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID2)
 	var startupCfg *config.Settings
 	if m.appCtx != nil {
 		startupCfg = m.appCtx.Config
 	}
+	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID2, startupCfg)
 	applySkillFiltering(filtered, msg.Capabilities, startupCfg, m.skills)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
@@ -1988,8 +1988,8 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 }
 
 // registerCapabilityTools delegates to the shared tools.RegisterCapabilityTools.
-func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client, pusher tools.ScreenshotPusher, sessionID string) {
-	tools.RegisterCapabilityTools(registry, capabilities, client, pusher, sessionID)
+func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client, pusher tools.ScreenshotPusher, sessionID string, cfg *config.Settings) {
+	tools.RegisterCapabilityTools(registry, capabilities, client, pusher, sessionID, cfg)
 }
 
 // applySkillFiltering updates the SkillTool inside toolRegistry with a filtered
