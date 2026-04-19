@@ -12,16 +12,35 @@ import (
 	"time"
 )
 
+// ScreenshotPusher is called after each screenshot is saved to disk.
+// Implement in the wiring layer to push images into the ComandCenter chat.
+// sessionID is the local session identifier forwarded for context; routing on
+// the server side uses the hub's session binding, not this value.
+type ScreenshotPusher interface {
+	PushScreenshot(sessionID, filePath, filename string) error
+}
+
 // RenderMockupTool renders an HTML mockup using Playwright via Node.js and
 // captures screenshots. Pure Go wrapper — no CGO. Browser invoked via
 // exec.Command("node", ...) with an embedded Node.js script.
 type RenderMockupTool struct {
 	designsDir string
+	pusher     ScreenshotPusher // nil = no push (CLI/TUI-only mode)
+	sessionID  string
 }
 
 // NewRenderMockupTool creates a RenderMockupTool that saves screenshots under designsDir.
 func NewRenderMockupTool(designsDir string) *RenderMockupTool {
 	return &RenderMockupTool{designsDir: designsDir}
+}
+
+// WithPusher wires a ScreenshotPusher so screenshots are auto-pushed to chat
+// after being saved. sessionID is forwarded to PushScreenshot as context.
+// Returns the receiver for fluent chaining.
+func (t *RenderMockupTool) WithPusher(pusher ScreenshotPusher, sessionID string) *RenderMockupTool {
+	t.pusher = pusher
+	t.sessionID = sessionID
+	return t
 }
 
 // RenderMockupInput is the JSON input schema for this tool.
@@ -247,6 +266,13 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 	if out.Screenshots == nil {
 		out.Screenshots = []ScreenshotInfo{}
+	}
+
+	// Push each screenshot to ComandCenter chat if a pusher is configured.
+	if t.pusher != nil {
+		for _, s := range out.Screenshots {
+			_ = t.pusher.PushScreenshot(t.sessionID, s.Path, filepath.Base(s.Path))
+		}
 	}
 
 	outJSON, _ := json.MarshalIndent(out, "", "  ")

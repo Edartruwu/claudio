@@ -933,6 +933,9 @@ func runInteractive() error {
 	if appInstance.Config.Advisor != nil {
 		tuiOpts = append(tuiOpts, tui.WithEngineRef(&currentEngine))
 	}
+	if attachClient != nil {
+		tuiOpts = append(tuiOpts, tui.WithScreenshotPusher(attachclient.NewAttachScreenshotPusher(attachClient)))
+	}
 	model := tui.New(appInstance.API, reg, systemPrompt, sess, tuiOpts...)
 
 	// Apply --agent flag if specified
