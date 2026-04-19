@@ -271,24 +271,39 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 
 	outJSON, _ := json.MarshalIndent(out, "", "  ")
 
-	// Push a clickable link bubble to CC chat so the user can open the bundle directly.
+	// Compute the bundle URL. Use t.designsDir (project-scoped) as the anchor so
+	// the URL is correct even when outPath lives in a legacy global designs dir.
+	//
+	// Two cases:
+	//   1. outPath is inside t.designsDir (project-scoped):
+	//      → /designs/project/{slug}/{session}/bundle/mockup.html
+	//   2. outPath is outside t.designsDir (legacy ~/.claudio/designs/ dir):
+	//      → /designs/static/{session}/bundle/mockup.html
+	var bundleURL, sessionDirName string
+	if relPath, err := filepath.Rel(t.designsDir, outPath); err == nil && !strings.HasPrefix(relPath, "..") {
+		// Project-scoped: relPath = "{session}/bundle/mockup.html"
+		sessionDirName = strings.SplitN(relPath, string(filepath.Separator), 2)[0]
+		slug := filepath.Base(filepath.Dir(t.designsDir)) // parent of "designs/" = slug
+		bundleURL = "/designs/project/" + slug + "/" + sessionDirName + "/bundle/mockup.html"
+	} else {
+		// Legacy global designs dir: fall back to /designs/static/ route.
+		sessionDir := filepath.Dir(filepath.Dir(outPath)) // .../designs/{session}
+		sessionDirName = filepath.Base(sessionDir)
+		bundleURL = "/designs/static/" + sessionDirName + "/bundle/mockup.html"
+	}
+	if t.publicURL != "" {
+		bundleURL = strings.TrimRight(t.publicURL, "/") + bundleURL
+	}
+
 	if t.pusher != nil {
-		// Path structure: ~/.claudio/projects/{slug}/designs/{session}/bundle/mockup.html
-		// sessionDirName = {session}, slug = two dirs above {session}
-		sessionDir := filepath.Dir(filepath.Dir(outPath))          // .../designs/{session}
-		sessionDirName := filepath.Base(sessionDir)                // {session}
-		projectDir := filepath.Dir(filepath.Dir(sessionDir))       // .../projects/{slug}
-		slug := filepath.Base(projectDir)                          // {slug}
-		bundleURL := "/designs/project/" + slug + "/" + sessionDirName + "/bundle/mockup.html"
-		if t.publicURL != "" {
-			bundleURL = strings.TrimRight(t.publicURL, "/") + bundleURL
-		}
-		// Best-effort — ignore errors, bundle result already returned above.
+		// Best-effort — ignore errors, bundle result already returned.
 		_ = t.pusher.PushBundleLink(t.sessionID, bundleURL, sessionDirName, outPath)
 	}
 
-	_ = outJSON // JSON only used by pusher above; suppress unused warning
-	return &Result{Content: ""}, nil
+	_ = outJSON // suppress unused warning
+	// Return the bundle URL so the agent can include it in its response.
+	// In CC mode a card is also pushed via PushBundleLink above.
+	return &Result{Content: bundleURL}, nil
 }
 
 // injectInfiniteCanvas wraps the HTML body with a pan/zoom infinite canvas shell.

@@ -69,7 +69,7 @@ Call the ` + "`" + `VerifyMockup` + "`" + ` tool with the screenshot(s) from the
 - If still failing after 3 cycles: proceed to step 8, then inform the user of remaining issues in plain language.
 
 **Step 8 — Call BundleMockup.**
-After verification passes or the iteration limit is exhausted, call the ` + "`" + `BundleMockup` + "`" + ` tool. Present the output file path and a 2–3 sentence summary of the design direction and screens delivered to the user.
+After verification passes or the iteration limit is exhausted, call the ` + "`" + `BundleMockup` + "`" + ` tool. The tool returns a bundle URL (e.g. ` + "`" + `/designs/project/{slug}/{session}/bundle/mockup.html` + "`" + `). Tell the user the bundle is ready and show them this URL so they can open it. Also give a 2–3 sentence summary of the design direction and screens delivered. Do NOT show the raw filesystem file path — only show the URL returned by the tool.
 
 ---
 

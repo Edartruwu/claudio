@@ -1,5 +1,5 @@
 (function () {
-  var sessionId = document.body.dataset.sessionId;
+  var sessionId = (document.getElementById('chat-app') || document.body).dataset.sessionId;
   if (!sessionId) return;
 
   var msgs = document.getElementById('messages');
