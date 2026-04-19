@@ -485,7 +485,7 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		contentBlocks := []api.UserContentBlock{
 			api.NewImageBlock("image/png", designBase64),
 			api.NewImageBlock("image/png", renderedBase64),
-			api.NewTextBlock(`Image 1 is the design mockup. Image 2 is the rendered HTML template implementation. Score fidelity 0-100 and list specific visual gaps and suggestions. Respond JSON only: {"fidelity_score": <int>, "gaps": [], "suggestions": []}`),
+			api.NewTextBlock(`Score the VISUAL DESIGN fidelity between Image 1 (design mockup) and Image 2 (implementation). Ignore all text content, usernames, session names, timestamps, and data values — these will differ and are not design issues. Only evaluate: color palette, typography (font family/size/weight), spacing and padding, layout structure, component shapes, border styles, shadows, icons, and visual hierarchy. Respond JSON only: {"fidelity_score": 0-100, "gaps": ["specific visual gap"], "suggestions": ["specific fix"]}`),
 		}
 		contentJSON, marshalErr := json.Marshal(contentBlocks)
 		if marshalErr != nil {
@@ -499,7 +499,7 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 
 		resp, llmErr := t.client.SendMessage(ctx, &api.MessagesRequest{
 			Model:     t.fidelityModel(),
-			System:    "You are a design fidelity reviewer. Be specific about visual differences.",
+			System:    "You are a design fidelity reviewer. Evaluate only visual design properties — never penalize for differences in text content, data values, or real vs mock data.",
 			Messages:  messages,
 			MaxTokens: 4096,
 		})
