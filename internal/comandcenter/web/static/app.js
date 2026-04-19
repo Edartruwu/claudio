@@ -9,13 +9,23 @@
 
   // --- Helpers ---
 
+  function isNearBottom() {
+    if (!msgs) return true;
+    return msgs.scrollTop >= msgs.scrollHeight - msgs.clientHeight - 100;
+  }
+
+  function scrollToBottom() {
+    if (!msgs) return;
+    if (isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
+  }
+
   function showBanner() {
-    var b = document.getElementById('ws-banner');
+    var b = document.getElementById('ws-banner') || document.getElementById('reconnect-banner');
     if (b) b.classList.remove('hidden');
   }
 
   function hideBanner() {
-    var b = document.getElementById('ws-banner');
+    var b = document.getElementById('ws-banner') || document.getElementById('reconnect-banner');
     if (b) b.classList.add('hidden');
   }
 
@@ -31,7 +41,6 @@
     var textEl = bubble.querySelector('.typing-text');
     if (textEl) textEl.textContent = label;
     bubble.classList.remove('hidden');
-    // Move typing bubble to end of messages so it's always last.
     msgs.appendChild(bubble);
     msgs.scrollTop = msgs.scrollHeight;
   }
@@ -67,20 +76,20 @@
   function appendMessage(html) {
     if (!msgs) return;
     maybeInsertDateDivider();
-    // Insert before the typing bubble so it stays at the bottom.
+    var near = isNearBottom();
     var bubble = document.getElementById('typing-bubble');
     if (bubble && !bubble.classList.contains('hidden')) {
       bubble.insertAdjacentHTML('beforebegin', html);
     } else {
       msgs.insertAdjacentHTML('beforeend', html);
     }
-    msgs.scrollTop = msgs.scrollHeight;
+    // Only auto-scroll if user was near bottom before the new message arrived
+    if (near) msgs.scrollTop = msgs.scrollHeight;
   }
 
   // Insert initial date divider if messages exist on page load.
   (function () {
     if (msgs && msgs.children.length > 0) {
-      // Find or create a sentinel before first message.
       var first = msgs.firstElementChild;
       if (first) {
         var divider = document.createElement('div');
@@ -103,7 +112,6 @@
       .then(function(res) { return res.text(); })
       .then(function(html) {
         msgs.innerHTML = html;
-        // Re-append typing bubble (it lives outside the messages list).
         var bubble = document.getElementById('typing-bubble');
         if (bubble) msgs.appendChild(bubble);
         msgs.scrollTop = msgs.scrollHeight;
@@ -120,7 +128,6 @@
       var wasDisconnected = !wsConnected;
       wsConnected = true;
       hideBanner();
-      // Reload messages to catch anything missed while disconnected.
       if (wasDisconnected) reloadMessages();
     };
 
@@ -130,7 +137,6 @@
         var type = data.type;
 
         if (type === 'message.assistant') {
-          // Remove streaming bubble + typing bubble, then append final response.
           var sb = document.getElementById('streaming-bubble');
           if (sb) sb.remove();
           removeTypingBubble();
@@ -138,7 +144,6 @@
           if (data.html) appendMessage(data.html);
 
         } else if (type === 'message.stream_delta') {
-          // Live streaming token — create or update transient streaming bubble.
           var bubble = document.getElementById('streaming-bubble');
           if (!bubble) {
             bubble = document.createElement('div');
@@ -155,27 +160,22 @@
           scrollToBottom();
 
         } else if (type === 'typing') {
-          // Show transient typing indicator bubble + update header.
           showTypingBubble(data.tool, data.agentName);
           setTyping((data.agentName || 'Agent') + ' is working...');
 
         } else if (type === 'message.user') {
-          // User's own message pushed back from server.
           if (data.html) appendMessage(data.html);
 
         } else if (type === 'message.tool_use') {
-          // Permanent tool-use bubble in chat history; clear any streaming bubble first.
           var sb = document.getElementById('streaming-bubble');
           if (sb) sb.remove();
           if (data.html) appendMessage(data.html);
 
         } else if (type === 'messages.cleared') {
-          // /clear was executed — wipe the message list in the UI.
           var msgsEl = document.getElementById('messages');
           if (msgsEl) msgsEl.innerHTML = '';
 
         } else if (type === 'messages.compacted') {
-          // Reload full message list from server (compact replaced all messages).
           var msgsEl = document.getElementById('messages');
           if (msgsEl && sessionId) {
             fetch('/partials/messages/' + sessionId, { credentials: 'include' })
@@ -187,7 +187,6 @@
           if (loader) loader.style.display = 'none';
 
         } else if (type === 'new_message' && data.html) {
-          // Backward-compat path (legacy event type).
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;
           var isAssistant = data.html.indexOf('msg-bubble-assistant') !== -1;
           if (isAssistant) {
@@ -213,6 +212,10 @@
     };
   }
 
+  // htmx:wsClose / htmx:wsOpen — for htmx WS extension compatibility
+  document.addEventListener('htmx:wsClose', function() { showBanner(); });
+  document.addEventListener('htmx:wsOpen',  function() { hideBanner(); });
+
   // On app resume (phone unlock / tab focus), reconnect immediately.
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') {
@@ -228,3 +231,119 @@
 
   initWS();
 })();
+
+// --- DOMContentLoaded: skeleton CSS + push-prompt banner ---
+document.addEventListener('DOMContentLoaded', function() {
+
+  // 1. Inject skeleton shimmer + streaming cursor CSS
+  (function() {
+    var style = document.createElement('style');
+    style.textContent =
+      '.skeleton{' +
+        'background:linear-gradient(90deg,var(--color-surface) 25%,var(--color-surfaceHigh) 50%,var(--color-surface) 75%);' +
+        'background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;' +
+      '}' +
+      '@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}' +
+      '.streaming-cursor::after{content:"▋";animation:blink 1s step-end infinite;color:var(--color-ai);}' +
+      '@keyframes blink{50%{opacity:0}}';
+    document.head.appendChild(style);
+  })();
+
+  // 2. Push-prompt banner — show once if permission not yet decided and SW available
+  (function() {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'default') return;
+    if (!('serviceWorker' in navigator)) return;
+    if (localStorage.getItem('push-dismissed') !== null) return;
+    // Only show in chat view (session page)
+    if (!document.body.dataset.sessionId) return;
+
+    // Guard: don't inject twice
+    if (document.getElementById('push-prompt')) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'push-prompt';
+    banner.style.cssText = [
+      'position:fixed',
+      'bottom:80px',
+      'left:12px',
+      'right:12px',
+      'z-index:500',
+      'background:#1C1C1E',
+      'border-radius:16px',
+      'padding:16px',
+      'box-shadow:0 4px 24px rgba(0,0,0,0.6)',
+      'border:1px solid #2C2C2E',
+      'font-family:inherit'
+    ].join(';');
+
+    banner.innerHTML =
+      '<div style="display:flex;align-items:flex-start;gap:12px;">' +
+        '<div style="width:40px;height:40px;border-radius:10px;background:#075E54;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px;">🔔</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<p style="color:#D4DDE8;font-weight:600;font-size:15px;margin:0 0 4px 0;">Enable notifications</p>' +
+          '<p style="color:#8A9BA0;font-size:13px;margin:0 0 12px 0;">Get notified when agents finish tasks or need input.</p>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button id="push-dismiss-btn" style="flex:1;padding:10px;border-radius:10px;border:1px solid #3A3A3C;background:transparent;color:#8A9BA0;font-family:inherit;font-size:14px;cursor:pointer;">Not now</button>' +
+            '<button id="push-enable-btn"  style="flex:2;padding:10px;border-radius:10px;border:none;background:#25D366;color:#000;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Enable</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(banner);
+
+    document.getElementById('push-dismiss-btn').addEventListener('click', function() {
+      localStorage.setItem('push-dismissed', '1');
+      banner.remove();
+    });
+
+    document.getElementById('push-enable-btn').addEventListener('click', function() {
+      banner.remove();
+      subscribePush();
+    });
+  })();
+
+  // --- Push subscription helper (used by prompt banner) ---
+  function urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - base64String.length % 4) % 4);
+    var base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var raw     = atob(base64);
+    var out     = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+
+  function subscribePush() {
+    if (!('serviceWorker' in navigator)) return;
+    Notification.requestPermission().then(function(perm) {
+      if (perm !== 'granted') return;
+      return Promise.all([
+        navigator.serviceWorker.ready,
+        fetch('/api/push/vapid-public-key').then(function(r) { return r.json(); })
+      ]).then(function(results) {
+        var reg  = results[0];
+        var data = results[1];
+        if (!data.publicKey) return;
+        var appKey = urlBase64ToUint8Array(data.publicKey);
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appKey
+        });
+      }).then(function(sub) {
+        if (!sub) return;
+        var j     = sub.toJSON();
+        var token = (window.CLAUDIO_TOKEN || '');
+        var headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        return fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            endpoint: j.endpoint,
+            keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }
+          })
+        });
+      });
+    }).catch(function() {});
+  }
+});
