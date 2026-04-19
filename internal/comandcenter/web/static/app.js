@@ -242,6 +242,24 @@
             msgs.scrollTop = msgs.scrollHeight;
           }
 
+        } else if (type === 'config.changed') {
+          // Update model display if present on the page.
+          var modelEl = document.getElementById('current-model');
+          if (modelEl && data.model) modelEl.textContent = data.model;
+          var permEl = document.getElementById('current-permission-mode');
+          if (permEl && data.permission_mode) permEl.textContent = data.permission_mode;
+          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
+
+        } else if (type === 'agent.changed') {
+          var agentEl = document.getElementById('current-agent');
+          if (agentEl) agentEl.textContent = data.agent_type || 'default';
+          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
+
+        } else if (type === 'team.changed') {
+          var teamEl = document.getElementById('current-team');
+          if (teamEl) teamEl.textContent = data.team_template || 'none';
+          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
+
         } else if (type === 'new_message' && data.html) {
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;
           var isAssistant = data.html.indexOf('msg-bubble-assistant') !== -1;

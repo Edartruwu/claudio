@@ -117,6 +117,24 @@ func (db *DB) UpdateSessionSummary(id, summary string) error {
 	return err
 }
 
+// UpdateSessionAgentType updates the agent_type of a session.
+func (db *DB) UpdateSessionAgentType(id, agentType string) error {
+	_, err := db.conn.Exec(
+		`UPDATE sessions SET agent_type = ?, updated_at = ? WHERE id = ?`,
+		agentType, time.Now(), id,
+	)
+	return err
+}
+
+// UpdateSessionTeamTemplate updates the team_template of a session.
+func (db *DB) UpdateSessionTeamTemplate(id, teamTemplate string) error {
+	_, err := db.conn.Exec(
+		`UPDATE sessions SET team_template = ?, updated_at = ? WHERE id = ?`,
+		teamTemplate, time.Now(), id,
+	)
+	return err
+}
+
 // GetSessionByTitle returns the most recent session matching title and projectDir,
 // or nil if no such session exists.
 func (db *DB) GetSessionByTitle(title, projectDir string) (*Session, error) {

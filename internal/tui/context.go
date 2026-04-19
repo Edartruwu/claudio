@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/learning"
@@ -19,6 +20,7 @@ import (
 // It aggregates all backend services that panels may need to display
 // or interact with, avoiding the need for individual option functions.
 type AppContext struct {
+	Bus         *bus.Bus
 	Session     *session.Session
 	Memory      *memory.ScopedStore
 	Config      *config.Settings
