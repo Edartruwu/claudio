@@ -1,0 +1,28 @@
+package web
+
+// MessagesPartial renders a flat list of message bubbles (used by htmx partial updates).
+templ MessagesPartial(messages []MessageView) {
+	for _, msg := range messages {
+		@MessageBubble(msg)
+	}
+	if len(messages) == 0 {
+		<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No messages yet</div>
+	}
+}
+
+// MessagesContainer renders the full messages container with today badge (used inside chat_view).
+templ MessagesContainer(messages []MessageView) {
+	<div id="messages-inner">
+		if len(messages) > 0 {
+			<div style="display:flex;justify-content:center;margin:8px 0;">
+				<span style="background:var(--color-surfaceHigh);color:var(--color-textMuted);font-size:11px;padding:3px 12px;border-radius:9999px;letter-spacing:0.5px;border:1px solid var(--color-border);">Today</span>
+			</div>
+		}
+		for _, msg := range messages {
+			@MessageBubble(msg)
+		}
+		if len(messages) == 0 {
+			<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No messages yet</div>
+		}
+	</div>
+}
