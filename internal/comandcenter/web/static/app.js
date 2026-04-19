@@ -1,6 +1,9 @@
 (function () {
-  var sessionId = (document.getElementById('chat-app') || document.body).dataset.sessionId;
-  if (!sessionId) return;
+  var _gen = 0; // incremented on every startChat call; stale closures check this
+
+  function startChat(sessionId) {
+    if (!sessionId) return;
+    var _myGen = ++_gen;
 
   var msgs = document.getElementById('messages');
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -291,6 +294,8 @@
       wsConnected = false;
       showBanner();
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      // Don't reconnect if a newer startChat call has taken over.
+      if (_myGen !== _gen) return;
       reconnectTimer = setTimeout(initWS, 3000);
     };
   }
@@ -313,6 +318,16 @@
   });
 
   initWS();
+  } // end startChat
+
+  // Initial call on page load.
+  startChat((document.getElementById('chat-app') || document.body).dataset.sessionId);
+
+  // Re-init when HTMX swaps in a new chat view (session navigation without full reload).
+  document.addEventListener('htmx:afterSwap', function() {
+    var el = document.getElementById('chat-app');
+    if (el && el.dataset.sessionId) startChat(el.dataset.sessionId);
+  });
 })();
 
 // --- DOMContentLoaded: skeleton CSS + push-prompt banner ---
