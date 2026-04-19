@@ -159,7 +159,9 @@ Rules:
 - background: always a token (C.surface or C.background)
 - fontFamily: set once on the artboard root, never in child components
 
-RenderMockup uses data-artboard attributes to screenshot each screen individually. Missing or malformed artboard attributes will cause screenshot failures.
+**Multi-step / multi-state flows:** Every distinct step, state, or screen must be its own separate artboard — NEVER use React useState or conditional rendering to toggle between steps inside a single artboard. A 3-step login = 3 artboard divs: 01-login-step1, 02-login-step2, 03-login-step3. All artboards render simultaneously in the document (stacked). RenderMockup screenshots each independently.
+
+RenderMockup uses data-artboard attributes to screenshot each screen individually. Missing, hidden, or merged artboards will result in incomplete review coverage.
 
 ---
 
