@@ -151,8 +151,12 @@
 
   <!-- File preview (staged file chip — shown when file selected, hidden by default) -->
   <div id="file-preview" class="hidden px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
-    <img id="file-preview-img" class="hidden rounded-lg object-cover flex-shrink-0" style="width:48px;height:48px;border:1px solid #3A3A3C;" alt="preview">
+    <img id="file-preview-img" class="hidden rounded-lg object-cover flex-shrink-0" style="width:48px;height:48px;border:1px solid #3A3A3C;cursor:pointer;" alt="preview" onclick="ccAnnotateStaged()">
     <span id="file-preview-name" class="hidden text-sm text-white truncate flex-1" style="max-width:200px;"></span>
+    <button type="button" id="annotate-staged-btn" onclick="ccAnnotateStaged()"
+            class="hidden"
+            style="color:#0A84FF;background:transparent;border:1px solid #0A84FF;border-radius:6px;cursor:pointer;font-size:12px;padding:4px 10px;min-height:28px;display:flex;align-items:center;gap:4px;"
+            aria-label="Annotate image">✏️ Annotate</button>
     <button type="button" onclick="ccClearStagedFile()"
             style="color:#8E8E93;background:transparent;border:none;cursor:pointer;font-size:18px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;margin-left:auto;"
             aria-label="Remove staged file">✕</button>
@@ -288,6 +292,8 @@
         reader.onload = function(ev) {
           previewImg.src = ev.target.result;
           previewImg.classList.remove('hidden');
+          var annotateBtn = document.getElementById('annotate-staged-btn');
+          if (annotateBtn) annotateBtn.classList.remove('hidden');
         };
         reader.readAsDataURL(file);
       } else {
@@ -305,6 +311,35 @@
       previewImg.src = '';
       previewName.classList.add('hidden');
       previewName.textContent = '';
+      var annotateBtn = document.getElementById('annotate-staged-btn');
+      if (annotateBtn) annotateBtn.classList.add('hidden');
+    };
+
+    // Open annotator on staged image — on send, the annotated version replaces stagedFile
+    window.ccAnnotateStaged = function() {
+      if (!stagedFile || !stagedFile.type.startsWith('image/')) return;
+      var url = URL.createObjectURL(stagedFile);
+      var img = new Image();
+      img.onload = function() {
+        if (window.openAnnotator) {
+          // Pass a synthetic img element with src set
+          var synth = document.createElement('img');
+          synth.src = url;
+          synth.dataset.sessionId = '{{.Session.ID}}';
+          // Override: after annotating, replace stagedFile instead of uploading directly
+          window._annotatorCallback = function(blob) {
+            var ext = stagedFile.name.split('.').pop() || 'png';
+            stagedFile = new File([blob], 'annotated.' + ext, { type: 'image/png' });
+            // Update preview thumbnail
+            var reader = new FileReader();
+            reader.onload = function(ev) { previewImg.src = ev.target.result; };
+            reader.readAsDataURL(stagedFile);
+            URL.revokeObjectURL(url);
+          };
+          window.openAnnotator(synth, true);
+        }
+      };
+      img.src = url;
     };
 
     // Unified send: XHR if file staged, htmx POST if text-only

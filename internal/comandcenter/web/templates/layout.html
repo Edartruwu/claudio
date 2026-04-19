@@ -168,11 +168,13 @@
     // Source image ref for initial draw
     var srcImg = null;
 
-    window.openAnnotator = function(imgEl) {
+    var _stagedMode = false;
+
+    window.openAnnotator = function(imgEl, stagedMode) {
+      _stagedMode = !!stagedMode;
       srcImg = new Image();
       srcImg.crossOrigin = 'anonymous';
       srcImg.onload = function() {
-        // Size canvas to fit viewport
         var maxW = window.innerWidth * 0.9;
         var maxH = window.innerHeight * 0.7;
         var scale = Math.min(maxW / srcImg.naturalWidth, maxH / srcImg.naturalHeight, 1);
@@ -182,6 +184,9 @@
         snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
         overlay.style.display = 'flex';
         captionEl.value = '';
+        // Hide caption in staged mode — caption goes in the chat input
+        captionEl.style.display = _stagedMode ? 'none' : '';
+        sendBtn.textContent = _stagedMode ? 'Done' : 'Send';
       };
       srcImg.src = imgEl.src;
     };
@@ -289,13 +294,24 @@
     });
 
     window.annSend = function() {
-      var sessionID = document.body.dataset.sessionId;
-      if (!sessionID) { alert('No active session'); return; }
-
       sendBtn.disabled = true;
-      sendBtn.textContent = 'Sending…';
+      sendBtn.textContent = _stagedMode ? 'Saving…' : 'Sending…';
 
       canvas.toBlob(function(blob) {
+        // Staged mode: replace the staged file, don't upload yet
+        if (_stagedMode && window._annotatorCallback) {
+          window._annotatorCallback(blob);
+          window._annotatorCallback = null;
+          annClose();
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Send';
+          return;
+        }
+
+        // Normal mode: upload directly as a message
+        var sessionID = document.body.dataset.sessionId;
+        if (!sessionID) { alert('No active session'); return; }
+
         var fd = new FormData();
         fd.append('file', blob, 'annotation.png');
         fd.append('content', captionEl.value.trim() || 'Annotated screenshot');
