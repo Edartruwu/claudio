@@ -20,9 +20,13 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 				renderTool = renderTool.WithPusher(pusher, sessionID)
 			}
 			registry.Register(renderTool)
-			// Wire renderer into bundle so BundleMockup auto-renders the final
-			// file and pushes fresh screenshots — CC chat shows exact bundle output.
-			registry.Register(NewBundleMockupTool(designsDir).WithRenderer(renderTool))
+			// Wire pusher into bundle so BundleMockup pushes a clickable link to
+			// CC chat after the bundle file is written.
+			bundleTool := NewBundleMockupTool(designsDir)
+			if pusher != nil {
+				bundleTool = bundleTool.WithPusher(pusher, sessionID)
+			}
+			registry.Register(bundleTool)
 			registry.Register(NewVerifyMockupTool(designsDir, client, ""))
 			registry.Register(NewExportHandoffTool(designsDir))
 			return

@@ -345,6 +345,8 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Designs gallery.
 	mux.Handle("GET /designs", ws.uiAuth(http.HandlerFunc(ws.handleDesignGallery)))
 	mux.Handle("GET /designs/static/{id}/{rest...}", ws.uiAuth(http.HandlerFunc(ws.handleDesignStatic)))
+	// Project-scoped design assets: ~/.claudio/projects/{slug}/designs/{id}/{rest...}
+	mux.Handle("GET /designs/project/{slug}/{id}/{rest...}", ws.uiAuth(http.HandlerFunc(ws.handleDesignProject)))
 }
 
 // SetVAPIDPublicKey stores the VAPID public key for the browser subscription flow.
@@ -1213,6 +1215,13 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			ws.handleScreenshotPush(ev.SessionID, p)
+
+		case attach.EventDesignBundleReady:
+			var p attach.DesignBundlePayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			ws.handleBundleLinkPush(ev.SessionID, p)
 		}
 	}
 }
@@ -1268,6 +1277,34 @@ func (ws *WebServer) handleScreenshotPush(sessionID string, p attach.DesignScree
 	var buf bytes.Buffer
 	view := MessageView{Message: msg, Attachments: []cc.Attachment{att}}
 	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", view); err != nil {
+		return
+	}
+	wsPayload, _ := json.Marshal(map[string]string{"type": "message.assistant", "html": buf.String()})
+	ws.pushToSessionClients(sessionID, wsPayload)
+}
+
+// handleBundleLinkPush inserts an assistant message with a clickable link to
+// the bundle HTML and pushes it to all browser clients watching the session.
+func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundlePayload) {
+	now := time.Now()
+	// Content is markdown — renderMD in the bubble template will turn the link into an <a>.
+	content := fmt.Sprintf("🎨 **Bundle ready** — [View mockup →](%s)", p.BundleURL)
+	if p.SessionName != "" {
+		content = fmt.Sprintf("🎨 **Bundle ready** (`%s`) — [View mockup →](%s)", p.SessionName, p.BundleURL)
+	}
+	msg := cc.Message{
+		ID:        cc.NewID(),
+		SessionID: sessionID,
+		Role:      "assistant",
+		Content:   content,
+		CreatedAt: now,
+	}
+	if err := ws.storage.InsertMessage(msg); err != nil {
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err != nil {
 		return
 	}
 	wsPayload, _ := json.Marshal(map[string]string{"type": "message.assistant", "html": buf.String()})
@@ -1795,6 +1832,32 @@ func (ws *WebServer) handleDesignStatic(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	fp := filepath.Join(designsDir, id, rest)
+	cleaned := filepath.Clean(designsDir) + string(os.PathSeparator)
+	if !strings.HasPrefix(fp, cleaned) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	http.ServeFile(w, r, fp)
+}
+
+// handleDesignProject serves static assets from project-scoped design dirs.
+// Route: GET /designs/project/{slug}/{id}/{rest...}
+// Serves from: ~/.claudio/projects/{slug}/designs/{id}/{rest}
+// Path traversal is prevented identically to handleDesignStatic.
+func (ws *WebServer) handleDesignProject(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	id := r.PathValue("id")
+	rest := r.PathValue("rest")
+
+	if strings.Contains(slug, "..") || strings.Contains(id, "..") || strings.Contains(rest, "..") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	projectsDir := config.GetPaths().Projects
+	designsDir := filepath.Join(projectsDir, slug, "designs")
 	fp := filepath.Join(designsDir, id, rest)
 	cleaned := filepath.Clean(designsDir) + string(os.PathSeparator)
 	if !strings.HasPrefix(fp, cleaned) {

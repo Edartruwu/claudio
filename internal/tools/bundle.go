@@ -19,14 +19,16 @@ import (
 // single self-contained HTML file. Pure Go — no CGO, no exec.Command.
 type BundleMockupTool struct {
 	designsDir string
-	renderer   *RenderMockupTool // optional: render bundle after writing + push screenshots
+	pusher     ScreenshotPusher // optional: push bundle link to CC chat after writing
+	sessionID  string
 }
 
-// WithRenderer wires a RenderMockupTool so BundleMockup auto-renders the
-// bundled file after writing it and pushes fresh screenshots to CC chat.
+// WithPusher wires a ScreenshotPusher so BundleMockup pushes a clickable link
+// to CC chat after the bundle file is written. sessionID is forwarded as context.
 // Returns receiver for fluent chaining.
-func (t *BundleMockupTool) WithRenderer(r *RenderMockupTool) *BundleMockupTool {
-	t.renderer = r
+func (t *BundleMockupTool) WithPusher(pusher ScreenshotPusher, sessionID string) *BundleMockupTool {
+	t.pusher = pusher
+	t.sessionID = sessionID
 	return t
 }
 
@@ -268,15 +270,17 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		}
 	}
 
-	// Render the final bundle and push screenshots so CC chat shows the
-	// exact output the user will open — not a stale pre-bundle render.
-	if t.renderer != nil {
-		renderInput, _ := json.Marshal(map[string]interface{}{
-			"html_path":   outPath,
-			"session_dir": filepath.Dir(filepath.Dir(outPath)), // {sessionDir}/bundle/mockup.html → {sessionDir}
-		})
+	// Push a clickable link bubble to CC chat so the user can open the bundle directly.
+	if t.pusher != nil {
+		// Path structure: ~/.claudio/projects/{slug}/designs/{session}/bundle/mockup.html
+		// sessionDirName = {session}, slug = two dirs above {session}
+		sessionDir := filepath.Dir(filepath.Dir(outPath))          // .../designs/{session}
+		sessionDirName := filepath.Base(sessionDir)                // {session}
+		projectDir := filepath.Dir(filepath.Dir(sessionDir))       // .../projects/{slug}
+		slug := filepath.Base(projectDir)                          // {slug}
+		bundleURL := "/designs/project/" + slug + "/" + sessionDirName + "/bundle/mockup.html"
 		// Best-effort — ignore errors, bundle result already returned above.
-		_, _ = t.renderer.Execute(ctx, renderInput)
+		_ = t.pusher.PushBundleLink(t.sessionID, bundleURL, sessionDirName)
 	}
 
 	return &Result{Content: sb.String()}, nil

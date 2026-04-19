@@ -20,6 +20,9 @@ import (
 // the server side uses the hub's session binding, not this value.
 type ScreenshotPusher interface {
 	PushScreenshot(sessionID, filePath, filename string) error
+	// PushBundleLink sends a clickable link bubble to CC chat pointing at a
+	// self-contained bundle HTML file served by the CC server.
+	PushBundleLink(sessionID, bundleURL, sessionName string) error
 }
 
 // RenderMockupTool renders an HTML mockup using Playwright via Node.js and

@@ -13,8 +13,9 @@ const (
 	EventTaskCreated     = "task.created"
 	EventTaskUpdated     = "task.updated"
 	EventAgentStatus     = "agent.status"
-	EventSessionBye      = "session.bye"
+	EventSessionBye       = "session.bye"
 	EventDesignScreenshot = "design.screenshot"
+	EventDesignBundleReady = "design.bundle_ready"
 )
 
 // Events: ComandCenter → Claudio
@@ -84,6 +85,15 @@ type AgentStatusPayload struct {
 	Name        string `json:"name"`
 	Status      string `json:"status"` // idle|working|done|waiting
 	CurrentTask string `json:"current_task,omitempty"`
+}
+
+// DesignBundlePayload for EventDesignBundleReady.
+// Sent by the CLI after BundleMockupTool writes the bundle file.
+// The server pushes a clickable link bubble to all browser clients watching the session.
+type DesignBundlePayload struct {
+	SessionID   string `json:"session_id"`
+	BundleURL   string `json:"bundle_url"`   // relative: /designs/project/{slug}/{session}/bundle/mockup.html
+	SessionName string `json:"session_name"` // display label for the link bubble
 }
 
 // DesignScreenshotPayload for EventDesignScreenshot.

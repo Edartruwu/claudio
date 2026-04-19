@@ -441,6 +441,9 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 	case attach.EventDesignScreenshot:
 		// handled by web server fanout; no DB storage needed here
 
+	case attach.EventDesignBundleReady:
+		// handled by web server fanout; no DB storage needed here
+
 	default:
 		// unknown event — store raw as user message for auditability
 		raw, _ := json.Marshal(env)
