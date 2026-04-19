@@ -1279,6 +1279,41 @@ func TestTeammateRunner_Spawn_FallsBackToPlainRunner_NoMemoryDir(t *testing.T) {
 	}
 }
 
+// TestTeammateRunner_EmitEvent_CallsHandler verifies that a registered handler
+// is invoked synchronously with the exact event passed to EmitEvent.
+func TestTeammateRunner_EmitEvent_CallsHandler(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+
+	handler := &mockEventHandler{}
+	runner.SetEventHandler(handler)
+
+	event := TeammateEvent{AgentName: "alex", Type: "complete"}
+	runner.EmitEvent(event)
+
+	events := handler.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].AgentName != "alex" {
+		t.Errorf("AgentName: want %q, got %q", "alex", events[0].AgentName)
+	}
+	if events[0].Type != "complete" {
+		t.Errorf("Type: want %q, got %q", "complete", events[0].Type)
+	}
+}
+
+// TestTeammateRunner_EmitEvent_NoHandler_NoPanic verifies that calling EmitEvent
+// with no handler registered does not panic and completes normally.
+func TestTeammateRunner_EmitEvent_NoHandler_NoPanic(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "ok", nil
+	})
+	// No handler registered — must not panic.
+	runner.EmitEvent(TeammateEvent{AgentName: "alex", Type: "complete"})
+}
+
 func TestTeammateRunner_Spawn_FallsBackToPlainRunner_NoMemoryRunnerSet(t *testing.T) {
 	var plainCalled int32
 	var mu sync.Mutex
