@@ -371,6 +371,35 @@ func runHeadlessAttach(args []string) error {
 		}
 	}
 
+	// --- Gap 2: Auto-instantiate team from --team flag in headless mode ---
+	if flagTeam != "" {
+		templatesDir := config.GetPaths().TeamTemplates
+		if tmpl, err := teams.GetTemplate(templatesDir, flagTeam); err == nil {
+			sessionID := ""
+			if cur := sess.Current(); cur != nil {
+				sessionID = cur.ID
+			}
+			instantiateTeamDirect(tmpl, sessionID)
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: team template %q not found: %v\n", flagTeam, err)
+		}
+	}
+
+	// --- Gap 1: Wire OnSetTeam for dynamic team selection in headless mode ---
+	attachClient.OnSetTeam(func(payload attach.SetTeamPayload) {
+		templatesDir := config.GetPaths().TeamTemplates
+		tmpl, err := teams.GetTemplate(templatesDir, payload.TeamName)
+		if err != nil {
+			log.Printf("set_team: team template %q not found", payload.TeamName)
+			return
+		}
+		sessionID := ""
+		if cur := sess.Current(); cur != nil {
+			sessionID = cur.ID
+		}
+		instantiateTeamDirect(tmpl, sessionID)
+	})
+
 	// --- Load history from DB into engine ---
 	var initialMsgs []api.Message
 	if storedMsgs, err := sess.GetMessages(); err == nil && len(storedMsgs) > 0 {
@@ -491,6 +520,36 @@ func runHeadlessAttach(args []string) error {
 			return nil
 		}
 	}
+}
+
+// instantiateTeamDirect creates a team from a template and sets it as the active team.
+// Guard: if a team is already active, this is a no-op (returns empty string).
+// Returns the team name created, or "" if guard fired.
+func instantiateTeamDirect(tmpl *teams.TeamTemplate, sessionID string) string {
+	if appInstance.TeamRunner.ActiveTeamName() != "" {
+		return "" // already active — skip double-create
+	}
+	sfx := sessionID
+	if len(sfx) > 8 {
+		sfx = sfx[:8]
+	}
+	teamName := tmpl.Name
+	if sfx != "" {
+		teamName = tmpl.Name + "-" + sfx
+	}
+	if _, err := appInstance.Teams.CreateTeam(teamName, tmpl.Description, sessionID, tmpl.Model); err != nil {
+		_ = err // team may already exist; proceed anyway
+	}
+	for _, mem := range tmpl.Members {
+		model := mem.Model
+		if model == "" {
+			model = tmpl.Model
+		}
+		_, _ = appInstance.Teams.AddMember(teamName, mem.Name, model, "", mem.SubagentType)
+	}
+	appInstance.TeamRunner.SetActiveTeam(teamName)
+	log.Printf("team: instantiated %q from template %q", teamName, tmpl.Name)
+	return teamName
 }
 
 func buildAdvisorConfig(cfg *config.AdvisorSettings) (systemPrompt string, model string) {
@@ -1010,18 +1069,30 @@ func runInteractive() error {
 
 		attachClient.OnSetTeam(func(payload attach.SetTeamPayload) {
 			templatesDir := config.GetPaths().TeamTemplates
-			tmpls := teams.LoadTemplates(templatesDir)
-			for _, tmpl := range tmpls {
-				if tmpl.Name == payload.TeamName {
-					p.Send(teamselector.TeamSelectedMsg{
-						TemplateName: tmpl.Name,
-						Description:  tmpl.Description,
-						Members:      tmpl.Members,
-					})
-					return
-				}
+			tmpl, err := teams.GetTemplate(templatesDir, payload.TeamName)
+			if err != nil {
+				log.Printf("set_team: team template %q not found", payload.TeamName)
+				return
 			}
-			log.Printf("set_team: team template %q not found", payload.TeamName)
+			// Directly instantiate the team so SpawnTeammate works immediately,
+			// without relying solely on the BubbleTea event loop processing TeamSelectedMsg.
+			// Eagerly start session for a stable team-name suffix.
+			if sess.Current() == nil {
+				_, _ = sess.Start(appInstance.Config.Model)
+			}
+			sessionID := ""
+			if cur := sess.Current(); cur != nil {
+				sessionID = cur.ID
+			}
+			instantiateTeamDirect(tmpl, sessionID)
+			// Also forward to TUI so it can inject team tools and update the system prompt.
+			if p != nil {
+				p.Send(teamselector.TeamSelectedMsg{
+					TemplateName: tmpl.Name,
+					Description:  tmpl.Description,
+					Members:      tmpl.Members,
+				})
+			}
 		})
 	}
 
