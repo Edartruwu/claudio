@@ -294,15 +294,15 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 func injectInfiniteCanvas(html string) string {
 	canvasCSS := `<style id="cc-canvas-style">
 *,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#111}
-#cc-canvas-root{position:fixed;inset:0;overflow:hidden;background:#161616;cursor:grab;user-select:none;-webkit-user-select:none}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0B0E0F}
+#cc-canvas-root{position:fixed;inset:0;overflow:hidden;background:#0B0E0F;background-image:radial-gradient(circle,rgba(255,255,255,0.07) 1px,transparent 1px);background-size:24px 24px;cursor:grab;user-select:none;-webkit-user-select:none}
 #cc-canvas-root.cc-grabbing{cursor:grabbing}
 #cc-canvas-content{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
-#cc-toolbar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:6px;align-items:center;background:rgba(24,24,24,0.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:8px 14px;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.5);white-space:nowrap}
-#cc-toolbar button{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:#e0e0e0;border-radius:7px;padding:4px 10px;font-size:13px;cursor:pointer;transition:background 0.15s;font-family:inherit;font-weight:500}
-#cc-toolbar button:hover{background:rgba(255,255,255,0.16)}
-#cc-toolbar .cc-zoom-label{min-width:44px;text-align:center;color:#aaa;font-size:12px}
-#cc-toolbar .cc-sep{width:1px;height:18px;background:rgba(255,255,255,0.12);margin:0 4px}
+#cc-toolbar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:6px;align-items:center;background:rgba(15,18,19,0.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:8px 14px;color:#D4DDE0;font-family:'JetBrains Mono',monospace,-apple-system,sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.6);white-space:nowrap}
+#cc-toolbar button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#D4DDE0;border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;transition:background 0.15s;font-family:inherit;font-weight:500}
+#cc-toolbar button:hover{background:rgba(0,196,140,0.15);border-color:rgba(0,196,140,0.4);color:#00C48C}
+#cc-toolbar .cc-zoom-label{min-width:46px;text-align:center;color:#6B7E82;font-size:12px;font-family:inherit}
+#cc-toolbar .cc-sep{width:1px;height:18px;background:rgba(255,255,255,0.1);margin:0 2px}
 </style>`
 
 	canvasJS := `<script id="cc-canvas-js">(function(){
@@ -311,29 +311,48 @@ var root=document.getElementById('cc-canvas-root');
 var content=document.getElementById('cc-canvas-content');
 var label=document.getElementById('cc-zoom-label');
 var MIN=0.05,MAX=8;
+var laid=false;
 function clamp(v,lo,hi){return Math.min(Math.max(v,lo),hi)}
 function applyTransform(){
   content.style.transform='translate('+tx+'px,'+ty+'px) scale('+scale+')';
   if(label)label.textContent=Math.round(scale*100)+'%';
 }
-function zoomAt(cx,cy,factor){
-  var ns=clamp(scale*factor,MIN,MAX);
-  var f=ns/scale;
-  tx=cx-(cx-tx)*f;ty=cy-(cy-ty)*f;scale=ns;
-  applyTransform();
+function layoutHorizontal(artboards){
+  if(laid||artboards.length===0)return;
+  // Only re-layout if artboards have non-zero size
+  if(artboards[0].offsetWidth===0)return;
+  laid=true;
+  var GAP=80,PAD=80;
+  var x=PAD,maxH=0;
+  content.style.position='relative';
+  for(var i=0;i<artboards.length;i++){
+    var el=artboards[i];
+    var w=el.offsetWidth,h=el.offsetHeight;
+    el.style.position='absolute';
+    el.style.left=x+'px';
+    el.style.top=PAD+'px';
+    el.style.margin='0';
+    x+=w+GAP;
+    if(h>maxH)maxH=h;
+  }
+  content.style.width=(x-GAP+PAD)+'px';
+  content.style.height=(maxH+PAD*2)+'px';
 }
 function fitToScreen(){
   var rr=root.getBoundingClientRect();
-  var artboards=content.querySelectorAll('[data-artboard]');
-  var target=artboards.length>0?content:content;
-  var cw=target.scrollWidth,ch=target.scrollHeight;
-  if(cw===0||ch===0){cw=content.offsetWidth;ch=content.offsetHeight;}
+  var cw=content.offsetWidth,ch=content.offsetHeight;
   if(cw===0||ch===0)return;
   var s=Math.min(rr.width/cw,rr.height/ch)*0.88;
   s=clamp(s,MIN,MAX);
   scale=s;
   tx=(rr.width-cw*scale)/2;
   ty=(rr.height-ch*scale)/2;
+  applyTransform();
+}
+function zoomAt(cx,cy,factor){
+  var ns=clamp(scale*factor,MIN,MAX);
+  var f=ns/scale;
+  tx=cx-(cx-tx)*f;ty=cy-(cy-ty)*f;scale=ns;
   applyTransform();
 }
 root.addEventListener('wheel',function(e){
@@ -354,7 +373,6 @@ window.addEventListener('mousemove',function(e){
   applyTransform();
 });
 window.addEventListener('mouseup',function(){dragging=false;root.classList.remove('cc-grabbing');});
-// Touch pan + pinch zoom
 var touches={},lastPinchDist=0;
 root.addEventListener('touchstart',function(e){
   for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];touches[t.identifier]={x:t.clientX,y:t.clientY};}
@@ -380,15 +398,19 @@ window.addEventListener('keydown',function(e){
 document.getElementById('cc-btn-fit').addEventListener('click',fitToScreen);
 document.getElementById('cc-btn-in').addEventListener('click',function(){var rr=root.getBoundingClientRect();zoomAt(rr.width/2,rr.height/2,1.25);});
 document.getElementById('cc-btn-out').addEventListener('click',function(){var rr=root.getBoundingClientRect();zoomAt(rr.width/2,rr.height/2,0.8);});
-// Fit on load — wait for React artboards to mount
+// Wait for React artboards to mount, then layout + fit
 function tryFit(attempts){
   var artboards=content.querySelectorAll('[data-artboard]');
-  if(artboards.length>0){fitToScreen();return;}
+  if(artboards.length>0&&artboards[0].offsetWidth>0){
+    layoutHorizontal(artboards);
+    fitToScreen();
+    return;
+  }
   if(attempts>0)setTimeout(function(){tryFit(attempts-1);},300);
   else fitToScreen();
 }
-if(document.readyState==='complete'){tryFit(20);}
-else{window.addEventListener('load',function(){tryFit(20);});}
+if(document.readyState==='complete'){tryFit(30);}
+else{window.addEventListener('load',function(){tryFit(30);});}
 })();</script>`
 
 	toolbar := `<div id="cc-toolbar">
