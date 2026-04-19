@@ -140,7 +140,7 @@ security, and hackability.`,
 				log.Printf("Warning: COMANDCENTER_PASSWORD env var not set, attaching without auth\n")
 			}
 
-			client := attachclient.New(flagAttach, password, flagName, flagMaster)
+			client := attachclient.New(flagAttach, password, flagName, flagMaster, flagAgent, flagTeam)
 			if err := client.Connect(context.Background()); err != nil {
 				log.Printf("Warning: failed to attach to ComandCenter: %v\n", err)
 			} else {

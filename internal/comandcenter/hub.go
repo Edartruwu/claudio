@@ -318,6 +318,11 @@ func (h *Hub) handleConn(conn wsConn) {
 		return
 	}
 
+	// Persist CLI-supplied agent/team flags on first connect.
+	if hello.AgentType != "" || hello.TeamTemplate != "" {
+		_ = h.storage.UpdateSessionConfig(sessionID, hello.AgentType, hello.TeamTemplate)
+	}
+
 	h.Register(sessionID, conn)
 	// Register interrupt fn: sends EventInterrupt envelope to the attached Claudio process.
 	h.RegisterInterrupt(sessionID, func() {

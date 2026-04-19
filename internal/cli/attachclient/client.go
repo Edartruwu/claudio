@@ -19,6 +19,8 @@ type Client struct {
 	password     string
 	name         string
 	master       bool
+	agentType    string
+	teamTemplate string
 	conn         *websocket.Conn
 	onUserMsg    func(attach.UserMsgPayload)
 	onInterrupt  func()
@@ -30,13 +32,15 @@ type Client struct {
 }
 
 // New creates unconnected Client.
-func New(serverURL, password, name string, master bool) *Client {
+func New(serverURL, password, name string, master bool, agentType, teamTemplate string) *Client {
 	return &Client{
 		serverURL:  serverURL,
 		password:   password,
 		name:       name,
-		master:     master,
-		closedChan: make(chan struct{}),
+		master:       master,
+		agentType:    agentType,
+		teamTemplate: teamTemplate,
+		closedChan:   make(chan struct{}),
 	}
 }
 
@@ -79,9 +83,11 @@ func (c *Client) Connect(ctx context.Context) error {
 	// Send hello
 	cwd, _ := os.Getwd()
 	hello := attach.HelloPayload{
-		Name:   c.name,
-		Path:   cwd,
-		Master: c.master,
+		Name:         c.name,
+		Path:         cwd,
+		Master:       c.master,
+		AgentType:    c.agentType,
+		TeamTemplate: c.teamTemplate,
 	}
 	if err := c.sendEnvelopeUnlocked(attach.EventSessionHello, hello); err != nil {
 		conn.Close()

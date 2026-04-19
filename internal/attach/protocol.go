@@ -43,10 +43,12 @@ type Envelope struct {
 
 // HelloPayload for EventSessionHello.
 type HelloPayload struct {
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Model  string `json:"model,omitempty"`
-	Master bool   `json:"master,omitempty"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	Model        string `json:"model,omitempty"`
+	Master       bool   `json:"master,omitempty"`
+	AgentType    string `json:"agent_type,omitempty"`
+	TeamTemplate string `json:"team_template,omitempty"`
 }
 
 // AssistantMsgPayload for EventMsgAssistant.
