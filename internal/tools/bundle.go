@@ -304,6 +304,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 #cc-toolbar .cc-zoom-label{min-width:46px;text-align:center;color:#6B7E82;font-size:12px;font-family:inherit}
 #cc-toolbar .cc-sep{width:1px;height:18px;background:rgba(255,255,255,0.1);margin:0 2px}
 #cc-canvas-content [data-artboard]{border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08);overflow:hidden}
+#cc-canvas-content>div>p,#cc-canvas-content>div>h1,#cc-canvas-content>div>h2,#cc-canvas-content>div>h3,#cc-canvas-content div:has(>[data-artboard])>p{display:none!important}
 </style>`
 
 	canvasJS := `<script id="cc-canvas-js">(function(){
