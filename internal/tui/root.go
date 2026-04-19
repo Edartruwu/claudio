@@ -1843,7 +1843,9 @@ func (m Model) applyTeamContext(msg teamselector.TeamSelectedMsg) Model {
 	var block string
 	if msg.IsEphemeral {
 		block = `## Active Team
-An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.`
+An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.
+
+When all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents.`
 	} else {
 		// Auto-instantiate the team so SpawnTeammate works immediately without
 		// requiring the model to call InstantiateTeam first.
@@ -1906,7 +1908,9 @@ An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to ad
 Members:
 %s
 
-The team is ready. Use SpawnTeammate to assign tasks to each member.`,
+The team is ready. Use SpawnTeammate to assign tasks to each member.
+
+When all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents.`,
 			msg.TemplateName, desc, roster)
 	}
 
@@ -2061,7 +2065,9 @@ func (m Model) ApplyTeamContextAtStartup(msg teamselector.TeamSelectedMsg, appCt
 	var block string
 	if msg.IsEphemeral {
 		block = `## Active Team
-An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.`
+An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.
+
+When all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents.`
 	} else {
 		// Auto-instantiate the team so SpawnTeammate works immediately without
 		// requiring the model to call InstantiateTeam first.
@@ -2115,7 +2121,9 @@ An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to ad
 Members:
 %s
 
-The team is ready. Use SpawnTeammate to assign tasks to each member.`,
+The team is ready. Use SpawnTeammate to assign tasks to each member.
+
+When all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents.`,
 			msg.TemplateName, desc, roster)
 	}
 

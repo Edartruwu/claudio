@@ -496,6 +496,9 @@ func runHeadlessAttach(args []string) error {
 
 	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, engineCfg)
 	sys := buildFullSystemPrompt()
+	if flagTeam != "" {
+		sys += "\n\nWhen all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents."
+	}
 	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
 		sys += "\n\n" + section
 	}
@@ -974,6 +977,9 @@ func runInteractive() error {
 	}
 
 	systemPrompt := buildFullSystemPrompt()
+	if flagTeam != "" {
+		systemPrompt += "\n\nWhen all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents."
+	}
 
 	// Start or resume session
 	sess := session.New(appInstance.DB)
