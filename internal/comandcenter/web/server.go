@@ -454,7 +454,11 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 		ChatView(data.Session, data.Messages, data.SessionID).Render(r.Context(), w)
 		return
 	}
-	templ.Handler(ChatView(data.Session, data.Messages, data.SessionID)).ServeHTTP(w, r)
+	// Full-page render (hard refresh / direct URL): wrap in Layout so CSS/JS loads.
+	page := templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		return Layout(id).Render(templ.WithChildren(ctx, ChatView(data.Session, data.Messages, data.SessionID)), w)
+	})
+	templ.Handler(page).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
