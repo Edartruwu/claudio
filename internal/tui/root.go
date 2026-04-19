@@ -1839,38 +1839,42 @@ An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to ad
 		// Auto-instantiate the team so SpawnTeammate works immediately without
 		// requiring the model to call InstantiateTeam first.
 		if m.appCtx != nil && m.appCtx.TeamManager != nil && m.appCtx.TeamRunner != nil {
-			// Eagerly start session so we have a stable ID for the team name.
-			if m.session != nil && m.session.Current() == nil {
-				m.session.Start(m.model)
-				m.syncMainWindowState()
-			}
-			sessionID := ""
-			if m.session != nil && m.session.Current() != nil {
-				sessionID = m.session.Current().ID
-			}
-			teamName := msg.TemplateName
-			if sessionID != "" {
-				sfx := sessionID
-				if len(sfx) > 8 {
-					sfx = sfx[:8]
+			// Guard: skip create/register/set-active if team was already instantiated
+			// (e.g. by OnSetTeam callback in the attach path before TUI processed the msg).
+			if m.appCtx.TeamRunner.ActiveTeamName() == "" {
+				// Eagerly start session so we have a stable ID for the team name.
+				if m.session != nil && m.session.Current() == nil {
+					m.session.Start(m.model)
+					m.syncMainWindowState()
 				}
-				teamName = msg.TemplateName + "-" + sfx
-			}
-			if _, err := m.appCtx.TeamManager.CreateTeam(teamName, msg.Description, sessionID, ""); err != nil {
-				// Team may already exist; proceed anyway.
-				_ = err
-			}
-			// Pre-register members so their subagent_type is persisted.
-			for _, mem := range msg.Members {
-				_, _ = m.appCtx.TeamManager.AddMember(teamName, mem.Name, mem.Model, "", mem.SubagentType)
-			}
-			m.appCtx.TeamRunner.SetActiveTeam(teamName)
+				sessionID := ""
+				if m.session != nil && m.session.Current() != nil {
+					sessionID = m.session.Current().ID
+				}
+				teamName := msg.TemplateName
+				if sessionID != "" {
+					sfx := sessionID
+					if len(sfx) > 8 {
+						sfx = sfx[:8]
+					}
+					teamName = msg.TemplateName + "-" + sfx
+				}
+				if _, err := m.appCtx.TeamManager.CreateTeam(teamName, msg.Description, sessionID, ""); err != nil {
+					// Team may already exist; proceed anyway.
+					_ = err
+				}
+				// Pre-register members so their subagent_type is persisted.
+				for _, mem := range msg.Members {
+					_, _ = m.appCtx.TeamManager.AddMember(teamName, mem.Name, mem.Model, "", mem.SubagentType)
+				}
+				m.appCtx.TeamRunner.SetActiveTeam(teamName)
 
-			// Record in InstantiateTeamTool so engine.Close() cleans up.
-			if m.registry != nil {
-				if it, err := m.registry.Get("InstantiateTeam"); err == nil {
-					if tool, ok := it.(*tools.InstantiateTeamTool); ok {
-						tool.InstantiatedTeam = teamName
+				// Record in InstantiateTeamTool so engine.Close() cleans up.
+				if m.registry != nil {
+					if it, err := m.registry.Get("InstantiateTeam"); err == nil {
+						if tool, ok := it.(*tools.InstantiateTeamTool); ok {
+							tool.InstantiatedTeam = teamName
+						}
 					}
 				}
 			}
