@@ -140,7 +140,7 @@ templ ChatListSidebar(data ChatListData) {
 				id="session-list"
 				hx-get="/partials/sessions"
 				hx-trigger="load, every 3s"
-				hx-swap="innerHTML"
+				hx-swap="innerHTML show:no-scroll"
 				hx-indicator=".htmx-indicator"
 			>
 				@SessionsPartial(data.Rows)
