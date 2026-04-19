@@ -88,7 +88,7 @@ func (t *ExportHandoffTool) InputSchema() json.RawMessage {
 			"description": "Project name used in spec header."
 		}
 	},
-	"required": ["mockup_dir"]
+	"required": []
 }`)
 }
 
@@ -176,11 +176,18 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
 	}
 
+	// mockup_dir is optional when session_dir is provided — default to session_dir
+	if in.MockupDir == "" && in.SessionDir != "" {
+		in.MockupDir = in.SessionDir
+	}
 	if in.MockupDir == "" {
-		return &Result{Content: "mockup_dir is required", IsError: true}, nil
+		return &Result{Content: "mockup_dir or session_dir is required", IsError: true}, nil
 	}
 
 	mockupDir := RemapPathForWorktree(ctx, in.MockupDir)
+	if in.SessionDir != "" {
+		in.SessionDir = RemapPathForWorktree(ctx, in.SessionDir)
+	}
 
 	// Defaults
 	if in.Framework == "" {
@@ -229,8 +236,11 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 	}
 	allHTML := combined.String()
 
-	// 4. Parse screens from data-artboard attributes
-	screens := parseScreens(files)
+	// 4. Parse screens — prefer manifest.json (canonical), fall back to HTML parsing
+	screens := readManifestScreens(in.SessionDir)
+	if len(screens) == 0 {
+		screens = parseScreens(files)
+	}
 
 	// 5. Parse component inventory from Tailwind classes
 	components := parseComponents(allHTML)
@@ -339,7 +349,7 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 
 	// 13b. Copy rendered/ → handoff/rendered/ (skip silently if absent)
 	if in.SessionDir != "" {
-		renderedSrc := filepath.Join(in.SessionDir, "rendered")
+		renderedSrc := filepath.Join(in.SessionDir, "screenshots", "rendered")
 		if _, err := os.Stat(renderedSrc); err == nil {
 			renderedDst := filepath.Join(handoffDir, "rendered")
 			if err := copyRenderedDir(renderedSrc, renderedDst); err != nil {
@@ -608,6 +618,30 @@ type fileContent struct {
 	content string
 }
 
+// readManifestScreens reads screen names from {sessionDir}/manifest.json.
+// Returns nil if the file doesn't exist or can't be parsed.
+func readManifestScreens(sessionDir string) []screenInfo {
+	if sessionDir == "" {
+		return nil
+	}
+	manifestPath := filepath.Join(sessionDir, "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil
+	}
+	var m struct {
+		Screens []string `json:"screens"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil || len(m.Screens) == 0 {
+		return nil
+	}
+	screens := make([]screenInfo, 0, len(m.Screens))
+	for _, name := range m.Screens {
+		screens = append(screens, screenInfo{Name: name, File: name + ".png"})
+	}
+	return screens
+}
+
 func parseScreens(files []fileContent) []screenInfo {
 	var screens []screenInfo
 	seen := map[string]bool{}
@@ -855,31 +889,32 @@ func buildSpecMarkdown(
 	sb.WriteString("- Rendered screens: handoff/rendered/\n")
 	sb.WriteString("\n")
 
-	// Screens — with per-screen interaction tables
+	// Screens — with paths and per-screen interaction tables
 	sb.WriteString("## Screens\n\n")
 	if len(screens) == 0 {
-		sb.WriteString("- (none detected)\n")
+		sb.WriteString("- (none detected)\n\n")
 	}
 	for _, s := range screens {
-		sb.WriteString(fmt.Sprintf("## Screen: %s\n\n", s.Name))
+		sb.WriteString(fmt.Sprintf("### %s\n\n", s.Name))
+		sb.WriteString(fmt.Sprintf("- Screenshot: `screenshots/%s.png`\n", s.Name))
+		sb.WriteString(fmt.Sprintf("- Rendered HTML: `screenshots/rendered/%s.html`\n", s.Name))
 		// Load interactions.json for this screen if available
 		if sessionDir != "" {
-			ijPath := filepath.Join(sessionDir, "rendered", s.Name+".interactions.json")
+			ijPath := filepath.Join(sessionDir, "screenshots", "rendered", s.Name+".interactions.json")
 			if raw, err := os.ReadFile(ijPath); err == nil {
 				var elems []renderedInteraction
 				if json.Unmarshal(raw, &elems) == nil && len(elems) > 0 {
-					sb.WriteString("### Interactive Elements\n\n")
+					sb.WriteString("\n**Interactive Elements:**\n\n")
 					sb.WriteString("| Element | Text | Type |\n")
 					sb.WriteString("|---------|------|------|\n")
 					for _, el := range elems {
 						sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", el.Tag, el.Text, tagToType(el.Tag)))
 					}
-					sb.WriteString("\n")
 				}
 			}
 		}
+		sb.WriteString("\n")
 	}
-	sb.WriteString("\n")
 
 	// Design Tokens — inline color summary from tokens.json
 	sb.WriteString("## Design Tokens\n\n")
