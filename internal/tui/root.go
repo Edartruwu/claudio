@@ -1964,21 +1964,9 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	return m
 }
 
-// registerCapabilityTools adds capability-gated tools to the registry based on
-// the active agent's declared capabilities. Called on both startup and agent switch.
-// Each capability maps to a set of tools; agents without that capability never see them.
+// registerCapabilityTools delegates to the shared tools.RegisterCapabilityTools.
 func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client, pusher tools.ScreenshotPusher, sessionID string) {
-	if slices.Contains(capabilities, "design") {
-		paths := config.GetPaths()
-		registry.Register(tools.NewBundleMockupTool(paths.Designs))
-		renderTool := tools.NewRenderMockupTool(paths.Designs)
-		if pusher != nil {
-			renderTool = renderTool.WithPusher(pusher, sessionID)
-		}
-		registry.Register(renderTool)
-		registry.Register(tools.NewVerifyMockupTool(paths.Designs, client, ""))
-		registry.Register(tools.NewExportHandoffTool(paths.Designs))
-	}
+	tools.RegisterCapabilityTools(registry, capabilities, client, pusher, sessionID)
 }
 
 // applySkillFiltering updates the SkillTool inside toolRegistry with a filtered

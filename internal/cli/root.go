@@ -379,6 +379,16 @@ func runHeadlessAttach(args []string) error {
 
 	// --- Build ONE persistent engine for the session lifetime ---
 	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
+
+	// Wire capability-gated tools (e.g. design tools) for headless+attach mode.
+	// In TUI mode this happens in applyAgentPersona; here we do it once at startup.
+	if flagAgent != "" {
+		agentDef := agents.GetAgent(flagAgent)
+		if len(agentDef.Capabilities) > 0 {
+			pusher := attachclient.NewAttachScreenshotPusher(attachClient)
+			tools.RegisterCapabilityTools(reg, agentDef.Capabilities, appInstance.API, pusher, sess.Current().ID)
+		}
+	}
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
