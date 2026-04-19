@@ -1,368 +1,137 @@
-# Claudio Built-In Agent Architecture Investigation
+# Investigation Report: Config Tab Agent/Team Display Bug
 
 ## Subject
-Investigated how built-in agents are defined, registered, invoked, and tool-controlled in Claudio; how custom agents load from files; how skills and plugins integrate; how TUI agent selection works; and how CLI `--agent` flag flows through the system.
-
----
+Why ComandCenter Config tab always shows "Default (no agent)" even when claudio started with `--agent` flag.
 
 ## Codebase Overview
 
-**Entry points:**
-- CLI: `internal/cli/root.go` — agent init via `--agent` flag (line 221), calls `applyAgentOverrides()` (line 255, 381, 857)
-- Agent system: `internal/agents/agents.go` — definitions, registration, loading
-- Skills: `internal/services/skills/loader.go` — skill loading, registry, bundled skills
-- TUI: `internal/tui/root.go` — agent persona application during runtime, `internal/tui/agentselector/selector.go` — UI component
+**Key paths:**
+- ComandCenter web server: `internal/comandcenter/web/server.go` (106 symbols)
+- Session model (DB): `internal/storage/sessions.go`, `internal/comandcenter/session.go`
+- CLI startup: `internal/cli/root.go`
+- Attach protocol: `internal/attach/protocol.go`, `internal/cli/attachclient/client.go`
+- Config tab (web): reads from `/api/sessions` endpoint
 
-**Key structures:**
-- `AgentDefinition` struct (agents.go:36) — defines agent capabilities, prompts, tools
-- `Skill` struct (skills/loader.go:14) — skill definitions with hooks
-- `Frontmatter` map (utils/frontmatter.go:9) — simple key-value parser for YAML-like config
+**Two separate session stores:**
+1. `sessions` table — used by internal TUI, populated by `internal/storage/sessions.go`
+2. `cc_sessions` table — used by ComandCenter web UI, populated by `internal/comandcenter/storage.go`
+
+**Entry points:**
+- ComandCenter spawns claudio via launcher: `cmd/comandcenter/launcher.go`
+- Session connects to ComandCenter via WebSocket attachment: `internal/cli/attachclient/client.go`
+- Config tab reads from `/api/sessions` → `handleAPISessions` → `ListSessions()` on `cc_sessions` table
 
 ---
 
 ## Key Findings
 
-### 1. AgentDefinition Struct — Complete Field Map
-
-**Location:** `internal/agents/agents.go:36`
-
-```go
-type AgentDefinition struct {
-  Type                string      // unique identifier (e.g., "general-purpose", "Explore")
-  WhenToUse          string      // description of when to use this agent
-  SystemPrompt       string      // system prompt injected when agent is active
-  Tools              []string    // allowed tools (empty or "*" for all)
-  DisallowedTools    []string    // explicitly denied tools (blocks these)
-  Model              string      // model override (haiku, sonnet, opus, or "")
-  ReadOnly           bool        // if true, Edit/Write/NotebookEdit blocked
-  MemoryDir          string      // agent's own memory directory (crystallized agents)
-  ExtraSkillsDir     string      // agent-specific skills directory (merged with global)
-  ExtraPluginsDir    string      // agent-specific plugins directory (merged with global)
-  SourceSession      string      // session ID if agent was crystallized from a session
-  SourceProject      string      // project dir if agent was originally created in a project
-  MaxTurns           int         // max agentic turns (API calls); 0 = unlimited
-}
-```
-
-**Data flow:** `GetAgent(agentType)` → searches `AllAgents()` → returns definition or falls back to `GeneralPurposeAgent()`.
-
----
-
-### 2. Built-In Agent Definitions
-
-**Location:** `internal/agents/agents.go:79–302`
-
-Four built-in agents, each a function that returns a populated `AgentDefinition`:
-
-| Agent | Type | MaxTurns | Model | ReadOnly | DisallowedTools | Role |
-|-------|------|----------|-------|----------|-----------------|------|
-| `GeneralPurposeAgent()` | `"general-purpose"` | 50 | (inherit) | false | none | Default multi-step agent, full tool access |
-| `ExploreAgent()` | `"Explore"` | 25 | haiku | true | Agent, ExitPlanMode, Edit, Write, NotebookEdit | Codebase exploration specialist (read-only) |
-| `PlanAgent()` | `"Plan"` | 30 | (inherit) | true | Agent, ExitPlanMode, Edit, Write, NotebookEdit | Implementation architect (design only, no code) |
-| `VerificationAgent()` | `"verification"` | 20 | (inherit) | true | Edit, Write, NotebookEdit | Test + validate implementation (bash + read-only) |
-
-**Call chain:** `BuiltInAgents()` → returns all 4 as a slice → used by `AllAgents()` + `GetAgent()`.
-
----
-
-### 3. Custom Agent Loading — File Format & Directory Structure
-
-**Location:** `internal/agents/agents.go:304–488`
-
-**Custom agent file formats:**
-
-1. **Flat markdown** — single `.md` file per agent:
-   ```
-   agents/
-   └── my-agent.md
-   ```
-   - Filename (minus `.md`) = agent Type
-   - Frontmatter keys: `description`, `name`, `tools`, `disallowedTools`, `model`, `sourceSession`, `sourceProject`
-   - Markdown body after `---` → SystemPrompt
-
-2. **Directory-form** — dedicated folder per agent (preferred, wins over flat):
-   ```
-   agents/
-   └── my-agent/
-       ├── AGENT.md         (priority 1)
-       ├── agent.md         (priority 2)
-       ├── my-agent.md      (priority 3)
-       ├── memory/          (auto-detected)
-       ├── skills/          (auto-detected)
-       └── plugins/         (auto-detected)
-   ```
-   - Directory name = agent Type
-   - Looks for definition .md in order: `AGENT.md` > `agent.md` > `<dirname>.md`
-   - Subdirectories auto-populate `MemoryDir`, `ExtraSkillsDir`, `ExtraPluginsDir`
-
-**Frontmatter format:**
-```yaml
----
-description: Brief description of when to use this agent
-name: Display name (optional, falls back to description)
-tools: "Skill, Agent, Read"  # or "*" for all
-disallowedTools: "Edit, Write"
-model: "sonnet"              # haiku, sonnet, opus, or empty
-sourceSession: "<session-id>"
-sourceProject: "/path/to/project"
----
-
-Your system prompt here. Can span multiple paragraphs.
-```
-
-**Loading logic** (`LoadCustomAgents(dirs...)`):
-1. Read directory entries
-2. Directory-form agents loaded first, mark types as "seen"
-3. Flat-file `.md` agents loaded, skip if type already seen (directory wins)
-4. For each agent: parse frontmatter, extract fields, detect subdirs, append to custom slice
-5. `AllAgents()` merges built-in + custom, custom overrides built-in by Type
-
----
-
-### 4. Tool Filtering & DisallowedTools
-
-**Mechanism:** `registry.Clone().Remove(name)` removes tools by name.
-
-**Where applied:**
-1. **CLI (`--agent` flag)** — `applyAgentOverrides()` (root.go:525):
-   - Clones registry at startup
-   - Removes each tool in `DisallowedTools` slice
-   - Returns filtered registry + model override + plugin infos
-   - Calls registered before engine creation
-
-2. **TUI (runtime selection)** — `applyAgentPersona()` (root.go:1735):
-   - Same clone-and-remove logic
-   - Updates live engine registry mid-session via `engine.SetRegistry(filtered)`
-
-**Call chain for CLI:**
-```
-rootCmd.PersistentPreRunE → runInteractive()/runSinglePrompt()
-  → applyAgentOverrides(appInstance.Tools)
-    → agents.GetAgent(flagAgent)
-    → registry.Clone()
-    → registry.Remove(...DisallowedTools)
-    → returns (filtered registry, modelOverride, extraPluginInfos)
-  → passes filtered registry to query.NewEngineWithConfig()
-```
-
----
-
-### 5. Skills System — Loading, Registry, Bundled Skills
-
-**Location:** `internal/services/skills/loader.go`
-
-**Skill struct** (line 14):
-```go
-type Skill struct {
-  Name        string      // unique skill name
-  Description string      // brief description
-  Content     string      // the prompt/instruction content
-  Source      string      // "bundled", "user", "project", "plugin"
-  FilePath    string      // path to skill file (optional)
-  SkillDir    string      // directory containing skill (optional)
-  Paths       []string    // paths this skill applies to (optional)
-  Hooks       []SkillHook // auto-register hooks
-}
-```
-
-**SkillHook** (line 26):
-```go
-type SkillHook struct {
-  Event   string  // "PreToolUse", "PostToolUse", etc.
-  Matcher string  // tool name glob (e.g., "Write|Edit" or "*")
-  Command string  // shell command to run
-  Timeout int     // milliseconds
-  Async   bool    // non-blocking if true
-}
-```
-
-**Registry** (line 35):
-```go
-type Registry struct {
-  mu     sync.RWMutex
-  skills map[string]*Skill
-}
-```
-Methods: `Get(name)`, `Register(skill)`, `All()` (sorted deterministically).
-
-**Loading hierarchy** — `LoadAll(userDir, projectDir)` (line 80):
-1. Load bundled skills first (hardcoded in `bundledSkills()`)
-2. Load user skills from `~/.claudio/skills/` (if dir provided)
-3. Load project skills from `.claudio/skills/` (if dir provided)
-4. Later registrations override earlier ones by skill name
-
-**Bundled skills** (line 217–1700): Defined as `var skillContent` constants, compiled into binary. Currently: `commit`, `review`, `simplify`, `updateConfig`, `debug`, `batch`, `pr`, `test`, `securityReview`, `setupSnippets`, `refactor`, `init`, `harness`, `caveman`, `cavemanCommit`, `cavemanReview`.
-
-**Per-agent skills:** `applyAgentOverrides()` (root.go:536–558) loads `agentDef.ExtraSkillsDir` via `skills.LoadAll()` and merges into SkillTool's registry without mutating the global one.
-
----
-
-### 6. CLI `--agent` Flag Flow
-
-**Definition:** `internal/cli/root.go:45` (var), `init()` line 221 (flag registration):
-```go
-flagAgent string  // Run as a specific agent persona (e.g., prab, backend-senior)
-rootCmd.PersistentFlags().StringVar(&flagAgent, "agent", "", "...")
-```
-
-**Flow at startup:**
-
-```
-PersistentPreRunE (root.go:74)
-  ↓
-runSinglePrompt() or runInteractive()
-  ↓
-applyAgentOverrides(appInstance.Tools) [line 255, 381, 857]
-  ├─ agents.GetAgent(flagAgent) → AgentDefinition
-  ├─ registry.Clone() → filtered registry
-  ├─ filtered.Remove(...DisallowedTools)
-  ├─ Load ExtraSkillsDir skills (if present)
-  ├─ Load ExtraPluginsDir plugins (if present)
-  └─ Return (filtered, modelOverride, pluginInfos)
-
-appInstance.Config.Model = modelOverride (if not "")
-appInstance.API.SetModel(modelOverride)
-
-query.NewEngineWithConfig(..., filtered, ...)
-
-buildFullSystemPrompt() returns base system + rules + context
-engine.SetSystem(base) — agent's SystemPrompt NOT appended at CLI startup
-```
-
-**Note:** CLI `--agent` applies tool filtering but NOT system prompt injection at this stage (that's TUI-only).
-
----
-
-### 7. TUI Agent Selection & Runtime Application
-
-**Components:**
-
-1. **AgentSelectedMsg** (agentselector/selector.go:16):
-```go
-type AgentSelectedMsg struct {
-  AgentType       string
-  DisplayName     string
-  SystemPrompt    string
-  Model           string
-  DisallowedTools []string
-}
-```
-
-2. **Agent selector UI** (agentselector/selector.go):
-   - Model holds list of all agents (built-in + custom)
-   - User navigates with arrow keys, filters with text input
-   - On selection, sends `AgentSelectedMsg` up the event chain
-
-3. **Persona application** — Two methods on TUI Model:
-
-   **`applyAgentPersona(msg)` (root.go:1735)** — runtime, after engine created:
-   - If `msg.AgentType == ""` → clear agent, restore base state
-   - Append `msg.SystemPrompt` to `baseSystemPrompt` → new system prompt
-   - Clone registry, remove `DisallowedTools`, set as `m.registry`
-   - Apply model override
-   - Call `engine.SetSystem(newSystem)` + `engine.SetRegistry(filtered)` — updates live engine
-   - Add system message to chat
-
-   **`ApplyAgentPersonaAtStartup(msg)` (root.go:1890)** — before engine created:
-   - Same logic as `applyAgentPersona` but skips system message + viewport refresh
-   - Called when `--agent` flag is set at CLI startup (root.go:948)
-   - Ensures system prompt and registry are prepared before engine creation
-
-**Call chain for TUI selection:**
-```
-User selects agent in selector UI
-  → AgentSelectedMsg sent
-  → root.Update() handles agentselector.AgentSelectedMsg case (root.go:1335)
-    → m.applyAgentPersona(msg)
-      ├─ m.systemPrompt = baseSystemPrompt + msg.SystemPrompt
-      ├─ filtered = m.registry.Clone()
-      ├─ filtered.Remove(DisallowedTools...)
-      ├─ m.registry = filtered
-      ├─ engine.SetSystem(newSystem)
-      ├─ engine.SetRegistry(filtered)
-      └─ addMessage("Agent persona: ...")
-```
-
----
-
-### 8. Crystallized Sessions → Agent Definitions
-
-**Location:** `internal/agents/crystallize.go:14`
-
-**Function:** `CrystallizeSession(agentsDir, name, description, sessionID, sourceProject, summary string, memories []*memory.Entry) (*AgentDefinition, error)`
-
-**Process:**
-1. Sanitize agent name for filesystem
-2. Create agent directory: `agentsDir/<safeName>/`
-3. Create memory subdirectory: `agentsDir/<safeName>/memory/`
-4. Build system prompt from name, description, summary, key memory entries
-5. Write agent markdown file: `agentsDir/<safeName>.md` with frontmatter + prompt body
-6. Copy session memories into agent's memory directory
-7. Return new `AgentDefinition` with MemoryDir set
-
-**Generated frontmatter includes:**
-- `description: <description>`
-- `sourceSession: <sessionID>`
-- `sourceProject: <sourceProject>`
-- `tools: "*"`
-
-**Result:** Crystallized agents can be reloaded from disk as custom agents; `LoadCustomAgents()` auto-detects their MemoryDir and SourceSession fields.
-
----
-
-### 9. Agent Registry Operations — Clone, Remove, Merge
-
-**Methods on `*tools.Registry`:**
-
-- **`Clone() *Registry`** — deep copy of registry (all tools copied by reference, map cloned)
-- **`Remove(name string)`** — delete tool from registry by name
-- **`Get(name string) (Tool, error)`** — retrieve tool
-- **`Register(tool Tool)`** — add/overwrite tool
-- **`All() []Tool`** — list all registered tools
-
-**Skill merge pattern** (root.go:536–558):
-```go
-// Global registry
-globalSkillReg := appInstance.Skill.SkillsRegistry
-
-// Agent wants extra skills
-if agentDef.ExtraSkillsDir != "" {
-  mergedReg := skills.NewRegistry()
-  // Copy global skills
-  for _, s := range globalSkillReg.All() {
-    mergedReg.Register(s)
+### Finding 1: Config Tab Reads From `cc_sessions.agent_type` (Always Empty)
+- **Location:** `internal/comandcenter/web/server.go:1334-1345` (handleAPISessions)
+- **Location:** `internal/comandcenter/storage.go:328-364` (ListSessions queries cc_sessions)
+- **Description:** Config tab endpoint returns list of sessions from `cc_sessions` table, reading `agent_type` column (with COALESCE to empty string on NULL).
+- **Call chain:** 
+  - Config tab JS → `GET /api/sessions/list` 
+  - → `handleAPISessions` (server.go:1334)
+  - → `storage.ListSessions("")` (storage.go:328)
+  - → SQL: `SELECT ... COALESCE(agent_type,'') ... FROM cc_sessions` (storage.go:329)
+- **Data touched:** `cc_sessions.agent_type` column — initialized to NULL/empty, never populated during startup
+- **Result:** Always reads empty string, displays "Default (no agent)"
+
+### Finding 2: CLI Flag `--agent` Never Saved to `cc_sessions` Table
+- **Location:** `internal/cli/root.go:221` (flag defined)
+- **Location:** `internal/cli/root.go:952-963` (flag applied to TUI at startup)
+- **Description:** `--agent` flag is read and applied to the TUI model's system prompt + engine configuration, but is never persisted to ANY database table.
+- **Call chain:**
+  - Root.go:221 — flag defined
+  - Root.go:952-963 — flag passed to TUI startup (ApplyAgentPersonaAtStartup)
+  - TUI applies agent to local model state only
+  - No DB write occurs
+- **Data touched:** TUI state, engine registry, system prompt — no DB tables modified
+- **Scope:** TUI-only impact; ComandCenter web UI has no visibility
+
+### Finding 3: HelloPayload (Attachment Protocol) Missing Agent/Team Fields
+- **Location:** `internal/attach/protocol.go:44-50` (HelloPayload struct)
+- **Location:** `internal/cli/attachclient/client.go:17-30` (Client struct)
+- **Location:** `internal/cli/attachclient/client.go:80-86` (Connect method builds hello)
+- **Description:** When claudio connects to ComandCenter via WebSocket, it sends HelloPayload with only Name, Path, Master fields. No AgentType or TeamTemplate fields exist in the protocol.
+- **Struct definition:**
+  ```go
+  // HelloPayload (protocol.go:45-50) — missing agent+team
+  type HelloPayload struct {
+    Name   string
+    Path   string
+    Model  string,omitempty
+    Master bool,omitempty
   }
-  // Load + add agent-specific skills
-  extraReg := skills.LoadAll("", agentDef.ExtraSkillsDir)
-  for _, s := range extraReg.All() {
-    mergedReg.Register(s)
+  ```
+- **How it's built (client.go:81-85):**
+  ```go
+  hello := attach.HelloPayload{
+    Name:   c.name,
+    Path:   cwd,
+    Master: c.master,
+    // NO agent or team provided!
   }
-  // Replace SkillTool with new instance using merged registry
-  filtered.Register(newSkillToolWithMergedRegistry)
-}
-```
-Result: Agent sees global skills + its own, global registry unmodified.
+  ```
+- **Root cause:** Client struct also missing agent/team fields (client.go:17-30)
+- **Impact:** ComandCenter hub has no way to receive agent/team value from the claudio process at connect time
 
----
+### Finding 4: AttachClient Created Without Agent/Team Info
+- **Location:** `internal/cli/root.go:143` (attachClient.New)
+- **Location:** `internal/cli/attachclient/client.go:32-40` (New constructor)
+- **Description:** When attachClient created, it's passed only serverURL, password, name, master — agent and team flags not provided.
+- **Code:**
+  ```go
+  // root.go:143
+  client := attachclient.New(flagAttach, password, flagName, flagMaster)
+  // flagAgent and flagTeam NOT passed!
+  ```
+- **Missing fields in Client struct:**
+  ```go
+  // client.go:17-30
+  type Client struct {
+    serverURL, password, name, master // ✓ populated
+    // NO agent, team fields
+  }
+  ```
+- **Impact:** AttachClient can't send agent/team to ComandCenter even if it wanted to
 
-### 10. Model Override Resolution & Application
+### Finding 5: Session Pre-Registration POST Body Doesn't Accept Agent/Team
+- **Location:** `internal/comandcenter/server.go:142-182` (handlePreRegisterSession)
+- **Description:** When launcher spawns a session, it immediately POSTs to `/api/sessions` to pre-register (so UI shows "active" before claudio connects). But the POST body struct only accepts Name, Path, Master — no agent/team fields.
+- **Code (server.go:143-147):**
+  ```go
+  var body struct {
+    Name   string
+    Path   string
+    Master bool
+    // NO AgentType, TeamTemplate
+  }
+  ```
+- **Call chain:**
+  - `cmd/comandcenter/launcher.go:139-168` builds CLI args with `--agent` + `--team`
+  - Args passed to `claudio --attach ... --agent X --team Y` subprocess
+  - But NO HTTP POST sends agent/team to hub during pre-registration
+  - Session created in `cc_sessions` with `agent_type = NULL` (server.go:161-175)
+- **Impact:** Even if claudio receives agent/team via CLI, that info never reaches cc_sessions table
 
-**Shortcut resolution** (root.go:595):
-```go
-model := agentDef.Model
-if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
-  model = resolved  // e.g., "sonnet" → "claude-3-5-sonnet-20241022"
-}
-```
-
-**Precedence:**
-1. Agent's `Model` field (if set)
-2. Default from `appInstance.Config.Model` (if agent.Model == "")
-3. CLI `--model` flag (sets config.Model during init)
-
-**Applied at:**
-- CLI startup: `appInstance.API.SetModel(modelOverride)` (root.go:258)
-- TUI runtime: `m.apiClient.SetModel(model)` + engine via active sessions
+### Finding 6: Session Created in `cc_sessions` With Empty Agent/Team
+- **Location:** `internal/comandcenter/server.go:161-175` (buildSession in handlePreRegisterSession)
+- **Description:** Session struct initialized with only Name, Path, Master, Status, CreatedAt, LastActiveAt. AgentType and TeamTemplate fields exist (comandcenter/session.go:19-20) but are left zero-valued when session first created.
+- **Code (server.go:161-175):**
+  ```go
+  sess := Session{
+    Name:         body.Name,
+    Path:         body.Path,
+    Master:       body.Master,
+    Status:       "active",
+    CreatedAt:    now,
+    LastActiveAt: now,
+    // AgentType and TeamTemplate left as empty strings!
+  }
+  ```
+- **Where they could be set later:** Only via explicit `UpdateSessionConfig` call (storage.go:245), which is triggered by `handleSetAgent`/`handleSetTeam` when user manually changes in Config tab.
+- **Impact:** Agent/team only appear in Config tab AFTER user manually selects them; startup-provided values lost
 
 ---
 
@@ -370,236 +139,113 @@ if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
 
 | Symbol | File | Role |
 |--------|------|------|
-| `AgentDefinition` | `internal/agents/agents.go:36` | Core struct describing agent capabilities, tools, prompts |
-| `BuiltInAgents()` | `internal/agents/agents.go:79` | Returns slice of 4 built-in agent definitions |
-| `GeneralPurposeAgent()` | `internal/agents/agents.go:128` | Default general-purpose agent (no restrictions) |
-| `ExploreAgent()` | `internal/agents/agents.go:162` | Read-only codebase explorer (haiku model) |
-| `PlanAgent()` | `internal/agents/agents.go:217` | Architecture/design agent (no code write) |
-| `VerificationAgent()` | `internal/agents/agents.go:257` | Test/validation agent (bash + read-only) |
-| `GetAgent(agentType)` | `internal/agents/agents.go:90` | Fetch agent definition by type; fallback to general-purpose |
-| `LoadCustomAgents(dirs...)` | `internal/agents/agents.go:312` | Load custom agents from markdown files |
-| `AllAgents(customDirs...)` | `internal/agents/agents.go:462` | Merge built-in + custom agents |
-| `CrystallizeSession()` | `internal/agents/crystallize.go:14` | Create agent definition from session knowledge |
-| `applyAgentOverrides()` | `internal/cli/root.go:525` | CLI: clone registry, apply DisallowedTools, merge skills/plugins |
-| `applyAgentPersona()` | `internal/tui/root.go:1735` | TUI runtime: apply agent system prompt + filtered registry |
-| `ApplyAgentPersonaAtStartup()` | `internal/tui/root.go:1890` | TUI pre-engine: prepare agent for engine creation |
-| `Skill` | `internal/services/skills/loader.go:14` | Skill definition: name, description, content, hooks |
-| `SkillHook` | `internal/services/skills/loader.go:26` | Tool hook: event, matcher, command, timeout |
-| `Registry` | `internal/services/skills/loader.go:35` | Skill registry: map[string]*Skill + thread-safe Get/Register/All |
-| `LoadAll(userDir, projectDir)` | `internal/services/skills/loader.go:80` | Load skills from bundled + user + project sources |
-| `bundledSkills()` | `internal/services/skills/loader.go:217` | Return hardcoded bundled skill definitions |
-| `ParseFrontmatter(content)` | `internal/utils/frontmatter.go:13` | Parse YAML-like frontmatter from markdown |
-| `AgentSelectedMsg` | `internal/tui/agentselector/selector.go:16` | TUI message: agent type, prompt, model, disallowed tools |
+| `Session` (cc struct) | `internal/comandcenter/session.go:10-21` | Web session model with `AgentType`, `TeamTemplate` fields |
+| `HelloPayload` | `internal/attach/protocol.go:44-50` | Attachment hello message — missing agent/team fields |
+| `Client` (attachclient) | `internal/cli/attachclient/client.go:17-30` | ComandCenter connection — missing agent/team fields |
+| `ListSessions` (Storage) | `internal/comandcenter/storage.go:328` | Fetches sessions from `cc_sessions` table |
+| `UpdateSessionConfig` (Storage) | `internal/comandcenter/storage.go:245` | Updates `cc_sessions.agent_type`, `team_template` |
+| `handleAPISessions` (WebServer) | `internal/comandcenter/web/server.go:1334` | GET `/api/sessions/list` endpoint for Config tab |
+| `handlePreRegisterSession` (Server) | `internal/comandcenter/server.go:142` | POST `/api/sessions` pre-registration (launcher calls) |
+| `handleSetAgent` (WebServer) | `internal/comandcenter/web/server.go:1405` | Handler for manual agent selection in Config tab |
+| `ApplyAgentPersonaAtStartup` | `internal/tui/root.go:1918` | Applies agent to TUI state (not persisted to DB) |
+| `flagAgent` | `internal/cli/root.go:45, 221` | CLI flag `--agent` definition |
+| `buildCmd` (launcher) | `cmd/comandcenter/launcher.go:139` | Constructs claudio process args with `--agent`, `--team` |
 
 ---
 
 ## Dependencies & Data Flow
 
-### Agent Initialization Pipeline (Startup)
+### Startup Flow (Where It Breaks)
 
-```
-CLI root command (--agent flag set)
-  ├─ PersistentPreRunE → Initialize app
-  │   ├─ Load config, auth, plugins, rules, skills
-  │   └─ appInstance.Tools = registry (global, all tools)
-  │
-  ├─ applyAgentOverrides(appInstance.Tools)
-  │   ├─ agents.GetAgent(flagAgent) → AgentDefinition
-  │   ├─ Clone registry → filtered
-  │   ├─ Remove DisallowedTools from filtered
-  │   ├─ Merge ExtraSkillsDir (if set)
-  │   ├─ Merge ExtraPluginsDir (if set)
-  │   └─ Return (filtered registry, model override, plugin infos)
-  │
-  ├─ Update appInstance.API.Model if override present
-  │
-  ├─ buildFullSystemPrompt() → base system (rules + context, NO agent prompt here)
-  │
-  ├─ query.NewEngineWithConfig(
-  │     api, 
-  │     filtered_registry,  ← Tool filtering applied
-  │     handler, 
-  │     config
-  │   )
-  │
-  └─ engine.SetSystem(base)
-```
+1. **ComandCenter launcher** reads `cc-config.json` with SessionConfig containing Agent + Team fields
+2. **buildCmd** (launcher.go:139) adds `--agent X --team Y` to claudio subprocess args
+3. **Launcher POST** pre-registers session to `/api/sessions` **WITHOUT agent/team in body**
+   - Session created in `cc_sessions` with `agent_type = NULL`
+4. **Claudio process starts** with `--agent X --team Y` flags
+5. **root.go:143** creates `attachClient.New()` **WITHOUT passing agent/team**
+6. **root.go:952-963** applies `flagAgent` to TUI state (local only, no DB)
+7. **attachClient.Connect()** sends `HelloPayload` **missing agent/team fields**
+8. **ComandCenter hub** receives hello, updates session status to "active" but has no agent/team data
+9. **Config tab loads** `/api/sessions`, reads `cc_sessions.agent_type = NULL`, displays "Default (no agent)"
 
-**Note:** CLI startup does NOT inject agent's SystemPrompt; that's TUI-only. The `--agent` flag's main effect is tool filtering via DisallowedTools.
+### Current Workaround (Manual Selection)
 
-### Agent Selection Pipeline (TUI Runtime)
-
-```
-User selects agent in TUI agent picker
-  ├─ Selector builds AgentSelectedMsg
-  │   ├─ AgentType (e.g., "Explore")
-  │   ├─ DisplayName
-  │   ├─ SystemPrompt (full text)
-  │   ├─ Model (override or "")
-  │   └─ DisallowedTools []string
-  │
-  ├─ root.Update() → applyAgentPersona(msg)
-  │   ├─ Append msg.SystemPrompt to baseSystemPrompt
-  │   ├─ Clone m.registry → filtered
-  │   ├─ filtered.Remove(msg.DisallowedTools...)
-  │   ├─ Set m.registry = filtered
-  │   ├─ Apply model override (resolve shortcuts)
-  │   ├─ engine.SetSystem(newSystem)
-  │   ├─ engine.SetRegistry(filtered)
-  │   └─ addMessage("Agent persona: X")
-  │
-  └─ Next turn uses filtered registry + new system prompt
-```
-
-### Custom Agent Loading
-
-```
-User registers custom agent dir: agents.SetCustomDirs("/path/to/agents")
-  ├─ LoadCustomAgents("/path/to/agents")
-  │   ├─ Scan for directories (directory-form agents)
-  │   │   ├─ Look for AGENT.md (priority 1)
-  │   │   ├─ Look for agent.md (priority 2)
-  │   │   ├─ Look for <dirname>.md (priority 3)
-  │   │   ├─ Parse frontmatter (keys: tools, disallowedTools, model, etc.)
-  │   │   ├─ Extract markdown body → SystemPrompt
-  │   │   ├─ Auto-detect memory/, skills/, plugins/ subdirs
-  │   │   └─ Create AgentDefinition
-  │   │
-  │   ├─ Scan for flat .md files
-  │   │   ├─ Skip if directory-form agent with same name already loaded
-  │   │   ├─ Parse frontmatter
-  │   │   ├─ Check for sibling subdirs
-  │   │   └─ Create AgentDefinition
-  │   │
-  │   └─ Return []AgentDefinition
-  │
-  ├─ AllAgents(customDirs) merges
-  │   ├─ Start with BuiltInAgents()
-  │   ├─ Overlay LoadCustomAgents() results
-  │   ├─ Custom overrides built-in by Type
-  │   └─ Return merged slice (built-in first, then new custom types)
-  │
-  └─ GetAgent(type) searches merged slice, fallback to general-purpose
-```
+1. User opens Config tab
+2. Selects agent from dropdown → `POST /api/sessions/{id}/set-agent` → `handleSetAgent` (web/server.go:1405)
+3. Handler calls `UpdateSessionConfig` → writes to `cc_sessions.agent_type`
+4. Next Config tab load reads the saved value
 
 ---
 
 ## Risks & Observations
 
-### 1. Agent System Prompt NOT Applied at CLI Startup
+### Critical Issues
 
-**Issue:** When `--agent` flag is used, the agent's `SystemPrompt` is NOT injected into the base system prompt at startup. Tool filtering (DisallowedTools) is applied, but the agent's instructions are ignored at CLI level.
+1. **Agent/Team Startup Values Lost**
+   - Launcher correctly passes `--agent X` to subprocess
+   - Claudio process receives and applies it (TUI works fine)
+   - But value never reaches ComandCenter database
+   - Config tab always shows empty even though agent is active in terminal
 
-**Why:** The `--agent` design targets TUI, where `ApplyAgentPersonaAtStartup()` prepares the model + registry, but the system prompt is only set on the live engine after creation.
+2. **Protocol Gap**
+   - `HelloPayload` designed before agent feature added to ComandCenter
+   - Attachment protocol incomplete — no way to transmit agent/team at connect time
 
-**Impact:** CLI `--agent` usage may feel "incomplete" for headless/script scenarios. Consider whether CLI-level agents should also inject SystemPrompt.
+3. **Attachment Client Incomplete**
+   - Client struct has no agent/team fields
+   - Constructor signature doesn't accept them
+   - Even if protocol fixed, client wouldn't have the data to send
 
-### 2. Registry Cloning Creates References, Not Deep Copies
+4. **Two Session Stores Desynchronized**
+   - `sessions` table (internal TUI DB) updated by claudio process
+   - `cc_sessions` table (web UI DB) only updated via explicit HTTP calls
+   - At startup, agent info flows to `sessions` but not `cc_sessions`
 
-**Observation:** `registry.Clone()` copies the map but tool instances are stored by reference. Modifying a tool's internal state affects all clones.
+### Dead Paths
 
-**Risk:** Low — tools are generally immutable. But if a tool's state is modified post-clone, all copies see it.
+- `UpdateSessionConfig` in storage.go only called by web handlers (`handleSetAgent`, `handleSetTeam`)
+- No code path calls it during session initialization
+- Agent/team from CLI never reach `cc_sessions`
 
-### 3. Custom Agents Can Override Built-In by Type
+### Symptom vs Root Cause
 
-**Design:** Custom agents with `Type == "general-purpose"` override the built-in general-purpose agent.
-
-**Risk:** User could accidentally shadow a built-in agent. Consider warning or preventing overrides of built-in types.
-
-### 4. Crystallized Agents Store Memories on Disk
-
-**Observation:** `CrystallizeSession()` writes agent's memory entries to disk (`memory/` subdir). These are NOT loaded automatically — agent must have `MemoryDir` field set for memories to be accessible.
-
-**Potential issue:** If the agent's `MemoryDir` isn't set correctly, crystallized knowledge is lost.
-
-### 5. SkillHook Command Execution
-
-**Risk:** Skill hooks can run arbitrary shell commands. Ensure hooks are validated before execution, especially for user-provided skills.
-
-### 6. MaxTurns Field on Built-In Agents
-
-**Observation:** Built-in agents have `MaxTurns` set (e.g., 50, 25, 30, 20). This prevents runaway agents.
-
-**Impact:** Good safety feature, but custom agents default to `MaxTurns == 0` (unlimited). Consider requiring explicit `maxTurns` in custom agent frontmatter.
-
-### 7. Tool Filtering via DisallowedTools is All-or-Nothing
-
-**Observation:** Tools are either fully removed or fully accessible. No per-tool function-level restrictions.
-
-**Impact:** Fine-grained permissions (e.g., "Edit but not Write") require custom tooling.
+- **Symptom:** Config tab shows "Default (no agent)"
+- **Root cause:** Multiple missing links:
+  1. AttachClient lacks agent/team fields
+  2. HelloPayload protocol doesn't include agent/team
+  3. Server hello handler doesn't expect agent/team
+  4. No code persists agent/team to `cc_sessions` at startup
 
 ---
 
 ## Open Questions
 
-1. **Does CLI `--agent` pass the agent's SystemPrompt to the engine?**
-   - Answer: NO — CLI startup skips SystemPrompt injection. Only TUI applies it at runtime.
-   - **Follow-up:** Is this intentional? Should headless mode support agent system prompts?
+1. **Should agent/team be persisted to `cc_sessions` at startup?**
+   - If yes, which component should persist: launcher? claudio process? ComandCenter hub?
 
-2. **Can an agent define its own memory location?**
-   - Answer: YES — `MemoryDir` field. But it must be set in the agent definition; it's not auto-populated from a custom agent's memory/ subdir during TUI runtime (only at crystallization).
-   - **Follow-up:** Should `ApplyAgentPersona()` also load + set memory context?
+2. **Is the two-table design intentional?**
+   - `sessions` table managed by internal session manager
+   - `cc_sessions` table managed by ComandCenter
+   - Or should they be unified?
 
-3. **How are agent-specific plugins discovered?**
-   - Answer: `applyAgentOverrides()` loads `ExtraPluginsDir` and registers each as a PluginProxyTool. But custom agents must have the plugins/ subdir pre-created.
-   - **Follow-up:** Should the loader auto-create plugins/ during agent discovery?
-
-4. **Can multiple agents share a skills/ directory?**
-   - Answer: YES — `ExtraSkillsDir` is just a path. Multiple agents can point to the same skills directory.
-   - **Impact:** Useful for shared skill libraries.
-
-5. **What happens if an agent's SystemPrompt is empty?**
-   - Answer: No system prompt appended; base prompt used as-is.
-   - **Implication:** Valid design — agent can be tool-restricted without custom instructions.
+3. **What about `--model` flag?**
+   - Is it also not persisted to `cc_sessions.model` at startup?
+   - Same issue likely applies
 
 ---
 
-## Summary for Planning a New Built-In Agent
+## Implementation Path (Not Executed — Investigation Only)
 
-To add a new built-in agent, you need:
+To fix, need to:
 
-1. **New function in `internal/agents/agents.go`:**
-   ```go
-   func MyNewAgent() AgentDefinition {
-     return AgentDefinition{
-       Type:            "my-agent",
-       MaxTurns:        20,
-       WhenToUse:       "Description of when to use this agent",
-       Tools:           []string{"*"},
-       DisallowedTools: []string{"Edit", "Write"},  // Or empty for full access
-       Model:           "haiku",  // Or "" to inherit
-       ReadOnly:        true,     // Or false
-       SystemPrompt:    `Your detailed system prompt here...`,
-     }
-   }
-   ```
+1. **Extend HelloPayload** (protocol.go) with `AgentType`, `TeamTemplate` fields
+2. **Extend AttachClient.Client** struct with `agent`, `team` fields
+3. **Modify attachclient.New** constructor to accept agent/team params
+4. **Pass flagAgent, flagTeam to attachclient.New** in root.go:143
+5. **Build HelloPayload with agent/team** in client.go:81-85
+6. **Parse agent/team in ComandCenter hub** when handling hello
+7. **Create session in cc_sessions with agent/team** from hello payload instead of pre-registration
+   - OR update pre-registration endpoint to accept agent/team in POST body
+   - OR have hub update session after receiving hello
 
-2. **Register in `BuiltInAgents()` slice** (agents.go:79–85):
-   ```go
-   return []AgentDefinition{
-     GeneralPurposeAgent(),
-     ExploreAgent(),
-     PlanAgent(),
-     VerificationAgent(),
-     MyNewAgent(),  // Add here
-   }
-   ```
-
-3. **System prompt best practices:**
-   - Define agent role, constraints, process, tool guidance
-   - Follow existing patterns (Explore, Plan, Verification) for tone/structure
-   - Include escalation rules if agent should stop and ask
-
-4. **Testing:**
-   - Check `internal/agents/agents_test.go` for existing test patterns
-   - Test `GetAgent("my-agent")` returns correct definition
-   - Test tool filtering works (`DisallowedTools` actually removed from registry)
-
-5. **Optional — custom skills/plugins/memory:**
-   - If agent needs agent-specific behavior, create a custom agent in `.claudio/agents/` instead
-   - Custom agents can have `ExtraSkillsDir` pointing to agent-specific skills
-   - Store agent-specific knowledge in `.claudio/agents/my-agent/memory/`
-
----
-
-**Report generated:** Static analysis of agent system; runtime behavior not verified.
+Would also need to verify `--model` flag has similar fix.
