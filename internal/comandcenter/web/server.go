@@ -289,6 +289,7 @@ type WebServer struct {
 	cronStore        *tasks.CronStore
 	apiClient        *api.Client
 	teamTemplatesDir string
+	publicURL        string
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
@@ -381,6 +382,7 @@ func (ws *WebServer) SetAPIClient(c *api.Client) { ws.apiClient = c }
 
 // SetTeamTemplatesDir sets the directory where team template JSON files are stored.
 func (ws *WebServer) SetTeamTemplatesDir(dir string) { ws.teamTemplatesDir = dir }
+func (ws *WebServer) SetPublicURL(url string)         { ws.publicURL = url }
 
 // handleVAPIDPublicKey returns the VAPID public key for browser push subscription.
 func (ws *WebServer) handleVAPIDPublicKey(w http.ResponseWriter, r *http.Request) {
@@ -1354,10 +1356,14 @@ func (ws *WebServer) handleScreenshotPush(sessionID string, p attach.DesignScree
 // the bundle HTML and pushes it to all browser clients watching the session.
 func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundlePayload) {
 	now := time.Now()
+	bundleURL := p.BundleURL
+	if ws.publicURL != "" && strings.HasPrefix(bundleURL, "/") {
+		bundleURL = strings.TrimRight(ws.publicURL, "/") + bundleURL
+	}
 	// Content is markdown — renderMD in the bubble template will turn the link into an <a>.
-	content := fmt.Sprintf("🎨 **Bundle ready** — <a href=\"%s\" target=\"_blank\">View mockup →</a>", p.BundleURL)
+	content := fmt.Sprintf("🎨 **Bundle ready** — <a href=\"%s\" target=\"_blank\">View mockup →</a>", bundleURL)
 	if p.SessionName != "" {
-		content = fmt.Sprintf("🎨 **Bundle ready** (`%s`) — [View mockup →](%s)", p.SessionName, p.BundleURL)
+		content = fmt.Sprintf("🎨 **Bundle ready** (`%s`) — [View mockup →](%s)", p.SessionName, bundleURL)
 	}
 	msg := cc.Message{
 		ID:        cc.NewID(),

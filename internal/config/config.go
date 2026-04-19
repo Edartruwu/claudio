@@ -61,6 +61,7 @@ type Settings struct {
 	// API configuration
 	APIBaseURL string `json:"apiBaseUrl,omitempty"`
 	ProxyURL   string `json:"proxyUrl,omitempty"`
+	PublicURL  string `json:"publicUrl,omitempty"`
 
 	// Multi-provider configuration
 	Providers    map[string]ProviderConfig `json:"providers,omitempty"`
@@ -318,6 +319,9 @@ func mergeFromFile(settings *Settings, path string) {
 	}
 	if overlay.APIBaseURL != "" {
 		settings.APIBaseURL = overlay.APIBaseURL
+	}
+	if overlay.PublicURL != "" {
+		settings.PublicURL = overlay.PublicURL
 	}
 	if overlay.ProxyURL != "" {
 		settings.ProxyURL = overlay.ProxyURL

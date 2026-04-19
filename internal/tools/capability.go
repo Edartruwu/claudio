@@ -23,6 +23,9 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 			// Wire pusher into bundle so BundleMockup pushes a clickable link to
 			// CC chat after the bundle file is written.
 			bundleTool := NewBundleMockupTool(designsDir)
+			if settings, err := config.Load(wd); err == nil && settings.PublicURL != "" {
+				bundleTool = bundleTool.WithPublicURL(settings.PublicURL)
+			}
 			if pusher != nil {
 				bundleTool = bundleTool.WithPusher(pusher, sessionID)
 			}

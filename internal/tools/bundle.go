@@ -21,6 +21,15 @@ type BundleMockupTool struct {
 	designsDir string
 	pusher     ScreenshotPusher // optional: push bundle link to CC chat after writing
 	sessionID  string
+	publicURL  string // optional: base URL prefix for bundle links (e.g. https://host.ts.net)
+}
+
+// WithPublicURL sets a base URL prefix for bundle links pushed to CC chat.
+// If set, bundleURL becomes absolute: publicURL + "/designs/project/...".
+// Returns receiver for fluent chaining.
+func (t *BundleMockupTool) WithPublicURL(url string) *BundleMockupTool {
+	t.publicURL = url
+	return t
 }
 
 // WithPusher wires a ScreenshotPusher so BundleMockup pushes a clickable link
@@ -282,6 +291,9 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		projectDir := filepath.Dir(filepath.Dir(sessionDir))       // .../projects/{slug}
 		slug := filepath.Base(projectDir)                          // {slug}
 		bundleURL := "/designs/project/" + slug + "/" + sessionDirName + "/bundle/mockup.html"
+		if t.publicURL != "" {
+			bundleURL = strings.TrimRight(t.publicURL, "/") + bundleURL
+		}
 		// Best-effort — ignore errors, bundle result already returned above.
 		_ = t.pusher.PushBundleLink(t.sessionID, bundleURL, sessionDirName)
 	}
