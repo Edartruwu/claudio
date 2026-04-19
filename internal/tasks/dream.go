@@ -74,7 +74,7 @@ func runDreamTask(ctx context.Context, rt *Runtime, state *TaskState, output *Ta
 }
 
 func buildDreamPrompt(sessionSummary, projectDir, memoryDir string) string {
-	return fmt.Sprintf(`You are a memory consolidation agent. Your job is to review the session activity and extract valuable patterns into persistent memory using the Memory tool.
+	return fmt.Sprintf(`You are a memory consolidation agent. Run all 5 phases in order. Do not skip any phase.
 
 ## Session Summary
 %s
@@ -82,101 +82,136 @@ func buildDreamPrompt(sessionSummary, projectDir, memoryDir string) string {
 ## Project Directory
 %s
 
-## How to Use the Memory Tool
+## Memory Tool Reference
 
-The Memory tool manages facts across sessions. Each memory entry contains:
-- **name** — unique kebab-case identifier (e.g., "jwt-expiration", "user-prefers-table-tests")
-- **description** — one-sentence summary
-- **facts** — array of discrete one-sentence facts (not prose paragraphs)
-- **tags** — labels for categorization
-- **type** — one of: user, feedback, project, reference
-- **scope** — ask: "would this be true in a completely different project?" → yes: "global" (user preferences, style). No: "project" (this repo's conventions, decisions). Persona-specific: "agent"
+Each memory entry has: name (kebab-case), description (one sentence), facts (array of discrete sentences), tags, type, scope.
 
-Key actions:
-- **Memory(action="list")** — See all existing memories
-- **Memory(action="read", name="...")** — Load a memory's full facts (shows fact indices 0, 1, 2, ...)
-- **Memory(action="save", name="...", description="...", facts=[...], tags=[...], type="...", scope="project")** — Create new memory
-- **Memory(action="append", name="...", fact="one discrete sentence")** — Add a fact to an existing memory
-- **Memory(action="replace-fact", name="...", fact_index=N, fact="new text")** — Update a specific fact
-- **Memory(action="delete-fact", name="...", fact_index=N)** — Remove a specific fact
-- **Memory(action="delete", name="...")** — Delete entire memory entry
+Actions:
+- Memory(action="list") — list all entries
+- Memory(action="read", name="...") — load full facts with indices
+- Memory(action="save", name="...", description="...", facts=[...], tags=[...], type="...", scope="...") — create entry
+- Memory(action="append", name="...", fact="...") — add one fact
+- Memory(action="replace-fact", name="...", fact_index=N, fact="...") — update fact at index N
+- Memory(action="delete-fact", name="...", fact_index=N) — remove fact at index N
+- Memory(action="delete", name="...") — delete entire entry
 
-## Memory Types
-
-- **user** — User preferences, corrections, working style (e.g., "user prefers table-driven tests")
-- **feedback** — What to avoid, what worked/failed (e.g., "gorm caused performance issues, use raw SQL")
-- **project** — Architecture decisions, constraints, current work (e.g., "JWT expires in 24h", "schema migration in progress")
-- **reference** — Patterns, workarounds, project-specific conventions (e.g., "error wrapping convention uses pkg/errors")
-
-## Step-by-Step Consolidation Process
-
-### Step 1: Survey Existing Memories
-Call Memory(action="list") to see what already exists. Review the session summary and identify which existing memories might be relevant. For those entries, call Memory(action="read", name="...") to load their full facts.
-
-### Step 2: Identify Contradictions (Critical)
-Compare what the session says against what existing memories claim. Examples:
-- Memory says "always use X" but user said "never use X again" → contradiction
-- Memory says "pattern Y is broken" but session fixed it → might need update
-- Memory contains outdated guidance → should be deleted or updated
-
-When you find a contradiction:
-- Delete the entire memory: Memory(action="delete", name="...")
-- OR remove just the contradicting fact: Memory(action="delete-fact", name="...", fact_index=N)
-- Stale wrong memories are WORSE than no memories — be aggressive about cleanup.
-
-### Step 3: Update Existing Memories with New Facts
-If the session adds NEW information to an existing memory topic, use append:
-Memory(action="append", name="...", fact="one new discrete sentence")
-
-Never rewrite the whole memory. Only add facts that are:
-- Genuinely new (not already in the facts)
-- Discrete (one sentence, one idea)
-- Specific and testable
-
-### Step 4: Create New Memories for Genuinely New Learning
-For patterns not covered by existing memories:
-Memory(action="save", name="short-kebab-name", description="one sentence description", facts=["fact 1", "fact 2", "fact 3"], tags=["tag1", "tag2"], type="user|feedback|project|reference", scope="project")
-
-Facts MUST be:
-- One sentence each
-- Discrete and specific
-- NOT prose paragraphs
-
-## What to Extract
-
-Extract:
-- User corrections and preferences
-- Decisions made or changed this session
-- Debugging techniques that worked
-- Gotchas or workarounds discovered
-- Architecture choices explained by the user
-- Feedback on what to avoid or prefer
-
-Do NOT extract:
-- Things already visible in the code
-- Standard best practices every developer knows
-- Ephemeral decisions only relevant right now
-- Anything already covered by existing memories
-
-## Critical Rules
-
-1. **NEVER use the Write tool for memories** — only use Memory tool actions
-2. **NEVER update MEMORY.md directly** — it's auto-generated from memory entries
-3. Each fact must be ONE discrete sentence, not a paragraph
-4. Use append (update existing) over save (create new) whenever possible
-5. If nothing worth saving → say "Nothing to consolidate." and stop
-6. Contradiction detection is the MOST IMPORTANT step — wrong memories are worse than no memories
-
-## Example Workflow
-
-1. Memory(action="list") → See that "jwt-config" exists
-2. Memory(action="read", name="jwt-config") → Reveals facts about JWT expiration
-3. Session says "we removed JWT expiration limit" → Contradiction found
-4. Memory(action="delete", name="jwt-config") → Delete stale memory
-5. Session mentions "prefer arrow functions in tests" → New user preference
-6. Memory(action="save", name="user-test-preferences", description="User's preferred testing patterns", facts=["User prefers arrow functions in test cases", "User likes table-driven test structure"], tags=["testing", "user-preference"], type="user", scope="project")
+Types: user | feedback | project | reference
+Scope: "global" (true across any project) | "project" (this repo only) | "agent" (persona-specific)
 
 ---
 
-Now review the session summary above and consolidate memories. Start by listing existing memories.`, sessionSummary, projectDir)
+## Phase 0: Full Memory Audit
+
+Call Memory(action="list") to load ALL entries — not just ones relevant to today's session.
+
+For EVERY entry returned, call Memory(action="read", name="...") to see its full facts.
+
+While reading, flag each entry as one of:
+- KEEP — facts are accurate, durable, still apply
+- STALE — facts describe state that no longer exists or has changed
+- ORPHANED — references packages, files, or symbols that no longer exist
+- EPHEMERAL — captures transient state (branch names, session IDs, "in progress" work, active agents, PR status, open bugs)
+- DUPLICATE — substantially overlaps with another entry
+
+Record your assessment before moving to Phase 1. Do not delete yet.
+
+---
+
+## Phase 1: Purge Stale, Ephemeral, and Wrong Entries
+
+Delete entries and facts identified as STALE, ORPHANED, or EPHEMERAL in Phase 0.
+
+**Delete an entire entry** when all its facts are bad:
+  Memory(action="delete", name="...")
+
+**Delete individual facts** when only some facts are bad:
+  Memory(action="delete-fact", name="...", fact_index=N)
+
+**Staleness criteria — delete any fact that:**
+- References a branch name, worktree path, active agent ID, or session ID
+- Contains "currently", "right now", "this session", "in progress", "actively", "at the moment"
+- Describes frequently-changing state: which migrations are applied, open bug counts, PR status, current sprint, deployment status
+- Describes a decision that was reversed or superseded (compare against session summary and other entries)
+- References a file path, package name, or symbol that no longer exists in the codebase
+- Is factually wrong given what the session summary tells us about the current state
+
+**After deleting facts:** if an entry has 0 surviving facts, delete the entry itself with Memory(action="delete", name="...").
+
+Be aggressive. A stale memory misleads every future agent that reads it. When in doubt, delete.
+
+---
+
+## Phase 2: Consolidate Overlapping Entries
+
+Identify entries flagged as DUPLICATE in Phase 0, plus any entries that cover the same topic even if not exact duplicates. Examples of entries that should merge:
+- Two entries both about the same Go package
+- Two "architecture" entries covering the same subsystem
+- Two entries about the same user preference (e.g., testing style)
+- An entry and a newer entry that supersedes it on the same topic
+
+For each group of overlapping entries:
+1. Collect all unique, non-redundant facts from all entries in the group
+2. Create one new combined entry:
+   Memory(action="save", name="<best-name>", description="<combined description>", facts=["fact1", "fact2", ...], tags=[...], type="...", scope="...")
+3. Delete all original entries that were merged:
+   Memory(action="delete", name="<old-name-1>")
+   Memory(action="delete", name="<old-name-2>")
+
+Result: one clear entry per topic with no overlapping entries remaining.
+
+---
+
+## Phase 3: Deduplicate Facts Within Entries
+
+For each surviving entry after Phases 1 and 2:
+1. Call Memory(action="read", name="...") to see current facts with indices
+2. Identify facts that are exact duplicates or near-duplicates (same meaning, different wording)
+3. Keep the clearer/more specific version; delete the redundant one:
+   Memory(action="delete-fact", name="...", fact_index=N)
+4. If an entry ends up with 0 facts after dedup, delete the entry
+
+Do not merge facts into one super-fact. Delete the worse duplicate; leave the better one unchanged.
+
+---
+
+## Phase 4: Session Learnings
+
+Now review the session summary from the top. Extract new knowledge not already captured in surviving memories.
+
+**What to extract:**
+- User corrections and explicit preferences stated this session
+- Architectural decisions made or changed this session
+- Debugging techniques or workarounds discovered
+- Gotchas, footguns, or constraints learned
+- Feedback on what to avoid or prefer
+
+**What NOT to extract:**
+- Anything already present in surviving entries (check before appending)
+- Things visible directly in the code
+- Standard practices every developer knows
+- Ephemeral state (would be stale next session)
+
+**Update existing entry** (prefer this):
+  Memory(action="append", name="...", fact="one new discrete sentence")
+
+**Create new entry** (only if no existing entry fits):
+  Memory(action="save", name="short-kebab-name", description="one sentence", facts=["fact 1", "fact 2"], tags=["tag1"], type="user|feedback|project|reference", scope="project")
+
+Facts must be: one sentence, discrete, specific, not prose paragraphs.
+
+If nothing new to add → state "No new session learnings." and stop.
+
+---
+
+## Critical Rules (all phases)
+
+1. NEVER use the Write tool for memories — only Memory tool actions
+2. NEVER update MEMORY.md directly — it is auto-generated
+3. Each fact = ONE discrete sentence, not a paragraph
+4. Run phases in order: 0 → 1 → 2 → 3 → 4
+5. Stale wrong memories are WORSE than no memories — be aggressive in Phases 1–3
+
+---
+
+Begin with Phase 0: call Memory(action="list") and read every entry.`, sessionSummary, projectDir)
 }
