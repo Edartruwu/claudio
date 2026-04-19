@@ -4286,12 +4286,54 @@ func (m *Model) doSwitchSession(id string) {
 		m.totalCost = float64(m.totalTokens) * 3.0 / 1_000_000
 	}
 
-	// Inject summary into system prompt for AI continuity (guard against double-append
-	// if resumeSession is called more than once for the same session).
+	// Re-apply agent and team from resumed session.
+	// Reset to base state first so stale agent/team from the previous session doesn't bleed through.
+	m.systemPrompt = m.baseSystemPrompt
+	m.model = m.baseModel
+	m.apiClient.SetModel(m.baseModel)
+	if m.engine != nil {
+		m.engine.SetSystem(m.baseSystemPrompt)
+	}
+	var resetCfg *config.Settings
+	if m.appCtx != nil {
+		resetCfg = m.appCtx.Config
+	}
+	applySkillFiltering(m.registry, nil, resetCfg, m.skills)
+
+	if resumed.AgentType != "" {
+		agentDef := agents.GetAgent(resumed.AgentType)
+		agentMsg := agentselector.AgentSelectedMsg{
+			AgentType:       agentDef.Type,
+			DisplayName:     agentDef.Type,
+			SystemPrompt:    agentDef.SystemPrompt,
+			Model:           agentDef.Model,
+			DisallowedTools: agentDef.DisallowedTools,
+			Capabilities:    agentDef.Capabilities,
+		}
+		*m = m.applyAgentPersona(agentMsg)
+	}
+	if resumed.TeamTemplate != "" {
+		teamTemplatesDir := config.GetPaths().TeamTemplates
+		if tmpl, err := teams.GetTemplate(teamTemplatesDir, resumed.TeamTemplate); err == nil {
+			teamMsg := teamselector.TeamSelectedMsg{
+				TemplateName: tmpl.Name,
+				Description:  tmpl.Description,
+				Members:      tmpl.Members,
+			}
+			*m = m.applyTeamContext(teamMsg)
+		}
+	}
+
+	// Inject summary into system prompt for AI continuity after agent/team are applied
+	// (guard against double-append if resumeSession is called more than once for the same session).
 	if resumed.Summary != "" && !m.resumeSummarySet {
 		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
 		m.resumeSummarySet = true
+		if m.engine != nil {
+			m.engine.SetSystem(m.systemPrompt)
+		}
 	}
+
 	m.syncMainWindowState()
 	m.refreshViewport()
 }
