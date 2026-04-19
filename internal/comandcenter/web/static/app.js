@@ -132,6 +132,8 @@
       }
       lastMsgDate = new Date().toDateString();
     }
+    // Always start at the bottom when entering a chat
+    if (msgs) msgs.scrollTop = msgs.scrollHeight;
   })();
 
   // --- WebSocket ---
