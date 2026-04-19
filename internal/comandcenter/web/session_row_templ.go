@@ -122,7 +122,7 @@ func SessionRow(row sessionRow) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-push-url=\"true\" hx-target=\"#main\" hx-swap=\"innerHTML\" style=\"display:flex;align-items:center;gap:16px;padding:12px 16px;text-decoration:none;cursor:pointer;position:relative;\"><!-- Active indicator -->")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-push-url=\"true\" hx-target=\"#main\" hx-swap=\"innerHTML\" style=\"display:flex;align-items:center;gap:16px;padding:14px 16px;text-decoration:none;cursor:pointer;position:relative;\"><!-- Active indicator -->")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -137,9 +137,9 @@ func SessionRow(row sessionRow) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var9 string
-		templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("width:52px;height:52px;border-radius:9999px;background:%s;display:flex;align-items:center;justify-content:center;font-family:inherit;font-size:19.76px;font-weight:700;color:#0B0E0F;flex-shrink:0;", AvatarColor(row.Session.Name)))
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("width:64px;height:64px;border-radius:9999px;background:%s;display:flex;align-items:center;justify-content:center;font-family:inherit;font-size:24px;font-weight:700;color:#0B0E0F;flex-shrink:0;", AvatarColor(row.Session.Name)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 84, Col: 259}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 84, Col: 256}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -163,7 +163,7 @@ func SessionRow(row sessionRow) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if row.Session.Status == "active" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span style=\"position:absolute;bottom:1px;right:1px;width:13.52px;height:13.52px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;\"></span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span style=\"position:absolute;bottom:1px;right:1px;width:16px;height:16px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;\"></span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

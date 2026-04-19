@@ -48,6 +48,7 @@ type ScreenTemplateMapping struct {
 }
 
 // urlScreenshotScript is the embedded Node.js script that navigates to a URL and captures a full-page screenshot.
+// It also detects HTML fragments (no <html>/<head>/stylesheets) and emits a fragment_warning field.
 const urlScreenshotScript = `
 const { chromium } = require('playwright');
 const args = process.argv.slice(2);
@@ -60,10 +61,20 @@ const h = parseInt(args[args.indexOf('--viewport-h') + 1] || '900');
   const page = await browser.newPage();
   await page.setViewportSize({width: w, height: h});
   await page.goto(url, {waitUntil: 'networkidle', timeout: 30000});
+  const styleCount = await page.evaluate(() =>
+    document.head.querySelectorAll('link[rel="stylesheet"], style').length
+  );
+  const hasHtmlTag = await page.evaluate(() =>
+    document.documentElement.tagName.toLowerCase() === 'html' &&
+    document.head.childElementCount > 0
+  );
+  const fragmentWarning = (styleCount === 0 || !hasHtmlTag)
+    ? 'URL returned an HTML fragment (no stylesheets detected in <head>). CSS custom properties from the layout will not apply — scores may be artificially low. Fix: use the parent full-page URL instead, or pass css_paths to inject styles.'
+    : null;
   const p = require('path').join(outDir, 'live.png');
   await page.screenshot({path: p, fullPage: true});
   await browser.close();
-  console.log(JSON.stringify({success: true, screenshots: [{name: 'live', path: p}]}));
+  console.log(JSON.stringify({success: true, screenshots: [{name: 'live', path: p}], fragment_warning: fragmentWarning}));
 })().catch(e => { console.log(JSON.stringify({success: false, errors: [e.message]})); process.exit(1); });
 `
 
@@ -394,9 +405,23 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 				results = append(results, res)
 				continue
 			}
+			if nodeOut.FragmentWarning != "" {
+				res.Gaps = append(res.Gaps, "[WARNING] "+nodeOut.FragmentWarning)
+				res.Suggestions = append(res.Suggestions, "Use the parent full-page URL (e.g. /chat/{id} instead of /chat/{id}/info), or pass css_paths with your Tailwind/app CSS file paths.")
+			}
 			renderedPath = nodeOut.Screenshots[0].Path
 		} else if screen.TemplatePath != "" {
 			// Template mode — existing patchTemplateWithCSS + renderScript path.
+			// Detect fragments: if the file has no <html tag and no css_paths were provided, warn early.
+			if len(in.CSSPaths) == 0 {
+				if rawHTML, readErr := os.ReadFile(RemapPathForWorktree(ctx, screen.TemplatePath)); readErr == nil {
+					lower := strings.ToLower(string(rawHTML[:min(len(rawHTML), 512)]))
+					if !strings.Contains(lower, "<html") && !strings.Contains(lower, "<!doctype") {
+						res.Gaps = append(res.Gaps, "[WARNING] template_path appears to be an HTML fragment (no <html>/<DOCTYPE> found). CSS custom properties from the layout will not apply — scores may be artificially low. Fix: pass css_paths with your Tailwind/app CSS file paths, or use a full-page URL instead.")
+						res.Suggestions = append(res.Suggestions, "Add css_paths pointing to your Tailwind CSS and app CSS files, or switch to url mode with the parent full-page URL.")
+					}
+				}
+			}
 			renderPath, isTemp, patchErr := patchTemplateWithCSS(ctx, RemapPathForWorktree(ctx, screen.TemplatePath), in.CSSPaths)
 			if patchErr != nil {
 				// non-fatal: fall back to original

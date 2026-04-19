@@ -87,10 +87,11 @@ type RenderMockupOutput struct {
 
 // nodeScriptOutput matches the JSON the Node.js script writes to stdout.
 type nodeScriptOutput struct {
-	Success     bool             `json:"success"`
-	Errors      []string         `json:"errors"`
-	Warnings    []string         `json:"warnings"`
-	Screenshots []ScreenshotInfo `json:"screenshots"`
+	Success         bool             `json:"success"`
+	Errors          []string         `json:"errors"`
+	Warnings        []string         `json:"warnings"`
+	Screenshots     []ScreenshotInfo `json:"screenshots"`
+	FragmentWarning string           `json:"fragment_warning"` // non-empty when URL returned an HTML fragment with no stylesheets
 }
 
 func (t *RenderMockupTool) Name() string { return "RenderMockup" }

@@ -92,7 +92,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div><!-- Info card --><div style=\"background:var(--color-surface);border-radius:12px;padding:10px 14px;width:100%;border:1px solid var(--color-border);\"><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Path</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div><!-- Info card --><div style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:10px 14px;width:100%;border:1px solid var(--color-border);\"><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Path</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -131,7 +131,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></div></div></header><!-- Tab bar --><div id=\"info-tab-bar\" style=\"display:flex;background:var(--color-surfaceHigh);border-bottom:1px solid var(--color-border);flex-shrink:0;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></div></div></header><!-- Tab bar --><div id=\"info-tab-bar\" style=\"display:flex;background:var(--color-surface);border-bottom:1px solid var(--color-border);flex-shrink:0;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
