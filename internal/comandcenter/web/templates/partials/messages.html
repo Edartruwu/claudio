@@ -1,7 +1,19 @@
+{{/* messages-partial: called by Go server with []MessageView (slice) — keep this name */}}
 {{define "messages-partial"}}
 {{range .}}
   {{template "message-bubble" .}}
 {{else}}
-  <div class="text-center text-sm mt-8" style="color:#8E8E93;">No messages yet</div>
+  <div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No messages yet</div>
 {{end}}
+{{end}}
+
+{{/* messages: called by chat_view.html with full page data (.Messages is []MessageView) */}}
+{{define "messages"}}
+<div id="messages-inner">
+{{range .Messages}}
+  {{template "message-bubble" .}}
+{{else}}
+  <div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No messages yet</div>
+{{end}}
+</div>
 {{end}}

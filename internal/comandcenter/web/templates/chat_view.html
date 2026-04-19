@@ -1,15 +1,24 @@
 {{define "chat_view.html"}}{{template "layout" .}}{{end}}
 
 {{define "main"}}
-<div class="flex-1 flex flex-col min-h-0" style="background:#161717;position:relative;">
+{{/* 3-col layout on desktop: chat (flex-1) + info panel (320px, hidden mobile) */}}
+<div class="flex flex-1 min-h-0">
+<div class="flex-1 flex flex-col min-h-0" style="background:var(--color-bg);position:relative;">
   <!-- Header -->
   <header class="chat-header flex items-center gap-3 px-4 py-3 flex-shrink-0 shadow-md" style="background:#1C1C1E;">
-    <!-- Back arrow — mobile only -->
-    <a href="/" class="md:hidden text-white flex items-center justify-center flex-shrink-0 -ml-2" style="min-width:44px;min-height:44px;">
+    <!-- Back arrow — mobile only, htmx nav to sessions list -->
+    <button type="button"
+            class="md:hidden text-white flex items-center justify-center flex-shrink-0 -ml-2"
+            style="min-width:44px;min-height:44px;background:transparent;border:none;cursor:pointer;"
+            hx-get="/sessions"
+            hx-target="body"
+            hx-swap="innerHTML"
+            hx-push-url="/"
+            aria-label="Back to sessions">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
       </svg>
-    </a>
+    </button>
     <!-- Avatar -->
     <div class="rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0" style="width:36px;height:36px;background:{{avatarColor .Session.Name}};">
       {{firstChar .Session.Name}}
@@ -25,6 +34,18 @@
       <p id="typing-indicator" class="text-xs" style="color:#8E8E93;">last seen recently</p>
       {{end}}
     </div>
+    <!-- Interrupt button -->
+    <button type="button"
+            class="flex items-center justify-center flex-shrink-0"
+            style="min-width:44px;min-height:44px;color:var(--color-error);background:transparent;border:none;cursor:pointer;"
+            hx-post="/api/sessions/{{.Session.ID}}/interrupt"
+            hx-confirm="Interrupt current turn?"
+            hx-swap="none"
+            aria-label="Interrupt">
+      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+      </svg>
+    </button>
     <!-- Bell — push notification subscribe/unsubscribe -->
     <button id="bell-btn"
             type="button"
@@ -41,14 +62,19 @@
         <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
       </svg>
     </button>
-    <!-- Menu — tap opens session info panel -->
-    <a href="/chat/{{.Session.ID}}/info"
-       class="flex items-center justify-center flex-shrink-0 -mr-3"
-       style="min-width:44px;min-height:44px;color:#8E8E93;">
-      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-        <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+    <!-- Info panel toggle (ℹ) — loads into #info-panel slot -->
+    <button type="button"
+            class="flex items-center justify-center flex-shrink-0 -mr-3"
+            style="min-width:44px;min-height:44px;color:var(--color-textSecondary);background:transparent;border:none;cursor:pointer;"
+            hx-get="/chat/{{.Session.ID}}/info"
+            hx-target="#info-panel"
+            hx-swap="innerHTML"
+            aria-label="Session info">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01"/>
       </svg>
-    </a>
+    </button>
   </header>
 
   <!-- Push toast -->
@@ -58,17 +84,26 @@
   <!-- WS reconnect banner -->
   <div id="ws-banner" class="hidden text-white text-center text-xs py-1" style="background:#8E44AD;">Connecting...</div>
 
-  <!-- Messages -->
-  <div id="messages" class="flex-1 overflow-y-auto px-3 py-4 space-y-1" style="background:#161717;">
-    {{range .Messages}}
-      {{template "message-bubble" .}}
-    {{else}}
-      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No messages yet</div>
-    {{end}}
-    <!-- Typing indicator bubble — shown/hidden by app.js -->
+  <!-- Messages — WS connection via htmx-ws extension -->
+  <div id="messages"
+       class="flex-1 overflow-y-auto px-3 py-4 space-y-1"
+       style="background:var(--color-bg);"
+       hx-ext="ws"
+       ws-connect="/ws/ui?session={{.Session.ID}}">
+    {{template "messages" .}}
+    <!-- Typing indicator — 3 animated dots, shown/hidden by app.js -->
+    <div id="typing-indicator-dots" class="hidden flex justify-start mb-1">
+      <div class="msg-bubble-assistant px-4 py-2 max-w-xs shadow-sm flex items-center gap-2" style="background:var(--color-surface);">
+        <span class="typing-text text-xs" style="color:var(--color-textMuted);"></span>
+        <span class="typing-dots" aria-label="typing">
+          <span></span><span></span><span></span>
+        </span>
+      </div>
+    </div>
+    <!-- typing-bubble kept for app.js compatibility -->
     <div id="typing-bubble" class="hidden flex justify-start mb-1">
-      <div class="msg-bubble-assistant px-4 py-2 max-w-xs shadow-sm flex items-center gap-2">
-        <span class="typing-text text-xs" style="color:#8E8E93;"></span>
+      <div class="msg-bubble-assistant px-4 py-2 max-w-xs shadow-sm flex items-center gap-2" style="background:var(--color-surface);">
+        <span class="typing-text text-xs" style="color:var(--color-textMuted);"></span>
         <span class="typing-dots" aria-label="typing">
           <span></span><span></span><span></span>
         </span>
@@ -168,7 +203,7 @@
   </div>
 
   <!-- Input bar -->
-  <div class="input-bar px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
+  <form class="input-bar px-3 py-2 flex items-center gap-2 flex-shrink-0" ws-send style="background:var(--color-surface);border-top:1px solid var(--color-border);" onsubmit="return false;">
     <!-- Hidden file input -->
     <input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip">
     <!-- + button -->
@@ -190,15 +225,24 @@
       id="send-btn"
       type="button"
       class="text-white rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0 shadow"
-      style="background:#25D366;"
+      style="background:var(--color-brand);"
       onclick="ccSend()"
     >
       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
         <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
       </svg>
     </button>
-  </div>
+  </form>
+</div><!-- end chat panel -->
+
+<!-- Info panel slot: hidden on mobile, visible on desktop lg+ -->
+<div id="info-panel"
+     class="hidden lg:flex flex-col flex-shrink-0 overflow-y-auto"
+     style="width:320px;background:var(--color-surface);border-left:1px solid var(--color-border);">
+  <!-- Content loaded via htmx when ℹ clicked -->
 </div>
+
+</div><!-- end 3-col flex wrapper -->
 
 <script>
   (function() {

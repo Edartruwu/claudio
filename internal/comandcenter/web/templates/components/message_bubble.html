@@ -1,21 +1,17 @@
+{{/* message-bubble: Go server calls this name (8 places in server.go) — keep this name */}}
 {{define "message-bubble"}}
-{{if eq .Role "tool_use"}}
-<div class="flex justify-start my-1">
-  <div class="msg-bubble-tool px-3 py-1 max-w-xs" style="color:#8E8E93;">
-    🔧 {{truncate 80 .Content}}
-    {{if .AgentName}}<span style="color:#636366;"> — {{.AgentName}}</span>{{end}}
-  </div>
-</div>
-{{else if eq .Role "user"}}
-<div class="flex justify-end mb-1">
-  <div class="msg-bubble-user px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
+
+{{if eq .Role "user"}}
+{{/* ── USER: right-aligned, brand bg ── */}}
+<div class="flex justify-end mb-2">
+  <div class="px-3 py-2 rounded-2xl rounded-tr-sm msg-bubble-user" style="max-width:80%;background:var(--color-brand);color:#fff;">
     {{if .ReplyToSession}}
-    <div class="mb-2 rounded" style="border-left:3px solid #25D366;padding:4px 8px;background:rgba(37,211,102,0.10);">
-      <p class="text-xs font-semibold" style="color:#25D366;">@{{.ReplyToSession}}</p>
-      <p class="text-xs leading-snug" style="color:#8E8E93;">{{truncate 80 .QuotedContent}}</p>
+    <div class="mb-2 rounded" style="border-left:3px solid rgba(255,255,255,0.5);padding:4px 8px;background:rgba(255,255,255,0.15);">
+      <p class="text-xs font-semibold" style="color:rgba(255,255,255,0.9);">@{{.ReplyToSession}}</p>
+      <p class="text-xs leading-snug" style="color:rgba(255,255,255,0.7);">{{truncate 80 .QuotedContent}}</p>
     </div>
     {{end}}
-    {{if .Content}}<p class="text-sm leading-relaxed whitespace-pre-wrap text-white">{{.Content}}</p>{{end}}
+    {{if .Content}}<p class="text-sm leading-relaxed whitespace-pre-wrap">{{.Content}}</p>{{end}}
     {{range .Attachments}}
       {{if isImage .MimeType}}
         <img src="/uploads/{{.SessionID}}/{{.Filename}}"
@@ -28,7 +24,7 @@
         <a href="/uploads/{{.SessionID}}/{{.Filename}}"
            download="{{.OriginalName}}"
            class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs no-underline"
-           style="background:rgba(255,255,255,0.12);color:#fff;">
+           style="background:rgba(255,255,255,0.2);color:#fff;">
           <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"/>
             <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -37,14 +33,65 @@
         </a>
       {{end}}
     {{end}}
-    <p class="text-xs text-right mt-1" style="color:rgba(255,255,255,0.6);">{{relTime .CreatedAt}}</p>
+    <p class="text-xs text-right mt-1" style="color:rgba(255,255,255,0.7);">{{relTime .CreatedAt}}</p>
   </div>
 </div>
+
+{{else if eq .Role "tool_use"}}
+{{/* ── TOOL CALL (tool_use): left-aligned, tool border, collapsible ── */}}
+<div class="flex justify-start mb-2">
+  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:80%;background:var(--color-surfaceHigh);border-left:4px solid var(--color-tool);">
+    <details>
+      <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2" style="color:var(--color-tool);">
+        🔧 <span>{{if .AgentName}}{{.AgentName}}{{else}}Tool{{end}}</span>
+        <svg class="w-3 h-3 ml-auto details-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </summary>
+      <pre class="text-xs overflow-auto mt-2 whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);">{{.Content}}</pre>
+    </details>
+    <p class="text-xs mt-2" style="color:var(--color-textMuted);">{{relTime .CreatedAt}}</p>
+  </div>
+</div>
+
+{{else if eq .Role "tool_call"}}
+{{/* ── TOOL CALL (alt name): same as tool_use ── */}}
+<div class="flex justify-start mb-2">
+  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:80%;background:var(--color-surfaceHigh);border-left:4px solid var(--color-tool);">
+    <details>
+      <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2" style="color:var(--color-tool);">
+        🔧 <span>{{if .AgentName}}{{.AgentName}}{{else}}Tool{{end}}</span>
+      </summary>
+      <pre class="text-xs overflow-auto mt-2 whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);">{{.Content}}</pre>
+    </details>
+    <p class="text-xs mt-2" style="color:var(--color-textMuted);">{{relTime .CreatedAt}}</p>
+  </div>
+</div>
+
+{{else if eq .Role "tool_result"}}
+{{/* ── TOOL RESULT: indented, muted ── */}}
+<div class="flex justify-start mb-1" style="margin-left:2rem;">
+  <div class="px-2 py-1 rounded-lg text-xs" style="max-width:80%;background:var(--color-surfaceHigh);color:var(--color-textMuted);">
+    {{.Content}}
+  </div>
+</div>
+
+{{else if eq .Role "error"}}
+{{/* ── ERROR: red-tinted with warning icon ── */}}
+<div class="flex justify-start mb-2">
+  <div class="px-3 py-2 rounded-lg border flex items-start gap-2" style="max-width:80%;background:rgba(224,80,80,0.10);border-color:var(--color-error);">
+    <span class="flex-shrink-0 mt-0.5">⚠</span>
+    <div class="min-w-0">
+      <p class="text-sm" style="color:var(--color-error);">{{.Content}}</p>
+      <p class="text-xs mt-1" style="color:var(--color-textMuted);">{{relTime .CreatedAt}}</p>
+    </div>
+  </div>
+</div>
+
 {{else}}
-<div class="flex justify-start mb-1">
-  <div class="{{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}} px-4 py-2 shadow-sm" style="max-width:min(320px,85vw);">
-    {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:{{if hasPrefix .AgentName "⏰"}}#A78BFA{{else}}#25D366{{end}};">{{.AgentName}}</p>{{end}}
-    <div class="text-sm leading-relaxed text-white md-content">{{renderMD .Content}}</div>
+{{/* ── ASSISTANT (default): left-aligned, ai border ── */}}
+<div class="flex justify-start mb-2">
+  <div class="rounded-2xl rounded-tl-sm p-3 {{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}}" style="max-width:80%;background:var(--color-surface);border-left:4px solid {{if and .AgentName (hasPrefix .AgentName "⏰")}}var(--color-cron){{else}}var(--color-ai){{end}};">
+    {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:{{if hasPrefix .AgentName "⏰"}}var(--color-cron){{else}}var(--color-ai){{end}};">{{.AgentName}}</p>{{end}}
+    <div class="text-sm leading-relaxed md-content" style="color:var(--color-textPrimary);">{{renderMD .Content}}<span class="streaming-cursor"></span></div>
     {{range .Attachments}}
       {{if isImage .MimeType}}
         <img src="/uploads/{{.SessionID}}/{{.Filename}}"
@@ -57,7 +104,7 @@
         <a href="/uploads/{{.SessionID}}/{{.Filename}}"
            download="{{.OriginalName}}"
            class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs no-underline"
-           style="background:rgba(255,255,255,0.08);color:#fff;">
+           style="background:rgba(255,255,255,0.08);color:var(--color-textPrimary);">
           <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"/>
             <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -66,8 +113,12 @@
         </a>
       {{end}}
     {{end}}
-    <p class="text-xs mt-1" style="color:#8E8E93;">{{relTime .CreatedAt}}</p>
+    <p class="text-xs mt-1" style="color:var(--color-textMuted);">{{relTime .CreatedAt}}</p>
   </div>
 </div>
 {{end}}
-{{end}}
+
+{{end}}{{/* end message-bubble */}}
+
+{{/* message_bubble: alias so partials/messages.html can use the spec name */}}
+{{define "message_bubble"}}{{template "message-bubble" .}}{{end}}
