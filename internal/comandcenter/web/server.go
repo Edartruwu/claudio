@@ -70,9 +70,10 @@ var (
 	sessionsTmpl   *templateSet
 	messagesTmpl   *templateSet
 	infoTmpl       *templateSet
-	taskDetailTmpl *templateSet
-	designsTmpl    *templateSet
-	bubbleTmpl     *template.Template
+	taskDetailTmpl  *templateSet
+	designsTmpl     *templateSet
+	teamMembersTmpl *templateSet
+	bubbleTmpl      *template.Template
 )
 
 func funcMap() template.FuncMap {
@@ -244,6 +245,9 @@ func init() {
 	taskDetailTmpl = mustParseFS(
 		"templates/partials/task_detail.html",
 	)
+	teamMembersTmpl = mustParseFS(
+		"templates/partials/team_members.html",
+	)
 	designsTmpl = mustParseFS(
 		"templates/layout.html",
 		"templates/designs.html",
@@ -343,6 +347,9 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/teams", ws.uiAuth(http.HandlerFunc(ws.handleAPITeams)))
 	mux.Handle("POST /api/sessions/{id}/set-agent", ws.uiAuth(http.HandlerFunc(ws.handleSetAgent)))
 	mux.Handle("POST /api/sessions/{id}/set-team", ws.uiAuth(http.HandlerFunc(ws.handleSetTeam)))
+
+	// Team panel partial — HTMX polling endpoint.
+	mux.Handle("GET /api/sessions/{id}/team", ws.uiAuth(http.HandlerFunc(ws.handleAPISessionTeam)))
 
 	// Cron endpoints.
 	mux.Handle("GET /chat/{session_id}/crons", ws.uiAuth(http.HandlerFunc(ws.handleCronList)))
@@ -687,6 +694,18 @@ func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		Task:     task,
 		DescHTML: renderMarkdown(task.Description),
 	})
+}
+
+// handleAPISessionTeam returns an HTML fragment of agent rows for the given session.
+// Called by HTMX polling every 3s and on WS-triggered refresh events.
+func (ws *WebServer) handleAPISessionTeam(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	agents, err := ws.storage.ListAgents(id)
+	if err != nil {
+		agents = nil
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	teamMembersTmpl.execute(w, "team-members", agents)
 }
 
 func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Request) {

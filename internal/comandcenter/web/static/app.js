@@ -210,6 +210,16 @@
 
         } else if (type === 'agent_status') {
           showAgentToast(data.name, data.status);
+          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
+          if (msgs) {
+            var agentIcon = data.status === 'complete' ? '✅' : data.status === 'failed' ? '❌' : data.status === 'working' ? '⚙️' : '⏳';
+            var agentNotif = document.createElement('div');
+            agentNotif.className = 'text-xs text-center py-1';
+            agentNotif.style.color = '#8E8E93';
+            agentNotif.textContent = agentIcon + ' ' + data.name + ' — ' + data.status;
+            msgs.appendChild(agentNotif);
+            msgs.scrollTop = msgs.scrollHeight;
+          }
 
         } else if (type === 'new_message' && data.html) {
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;

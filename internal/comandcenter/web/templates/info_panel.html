@@ -126,26 +126,33 @@
 
     <!-- Team Tab -->
     <div id="panel-team" class="tab-panel hidden px-4 flex flex-col gap-2">
-      {{range .Agents}}
-      <div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:#1C1C1E;">
-        <div class="rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-             style="width:36px;height:36px;background:{{avatarColor .Name}};color:#fff;">
-          {{firstChar .Name}}
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm text-white truncate">{{.Name}}</p>
-          <div class="flex items-center gap-2 mt-1">
-            <span class="inline-block w-2 h-2 rounded-full flex-shrink-0 {{agentStatusDot .Status}}"></span>
-            <span class="text-xs {{agentStatusColor .Status}}">{{.Status}}</span>
-            {{if .CurrentTaskID}}
-            <span class="text-xs" style="color:#8E8E93;">· task {{truncate 8 .CurrentTaskID}}</span>
-            {{end}}
+      <div id="team-members-list"
+           class="flex flex-col gap-2"
+           hx-get="/api/sessions/{{.Session.ID}}/team"
+           hx-trigger="every 3s, refresh from:body"
+           hx-target="#team-members-list"
+           hx-swap="innerHTML">
+        {{range .Agents}}
+        <div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:#1C1C1E;">
+          <div class="rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+               style="width:36px;height:36px;background:{{avatarColor .Name}};color:#fff;">
+            {{firstChar .Name}}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-white truncate">{{.Name}}</p>
+            <div class="flex items-center gap-2 mt-1">
+              <span class="inline-block w-2 h-2 rounded-full flex-shrink-0 {{agentStatusDot .Status}}{{if eq .Status "working"}} animate-pulse{{end}}"></span>
+              <span class="text-xs {{agentStatusColor .Status}}">{{.Status}}</span>
+              {{if .CurrentTaskID}}
+              <span class="text-xs" style="color:#8E8E93;">· task {{truncate 8 .CurrentTaskID}}</span>
+              {{end}}
+            </div>
           </div>
         </div>
+        {{else}}
+        <div class="text-center text-sm mt-8" style="color:#8E8E93;">No agents yet</div>
+        {{end}}
       </div>
-      {{else}}
-      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No agents yet</div>
-      {{end}}
     </div>
 
     <!-- Media Tab -->
