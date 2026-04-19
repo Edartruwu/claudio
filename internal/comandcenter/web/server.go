@@ -1338,24 +1338,10 @@ func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundl
 	now := time.Now()
 	msgID := cc.NewID()
 
-	// Copy bundle file into uploads dir so it's served at /uploads/{sessionID}/bundle-{msgID}.html.
-	var bundleURL string
-	if p.FilePath != "" {
-		destDir := filepath.Join(ws.uploadsDir, sessionID)
-		if err := os.MkdirAll(destDir, 0o755); err == nil {
-			destName := "bundle-" + msgID + ".html"
-			destPath := filepath.Join(destDir, destName)
-			if err := copyFile(p.FilePath, destPath); err == nil {
-				bundleURL = "/uploads/" + sessionID + "/" + destName
-			}
-		}
-	}
-	// Fall back to original URL (with optional public prefix) if copy failed.
-	if bundleURL == "" {
-		bundleURL = p.BundleURL
-		if ws.publicURL != "" && strings.HasPrefix(bundleURL, "/") {
-			bundleURL = strings.TrimRight(ws.publicURL, "/") + bundleURL
-		}
+	// Use the original /designs/project/ URL — that route is already registered and serves directly.
+	bundleURL := p.BundleURL
+	if ws.publicURL != "" && strings.HasPrefix(bundleURL, "/") {
+		bundleURL = strings.TrimRight(ws.publicURL, "/") + bundleURL
 	}
 
 	msg := cc.Message{

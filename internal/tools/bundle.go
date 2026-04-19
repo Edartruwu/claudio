@@ -288,7 +288,7 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	_ = outJSON // JSON only used by pusher above; suppress unused warning
-	return &Result{Content: "Bundle card sent to chat. No further summary needed."}, nil
+	return &Result{Content: ""}, nil
 }
 
 // injectInfiniteCanvas wraps the HTML body with a pan/zoom infinite canvas shell.
