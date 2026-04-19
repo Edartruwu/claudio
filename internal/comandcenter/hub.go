@@ -313,15 +313,13 @@ func (h *Hub) handleConn(conn wsConn) {
 		Status:       "active",
 		CreatedAt:    now,
 		LastActiveAt: now,
+		// Populate on first connect so INSERT carries the right values.
+		// On reconnect (found=true), UpsertSession does not update these columns.
+		AgentType:    hello.AgentType,
+		TeamTemplate: hello.TeamTemplate,
 	}
 	if err := h.storage.UpsertSession(sess); err != nil {
 		return
-	}
-
-	// Persist CLI-supplied agent/team flags only on first connect.
-	// On reconnect, preserve whatever the user set manually in the Config tab.
-	if !found && (hello.AgentType != "" || hello.TeamTemplate != "") {
-		_ = h.storage.UpdateSessionConfig(sessionID, hello.AgentType, hello.TeamTemplate)
 	}
 
 	h.Register(sessionID, conn)

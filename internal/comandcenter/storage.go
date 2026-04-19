@@ -217,9 +217,7 @@ func (s *Storage) UpsertSession(sess Session) error {
 			model=excluded.model,
 			master=excluded.master,
 			status=excluded.status,
-			last_active_at=excluded.last_active_at,
-			agent_type=excluded.agent_type,
-			team_template=excluded.team_template
+			last_active_at=excluded.last_active_at
 	`, sess.ID, sess.Name, sess.Path, sess.Model, master, sess.Status,
 		sess.CreatedAt, sess.LastActiveAt, sess.AgentType, sess.TeamTemplate)
 	if err != nil {
