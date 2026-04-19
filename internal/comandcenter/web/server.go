@@ -517,10 +517,26 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Header.Get("HX-Request") == "true" {
+		// Tab switch — render only the tab content partial, not the full panel
+		if r.URL.Query().Get("tab") != "" {
+			switch activeTab {
+			case "team":
+				TabTeam(data).Render(r.Context(), w)
+			case "media":
+				TabMedia(data).Render(r.Context(), w)
+			case "crons":
+				TabCrons(data).Render(r.Context(), w)
+			case "config":
+				TabConfig(data).Render(r.Context(), w)
+			default:
+				TabTasks(data).Render(r.Context(), w)
+			}
+			return
+		}
 		InfoPanel(data).Render(r.Context(), w)
 		return
 	}
-	templ.Handler(InfoPanel(data)).ServeHTTP(w, r)
+	InfoPanel(data).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {

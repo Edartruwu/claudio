@@ -69,6 +69,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 					hx-get={ fmt.Sprintf("/chat/%s/info", sess.ID) }
 					hx-target="#info-panel"
 					hx-swap="innerHTML"
+					hx-on::after-request="ccOpenInfoPanel()"
 					aria-label="Session info"
 				>
 					<svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>
@@ -83,6 +84,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				id="messages"
 				class="flex-1 overflow-y-auto"
 				style="background:var(--color-bg);padding:16px 20px;"
+				data-session={ sess.ID }
 				hx-ext="ws"
 				ws-connect={ fmt.Sprintf("/ws/ui?session=%s", sess.ID) }
 			>
@@ -205,6 +207,8 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				</button>
 			</form>
 		</div>
+		<!-- Info panel backdrop (mobile only) -->
+		<div id="info-panel-backdrop" class="hidden fixed inset-0 z-40" style="background:rgba(0,0,0,0.5);" onclick="ccCloseInfoPanel()"></div>
 		<!-- Info panel slot -->
 		<div
 			id="info-panel"
@@ -222,6 +226,38 @@ templ chatViewScript(sessionID string) {
 		(function() {
 			var msgs = document.getElementById('messages');
 			if (msgs) msgs.scrollTop = msgs.scrollHeight;
+		})();
+
+		// --- Info panel: mobile overlay / desktop side panel ---
+		function ccOpenInfoPanel() {
+			var panel = document.getElementById('info-panel');
+			var backdrop = document.getElementById('info-panel-backdrop');
+			if (!panel) return;
+			var isMobile = window.innerWidth < 1024;
+			if (isMobile) {
+				panel.classList.remove('hidden');
+				panel.classList.add('flex');
+				panel.style.cssText = 'position:fixed;top:0;right:0;bottom:0;width:min(320px,100vw);z-index:50;background:var(--color-bg);border-left:1px solid var(--color-border);overflow-y:auto;flex-direction:column;';
+				if (backdrop) backdrop.classList.remove('hidden');
+			} else {
+				panel.classList.remove('hidden');
+				panel.classList.add('flex');
+				panel.style.cssText = 'width:300px;background:var(--color-bg);border-left:1px solid var(--color-border);flex-direction:column;flex-shrink:0;overflow-y:auto;';
+			}
+		}
+		function ccCloseInfoPanel() {
+			var panel = document.getElementById('info-panel');
+			var backdrop = document.getElementById('info-panel-backdrop');
+			if (panel) { panel.classList.add('hidden'); panel.classList.remove('flex'); panel.style.cssText = ''; }
+			if (backdrop) backdrop.classList.add('hidden');
+		}
+
+		// Auto-load info panel on desktop
+		(function() {
+			if (window.innerWidth >= 1024) {
+				var sid = document.getElementById('messages').dataset.session;
+				if (sid) htmx.ajax('GET', '/chat/' + sid + '/info', {target:'#info-panel', swap:'innerHTML'}).then(function(){ ccOpenInfoPanel(); });
+			}
 		})();
 
 		// --- Auto-grow textarea + Enter key ---
