@@ -73,6 +73,28 @@
     }
   }
 
+  function showAgentToast(name, status) {
+    var icons = { done: '✅', failed: '❌', working: '⚙️', waiting: '⏳' };
+    var icon = icons[status] || '🤖';
+    var label = name + ' — ' + status;
+    var toast = document.createElement('div');
+    toast.style.cssText = [
+      'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
+      'z-index:600', 'background:#1C1C1E', 'border:1px solid #2C2C2E',
+      'border-radius:12px', 'padding:10px 16px',
+      'display:flex', 'align-items:center', 'gap:8px',
+      'font-family:inherit', 'font-size:13px', 'color:#D4DDE8',
+      'box-shadow:0 4px 20px rgba(0,0,0,0.6)', 'white-space:nowrap',
+      'opacity:1', 'transition:opacity 0.4s'
+    ].join(';');
+    toast.innerHTML = '<span>' + icon + '</span><span>' + label + '</span>';
+    document.body.appendChild(toast);
+    setTimeout(function() {
+      toast.style.opacity = '0';
+      setTimeout(function() { toast.remove(); }, 400);
+    }, 4000);
+  }
+
   function appendMessage(html) {
     if (!msgs) return;
     maybeInsertDateDivider();
@@ -185,6 +207,9 @@
           }
           var loader = document.getElementById('compact-loading');
           if (loader) loader.style.display = 'none';
+
+        } else if (type === 'agent_status') {
+          showAgentToast(data.name, data.status);
 
         } else if (type === 'new_message' && data.html) {
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;

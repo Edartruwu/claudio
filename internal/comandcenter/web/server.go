@@ -1243,6 +1243,21 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			ws.handleBundleLinkPush(ev.SessionID, p)
+
+		case attach.EventAgentStatus:
+			var p attach.AgentStatusPayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			payload, err := json.Marshal(map[string]string{
+				"type":   "agent_status",
+				"name":   p.Name,
+				"status": p.Status,
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
 		}
 	}
 }
