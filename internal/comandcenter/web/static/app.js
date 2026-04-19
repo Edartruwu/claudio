@@ -218,6 +218,15 @@
         } else if (type === 'task.created' || type === 'task.updated') {
           if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
 
+        } else if (type === 'messages.reload') {
+          var msgsEl = document.getElementById('messages');
+          if (msgsEl && sessionId) {
+            fetch('/partials/messages/' + sessionId, { credentials: 'include' })
+              .then(function(r) { return r.text(); })
+              .then(function(html) { msgsEl.innerHTML = html; msgsEl.scrollTop = msgsEl.scrollHeight; })
+              .catch(function() {});
+          }
+
         } else if (type === 'messages.compacted') {
           var msgsEl = document.getElementById('messages');
           if (msgsEl && sessionId) {

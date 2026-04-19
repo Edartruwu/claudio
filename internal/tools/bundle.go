@@ -271,17 +271,6 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 
 	outJSON, _ := json.MarshalIndent(out, "", "  ")
 
-	var sb strings.Builder
-	sb.Write(outJSON)
-	if len(warnings) > 0 {
-		sb.WriteString("\n\nWarnings:\n")
-		for _, w := range warnings {
-			sb.WriteString("  - ")
-			sb.WriteString(w)
-			sb.WriteString("\n")
-		}
-	}
-
 	// Push a clickable link bubble to CC chat so the user can open the bundle directly.
 	if t.pusher != nil {
 		// Path structure: ~/.claudio/projects/{slug}/designs/{session}/bundle/mockup.html
@@ -298,7 +287,8 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		_ = t.pusher.PushBundleLink(t.sessionID, bundleURL, sessionDirName, outPath)
 	}
 
-	return &Result{Content: sb.String()}, nil
+	_ = outJSON // JSON only used by pusher above; suppress unused warning
+	return &Result{Content: "Bundle card sent to chat. No further summary needed."}, nil
 }
 
 // injectInfiniteCanvas wraps the HTML body with a pan/zoom infinite canvas shell.
