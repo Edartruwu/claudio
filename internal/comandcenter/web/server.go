@@ -449,16 +449,15 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
 
-	data := ChatViewData{Session: sess, Messages: views, SessionID: id}
 	if r.Header.Get("HX-Request") == "true" {
-		ChatView(data.Session, data.Messages, data.SessionID).Render(r.Context(), w)
+		ChatView(sess, views, id).Render(r.Context(), w)
 		return
 	}
-	// Full-page render (hard refresh / direct URL): wrap in Layout so CSS/JS loads.
-	page := templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
-		return Layout(id).Render(templ.WithChildren(ctx, ChatView(data.Session, data.Messages, data.SessionID)), w)
-	})
-	templ.Handler(page).ServeHTTP(w, r)
+	// Full-page render (hard refresh / direct URL): render full shell with sidebar.
+	sessions, _ := ws.storage.ListSessions("")
+	rows := ws.buildSessionRows(sessions)
+	listData := ChatListData{Rows: rows, SessionID: id}
+	templ.Handler(ChatPage(listData, sess, views, id)).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {

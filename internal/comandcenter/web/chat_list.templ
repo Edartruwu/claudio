@@ -1,5 +1,7 @@
 package web
 
+import cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+
 // ChatListData mirrors the map passed by server.go: {"Rows": rows, "SessionID": ""}
 type ChatListData struct {
 	Rows      []sessionRow
@@ -24,6 +26,29 @@ templ ChatList(data ChatListData) {
 				style="background:#161717;"
 			>
 				@WelcomeScreen()
+			</div>
+		</div>
+	}
+}
+
+// ChatPage is used on hard refresh of /chat/:id — renders the full shell
+// (sidebar + chat view) so CSS/JS and the session list are all present.
+templ ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string) {
+	@Layout(sessionID) {
+		<div class="flex h-full">
+			<div
+				id="sidebar"
+				class={ "w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden" + sidebarHiddenClass(sessionID) }
+				style="border-right:1px solid var(--color-border);"
+			>
+				@ChatListSidebar(list)
+			</div>
+			<div
+				id="main"
+				class={ "flex-1 flex flex-col h-full overflow-hidden" + mainHiddenClass(sessionID) }
+				style="background:#161717;"
+			>
+				@ChatView(sess, messages, sessionID)
 			</div>
 		</div>
 	}

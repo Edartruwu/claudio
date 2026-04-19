@@ -8,6 +8,8 @@ package web
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
+import cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+
 // ChatListData mirrors the map passed by server.go: {"Rows": rows, "SessionID": ""}
 type ChatListData struct {
 	Rows      []sessionRow
@@ -121,7 +123,9 @@ func ChatList(data ChatListData) templ.Component {
 	})
 }
 
-func ChatListSidebar(data ChatListData) templ.Component {
+// ChatPage is used on hard refresh of /chat/:id — renders the full shell
+// (sidebar + chat view) so CSS/JS and the session list are all present.
+func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -142,7 +146,114 @@ func ChatListSidebar(data ChatListData) templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"flex flex-col h-full\" style=\"background:var(--color-bg);\"><!-- Header --><div class=\"chat-header flex-shrink-0\" style=\"background:var(--color-surfaceHigh);padding:20px 16px 10px;\"><div class=\"flex justify-between items-center\" style=\"margin-bottom:8px;\"><h1 style=\"font-size:22px;font-weight:700;color:var(--color-textPrimary);font-family:inherit;margin:0;line-height:1.05;letter-spacing:-0.5px;\">ComandCenter</h1><div class=\"flex items-center\" style=\"gap:4px;\"><a href=\"/designs\" class=\"flex items-center justify-center rounded-full\" style=\"width:32px;height:32px;background:var(--color-surface);\" title=\"Designs\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"var(--color-textSecondary)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"currentColor\" stroke=\"none\"></circle> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15l-5-5L5 21\"></path></svg></a> <button hx-get=\"/sessions/new\" hx-target=\"#modal\" hx-swap=\"innerHTML\" class=\"flex items-center justify-center rounded-full\" style=\"width:32px;height:32px;background:var(--color-brand);border:none;cursor:pointer;\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"#0B0E0F\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path d=\"M12 4v16m8-8H4\"></path></svg></button></div></div><!-- Search bar --><div class=\"flex items-center\" style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:0 12px;height:36px;gap:8px;\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"var(--color-textMuted)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"M21 21l-4.35-4.35\"></path></svg> <input type=\"text\" name=\"q\" placeholder=\"Search\" autocomplete=\"off\" hx-get=\"/partials/sessions\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-include=\"this\" style=\"background:transparent;border:none;outline:none;color:var(--color-textPrimary);font-size:15px;font-family:inherit;flex:1;min-width:0;\"></div><!-- Filter chips --><div id=\"filter-chips\" class=\"flex overflow-x-auto no-scrollbar\" style=\"gap:8px;padding-bottom:8px;margin-top:8px;\"><button data-filter-chip=\"\" onclick=\"ccSetFilter('');htmx.ajax('GET','/partials/sessions?filter=',{target:'#session-list',swap:'innerHTML'})\" style=\"padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-brand);color:#0B0E0F;border:none;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s;\">All</button> <button data-filter-chip=\"active\" onclick=\"ccSetFilter('active');htmx.ajax('GET','/partials/sessions?filter=active',{target:'#session-list',swap:'innerHTML'})\" style=\"padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s;\">Active</button> <button data-filter-chip=\"inactive\" onclick=\"ccSetFilter('inactive');htmx.ajax('GET','/partials/sessions?filter=inactive',{target:'#session-list',swap:'innerHTML'})\" style=\"padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s;\">Inactive</button></div><script>\n\t\t\t(function() {\n\t\t\t\tfunction loadProjectChips() {\n\t\t\t\t\tfetch('/api/projects').then(function(r){ return r.json(); }).then(function(projects) {\n\t\t\t\t\t\tvar bar = document.getElementById('filter-chips');\n\t\t\t\t\t\tif (!bar) return;\n\t\t\t\t\t\tbar.querySelectorAll('[data-project-chip]').forEach(function(el){ el.remove(); });\n\t\t\t\t\t\tprojects.forEach(function(p) {\n\t\t\t\t\t\t\tvar f = 'project:' + p.path;\n\t\t\t\t\t\t\tvar btn = document.createElement('button');\n\t\t\t\t\t\t\tbtn.dataset.filterChip = f;\n\t\t\t\t\t\t\tbtn.dataset.projectChip = '1';\n\t\t\t\t\t\t\tbtn.style.cssText = 'padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:background 0.15s,color 0.15s;';\n\t\t\t\t\t\t\tbtn.innerHTML = '<svg width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z\"/></svg>'\n\t\t\t\t\t\t\t\t+ '<span>' + p.name + '</span>'\n\t\t\t\t\t\t\t\t+ '<span style=\"font-size:11px;opacity:.6;margin-left:2px;\">' + p.count + '</span>';\n\t\t\t\t\t\t\tbtn.onclick = function() {\n\t\t\t\t\t\t\t\tccSetFilter(f);\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/partials/sessions?filter=' + encodeURIComponent(f), {target:'#session-list', swap:'innerHTML'});\n\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\tbar.appendChild(btn);\n\t\t\t\t\t\t});\n\t\t\t\t\t}).catch(function(){});\n\t\t\t\t}\n\t\t\t\tloadProjectChips();\n\t\t\t\tsetInterval(loadProjectChips, 10000);\n\t\t\t})();\n\t\t\t</script></div><!-- Session List --><main style=\"flex:1 1 0%;overflow-y:auto;\"><div id=\"session-list\" hx-get=\"/partials/sessions\" hx-trigger=\"load, every 3s\" hx-swap=\"innerHTML\" hx-indicator=\".htmx-indicator\">")
+		templ_7745c5c3_Var8 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"flex h-full\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var9 = []any{"w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden" + sidebarHiddenClass(sessionID)}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var9...)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div id=\"sidebar\" class=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var10 string
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var9).String())
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 1, Col: 0}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" style=\"border-right:1px solid var(--color-border);\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = ChatListSidebar(list).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var11 = []any{"flex-1 flex flex-col h-full overflow-hidden" + mainHiddenClass(sessionID)}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var11...)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<div id=\"main\" class=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var12 string
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var11).String())
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 1, Col: 0}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" style=\"background:#161717;\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = ChatView(sess, messages, sessionID).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = Layout(sessionID).Render(templ.WithChildren(ctx, templ_7745c5c3_Var8), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func ChatListSidebar(data ChatListData) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var13 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var13 == nil {
+			templ_7745c5c3_Var13 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"flex flex-col h-full\" style=\"background:var(--color-bg);\"><!-- Header --><div class=\"chat-header flex-shrink-0\" style=\"background:var(--color-surfaceHigh);padding:20px 16px 10px;\"><div class=\"flex justify-between items-center\" style=\"margin-bottom:8px;\"><h1 style=\"font-size:22px;font-weight:700;color:var(--color-textPrimary);font-family:inherit;margin:0;line-height:1.05;letter-spacing:-0.5px;\">ComandCenter</h1><div class=\"flex items-center\" style=\"gap:4px;\"><a href=\"/designs\" class=\"flex items-center justify-center rounded-full\" style=\"width:32px;height:32px;background:var(--color-surface);\" title=\"Designs\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"var(--color-textSecondary)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"currentColor\" stroke=\"none\"></circle> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15l-5-5L5 21\"></path></svg></a> <button hx-get=\"/sessions/new\" hx-target=\"#modal\" hx-swap=\"innerHTML\" class=\"flex items-center justify-center rounded-full\" style=\"width:32px;height:32px;background:var(--color-brand);border:none;cursor:pointer;\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"#0B0E0F\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path d=\"M12 4v16m8-8H4\"></path></svg></button></div></div><!-- Search bar --><div class=\"flex items-center\" style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:0 12px;height:36px;gap:8px;\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"var(--color-textMuted)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"M21 21l-4.35-4.35\"></path></svg> <input type=\"text\" name=\"q\" placeholder=\"Search\" autocomplete=\"off\" hx-get=\"/partials/sessions\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-include=\"this\" style=\"background:transparent;border:none;outline:none;color:var(--color-textPrimary);font-size:15px;font-family:inherit;flex:1;min-width:0;\"></div><!-- Filter chips --><div id=\"filter-chips\" class=\"flex overflow-x-auto no-scrollbar\" style=\"gap:8px;padding-bottom:8px;margin-top:8px;\"><button data-filter-chip=\"\" onclick=\"ccSetFilter('');htmx.ajax('GET','/partials/sessions?filter=',{target:'#session-list',swap:'innerHTML'})\" style=\"padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-brand);color:#0B0E0F;border:none;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s;\">All</button> <button data-filter-chip=\"active\" onclick=\"ccSetFilter('active');htmx.ajax('GET','/partials/sessions?filter=active',{target:'#session-list',swap:'innerHTML'})\" style=\"padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s;\">Active</button> <button data-filter-chip=\"inactive\" onclick=\"ccSetFilter('inactive');htmx.ajax('GET','/partials/sessions?filter=inactive',{target:'#session-list',swap:'innerHTML'})\" style=\"padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s;\">Inactive</button></div><script>\n\t\t\t(function() {\n\t\t\t\tfunction loadProjectChips() {\n\t\t\t\t\tfetch('/api/projects').then(function(r){ return r.json(); }).then(function(projects) {\n\t\t\t\t\t\tvar bar = document.getElementById('filter-chips');\n\t\t\t\t\t\tif (!bar) return;\n\t\t\t\t\t\tbar.querySelectorAll('[data-project-chip]').forEach(function(el){ el.remove(); });\n\t\t\t\t\t\tprojects.forEach(function(p) {\n\t\t\t\t\t\t\tvar f = 'project:' + p.path;\n\t\t\t\t\t\t\tvar btn = document.createElement('button');\n\t\t\t\t\t\t\tbtn.dataset.filterChip = f;\n\t\t\t\t\t\t\tbtn.dataset.projectChip = '1';\n\t\t\t\t\t\t\tbtn.style.cssText = 'padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:background 0.15s,color 0.15s;';\n\t\t\t\t\t\t\tbtn.innerHTML = '<svg width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z\"/></svg>'\n\t\t\t\t\t\t\t\t+ '<span>' + p.name + '</span>'\n\t\t\t\t\t\t\t\t+ '<span style=\"font-size:11px;opacity:.6;margin-left:2px;\">' + p.count + '</span>';\n\t\t\t\t\t\t\tbtn.onclick = function() {\n\t\t\t\t\t\t\t\tccSetFilter(f);\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/partials/sessions?filter=' + encodeURIComponent(f), {target:'#session-list', swap:'innerHTML'});\n\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\tbar.appendChild(btn);\n\t\t\t\t\t\t});\n\t\t\t\t\t}).catch(function(){});\n\t\t\t\t}\n\t\t\t\tloadProjectChips();\n\t\t\t\tsetInterval(loadProjectChips, 10000);\n\t\t\t})();\n\t\t\t</script></div><!-- Session List --><main style=\"flex:1 1 0%;overflow-y:auto;\"><div id=\"session-list\" hx-get=\"/partials/sessions\" hx-trigger=\"load, every 3s\" hx-swap=\"innerHTML\" hx-indicator=\".htmx-indicator\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -150,7 +261,7 @@ func ChatListSidebar(data ChatListData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div><span class=\"htmx-indicator\" style=\"display:block;text-align:center;font-size:12px;padding:4px 0;color:var(--color-textMuted);\">&#8635;</span></main><!-- Bottom tab bar — mobile only --><nav class=\"md:hidden\" style=\"display:flex;flex-shrink:0;background:var(--color-surfaceHigh);border-top:1px solid var(--color-border);padding-bottom:env(safe-area-inset-bottom);\"><a href=\"/\" style=\"flex:1 1 0%;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;cursor:pointer;text-decoration:none;color:var(--color-brand);\"><svg width=\"22\" height=\"22\" fill=\"var(--color-brand)\" stroke=\"none\" viewBox=\"0 0 24 24\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path></svg> <span style=\"font-size:11px;font-weight:600;letter-spacing:0.5px;\">Sessions</span></a> <a href=\"/designs\" style=\"flex:1 1 0%;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;cursor:pointer;text-decoration:none;color:var(--color-textMuted);\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"currentColor\" stroke=\"none\"></circle> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15l-5-5L5 21\"></path></svg> <span style=\"font-size:11px;font-weight:600;letter-spacing:0.5px;\">Designs</span></a> <a href=\"/settings\" style=\"flex:1 1 0%;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;cursor:pointer;text-decoration:none;color:var(--color-textMuted);\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z\"></path> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\"></path></svg> <span style=\"font-size:11px;font-weight:600;letter-spacing:0.5px;\">Settings</span></a></nav></div><!-- Modal target --><div id=\"modal\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div><span class=\"htmx-indicator\" style=\"display:block;text-align:center;font-size:12px;padding:4px 0;color:var(--color-textMuted);\">&#8635;</span></main><!-- Bottom tab bar — mobile only --><nav class=\"md:hidden\" style=\"display:flex;flex-shrink:0;background:var(--color-surfaceHigh);border-top:1px solid var(--color-border);padding-bottom:env(safe-area-inset-bottom);\"><a href=\"/\" style=\"flex:1 1 0%;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;cursor:pointer;text-decoration:none;color:var(--color-brand);\"><svg width=\"22\" height=\"22\" fill=\"var(--color-brand)\" stroke=\"none\" viewBox=\"0 0 24 24\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path></svg> <span style=\"font-size:11px;font-weight:600;letter-spacing:0.5px;\">Sessions</span></a> <a href=\"/designs\" style=\"flex:1 1 0%;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;cursor:pointer;text-decoration:none;color:var(--color-textMuted);\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"currentColor\" stroke=\"none\"></circle> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15l-5-5L5 21\"></path></svg> <span style=\"font-size:11px;font-weight:600;letter-spacing:0.5px;\">Designs</span></a> <a href=\"/settings\" style=\"flex:1 1 0%;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;cursor:pointer;text-decoration:none;color:var(--color-textMuted);\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z\"></path> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 11-6 0 3 3 0 016 0z\"></path></svg> <span style=\"font-size:11px;font-weight:600;letter-spacing:0.5px;\">Settings</span></a></nav></div><!-- Modal target --><div id=\"modal\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -174,12 +285,12 @@ func WelcomeScreen() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var8 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var8 == nil {
-			templ_7745c5c3_Var8 = templ.NopComponent
+		templ_7745c5c3_Var14 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var14 == nil {
+			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div style=\"flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;padding:64px;background:var(--color-bg);\"><div style=\"width:96px;height:96px;border-radius:24px;background:rgba(0,61,46,1);border:1.5px solid rgba(0,196,140,0.2);display:flex;align-items:center;justify-content:center;\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--color-brand)\" stroke-width=\"1.5\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path> <path d=\"M8 10h8M8 14h5\" stroke-linecap=\"round\"></path></svg></div><div style=\"text-align:center;\"><h2 style=\"font-size:28px;font-weight:700;color:var(--color-textPrimary);font-family:inherit;margin:0 0 8px;\">Select a session</h2><p style=\"color:var(--color-textMuted);font-size:15px;font-family:inherit;line-height:1.6;margin:0;\">Pick a session from the sidebar to start chatting.<br>Or launch a new agent from your terminal.</p></div><div style=\"display:flex;flex-direction:column;gap:8px;width:360px;\"><p style=\"color:var(--color-textMuted);font-size:11px;font-family:inherit;font-weight:600;letter-spacing:0.8px;margin:0;\">QUICK START</p><div style=\"background:var(--color-surface);border-radius:12px;padding:12px 16px;border:1px solid var(--color-border);display:flex;align-items:center;gap:16px;\"><code style=\"color:var(--color-brand);font-size:13px;font-family:inherit;flex:1 1 0%;\">claudio</code> <span style=\"color:var(--color-textMuted);font-size:13px;font-family:inherit;\">— Start default session</span></div><div style=\"background:var(--color-surface);border-radius:12px;padding:12px 16px;border:1px solid var(--color-border);display:flex;align-items:center;gap:16px;\"><code style=\"color:var(--color-brand);font-size:13px;font-family:inherit;flex:1 1 0%;\">claudio --agent backend-sr</code> <span style=\"color:var(--color-textMuted);font-size:13px;font-family:inherit;\">— Start with a specialist</span></div><div style=\"background:var(--color-surface);border-radius:12px;padding:12px 16px;border:1px solid var(--color-border);display:flex;align-items:center;gap:16px;\"><code style=\"color:var(--color-brand);font-size:13px;font-family:inherit;flex:1 1 0%;\">claudio --team full-stack</code> <span style=\"color:var(--color-textMuted);font-size:13px;font-family:inherit;\">— Spawn a team</span></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div style=\"flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;padding:64px;background:var(--color-bg);\"><div style=\"width:96px;height:96px;border-radius:24px;background:rgba(0,61,46,1);border:1.5px solid rgba(0,196,140,0.2);display:flex;align-items:center;justify-content:center;\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--color-brand)\" stroke-width=\"1.5\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path> <path d=\"M8 10h8M8 14h5\" stroke-linecap=\"round\"></path></svg></div><div style=\"text-align:center;\"><h2 style=\"font-size:28px;font-weight:700;color:var(--color-textPrimary);font-family:inherit;margin:0 0 8px;\">Select a session</h2><p style=\"color:var(--color-textMuted);font-size:15px;font-family:inherit;line-height:1.6;margin:0;\">Pick a session from the sidebar to start chatting.<br>Or launch a new agent from your terminal.</p></div><div style=\"display:flex;flex-direction:column;gap:8px;width:360px;\"><p style=\"color:var(--color-textMuted);font-size:11px;font-family:inherit;font-weight:600;letter-spacing:0.8px;margin:0;\">QUICK START</p><div style=\"background:var(--color-surface);border-radius:12px;padding:12px 16px;border:1px solid var(--color-border);display:flex;align-items:center;gap:16px;\"><code style=\"color:var(--color-brand);font-size:13px;font-family:inherit;flex:1 1 0%;\">claudio</code> <span style=\"color:var(--color-textMuted);font-size:13px;font-family:inherit;\">— Start default session</span></div><div style=\"background:var(--color-surface);border-radius:12px;padding:12px 16px;border:1px solid var(--color-border);display:flex;align-items:center;gap:16px;\"><code style=\"color:var(--color-brand);font-size:13px;font-family:inherit;flex:1 1 0%;\">claudio --agent backend-sr</code> <span style=\"color:var(--color-textMuted);font-size:13px;font-family:inherit;\">— Start with a specialist</span></div><div style=\"background:var(--color-surface);border-radius:12px;padding:12px 16px;border:1px solid var(--color-border);display:flex;align-items:center;gap:16px;\"><code style=\"color:var(--color-brand);font-size:13px;font-family:inherit;flex:1 1 0%;\">claudio --team full-stack</code> <span style=\"color:var(--color-textMuted);font-size:13px;font-family:inherit;\">— Spawn a team</span></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
