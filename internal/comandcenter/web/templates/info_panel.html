@@ -1,131 +1,104 @@
 {{define "info_panel.html"}}{{template "layout" .}}{{end}}
 
 {{define "main"}}
-<div class="flex flex-col h-full" style="background:#161717;">
+<div class="flex flex-col h-full" style="background:var(--color-bg);">
+
   <!-- Header -->
-  <header class="chat-header flex items-center gap-3 px-4 py-3 flex-shrink-0 shadow-md" style="background:#1C1C1E;">
+  <header class="flex items-center gap-3 px-4 py-3 flex-shrink-0"
+          style="background:var(--color-surface);border-bottom:1px solid var(--color-border);">
     <a href="/chat/{{.Session.ID}}"
-       class="text-white flex items-center justify-center flex-shrink-0 -ml-2"
-       style="min-width:44px;min-height:44px;">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-      </svg>
-    </a>
-    <div class="rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0"
-         style="width:40px;height:40px;background:{{avatarColor .Session.Name}};">
+       class="flex items-center justify-center flex-shrink-0 -ml-2 text-xl font-bold"
+       style="min-width:44px;min-height:44px;color:var(--color-textSecondary);">←</a>
+    <div class="rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+         style="width:40px;height:40px;background:var(--color-brand);color:#000;">
       {{firstChar .Session.Name}}
     </div>
     <div class="flex-1 min-w-0">
-      <p class="font-semibold text-white truncate">
+      <p class="font-bold truncate" style="color:var(--color-textPrimary);">
         {{if .Session.Master}}★ {{end}}{{.Session.Name}}
       </p>
+      <p class="text-xs truncate" style="color:var(--color-textMuted);">{{.Session.Path}}</p>
     </div>
   </header>
 
-  <!-- Session Meta Card -->
-  <div class="mx-4 mt-4 rounded-xl px-4 py-3 flex flex-col gap-1" style="background:#1C1C1E;">
-    <div class="flex items-center gap-2 text-sm">
-      <span style="color:#8E8E93;">Path</span>
-      <span class="flex-1 truncate text-white text-right text-xs">{{.Session.Path}}</span>
+  <!-- Info strip: Path / Status / Model / Connected -->
+  <div class="flex items-stretch px-4 py-2"
+       style="background:var(--color-surfaceHigh);border-bottom:1px solid var(--color-border);">
+    <div class="flex flex-col flex-1 min-w-0 pr-3">
+      <span class="text-xs uppercase tracking-wide" style="color:var(--color-textMuted);">Path</span>
+      <span class="text-sm truncate" style="color:var(--color-textPrimary);">{{.Session.Path}}</span>
     </div>
-    <div class="flex items-center gap-2 text-sm">
-      <span style="color:#8E8E93;">Status</span>
-      <span class="flex-1 flex items-center justify-end gap-1">
-        {{if eq .Session.Status "active"}}
-          <span class="inline-block w-2 h-2 rounded-full" style="background:#25D366;"></span>
-          <span class="text-xs" style="color:#25D366;">active</span>
-        {{else}}
-          <span class="inline-block w-2 h-2 rounded-full" style="background:#8E8E93;"></span>
-          <span class="text-xs" style="color:#8E8E93;">inactive</span>
-        {{end}}
-      </span>
+    <div style="border-right:1px solid var(--color-border);"></div>
+    <div class="flex flex-col flex-1 min-w-0 px-3">
+      <span class="text-xs uppercase tracking-wide" style="color:var(--color-textMuted);">Status</span>
+      <span class="text-sm" style="color:var(--color-textPrimary);">{{.Session.Status}}</span>
     </div>
-    <div class="flex items-center gap-2 text-sm">
-      <span style="color:#8E8E93;">Connected</span>
-      <span class="flex-1 text-white text-right text-xs">{{relTime .Session.CreatedAt}}</span>
+    <div style="border-right:1px solid var(--color-border);"></div>
+    <div class="flex flex-col flex-1 min-w-0 px-3">
+      <span class="text-xs uppercase tracking-wide" style="color:var(--color-textMuted);">Model</span>
+      <span class="text-sm truncate" style="color:var(--color-textPrimary);">{{.Session.Model}}</span>
+    </div>
+    <div style="border-right:1px solid var(--color-border);"></div>
+    <div class="flex flex-col flex-1 min-w-0 pl-3">
+      <span class="text-xs uppercase tracking-wide" style="color:var(--color-textMuted);">Connected</span>
+      <span class="text-sm" style="color:var(--color-textPrimary);">{{relTime .Session.CreatedAt}}</span>
     </div>
   </div>
 
-  <!-- Tabs -->
-  <div class="mx-4 mt-4 flex rounded-xl overflow-hidden" style="background:#1C1C1E;">
-    <button id="tab-tasks"
-            onclick="showTab('tasks')"
-            class="flex-1 py-2 text-sm font-semibold tab-btn tab-active">
-      Tasks
-    </button>
-    <button id="tab-team"
-            onclick="showTab('team')"
-            class="flex-1 py-2 text-sm font-semibold tab-btn">
-      Team
-    </button>
-    <button id="tab-media"
-            onclick="showTab('media')"
-            class="flex-1 py-2 text-sm font-semibold tab-btn">
-      Media
-    </button>
-    <button id="tab-crons" onclick="showTab('crons')" class="flex-1 py-2 text-sm font-semibold tab-btn">Crons</button>
-    <button id="tab-config"
-            onclick="showTab('config')"
-            class="flex-1 py-2 text-sm font-semibold tab-btn">
-      Config
-    </button>
+  <!-- Tab bar -->
+  <div class="flex items-center gap-1 px-4 py-2 flex-shrink-0 overflow-x-auto"
+       style="background:var(--color-surface);border-bottom:1px solid var(--color-border);">
+    <button id="tab-tasks"   onclick="showTab('tasks')"
+            class="rounded-full px-3 py-1 text-sm font-bold whitespace-nowrap tab-btn tab-active">Tasks</button>
+    <button id="tab-team"    onclick="showTab('team')"
+            class="rounded-full px-3 py-1 text-sm whitespace-nowrap tab-btn">Team</button>
+    <button id="tab-media"   onclick="showTab('media')"
+            class="rounded-full px-3 py-1 text-sm whitespace-nowrap tab-btn">Media</button>
+    <button id="tab-crons"   onclick="showTab('crons')"
+            class="rounded-full px-3 py-1 text-sm whitespace-nowrap tab-btn">Crons</button>
+    <button id="tab-config"  onclick="showTab('config')"
+            class="rounded-full px-3 py-1 text-sm whitespace-nowrap tab-btn">Config</button>
   </div>
 
-  <!-- Tab Panels -->
-  <div class="flex-1 overflow-y-auto mt-2 pb-8">
+  <!-- Tab panels -->
+  <div class="flex-1 overflow-y-auto pb-8">
 
-    <!-- Tasks Tab -->
-    <div id="panel-tasks" class="tab-panel px-4 flex flex-col gap-2">
+    <!-- Tasks -->
+    <div id="panel-tasks" class="tab-panel px-4 pt-3 flex flex-col">
       {{$sessID := .Session.ID}}
       {{range .Tasks}}
       {{$taskID := .ID}}
-      <div class="rounded-xl overflow-hidden" style="background:#1C1C1E;">
-        <!-- Clickable row -->
-        <div class="px-4 py-3 flex items-start gap-3 cursor-pointer select-none task-row"
+      <div class="rounded-lg mb-1 overflow-hidden" style="background:var(--color-surfaceHigh);">
+        <div class="px-3 py-2 flex items-center gap-2 cursor-pointer select-none task-row"
              hx-get="/chat/{{$sessID}}/tasks/{{$taskID}}"
              hx-trigger="click"
              hx-swap="innerHTML"
              hx-target="next .task-detail"
-             onclick="toggleTaskDetail(this)"
-             style="{{if eq .Status "done"}}opacity:0.6;{{end}}">
-          <!-- Status icon -->
+             onclick="toggleTaskDetail(this)">
           {{if eq .Status "done"}}
-            <span class="mt-0.5 flex-shrink-0 text-base leading-none" style="color:#25D366;">✓</span>
+            <span class="flex-shrink-0 text-sm" style="color:#25D366;">✓</span>
+            <p class="flex-1 text-sm truncate overflow-hidden line-through" style="color:var(--color-textMuted);">{{.Title}}</p>
           {{else if eq .Status "in_progress"}}
-            <span class="mt-1 flex-shrink-0 inline-block w-2 h-2 rounded-full animate-pulse" style="background:#3B9EFF;"></span>
+            <span class="flex-shrink-0 text-sm" style="color:var(--color-ai);">●</span>
+            <p class="flex-1 text-sm truncate overflow-hidden" style="color:var(--color-textPrimary);">{{.Title}}</p>
           {{else if eq .Status "blocked"}}
-            <span class="mt-0.5 flex-shrink-0 text-base leading-none" style="color:#FF453A;">✕</span>
+            <span class="flex-shrink-0 text-sm" style="color:var(--color-error);">×</span>
+            <p class="flex-1 text-sm truncate overflow-hidden" style="color:var(--color-error);">{{.Title}}</p>
           {{else}}
-            <span class="mt-1 flex-shrink-0 inline-block w-2 h-2 rounded-full border" style="border-color:#8E8E93;"></span>
+            <span class="flex-shrink-0 text-sm" style="color:var(--color-textMuted);">○</span>
+            <p class="flex-1 text-sm truncate overflow-hidden" style="color:var(--color-textSecondary);">{{.Title}}</p>
           {{end}}
-          <div class="flex-1 min-w-0">
-            {{if eq .Status "done"}}
-              <p class="text-sm text-white truncate line-through">{{.Title}}</p>
-            {{else if eq .Status "in_progress"}}
-              <p class="text-sm text-white truncate font-bold">{{.Title}}</p>
-            {{else if eq .Status "blocked"}}
-              <p class="text-sm truncate" style="color:#FF453A;">{{.Title}}</p>
-            {{else}}
-              <p class="text-sm text-white truncate">{{.Title}}</p>
-            {{end}}
-            {{if .AssignedTo}}
-            <span class="text-xs" style="color:#8E8E93;">→ {{.AssignedTo}}</span>
-            {{end}}
-          </div>
-          <svg class="task-chevron w-4 h-4 flex-shrink-0 transition-transform mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:#8E8E93;">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-          </svg>
+          <span class="flex-shrink-0 task-chevron text-base leading-none" style="color:var(--color-textMuted);">›</span>
         </div>
-        <!-- Detail expand area (htmx fills this) -->
-        <div class="task-detail hidden px-4 pb-3"></div>
+        <div class="task-detail hidden px-3 pb-2"></div>
       </div>
       {{else}}
-      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No tasks yet</div>
+      <div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No tasks yet</div>
       {{end}}
     </div>
 
-    <!-- Team Tab -->
-    <div id="panel-team" class="tab-panel hidden px-4 flex flex-col gap-2">
+    <!-- Team -->
+    <div id="panel-team" class="tab-panel hidden px-4 pt-3 flex flex-col gap-2">
       <div id="team-members-list"
            class="flex flex-col gap-2"
            hx-get="/api/sessions/{{.Session.ID}}/team"
@@ -133,33 +106,42 @@
            hx-target="#team-members-list"
            hx-swap="innerHTML">
         {{range .Agents}}
-        <div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:#1C1C1E;">
+        <div class="rounded-xl px-4 py-3 flex items-center gap-3" style="background:var(--color-surfaceHigh);">
           <div class="rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-               style="width:36px;height:36px;background:{{avatarColor .Name}};color:#fff;">
+               style="width:36px;height:36px;background:{{avatarColor .Name}};color:#000;">
             {{firstChar .Name}}
           </div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm text-white truncate">{{.Name}}</p>
+            <p class="text-sm truncate" style="color:var(--color-textPrimary);">{{.Name}}</p>
             <div class="flex items-center gap-2 mt-1">
-              <span class="inline-block w-2 h-2 rounded-full flex-shrink-0 {{agentStatusDot .Status}}{{if eq .Status "working"}} animate-pulse{{end}}"></span>
-              <span class="text-xs {{agentStatusColor .Status}}">{{.Status}}</span>
+              {{if or (eq .Status "active") (eq .Status "working")}}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                    style="background:var(--color-brand);color:#000;">
+                {{if eq .Status "working"}}working{{else}}active{{end}}
+              </span>
+              {{else}}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
+                    style="background:var(--color-surfaceHigh);color:var(--color-textMuted);border:1px solid var(--color-border);">
+                {{.Status}}
+              </span>
+              {{end}}
               {{if .CurrentTaskID}}
-              <span class="text-xs" style="color:#8E8E93;">· task {{truncate 8 .CurrentTaskID}}</span>
+              <span class="text-xs" style="color:var(--color-textMuted);">· {{truncate 8 .CurrentTaskID}}</span>
               {{end}}
             </div>
           </div>
         </div>
         {{else}}
-        <div class="text-center text-sm mt-8" style="color:#8E8E93;">No agents yet</div>
+        <div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No agents yet</div>
         {{end}}
       </div>
     </div>
 
-    <!-- Media Tab -->
-    <div id="panel-media" class="tab-panel hidden px-4">
+    <!-- Media -->
+    <div id="panel-media" class="tab-panel hidden px-4 pt-3">
       {{if or .Images .Docs}}
         {{if .Images}}
-        <p class="text-xs mb-2 mt-1" style="color:#8E8E93;">Images</p>
+        <p class="text-xs mb-2" style="color:var(--color-textMuted);">Images</p>
         <div class="grid grid-cols-3 gap-1 mb-4">
           {{range .Images}}
           <a href="/uploads/{{.SessionID}}/{{.Filename}}" target="_blank" class="block aspect-square overflow-hidden rounded-lg">
@@ -172,22 +154,22 @@
         </div>
         {{end}}
         {{if .Docs}}
-        <p class="text-xs mb-2" style="color:#8E8E93;">Documents</p>
+        <p class="text-xs mb-2" style="color:var(--color-textMuted);">Documents</p>
         <div class="flex flex-col gap-2">
           {{range .Docs}}
           <a href="/uploads/{{.SessionID}}/{{.Filename}}"
              download="{{.OriginalName}}"
              class="flex items-center gap-3 rounded-xl px-4 py-3 no-underline"
-             style="background:#1C1C1E;color:#fff;">
-            <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" style="color:#8E8E93;">
+             style="background:var(--color-surfaceHigh);color:var(--color-textPrimary);">
+            <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" style="color:var(--color-textMuted);">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"/>
-              <polyline points="14 2 14 8 20 8" fill="none" stroke="#8E8E93" stroke-width="1.5"/>
+              <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"/>
             </svg>
             <div class="flex-1 min-w-0">
               <p class="text-sm truncate">{{.OriginalName}}</p>
-              <p class="text-xs" style="color:#8E8E93;">{{.MimeType}}</p>
+              <p class="text-xs" style="color:var(--color-textMuted);">{{.MimeType}}</p>
             </div>
-            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:#8E8E93;">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--color-textMuted);">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
             </svg>
           </a>
@@ -195,7 +177,7 @@
         </div>
         {{end}}
       {{else}}
-      <div class="flex flex-col items-center justify-center mt-16 gap-3" style="color:#8E8E93;">
+      <div class="flex flex-col items-center justify-center mt-16 gap-3" style="color:var(--color-textMuted);">
         <svg class="w-12 h-12 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
             d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -206,86 +188,93 @@
       {{end}}
     </div>
 
-    <!-- Config Tab -->
-    <div id="panel-config" class="tab-panel hidden px-4 flex flex-col gap-4 mt-2">
-
-      <!-- Agent section -->
-      <div class="rounded-xl px-4 py-3 flex flex-col gap-3" style="background:#1C1C1E;">
-        <p class="text-xs font-semibold uppercase tracking-wide" style="color:#8E8E93;">Agent</p>
-        <select id="agent-select"
-                class="w-full rounded-lg px-3 py-2 text-sm text-white appearance-none"
-                style="background:#2C2C2E;border:1px solid #3A3A3C;outline:none;">
-          <option value="">Default (no agent)</option>
-          {{range .AvailableAgents}}<option value="{{.Type}}"{{if eq .Type $.Session.AgentType}} selected{{end}}>{{.Type}}</option>{{end}}
-        </select>
-        <button onclick="applyAgent('{{.Session.ID}}')"
-                class="w-full py-2 rounded-lg text-sm font-semibold text-white transition-opacity active:opacity-70"
-                style="background:#25D366;">
-          Apply
-        </button>
-        <div id="agent-feedback" class="text-xs text-center" style="color:#8E8E93;min-height:1.2em;"></div>
-      </div>
-
-      <!-- Team section -->
-      <div class="rounded-xl px-4 py-3 flex flex-col gap-3" style="background:#1C1C1E;">
-        <p class="text-xs font-semibold uppercase tracking-wide" style="color:#8E8E93;">Team</p>
-        <select id="team-select"
-                class="w-full rounded-lg px-3 py-2 text-sm text-white appearance-none"
-                style="background:#2C2C2E;border:1px solid #3A3A3C;outline:none;">
-          <option value="">Default (no team)</option>
-          {{range .AvailableTeams}}<option value="{{.}}"{{if eq . $.Session.TeamTemplate}} selected{{end}}>{{.}}</option>{{end}}
-        </select>
-        <button onclick="applyTeam('{{.Session.ID}}')"
-                class="w-full py-2 rounded-lg text-sm font-semibold text-white transition-opacity active:opacity-70"
-                style="background:#25D366;">
-          Apply
-        </button>
-        <div id="team-feedback" class="text-xs text-center" style="color:#8E8E93;min-height:1.2em;"></div>
-      </div>
-
-    </div>
-
-    <!-- Crons Tab -->
-    <div id="panel-crons" class="tab-panel hidden px-4 flex flex-col gap-2">
+    <!-- Crons -->
+    <div id="panel-crons" class="tab-panel hidden px-4 pt-3 flex flex-col gap-2">
       {{range .Crons}}
-      <div class="cron-row rounded-xl px-4 py-3 flex items-start gap-3" style="background:#1C1C1E;">
+      <div class="cron-row rounded-xl px-4 py-3 flex items-start gap-3" style="background:var(--color-surfaceHigh);">
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-sm font-semibold text-white">{{.Schedule}}</span>
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <span class="text-sm font-semibold rounded px-2 py-0.5"
+                  style="background:var(--color-surfaceHigh);color:var(--color-textPrimary);border:1px solid var(--color-border);">{{.Schedule}}</span>
             {{if eq .Type "inline"}}
-            <span class="text-xs px-2 py-0.5 rounded-full text-white font-semibold" style="background:#3B9EFF;">inline</span>
+            <span class="text-xs px-2 py-0.5 rounded font-semibold" style="background:var(--color-tool);color:#000;">inline</span>
             {{else}}
-            <span class="text-xs px-2 py-0.5 rounded-full text-white font-semibold" style="background:#A78BFA;">background</span>
+            <span class="text-xs px-2 py-0.5 rounded font-semibold" style="background:var(--color-cron);color:#fff;">background</span>
             {{end}}
           </div>
           {{if .Agent}}
-          <p class="text-xs" style="color:#8E8E93;">{{.Agent}}</p>
+          <p class="text-xs" style="color:var(--color-textMuted);">{{.Agent}}</p>
           {{end}}
-          <p class="text-xs" style="color:#8E8E93;">{{truncate 60 .Prompt}}</p>
+          <p class="text-xs" style="color:var(--color-textMuted);">{{truncate 60 .Prompt}}</p>
         </div>
         <button
           hx-delete="/api/crons/{{.ID}}"
           hx-confirm="Delete this cron?"
           hx-target="closest .cron-row"
           hx-swap="outerHTML swap:300ms"
-          class="flex-shrink-0 mt-0.5 p-1 rounded">
-          <svg class="w-4 h-4" fill="none" stroke="#FF453A" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          class="flex-shrink-0 mt-0.5 p-1 rounded"
+          style="color:var(--color-error);">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
           </svg>
         </button>
       </div>
       {{else}}
-      <div class="text-center text-sm mt-8" style="color:#8E8E93;">No crons yet</div>
+      <div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No crons yet</div>
       {{end}}
     </div>
 
-  </div>
+    <!-- Config -->
+    <div id="panel-config" class="tab-panel hidden px-4 pt-3 flex flex-col gap-4">
+
+      <div class="rounded-xl px-4 py-3 flex flex-col gap-3" style="background:var(--color-surfaceHigh);">
+        <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-textMuted);">Agent</p>
+        <select id="agent-select"
+                class="w-full rounded-lg px-3 py-2 text-sm appearance-none"
+                style="background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-textPrimary);outline:none;">
+          <option value="">Default (no agent)</option>
+          {{range .AvailableAgents}}<option value="{{.Type}}"{{if eq .Type $.Session.AgentType}} selected{{end}}>{{.Type}}</option>{{end}}
+        </select>
+        <button onclick="applyAgent('{{.Session.ID}}')"
+                class="w-full py-2 rounded-lg text-sm font-semibold transition-opacity active:opacity-70"
+                style="background:var(--color-brand);color:#000;">
+          Apply
+        </button>
+        <div id="agent-feedback" class="text-xs text-center" style="color:var(--color-textMuted);min-height:1.2em;"></div>
+      </div>
+
+      <div class="rounded-xl px-4 py-3 flex flex-col gap-3" style="background:var(--color-surfaceHigh);">
+        <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-textMuted);">Team</p>
+        <select id="team-select"
+                class="w-full rounded-lg px-3 py-2 text-sm appearance-none"
+                style="background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-textPrimary);outline:none;">
+          <option value="">Default (no team)</option>
+          {{range .AvailableTeams}}<option value="{{.}}"{{if eq . $.Session.TeamTemplate}} selected{{end}}>{{.}}</option>{{end}}
+        </select>
+        <button onclick="applyTeam('{{.Session.ID}}')"
+                class="w-full py-2 rounded-lg text-sm font-semibold transition-opacity active:opacity-70"
+                style="background:var(--color-brand);color:#000;">
+          Apply
+        </button>
+        <div id="team-feedback" class="text-xs text-center" style="color:var(--color-textMuted);min-height:1.2em;"></div>
+      </div>
+
+    </div>
+
+  </div><!-- /tab panels -->
 </div>
 
 <style>
-  .tab-btn { color: #8E8E93; transition: color 0.15s; }
-  .tab-active { color: #25D366 !important; border-bottom: 2px solid #25D366; }
+  .tab-btn {
+    color: var(--color-textMuted);
+    transition: background 0.15s, color 0.15s;
+  }
+  .tab-active {
+    background: var(--color-brand) !important;
+    color: #000 !important;
+    font-weight: 700;
+  }
 </style>
 
 <script>
@@ -298,14 +287,14 @@
     if (name === 'config') loadConfig();
   }
 
-  function loadConfig() { /* options rendered server-side, nothing to do */ }
+  function loadConfig() { /* options rendered server-side */ }
 
   function _showFeedback(id, ok) {
     var el = document.getElementById(id);
     if (!el) return;
     el.textContent = ok ? 'Saved ✓' : 'Error — try again';
-    el.style.color  = ok ? '#25D366' : '#FF453A';
-    setTimeout(function() { el.textContent = ''; el.style.color = '#8E8E93'; }, 3000);
+    el.style.color  = ok ? 'var(--color-brand)' : 'var(--color-error)';
+    setTimeout(function() { el.textContent = ''; el.style.color = 'var(--color-textMuted)'; }, 3000);
   }
 
   function applyAgent(sessionId) {
@@ -330,9 +319,6 @@
       .catch(function(){ _showFeedback('team-feedback', false); });
   }
 
-  // Toggle task accordion: if detail is already visible, collapse it.
-  // If not, let htmx load it (htmx handles the fetch + innerHTML swap).
-  // After htmx swap we show the detail div.
   function toggleTaskDetail(rowEl) {
     var detail = rowEl.parentElement.querySelector('.task-detail');
     var chevron = rowEl.querySelector('.task-chevron');
@@ -342,16 +328,12 @@
       if (chevron) chevron.style.transform = '';
       return;
     }
-    // If detail is empty, htmx will fire and fill it, then we show.
-    // If already filled, just show it.
     if (detail.innerHTML.trim() !== '') {
       detail.classList.remove('hidden');
       if (chevron) chevron.style.transform = 'rotate(90deg)';
     }
-    // else: htmx event after-request fires → we show it there.
   }
 
-  // After htmx fills a task-detail, reveal it.
   document.addEventListener('htmx:afterSwap', function(e) {
     var target = e.detail.target;
     if (target && target.classList.contains('task-detail')) {
