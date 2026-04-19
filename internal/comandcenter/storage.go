@@ -485,6 +485,54 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
+// GetNativeMessages reads from the native claudio messages table (written by the TUI)
+// and maps rows to Message for display. Returns newest first (DESC by id), up to limit.
+func (s *Storage) GetNativeMessages(sessionID string, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(`
+		SELECT id, session_id, role, content, COALESCE(type,'text'), COALESCE(tool_use_id,''), COALESCE(tool_name,''), created_at
+		FROM messages WHERE session_id=?
+		ORDER BY id DESC LIMIT ?
+	`, sessionID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get native messages: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var (
+			id, sid, role, content, typ, toolUseID, toolName string
+			createdAt                                         time.Time
+		)
+		if err := rows.Scan(&id, &sid, &role, &content, &typ, &toolUseID, &toolName, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan native message: %w", err)
+		}
+		m := Message{
+			ID:        id,
+			SessionID: sid,
+			CreatedAt: createdAt,
+		}
+		switch typ {
+		case "tool_use":
+			m.Role = "tool_use"
+			m.Content = toolName + ": " + content
+			m.ToolUseID = toolUseID
+		case "tool_result":
+			m.Role = "tool_result"
+			m.Content = content
+			m.ToolUseID = toolUseID
+		default: // "text"
+			m.Role = role
+			m.Content = content
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
 // DeleteMessages removes all messages for a session (used by /clear command).
 func (s *Storage) DeleteMessageByID(id string) error {
 	_, err := s.db.Exec(`DELETE FROM cc_messages WHERE id = ?`, id)
