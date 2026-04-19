@@ -102,7 +102,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
-<body class="font-mono bg-[#161717] text-white h-screen overflow-hidden" {{if .SessionID}}data-session-id="{{.SessionID}}"{{end}}>
+<body class="font-mono h-screen overflow-hidden" {{if .SessionID}}data-session-id="{{.SessionID}}"{{end}}>
   {{block "content" .}}
   <div class="flex h-full">
     <!-- Sidebar: full width mobile, 360px fixed desktop -->
