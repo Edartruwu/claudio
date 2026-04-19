@@ -195,7 +195,7 @@ templ TabTasks(data InfoPageData) {
 		<div
 			id="tasks-list"
 			hx-get={ fmt.Sprintf("/chat/%s/tasks", data.Session.ID) }
-			hx-trigger="every 3s, refresh from:body"
+			hx-trigger="refresh from:body"
 			hx-swap="innerHTML"
 		>
 		@TaskRows(data.Tasks, data.Session.ID)
@@ -249,7 +249,7 @@ templ TabTeam(data InfoPageData) {
 		id="team-members-list"
 		class="flex flex-col gap-2"
 		hx-get={ fmt.Sprintf("/api/sessions/%s/team", data.Session.ID) }
-		hx-trigger="every 3s, refresh from:body"
+		hx-trigger="refresh from:body"
 		hx-target="#team-members-list"
 		hx-swap="innerHTML"
 	>
