@@ -701,14 +701,7 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normal (non-@mention) path — existing behavior.
-	payload, _ := json.Marshal(attach.UserMsgPayload{Content: content, ModelOverride: modelOverride})
-	env := attach.Envelope{Type: attach.EventMsgUser, Payload: payload}
-	if err := ws.hub.Send(sessionID, env); err != nil {
-		http.Error(w, "session not connected", http.StatusServiceUnavailable)
-		return
-	}
-
+	// Normal (non-@mention) path — store and push user bubble first, then forward to agent.
 	msg := cc.Message{
 		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
 		SessionID: sessionID,
@@ -721,12 +714,19 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	// Push user bubble to UI WS clients immediately (no refresh needed).
 	var buf bytes.Buffer
 	if err := MessageBubble(MessageView{Message: msg}).Render(r.Context(), &buf); err == nil {
-		if payload, err := json.Marshal(map[string]string{
+		if wsPayload, err := json.Marshal(map[string]string{
 			"type": "message.user",
 			"html": buf.String(),
 		}); err == nil {
-			ws.pushToSessionClients(sessionID, payload)
+			ws.pushToSessionClients(sessionID, wsPayload)
 		}
+	}
+
+	payload, _ := json.Marshal(attach.UserMsgPayload{Content: content, ModelOverride: modelOverride})
+	env := attach.Envelope{Type: attach.EventMsgUser, Payload: payload}
+	if err := ws.hub.Send(sessionID, env); err != nil {
+		http.Error(w, "session not connected", http.StatusServiceUnavailable)
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -1330,12 +1330,30 @@ func (ws *WebServer) handleScreenshotPush(sessionID string, p attach.DesignScree
 // the bundle HTML and pushes it to all browser clients watching the session.
 func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundlePayload) {
 	now := time.Now()
-	bundleURL := p.BundleURL
-	if ws.publicURL != "" && strings.HasPrefix(bundleURL, "/") {
-		bundleURL = strings.TrimRight(ws.publicURL, "/") + bundleURL
+	msgID := cc.NewID()
+
+	// Copy bundle file into uploads dir so it's served at /uploads/{sessionID}/bundle-{msgID}.html.
+	var bundleURL string
+	if p.FilePath != "" {
+		destDir := filepath.Join(ws.uploadsDir, sessionID)
+		if err := os.MkdirAll(destDir, 0o755); err == nil {
+			destName := "bundle-" + msgID + ".html"
+			destPath := filepath.Join(destDir, destName)
+			if err := copyFile(p.FilePath, destPath); err == nil {
+				bundleURL = "/uploads/" + sessionID + "/" + destName
+			}
+		}
 	}
+	// Fall back to original URL (with optional public prefix) if copy failed.
+	if bundleURL == "" {
+		bundleURL = p.BundleURL
+		if ws.publicURL != "" && strings.HasPrefix(bundleURL, "/") {
+			bundleURL = strings.TrimRight(ws.publicURL, "/") + bundleURL
+		}
+	}
+
 	msg := cc.Message{
-		ID:        cc.NewID(),
+		ID:        msgID,
 		SessionID: sessionID,
 		Role:      "bundle",
 		Content:   bundleURL,

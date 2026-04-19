@@ -159,7 +159,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				<span class="compact-spinner"></span> Compacting conversation…
 			</div>
 			<!-- Input bar -->
-			<form class="input-bar flex items-center flex-shrink-0" ws-send style="background:var(--color-surface);border-top:1px solid var(--color-border);padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom));gap:8px;" onsubmit="return false;">
+			<form class="input-bar flex items-center flex-shrink-0" style="background:var(--color-surface);border-top:1px solid var(--color-border);padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom));gap:8px;" onsubmit="return false;">
 				<input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip"/>
 				<!-- Mobile: + button -->
 				<button

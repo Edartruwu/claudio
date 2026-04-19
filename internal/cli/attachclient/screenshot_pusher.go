@@ -30,10 +30,11 @@ func (p *AttachScreenshotPusher) PushScreenshot(sessionID, filePath, filename st
 
 // PushBundleLink sends EventDesignBundleReady to the ComandCenter server.
 // The server pushes a clickable link bubble to all browser clients watching the session.
-func (p *AttachScreenshotPusher) PushBundleLink(sessionID, bundleURL, sessionName string) error {
+func (p *AttachScreenshotPusher) PushBundleLink(sessionID, bundleURL, sessionName, filePath string) error {
 	return p.client.SendEvent(attach.EventDesignBundleReady, attach.DesignBundlePayload{
 		SessionID:   sessionID,
 		BundleURL:   bundleURL,
+		FilePath:    filePath,
 		SessionName: sessionName,
 	})
 }

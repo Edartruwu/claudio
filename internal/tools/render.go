@@ -22,7 +22,8 @@ type ScreenshotPusher interface {
 	PushScreenshot(sessionID, filePath, filename string) error
 	// PushBundleLink sends a clickable link bubble to CC chat pointing at a
 	// self-contained bundle HTML file served by the CC server.
-	PushBundleLink(sessionID, bundleURL, sessionName string) error
+	// filePath is the absolute disk path so the server can copy it into uploads.
+	PushBundleLink(sessionID, bundleURL, sessionName, filePath string) error
 }
 
 // RenderMockupTool renders an HTML mockup using Playwright via Node.js and

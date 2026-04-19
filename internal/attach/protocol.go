@@ -119,6 +119,7 @@ type AgentStatusPayload struct {
 type DesignBundlePayload struct {
 	SessionID   string `json:"session_id"`
 	BundleURL   string `json:"bundle_url"`   // relative: /designs/project/{slug}/{session}/bundle/mockup.html
+	FilePath    string `json:"file_path"`    // absolute disk path to bundle HTML (for server-side copy)
 	SessionName string `json:"session_name"` // display label for the link bubble
 }
 

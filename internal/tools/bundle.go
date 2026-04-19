@@ -295,7 +295,7 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 			bundleURL = strings.TrimRight(t.publicURL, "/") + bundleURL
 		}
 		// Best-effort — ignore errors, bundle result already returned above.
-		_ = t.pusher.PushBundleLink(t.sessionID, bundleURL, sessionDirName)
+		_ = t.pusher.PushBundleLink(t.sessionID, bundleURL, sessionDirName, outPath)
 	}
 
 	return &Result{Content: sb.String()}, nil
