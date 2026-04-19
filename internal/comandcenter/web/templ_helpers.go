@@ -2,9 +2,24 @@ package web
 
 import (
 	"html/template"
+	"strconv"
 	"strings"
 	"time"
+
+	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 )
+
+// itoa converts an int to its decimal string representation.
+func itoa(i int) string { return strconv.Itoa(i) }
+
+// sessionRow holds data for a single session row in the sidebar.
+// Shared between templ components (session_row.templ, sessions.templ, chat_list.templ)
+// and the server handlers that build the row list.
+type sessionRow struct {
+	Session     cc.Session
+	LastMessage string
+	UnreadCount int
+}
 
 // RelTime formats a time.Time as a human-friendly relative timestamp.
 func RelTime(t time.Time) string {
@@ -70,7 +85,7 @@ func IsImage(mimeType string) bool {
 // RenderMD converts markdown content to sanitized HTML.
 // Returns template.HTML so templ can output it unescaped via @templ.Raw().
 func RenderMD(content string) template.HTML {
-	return renderMarkdown(content)
+	return template.HTML(renderMarkdown(content))
 }
 
 // HasPrefix reports whether s starts with prefix.

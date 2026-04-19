@@ -44,7 +44,7 @@ func ChatView(sess cc.Session, messages []MessageView, sessionID string) templ.C
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(sess.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `chat_view.templ`, Line: 12, Col: 73}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_view.templ`, Line: 12, Col: 73}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -57,7 +57,7 @@ func ChatView(sess cc.Session, messages []MessageView, sessionID string) templ.C
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(FirstChar(sess.Name))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `chat_view.templ`, Line: 30, Col: 28}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_view.templ`, Line: 30, Col: 28}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -86,7 +86,7 @@ func ChatView(sess cc.Session, messages []MessageView, sessionID string) templ.C
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(sess.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `chat_view.templ`, Line: 41, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_view.templ`, Line: 41, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -114,7 +114,7 @@ func ChatView(sess cc.Session, messages []MessageView, sessionID string) templ.C
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/chat/%s/info", sess.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `chat_view.templ`, Line: 68, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_view.templ`, Line: 68, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -127,7 +127,7 @@ func ChatView(sess cc.Session, messages []MessageView, sessionID string) templ.C
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/ws/ui?session=%s", sess.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `chat_view.templ`, Line: 86, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_view.templ`, Line: 86, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {

@@ -48,7 +48,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs("@" + msg.ReplyToSession)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 16, Col: 103}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 16, Col: 103}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 				if templ_7745c5c3_Err != nil {
@@ -61,7 +61,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(Truncate(80, msg.QuotedContent))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 17, Col: 110}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 17, Col: 110}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -80,7 +80,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 21, Col: 122}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 21, Col: 122}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -100,7 +100,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 26, Col: 71}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 26, Col: 71}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -113,7 +113,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					var templ_7745c5c3_Var6 string
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 27, Col: 29}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 27, Col: 29}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 					if templ_7745c5c3_Err != nil {
@@ -131,7 +131,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					var templ_7745c5c3_Var7 templ.SafeURL
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 35, Col: 87}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 35, Col: 87}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 					if templ_7745c5c3_Err != nil {
@@ -144,7 +144,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 36, Col: 34}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 36, Col: 34}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -157,7 +157,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					var templ_7745c5c3_Var9 string
 					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 44, Col: 73}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 44, Col: 73}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
@@ -176,7 +176,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(msg.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 48, Col: 116}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 48, Col: 116}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -194,7 +194,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(msg.ToolUseID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 54, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 54, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -207,7 +207,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("max-width:min(300px,85%);border-left:2px solid var(--color-tool);")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 54, Col: 142}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 54, Col: 142}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -220,7 +220,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(ToolName(msg.Content))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 59, Col: 100}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 59, Col: 100}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -238,7 +238,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(msg.AgentName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 61, Col: 85}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 61, Col: 85}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
@@ -261,7 +261,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(ToolInput(msg.Content))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 70, Col: 203}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 70, Col: 203}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
@@ -280,7 +280,7 @@ func MessageBubble(msg MessageView) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Output)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 76, Col: 191}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 76, Col: 191}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -303,7 +303,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 87, Col: 17}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 87, Col: 17}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -321,7 +321,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 96, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 96, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -334,7 +334,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(msg.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 97, Col: 100}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 97, Col: 100}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 			if templ_7745c5c3_Err != nil {
@@ -358,7 +358,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					var templ_7745c5c3_Var20 string
 					templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(msg.AgentName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 106, Col: 143}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 106, Col: 143}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 					if templ_7745c5c3_Err != nil {
@@ -376,7 +376,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					var templ_7745c5c3_Var21 string
 					templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(msg.AgentName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 108, Col: 141}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 108, Col: 141}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 					if templ_7745c5c3_Err != nil {
@@ -442,7 +442,7 @@ func MessageBubble(msg MessageView) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(msg.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 130, Col: 115}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 130, Col: 115}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -486,7 +486,7 @@ func assistantAttachment(att cc.Attachment) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 138, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 138, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -499,7 +499,7 @@ func assistantAttachment(att cc.Attachment) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 139, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 139, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -517,7 +517,7 @@ func assistantAttachment(att cc.Attachment) templ.Component {
 			var templ_7745c5c3_Var26 templ.SafeURL
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 147, Col: 83}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 147, Col: 83}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -530,7 +530,7 @@ func assistantAttachment(att cc.Attachment) templ.Component {
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 148, Col: 30}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 148, Col: 30}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -543,7 +543,7 @@ func assistantAttachment(att cc.Attachment) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `message_bubble.templ`, Line: 156, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 156, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {

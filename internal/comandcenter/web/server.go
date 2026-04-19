@@ -377,23 +377,7 @@ func (ws *WebServer) handleServiceWorker(w http.ResponseWriter, r *http.Request)
 	w.Write(content)
 }
 
-// SessionRowData holds data for a single session row in the sidebar.
-type SessionRowData struct {
-	Session     cc.Session
-	LastMessage string
-	UnreadCount int
-}
-
-// LoginPageData holds data for the login page.
-type LoginPageData struct {
-	Error string
-}
-
-// ChatListPageData holds data for the chat list page.
-type ChatListPageData struct {
-	Rows      []SessionRowData
-	SessionID string
-}
+// LoginPageData and ChatListData are defined in their respective templ files.
 
 // ChatViewData holds data for the chat view page.
 type ChatViewData struct {
@@ -402,20 +386,7 @@ type ChatViewData struct {
 	SessionID string
 }
 
-// SessionsData holds data for the sessions partial (sidebar list).
-type SessionsData struct {
-	Rows []SessionRowData
-}
-
-// MessagesData holds data for the messages partial.
-type MessagesData struct {
-	Messages []MessageView
-}
-
-// TeamMembersData holds data for the team members partial.
-type TeamMembersData struct {
-	Agents []cc.Agent
-}
+// SessionsData, MessagesData, TeamMembersData removed — templ fns accept plain slices.
 
 // InfoPageData holds data for the session info panel.
 type InfoPageData struct {
@@ -446,7 +417,7 @@ func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := ws.buildSessionRows(sessions)
-	templ.Handler(ChatList(ChatListPageData{Rows: rows, SessionID: ""})).ServeHTTP(w, r)
+	templ.Handler(ChatList(ChatListData{Rows: rows, SessionID: ""})).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
@@ -480,10 +451,10 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 
 	data := ChatViewData{Session: sess, Messages: views, SessionID: id}
 	if r.Header.Get("HX-Request") == "true" {
-		ChatView(data).Render(r.Context(), w)
+		ChatView(data.Session, data.Messages, data.SessionID).Render(r.Context(), w)
 		return
 	}
-	templ.Handler(ChatView(data)).ServeHTTP(w, r)
+	templ.Handler(ChatView(data.Session, data.Messages, data.SessionID)).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
@@ -571,7 +542,7 @@ func (ws *WebServer) handleAPISessionTeam(w http.ResponseWriter, r *http.Request
 		agents = nil
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	TeamMembers(TeamMembersData{Agents: agents}).Render(r.Context(), w)
+	TeamMembers(agents).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +553,7 @@ func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	rows := ws.buildSessionRows(sessions)
-	Sessions(SessionsData{Rows: rows}).Render(r.Context(), w)
+	SessionsPartial(rows).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Request) {
@@ -605,7 +576,7 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 	for i, m := range reversed {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
-	Messages(MessagesData{Messages: views}).Render(r.Context(), w)
+	MessagesPartial(views).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
@@ -1443,10 +1414,10 @@ func (ws *WebServer) handleSetTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildSessionRows fetches the last message for each session and unread count.
-func (ws *WebServer) buildSessionRows(sessions []cc.Session) []SessionRowData {
-	rows := make([]SessionRowData, 0, len(sessions))
+func (ws *WebServer) buildSessionRows(sessions []cc.Session) []sessionRow {
+	rows := make([]sessionRow, 0, len(sessions))
 	for _, sess := range sessions {
-		row := SessionRowData{Session: sess}
+		row := sessionRow{Session: sess}
 		msgs, err := ws.storage.ListMessages(sess.ID, 1)
 		if err == nil && len(msgs) > 0 {
 			content := msgs[0].Content
@@ -1708,8 +1679,8 @@ type DesignSession struct {
 	Screenshots []string // filenames inside screenshots/
 }
 
-// DesignsPageData is the template data for the designs gallery page.
-type DesignsPageData struct {
+// DesignGalleryData is the template data for the designs gallery page.
+type DesignGalleryData struct {
 	Sessions  []DesignSession
 	SessionID string
 }
@@ -1764,7 +1735,7 @@ func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request)
 		return sessions[i].ID > sessions[j].ID
 	})
 
-	templ.Handler(Designs(DesignsPageData{Sessions: sessions})).ServeHTTP(w, r)
+	templ.Handler(Designs(DesignGalleryData{Sessions: sessions})).ServeHTTP(w, r)
 }
 
 // handleDesignStatic serves static assets (screenshots, etc.) from the designs dir.
