@@ -72,10 +72,29 @@ async function main() {
     });
 
     const fileUrl = 'file://' + path.resolve(htmlPath);
-    await page.goto(fileUrl, { waitUntil: 'networkidle' });
+    // Use domcontentloaded — networkidle fires instantly on file:// (no network)
+    // and Babel Standalone hasn't parsed JSX yet at that point.
+    await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
 
-    // Wait for render + fonts.
-    await page.waitForTimeout(2000);
+    // Wait for Babel/React to finish mounting. Strategy:
+    //   1. Wait up to 15s for at least one [data-artboard] element.
+    //   2. After first artboard appears, give React another 1s to render siblings.
+    //   3. Wait for fonts.
+    let artboardsFound = false;
+    if (capture) {
+        try {
+            await page.waitForSelector('[data-artboard]', { timeout: 15000 });
+            artboardsFound = true;
+            // Brief settle — siblings may still be mounting.
+            await page.waitForTimeout(1000);
+        } catch (_) {
+            warnings.push('No [data-artboard] elements found after 15s. ' +
+                'Check that each screen root div has a data-artboard="<name>" attribute.');
+        }
+    } else {
+        // No artboard capture needed — just let React settle.
+        await page.waitForTimeout(3000);
+    }
     await page.evaluate(() => document.fonts.ready);
 
     const screenshots = [];
@@ -86,7 +105,7 @@ async function main() {
     screenshots.push({ name: 'full-canvas', path: fullPath });
 
     // Per-artboard screenshots.
-    if (capture) {
+    if (capture && artboardsFound) {
         const artboards = await page.$$('[data-artboard]');
         for (const el of artboards) {
             const name = await el.getAttribute('data-artboard');
