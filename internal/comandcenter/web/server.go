@@ -182,6 +182,20 @@ func funcMap() template.FuncMap {
 		"renderMD": renderMarkdown,
 		// hasPrefix reports whether s starts with prefix.
 		"hasPrefix": strings.HasPrefix,
+		// toolName extracts the tool name from "ToolName: {json}" content.
+		"toolName": func(s string) string {
+			if i := strings.Index(s, ": "); i > 0 {
+				return s[:i]
+			}
+			return s
+		},
+		// toolInput extracts the JSON input from "ToolName: {json}" content.
+		"toolInput": func(s string) string {
+			if i := strings.Index(s, ": "); i > 0 {
+				return strings.TrimSpace(s[i+2:])
+			}
+			return ""
+		},
 	}
 }
 

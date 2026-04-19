@@ -37,30 +37,25 @@
   <p class="text-xs text-right mt-0.5 pr-1" style="color: var(--color-textMuted);">{{relTime .CreatedAt}}</p>
 </div>
 
-{{else if eq .Role "tool_use"}}
-{{/* ── TOOL CALL (tool_use): left-aligned, tool border, collapsible ── */}}
+{{else if or (eq .Role "tool_use") (eq .Role "tool_call")}}
+{{/* ── TOOL CALL: tool name prominent, input collapsible ── */}}
 <div class="flex flex-col items-start mb-2">
-  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:75%;background:var(--color-surfaceHigh);border-left:3px solid var(--color-tool);">
+  <div class="rounded-2xl rounded-tl-sm msg-bubble-tool" style="max-width:80%;background:var(--color-surfaceHigh);border-left:3px solid var(--color-tool);">
     <details>
-      <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2" style="color:var(--color-tool);">
-        🔧 <span>{{if .AgentName}}{{.AgentName}}{{else}}Tool{{end}}</span>
-        <svg class="w-3 h-3 ml-auto details-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <summary class="cursor-pointer list-none flex items-center gap-2 px-3 py-2" style="color:var(--color-tool);">
+        {{/* wrench icon */}}
+        <svg class="flex-shrink-0" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+        <span class="text-sm font-semibold">{{toolName .Content}}</span>
+        {{if .AgentName}}<span class="text-xs ml-1" style="color:var(--color-textMuted);">· {{.AgentName}}</span>{{end}}
+        {{/* chevron — rotates when open via CSS */}}
+        <svg class="tool-chevron flex-shrink-0 ml-auto" width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
       </summary>
-      <pre class="text-xs overflow-auto mt-2 whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);">{{.Content}}</pre>
-    </details>
-  </div>
-  <p class="text-xs mt-0.5 pl-1" style="color: var(--color-textMuted);">{{relTime .CreatedAt}}</p>
-</div>
-
-{{else if eq .Role "tool_call"}}
-{{/* ── TOOL CALL (alt name): same as tool_use ── */}}
-<div class="flex flex-col items-start mb-2">
-  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:75%;background:var(--color-surfaceHigh);border-left:3px solid var(--color-tool);">
-    <details>
-      <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2" style="color:var(--color-tool);">
-        🔧 <span>{{if .AgentName}}{{.AgentName}}{{else}}Tool{{end}}</span>
-      </summary>
-      <pre class="text-xs overflow-auto mt-2 whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);">{{.Content}}</pre>
+      {{if toolInput .Content}}
+      <div class="px-3 pb-3 pt-1">
+        <p class="text-xs font-semibold mb-1" style="color:var(--color-textMuted);">Input</p>
+        <pre class="text-xs overflow-auto whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">{{toolInput .Content}}</pre>
+      </div>
+      {{end}}
     </details>
   </div>
   <p class="text-xs mt-0.5 pl-1" style="color: var(--color-textMuted);">{{relTime .CreatedAt}}</p>
