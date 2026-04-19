@@ -48,21 +48,23 @@ func (s *Storage) Close() error {
 }
 
 func (s *Storage) migrate() error {
+	// Use a CC-specific version table so we don't collide with claudio's
+	// schema_version table when both run against the same DB file.
 	if _, err := s.db.Exec(
-		`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE IF NOT EXISTS cc_schema_version (version INTEGER NOT NULL DEFAULT 0)`,
 	); err != nil {
 		return fmt.Errorf("bootstrap version table: %w", err)
 	}
 
 	var version int
-	if err := s.db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&version); err != nil {
+	if err := s.db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM cc_schema_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read version: %w", err)
 	}
 
 	if version == 0 {
 		version = s.detectExistingSchemaVersion()
 		if version > 0 {
-			if _, err := s.db.Exec(`INSERT INTO schema_version (version) VALUES (?)`, version); err != nil {
+			if _, err := s.db.Exec(`INSERT INTO cc_schema_version (version) VALUES (?)`, version); err != nil {
 				return fmt.Errorf("bootstrap version: %w", err)
 			}
 		}
@@ -166,7 +168,7 @@ func (s *Storage) migrate() error {
 				return fmt.Errorf("migration %d: %w\nSQL: %s", i+1, err, m)
 			}
 		}
-		if _, err := s.db.Exec(`INSERT INTO schema_version (version) VALUES (?)`, i+1); err != nil {
+		if _, err := s.db.Exec(`INSERT INTO cc_schema_version (version) VALUES (?)`, i+1); err != nil {
 			return fmt.Errorf("update version to %d: %w", i+1, err)
 		}
 	}
