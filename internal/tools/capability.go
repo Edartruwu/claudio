@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"os"
+
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/config"
 )
@@ -11,17 +13,18 @@ import (
 func RegisterCapabilityTools(registry *Registry, capabilities []string, client *api.Client, pusher ScreenshotPusher, sessionID string) {
 	for _, cap := range capabilities {
 		if cap == "design" {
-			paths := config.GetPaths()
-			renderTool := NewRenderMockupTool(paths.Designs)
+			wd, _ := os.Getwd()
+			designsDir := config.ProjectDesignsDir(wd)
+			renderTool := NewRenderMockupTool(designsDir)
 			if pusher != nil {
 				renderTool = renderTool.WithPusher(pusher, sessionID)
 			}
 			registry.Register(renderTool)
 			// Wire renderer into bundle so BundleMockup auto-renders the final
 			// file and pushes fresh screenshots — CC chat shows exact bundle output.
-			registry.Register(NewBundleMockupTool(paths.Designs).WithRenderer(renderTool))
-			registry.Register(NewVerifyMockupTool(paths.Designs, client, ""))
-			registry.Register(NewExportHandoffTool(paths.Designs))
+			registry.Register(NewBundleMockupTool(designsDir).WithRenderer(renderTool))
+			registry.Register(NewVerifyMockupTool(designsDir, client, ""))
+			registry.Register(NewExportHandoffTool(designsDir))
 			return
 		}
 	}
