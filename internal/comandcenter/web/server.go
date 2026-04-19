@@ -1794,44 +1794,52 @@ type DesignGalleryData struct {
 	SessionID string
 }
 
-// handleDesignGallery lists all design sessions from ~/.claudio/designs/.
+// handleDesignGallery lists all design sessions from project-scoped dirs.
+// Scans ~/.claudio/projects/*/designs/ for all projects.
 func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request) {
-	designsDir := config.GetPaths().Designs
-
-	entries, err := os.ReadDir(designsDir)
-	if err != nil && !os.IsNotExist(err) {
-		http.Error(w, "error reading designs dir", http.StatusInternalServerError)
-		return
-	}
+	projectsDir := config.GetPaths().Projects
 
 	var sessions []DesignSession
-	for _, e := range entries {
-		if !e.IsDir() {
+
+	// Walk all project dirs, collect design sessions from each.
+	projectEntries, _ := os.ReadDir(projectsDir)
+	for _, proj := range projectEntries {
+		if !proj.IsDir() {
 			continue
 		}
-		id := e.Name()
-		sessionDir := filepath.Join(designsDir, id)
-
-		ds := DesignSession{ID: id}
-
-		if _, err := os.Stat(filepath.Join(sessionDir, "bundle", "mockup.html")); err == nil {
-			ds.HasBundle = true
+		designsDir := filepath.Join(projectsDir, proj.Name(), "designs")
+		entries, err := os.ReadDir(designsDir)
+		if err != nil {
+			continue
 		}
-		if _, err := os.Stat(filepath.Join(sessionDir, "handoff", "spec.md")); err == nil {
-			ds.HasHandoff = true
-		}
-		if ssEntries, err := os.ReadDir(filepath.Join(sessionDir, "screenshots")); err == nil {
-			for _, se := range ssEntries {
-				if !se.IsDir() && strings.HasSuffix(strings.ToLower(se.Name()), ".png") {
-					ds.Screenshots = append(ds.Screenshots, se.Name())
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			id := e.Name()
+			sessionDir := filepath.Join(designsDir, id)
+
+			ds := DesignSession{ID: proj.Name() + "/" + id}
+
+			if _, err := os.Stat(filepath.Join(sessionDir, "bundle", "mockup.html")); err == nil {
+				ds.HasBundle = true
+			}
+			if _, err := os.Stat(filepath.Join(sessionDir, "handoff", "spec.md")); err == nil {
+				ds.HasHandoff = true
+			}
+			if ssEntries, err := os.ReadDir(filepath.Join(sessionDir, "screenshots")); err == nil {
+				for _, se := range ssEntries {
+					if !se.IsDir() && strings.HasSuffix(strings.ToLower(se.Name()), ".png") {
+						ds.Screenshots = append(ds.Screenshots, se.Name())
+					}
 				}
 			}
-		}
 
-		sessions = append(sessions, ds)
+			sessions = append(sessions, ds)
+		}
 	}
 
-	// Newest first (directory names are timestamps).
+	// Newest first (session IDs are timestamps).
 	sort.Slice(sessions, func(i, j int) bool {
 		return sessions[i].ID > sessions[j].ID
 	})
