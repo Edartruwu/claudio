@@ -138,12 +138,16 @@
 
   var wsConnected = false;
   var wsInstance = null;
+  var _hadConnected = false;   // true after first successful onopen in this startChat call
+  var _streaming = false;      // true while stream_delta events are arriving
+  var _reloadTimer = null;     // debounce handle for reconnect reloads
 
   function reloadMessages() {
-    if (!msgs) return;
+    if (!msgs || _streaming) return;
     fetch('/partials/messages/' + sessionId)
       .then(function(res) { return res.text(); })
       .then(function(html) {
+        if (_streaming) return; // streaming started during fetch — don't clobber
         var near = isNearBottom();
         msgs.innerHTML = html;
         var bubble = document.getElementById('typing-bubble');
@@ -160,10 +164,16 @@
     _activeWS = ws;
 
     ws.onopen = function () {
-      var wasDisconnected = !wsConnected;
+      var isReconnect = _hadConnected && !wsConnected;
+      _hadConnected = true;
       wsConnected = true;
       hideBanner();
-      if (wasDisconnected) reloadMessages();
+      // Only reload on true reconnects (not initial page load — server already rendered).
+      // Delay 600ms so any WS messages that arrive right after reconnect are processed first.
+      if (isReconnect) {
+        if (_reloadTimer) clearTimeout(_reloadTimer);
+        _reloadTimer = setTimeout(reloadMessages, 600);
+      }
     };
 
     ws.onmessage = function (e) {
@@ -172,6 +182,8 @@
         var type = data.type;
 
         if (type === 'message.assistant') {
+          _streaming = false;
+          if (_reloadTimer) { clearTimeout(_reloadTimer); _reloadTimer = null; }
           var sb = document.getElementById('streaming-bubble');
           if (sb) sb.remove();
           removeTypingBubble();
@@ -179,6 +191,7 @@
           if (data.html) appendMessage(data.html);
 
         } else if (type === 'message.stream_delta') {
+          _streaming = true;
           var bubble = document.getElementById('streaming-bubble');
           if (!bubble) {
             bubble = document.createElement('div');

@@ -301,9 +301,10 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	_ = outJSON // suppress unused warning
-	// Return the bundle URL so the agent can include it in its response.
-	// In CC mode a card is also pushed via PushBundleLink above.
-	return &Result{Content: bundleURL}, nil
+	// Return empty — the bundle card is pushed via PushBundleLink above.
+	// Returning the URL caused the AI to echo [Open bundle](url) markdown in its
+	// next response, which rendered as a plain link instead of the card widget.
+	return &Result{Content: ""}, nil
 }
 
 // injectInfiniteCanvas wraps the HTML body with a pan/zoom infinite canvas shell.
