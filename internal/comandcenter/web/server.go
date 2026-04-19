@@ -8,7 +8,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"html/template"
+	"html"
 	"io"
 	"io/fs"
 	"net"
@@ -29,6 +29,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/teams"
+	"github.com/a-h/templ"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -48,168 +49,8 @@ var modelAliases = map[string]string{
 	"claude-opus":   "claude-opus-4-6",
 }
 
-//go:embed templates static
+//go:embed static
 var staticFS embed.FS
-
-// templateSet holds a parsed template set.
-type templateSet struct {
-	t *template.Template
-}
-
-func (ts *templateSet) execute(w http.ResponseWriter, name string, data any) {
-	if err := ts.t.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// Templates parsed at package init. Each page has its own template.Template
-// so that {{define "content"}} blocks don't collide across pages.
-var (
-	loginTmpl      *templateSet
-	chatListTmpl   *templateSet
-	chatViewTmpl   *templateSet
-	sessionsTmpl   *templateSet
-	messagesTmpl   *templateSet
-	infoTmpl       *templateSet
-	taskDetailTmpl  *templateSet
-	designsTmpl     *templateSet
-	teamMembersTmpl *templateSet
-	bubbleTmpl      *template.Template
-)
-
-func funcMap() template.FuncMap {
-	return template.FuncMap{
-		"relTime": func(t time.Time) string {
-			d := time.Since(t)
-			switch {
-			case d < time.Minute:
-				return "just now"
-			case d < time.Hour:
-				m := int(d.Minutes())
-				if m == 1 {
-					return "1 min ago"
-				}
-				return strings.Join([]string{itoa(m), " mins ago"}, "")
-			case d < 24*time.Hour:
-				h := int(d.Hours())
-				if h == 1 {
-					return "1 hr ago"
-				}
-				return strings.Join([]string{itoa(h), " hrs ago"}, "")
-			default:
-				return t.Format("Jan 2")
-			}
-		},
-		"firstChar": func(s string) string {
-			if len(s) == 0 {
-				return "?"
-			}
-			r := []rune(s)
-			return strings.ToUpper(string(r[0]))
-		},
-		"truncate": func(n int, s string) string {
-			r := []rune(s)
-			if len(r) <= n {
-				return s
-			}
-			return string(r[:n]) + "…"
-		},
-		"avatarColor": func(s string) string {
-			// 0=brand, 1=ai, 2=tool, 3=cron, 4=error — matched by len(name)%5
-			colors := []string{
-				"var(--color-brand)",
-				"var(--color-ai)",
-				"var(--color-tool)",
-				"var(--color-cron)",
-				"var(--color-error)",
-			}
-			if len(s) == 0 {
-				return colors[0]
-			}
-			return colors[len(s)%len(colors)]
-		},
-		// taskStatusDot returns a Tailwind-compatible inline style color class for a task status dot.
-		"taskStatusDot": func(status string) string {
-			switch status {
-			case "in_progress":
-				return "bg-blue-500"
-			case "done":
-				return "bg-green-500"
-			case "blocked":
-				return "bg-red-500"
-			default: // pending
-				return "bg-gray-500"
-			}
-		},
-		// taskStatusBadge returns inline style classes for a task status pill badge.
-		"taskStatusBadge": func(status string) string {
-			switch status {
-			case "in_progress":
-				return "text-blue-400 bg-blue-400/10"
-			case "done":
-				return "text-green-400 bg-green-400/10"
-			case "blocked":
-				return "text-red-400 bg-red-400/10"
-			default: // pending
-				return "text-gray-400 bg-gray-400/10"
-			}
-		},
-		// agentStatusDot returns a dot color class for agent status.
-		"agentStatusDot": func(status string) string {
-			switch status {
-			case "working":
-				return "bg-blue-500"
-			case "idle":
-				return "bg-gray-500"
-			default:
-				return "bg-gray-600"
-			}
-		},
-		// agentStatusColor returns text color class for agent status label.
-		"agentStatusColor": func(status string) string {
-			switch status {
-			case "working":
-				return "text-blue-400"
-			default:
-				return "text-gray-400"
-			}
-		},
-		// isImage reports whether a MIME type is an image.
-		"isImage": func(mimeType string) bool {
-			return strings.HasPrefix(mimeType, "image/")
-		},
-		// renderMD converts markdown to sanitized HTML.
-		"renderMD": renderMarkdown,
-		// hasPrefix reports whether s starts with prefix.
-		"hasPrefix": strings.HasPrefix,
-		// toolName extracts the tool name from "ToolName: {json}" content.
-		"toolName": func(s string) string {
-			if i := strings.Index(s, ": "); i > 0 {
-				return s[:i]
-			}
-			return s
-		},
-		// toolInput extracts the JSON input from "ToolName: {json}" content.
-		"toolInput": func(s string) string {
-			if i := strings.Index(s, ": "); i > 0 {
-				return strings.TrimSpace(s[i+2:])
-			}
-			return ""
-		},
-	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	buf := make([]byte, 0, 10)
-	for n > 0 {
-		buf = append([]byte{byte('0' + n%10)}, buf...)
-		n /= 10
-	}
-	return string(buf)
-}
 
 // renderMarkdown converts markdown to sanitized HTML safe for template.HTML use.
 var mdParser = goldmark.New(goldmark.WithExtensions(extension.Table, extension.Strikethrough, extension.TaskList))
@@ -220,66 +61,14 @@ var mdPolicy = func() *bluemonday.Policy {
 	return p
 }()
 
-func renderMarkdown(s string) template.HTML {
+// renderMarkdown converts markdown to sanitized HTML. Returns a raw HTML string;
+// templ callers should wrap with templ.Raw() to emit without escaping.
+func renderMarkdown(s string) string {
 	var buf bytes.Buffer
 	if err := mdParser.Convert([]byte(s), &buf); err != nil {
-		return template.HTML(template.HTMLEscapeString(s))
+		return html.EscapeString(s)
 	}
-	safe := mdPolicy.SanitizeBytes(buf.Bytes())
-	return template.HTML(safe)
-}
-
-func mustParseFS(files ...string) *templateSet {
-	t, err := template.New("").Funcs(funcMap()).ParseFS(staticFS, files...)
-	if err != nil {
-		panic("web: parse templates " + strings.Join(files, ",") + ": " + err.Error())
-	}
-	return &templateSet{t: t}
-}
-
-func init() {
-	loginTmpl = mustParseFS(
-		"templates/layout.html",
-		"templates/login.html",
-	)
-	chatListTmpl = mustParseFS(
-		"templates/layout.html",
-		"templates/chat_list.html",
-		"templates/components/session_row.html",
-	)
-	chatViewTmpl = mustParseFS(
-		"templates/layout.html",
-		"templates/chat_view.html",
-		"templates/components/message_bubble.html",
-		"templates/partials/messages.html",
-	)
-	sessionsTmpl = mustParseFS(
-		"templates/partials/sessions.html",
-		"templates/components/session_row.html",
-	)
-	messagesTmpl = mustParseFS(
-		"templates/partials/messages.html",
-		"templates/components/message_bubble.html",
-	)
-	infoTmpl = mustParseFS(
-		"templates/layout.html",
-		"templates/info_panel.html",
-	)
-	taskDetailTmpl = mustParseFS(
-		"templates/partials/task_detail.html",
-	)
-	teamMembersTmpl = mustParseFS(
-		"templates/partials/team_members.html",
-	)
-	designsTmpl = mustParseFS(
-		"templates/layout.html",
-		"templates/designs.html",
-	)
-	t, err := template.New("").Funcs(funcMap()).ParseFS(staticFS, "templates/components/message_bubble.html")
-	if err != nil {
-		panic("web: parse bubble template: " + err.Error())
-	}
-	bubbleTmpl = t
+	return string(mdPolicy.SanitizeBytes(buf.Bytes()))
 }
 
 // uiClient is a browser WebSocket connection watching a session.
@@ -479,7 +268,7 @@ func (ws *WebServer) handleCronList(w http.ResponseWriter, r *http.Request) {
 		}
 		agent := ""
 		if e.Agent != "" {
-			agent = fmt.Sprintf(`<span class="text-gray-400 text-xs ml-2">agent: %s</span>`, template.HTMLEscapeString(e.Agent))
+			agent = fmt.Sprintf(`<span class="text-gray-400 text-xs ml-2">agent: %s</span>`, html.EscapeString(e.Agent))
 		}
 		fmt.Fprintf(w, `
 <div class="cron-row" style="background:#1C1C1E;border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
@@ -500,11 +289,11 @@ func (ws *WebServer) handleCronList(w http.ResponseWriter, r *http.Request) {
     title="Delete cron">🗑</button>
 </div>`,
 			badgeColor,
-			template.HTMLEscapeString(cronType),
-			template.HTMLEscapeString(e.Schedule),
+			html.EscapeString(cronType),
+			html.EscapeString(e.Schedule),
 			agent,
-			template.HTMLEscapeString(prompt),
-			template.HTMLEscapeString(e.ID),
+			html.EscapeString(prompt),
+			html.EscapeString(e.ID),
 		)
 	}
 }
@@ -551,7 +340,7 @@ func (ws *WebServer) validPassword(token string) bool {
 // --- Handlers ---
 
 func (ws *WebServer) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	loginTmpl.execute(w, "login.html", map[string]any{"Error": ""})
+	templ.Handler(Login(LoginPageData{Error: ""})).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
@@ -562,7 +351,7 @@ func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	pass := r.FormValue("password")
 	if !ws.validPassword(pass) {
 		w.WriteHeader(http.StatusUnauthorized)
-		loginTmpl.execute(w, "login.html", map[string]any{"Error": "Invalid password"})
+		templ.Handler(Login(LoginPageData{Error: "Invalid password"})).ServeHTTP(w, r)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -588,10 +377,44 @@ func (ws *WebServer) handleServiceWorker(w http.ResponseWriter, r *http.Request)
 	w.Write(content)
 }
 
-type sessionRow struct {
+// SessionRowData holds data for a single session row in the sidebar.
+type SessionRowData struct {
 	Session     cc.Session
 	LastMessage string
 	UnreadCount int
+}
+
+// LoginPageData holds data for the login page.
+type LoginPageData struct {
+	Error string
+}
+
+// ChatListPageData holds data for the chat list page.
+type ChatListPageData struct {
+	Rows      []SessionRowData
+	SessionID string
+}
+
+// ChatViewData holds data for the chat view page.
+type ChatViewData struct {
+	Session   cc.Session
+	Messages  []MessageView
+	SessionID string
+}
+
+// SessionsData holds data for the sessions partial (sidebar list).
+type SessionsData struct {
+	Rows []SessionRowData
+}
+
+// MessagesData holds data for the messages partial.
+type MessagesData struct {
+	Messages []MessageView
+}
+
+// TeamMembersData holds data for the team members partial.
+type TeamMembersData struct {
+	Agents []cc.Agent
 }
 
 // InfoPageData holds data for the session info panel.
@@ -609,9 +432,10 @@ type InfoPageData struct {
 }
 
 // TaskDetailData holds data for the task detail partial.
+// DescHTML is a sanitized HTML string; use templ.Raw(data.DescHTML) in templates.
 type TaskDetailData struct {
 	Task     cc.Task
-	DescHTML template.HTML // markdown description pre-rendered to HTML
+	DescHTML string // markdown description pre-rendered to sanitized HTML
 }
 
 // renderMarkdown converts a markdown string to safe HTML.
@@ -622,10 +446,7 @@ func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := ws.buildSessionRows(sessions)
-	chatListTmpl.execute(w, "chat_list.html", map[string]any{
-		"Rows":      rows,
-		"SessionID": "",
-	})
+	templ.Handler(ChatList(ChatListPageData{Rows: rows, SessionID: ""})).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
@@ -657,15 +478,12 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
 
-	tmplName := "chat_view.html"
+	data := ChatViewData{Session: sess, Messages: views, SessionID: id}
 	if r.Header.Get("HX-Request") == "true" {
-		tmplName = "main"
+		ChatView(data).Render(r.Context(), w)
+		return
 	}
-	chatViewTmpl.execute(w, tmplName, map[string]any{
-		"Session":   sess,
-		"Messages":  views,
-		"SessionID": id,
-	})
+	templ.Handler(ChatView(data)).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
@@ -724,18 +542,11 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		AvailableTeams:  teamNames,
 	}
 
-	// If ?tab= is set on an HTMX request, return just the tab content fragment.
-	if r.Header.Get("HX-Request") == "true" && r.URL.Query().Get("tab") != "" {
-		tmplName := "tab-" + activeTab
-		infoTmpl.execute(w, tmplName, data)
+	if r.Header.Get("HX-Request") == "true" {
+		InfoPanel(data).Render(r.Context(), w)
 		return
 	}
-
-	infoTmplName := "info_panel.html"
-	if r.Header.Get("HX-Request") == "true" {
-		infoTmplName = "main"
-	}
-	infoTmpl.execute(w, infoTmplName, data)
+	templ.Handler(InfoPanel(data)).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
@@ -745,10 +556,10 @@ func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
-	taskDetailTmpl.execute(w, "task-detail", TaskDetailData{
+	TaskDetail(TaskDetailData{
 		Task:     task,
 		DescHTML: renderMarkdown(task.Description),
-	})
+	}).Render(r.Context(), w)
 }
 
 // handleAPISessionTeam returns an HTML fragment of agent rows for the given session.
@@ -760,7 +571,7 @@ func (ws *WebServer) handleAPISessionTeam(w http.ResponseWriter, r *http.Request
 		agents = nil
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	teamMembersTmpl.execute(w, "team-members", agents)
+	TeamMembers(TeamMembersData{Agents: agents}).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Request) {
@@ -771,7 +582,7 @@ func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	rows := ws.buildSessionRows(sessions)
-	sessionsTmpl.execute(w, "sessions-partial", rows)
+	Sessions(SessionsData{Rows: rows}).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Request) {
@@ -794,7 +605,7 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 	for i, m := range reversed {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
-	messagesTmpl.execute(w, "messages-partial", views)
+	Messages(MessagesData{Messages: views}).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
@@ -901,7 +712,7 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Push user bubble to UI WS clients immediately (no refresh needed).
 	var buf bytes.Buffer
-	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err == nil {
+	if err := MessageBubble(MessageView{Message: msg}).Render(r.Context(), &buf); err == nil {
 		if payload, err := json.Marshal(map[string]string{
 			"type": "message.user",
 			"html": buf.String(),
@@ -1013,7 +824,7 @@ func (ws *WebServer) handleSendMessageByName(w http.ResponseWriter, r *http.Requ
 	_ = ws.storage.InsertMessage(msg)
 
 	var buf bytes.Buffer
-	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err == nil {
+	if err := MessageBubble(MessageView{Message: msg}).Render(r.Context(), &buf); err == nil {
 		if p, err := json.Marshal(map[string]string{
 			"type": "message.user",
 			"html": buf.String(),
@@ -1162,7 +973,7 @@ func apiMessageText(m api.Message) string {
 // pushMsgBubble renders and pushes a user message bubble to a session's WS clients.
 func (ws *WebServer) pushMsgBubble(sessionID string, msg cc.Message) {
 	var buf bytes.Buffer
-	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err == nil {
+	if err := MessageBubble(MessageView{Message: msg}).Render(context.Background(), &buf); err == nil {
 		if p, err := json.Marshal(map[string]string{
 			"type": "message.user",
 			"html": buf.String(),
@@ -1243,7 +1054,7 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			var buf bytes.Buffer
-			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: *msg}); err != nil {
+			if err := MessageBubble(MessageView{Message: *msg}).Render(context.Background(), &buf); err != nil {
 				continue
 			}
 			payload, err := json.Marshal(map[string]string{
@@ -1262,7 +1073,7 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			var buf bytes.Buffer
-			if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: *msg}); err != nil {
+			if err := MessageBubble(MessageView{Message: *msg}).Render(context.Background(), &buf); err != nil {
 				continue
 			}
 			bubblePayload, err := json.Marshal(map[string]string{
@@ -1402,7 +1213,7 @@ func (ws *WebServer) handleScreenshotPush(sessionID string, p attach.DesignScree
 	// 4. Render message-bubble template and push to browser clients.
 	var buf bytes.Buffer
 	view := MessageView{Message: msg, Attachments: []cc.Attachment{att}}
-	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", view); err != nil {
+	if err := MessageBubble(view).Render(context.Background(), &buf); err != nil {
 		return
 	}
 	wsPayload, _ := json.Marshal(map[string]string{"type": "message.assistant", "html": buf.String()})
@@ -1434,7 +1245,7 @@ func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundl
 	}
 
 	var buf bytes.Buffer
-	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", MessageView{Message: msg}); err != nil {
+	if err := MessageBubble(MessageView{Message: msg}).Render(context.Background(), &buf); err != nil {
 		return
 	}
 	wsPayload, _ := json.Marshal(map[string]string{"type": "message.assistant", "html": buf.String()})
@@ -1632,10 +1443,10 @@ func (ws *WebServer) handleSetTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildSessionRows fetches the last message for each session and unread count.
-func (ws *WebServer) buildSessionRows(sessions []cc.Session) []sessionRow {
-	rows := make([]sessionRow, 0, len(sessions))
+func (ws *WebServer) buildSessionRows(sessions []cc.Session) []SessionRowData {
+	rows := make([]SessionRowData, 0, len(sessions))
 	for _, sess := range sessions {
-		row := sessionRow{Session: sess}
+		row := SessionRowData{Session: sess}
 		msgs, err := ws.storage.ListMessages(sess.ID, 1)
 		if err == nil && len(msgs) > 0 {
 			content := msgs[0].Content
@@ -1769,7 +1580,7 @@ func (ws *WebServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 	// Push bubble to WS clients.
 	var buf bytes.Buffer
 	view := MessageView{Message: msg, Attachments: []cc.Attachment{att}}
-	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", view); err == nil {
+	if err := MessageBubble(view).Render(r.Context(), &buf); err == nil {
 		payload, _ := json.Marshal(map[string]string{"type": "message.user", "html": buf.String()})
 		ws.pushToSessionClients(sessionID, payload)
 	}
@@ -1897,8 +1708,8 @@ type DesignSession struct {
 	Screenshots []string // filenames inside screenshots/
 }
 
-// DesignGalleryData is the template data for the designs gallery page.
-type DesignGalleryData struct {
+// DesignsPageData is the template data for the designs gallery page.
+type DesignsPageData struct {
 	Sessions  []DesignSession
 	SessionID string
 }
@@ -1953,8 +1764,7 @@ func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request)
 		return sessions[i].ID > sessions[j].ID
 	})
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	designsTmpl.execute(w, "designs.html", DesignGalleryData{Sessions: sessions})
+	templ.Handler(Designs(DesignsPageData{Sessions: sessions})).ServeHTTP(w, r)
 }
 
 // handleDesignStatic serves static assets (screenshots, etc.) from the designs dir.

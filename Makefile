@@ -4,8 +4,12 @@ LDFLAGS := -ldflags "-s -w -X github.com/Abraxas-365/claudio/internal/cli.Versio
 .PHONY: build run test clean install reload
 
 build:
+	templ generate ./internal/comandcenter/web/...
 	go build $(LDFLAGS) -o bin/claudio ./cmd/claudio
 	go build $(LDFLAGS) -o bin/claudio-server ./cmd/comandcenter
+
+templ-install:
+	go install github.com/a-h/templ/cmd/templ@latest
 
 run:
 	go run $(LDFLAGS) ./cmd/claudio
