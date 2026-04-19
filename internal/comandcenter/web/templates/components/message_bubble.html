@@ -89,7 +89,7 @@
 {{else}}
 {{/* ── ASSISTANT (default): left-aligned, ai border ── */}}
 <div class="flex flex-col items-start mb-2">
-  <div class="rounded-2xl rounded-tl-sm p-3 {{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}}" style="max-width:75%;background:var(--color-surface);border-left:3px solid {{if and .AgentName (hasPrefix .AgentName "⏰")}}var(--color-cron){{else}}var(--color-ai){{end}};">
+  <div class="rounded-2xl rounded-tl-sm p-3 {{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}}" style="max-width:75%;background:{{if and .AgentName (hasPrefix .AgentName "⏰")}}var(--color-surfaceHigh){{else}}#1a3a38{{end}};border-left:3px solid {{if and .AgentName (hasPrefix .AgentName "⏰")}}var(--color-cron){{else}}var(--color-ai){{end}};">
     {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:{{if hasPrefix .AgentName "⏰"}}var(--color-cron){{else}}var(--color-ai){{end}};">{{.AgentName}}</p>{{end}}
     <div class="text-sm leading-relaxed md-content" style="color:var(--color-textPrimary);">{{renderMD .Content}}</div>
     {{range .Attachments}}

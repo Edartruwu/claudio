@@ -10,6 +10,13 @@
 {{/* messages: called by chat_view.html with full page data (.Messages is []MessageView) */}}
 {{define "messages"}}
 <div id="messages-inner">
+{{if .Messages}}
+<div class="date-separator flex items-center gap-3 my-4 px-2">
+  <div class="flex-1" style="height:1px;background:var(--color-border);"></div>
+  <span class="text-xs px-2" style="color:var(--color-textMuted);font-size:0.7rem;letter-spacing:0.05em;">TODAY</span>
+  <div class="flex-1" style="height:1px;background:var(--color-border);"></div>
+</div>
+{{end}}
 {{range .Messages}}
   {{template "message-bubble" .}}
 {{else}}
