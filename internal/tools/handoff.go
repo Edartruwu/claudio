@@ -119,6 +119,10 @@ var (
 	fontFamilyRe = regexp.MustCompile(`(?i)font-family:\s*['"]?([A-Za-z][A-Za-z0-9 _-]+)['"]?`)
 	// CDN script src for icon libraries
 	iconCDNRe = regexp.MustCompile(`(?i)<script[^>]+\bsrc="(https?://[^"]*(?:feather|lucide|heroicon|fontawesome|ionicon|bootstrap-icon)[^"]*)"`)
+	// <!-- COMPONENT: Name\n key: value\n ... -->
+	componentAnnotationRe = regexp.MustCompile(`(?s)<!--\s*COMPONENT:\s*(\w[\w ]*?)\n(.*?)-->`)
+	// <!-- INTERACTION: element → trigger → action → result | transition: ... -->
+	interactionAnnotationRe = regexp.MustCompile(`<!--\s*INTERACTION:\s*(.+?)\s*-->`)
 )
 
 // componentPattern maps component names to Tailwind class keywords.
@@ -148,8 +152,11 @@ var componentPatterns = []componentPattern{
 // ---- internal data types ----
 
 type screenInfo struct {
-	Name string
-	File string
+	Name        string
+	File        string
+	Breakpoint  string // "mobile" | "desktop" | "tablet" | "unknown"
+	Viewport    string // e.g. "390px" or "1440px"
+	Description string
 }
 
 type componentInfo struct {
@@ -159,14 +166,33 @@ type componentInfo struct {
 }
 
 type assetRef struct {
-	Path  string
-	Type  string // img | css | font | icon-cdn | js
+	Path string
+	Type string // img | css | font | icon-cdn | js
 }
 
 type interactionPoint struct {
 	Element  string
 	Trigger  string
 	Behavior string
+}
+
+// ComponentSpec represents a component parsed from <!-- COMPONENT: ... --> annotations.
+type ComponentSpec struct {
+	Name         string
+	States       []string
+	Breakpoints  []string
+	Tokens       []string
+	Measurements string
+	ScreenNames  []string // which screen files this annotation was found in
+}
+
+// AnnotatedInteraction represents an interaction parsed from <!-- INTERACTION: ... --> annotations.
+type AnnotatedInteraction struct {
+	Element    string
+	Trigger    string
+	Action     string
+	Result     string
+	Transition string
 }
 
 // Execute implements the tool.
@@ -255,6 +281,10 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 	fonts := parseFonts(allHTML)
 	iconCDNs := parseIconCDNs(allHTML)
 
+	// 8b. Parse component and interaction annotations from HTML comments
+	componentSpecs := parseComponentAnnotations(files)
+	annotatedInteractions := parseInteractionAnnotations(files)
+
 	// 9. Load and cross-reference design tokens (optional)
 	tokensUsed := map[string]interface{}{}
 	if in.DesignTokens != "" {
@@ -332,7 +362,7 @@ func (t *ExportHandoffTool) Execute(ctx context.Context, input json.RawMessage) 
 	// 12. Write spec.md
 	sessionDirForSpec := in.SessionDir
 	specPath := filepath.Join(handoffDir, "spec.md")
-	specContent := buildSpecMarkdown(in.ProjectName, in.Framework, sessionDirForSpec, screens, components, tokensUsed, tokensJsonData, assets, interactions, fonts, iconCDNs)
+	specContent := buildSpecMarkdown(in.ProjectName, in.Framework, sessionDirForSpec, screens, components, tokensUsed, tokensJsonData, assets, interactions, fonts, iconCDNs, componentSpecs, annotatedInteractions)
 	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to write spec.md: %v", err), IsError: true}, nil
 	}
@@ -637,7 +667,17 @@ func readManifestScreens(sessionDir string) []screenInfo {
 	}
 	screens := make([]screenInfo, 0, len(m.Screens))
 	for _, sm := range m.Screens {
-		screens = append(screens, screenInfo{Name: sm.Name, File: sm.Name + ".png"})
+		vp := "—"
+		if sm.Viewport.Width > 0 {
+			vp = fmt.Sprintf("%dpx", sm.Viewport.Width)
+		}
+		screens = append(screens, screenInfo{
+			Name:        sm.Name,
+			File:        sm.Name + ".png",
+			Breakpoint:  sm.Breakpoint,
+			Viewport:    vp,
+			Description: sm.Description,
+		})
 	}
 	return screens
 }
@@ -826,6 +866,152 @@ func parseIconCDNs(html string) []string {
 	return cdns
 }
 
+// parseComponentAnnotations scans HTML files for <!-- COMPONENT: ... --> blocks.
+// Components with same name across files get merged ScreenNames.
+func parseComponentAnnotations(files []fileContent) []ComponentSpec {
+	byName := map[string]*ComponentSpec{}
+	var order []string
+
+	for _, f := range files {
+		matches := componentAnnotationRe.FindAllStringSubmatch(f.content, -1)
+		for _, m := range matches {
+			name := strings.TrimSpace(m[1])
+			body := m[2]
+
+			cs := &ComponentSpec{Name: name}
+			// Parse key: value lines
+			for _, line := range strings.Split(body, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				key := strings.TrimSpace(strings.ToLower(parts[0]))
+				val := strings.TrimSpace(parts[1])
+				items := splitCSV(val)
+				switch key {
+				case "states":
+					cs.States = items
+				case "breakpoints":
+					cs.Breakpoints = items
+				case "tokens":
+					cs.Tokens = items
+				case "measurements":
+					cs.Measurements = val
+				}
+			}
+
+			// Screen name: strip screen- prefix and .html suffix, else use filename stem
+			screenName := f.name
+			screenName = strings.TrimSuffix(screenName, ".html")
+			screenName = strings.TrimPrefix(screenName, "screen-")
+
+			if existing, ok := byName[name]; ok {
+				// Merge
+				existing.ScreenNames = appendUnique(existing.ScreenNames, screenName)
+				existing.States = mergeUnique(existing.States, cs.States)
+				existing.Breakpoints = mergeUnique(existing.Breakpoints, cs.Breakpoints)
+				existing.Tokens = mergeUnique(existing.Tokens, cs.Tokens)
+				if existing.Measurements == "" {
+					existing.Measurements = cs.Measurements
+				}
+			} else {
+				cs.ScreenNames = []string{screenName}
+				byName[name] = cs
+				order = append(order, name)
+			}
+		}
+	}
+
+	result := make([]ComponentSpec, 0, len(order))
+	for _, name := range order {
+		result = append(result, *byName[name])
+	}
+	return result
+}
+
+// parseInteractionAnnotations scans HTML for <!-- INTERACTION: ... --> comments.
+func parseInteractionAnnotations(files []fileContent) []AnnotatedInteraction {
+	var result []AnnotatedInteraction
+	seen := map[string]bool{}
+
+	for _, f := range files {
+		matches := interactionAnnotationRe.FindAllStringSubmatch(f.content, -1)
+		for _, m := range matches {
+			raw := strings.TrimSpace(m[1])
+			if seen[raw] {
+				continue
+			}
+			seen[raw] = true
+
+			ai := AnnotatedInteraction{}
+
+			// Split off transition: "main | transition: slide-left 300ms"
+			if idx := strings.Index(raw, " | transition:"); idx >= 0 {
+				ai.Transition = strings.TrimSpace(raw[idx+len(" | transition:"):])
+				raw = raw[:idx]
+			}
+
+			// Split on " → " for [element, trigger, action, result]
+			parts := strings.Split(raw, " → ")
+			if len(parts) >= 1 {
+				ai.Element = strings.TrimSpace(parts[0])
+			}
+			if len(parts) >= 2 {
+				ai.Trigger = strings.TrimSpace(parts[1])
+			}
+			if len(parts) >= 3 {
+				ai.Action = strings.TrimSpace(parts[2])
+			}
+			if len(parts) >= 4 {
+				ai.Result = strings.TrimSpace(parts[3])
+			}
+
+			result = append(result, ai)
+		}
+	}
+	return result
+}
+
+// splitCSV splits a comma-separated string into trimmed items.
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func appendUnique(slice []string, val string) []string {
+	for _, s := range slice {
+		if s == val {
+			return slice
+		}
+	}
+	return append(slice, val)
+}
+
+func mergeUnique(a, b []string) []string {
+	seen := map[string]bool{}
+	for _, s := range a {
+		seen[s] = true
+	}
+	result := append([]string{}, a...)
+	for _, s := range b {
+		if !seen[s] {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 // findTokensJson looks for tokens.json in mockupDir, then parent of mockupDir, then sessionDir.
 // Returns the first path found, or empty string if not found.
 func findTokensJson(mockupDir, sessionDir string) string {
@@ -860,6 +1046,68 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+// breakpointOrder defines the sort priority for breakpoint grouping.
+var breakpointOrder = map[string]int{
+	"mobile":  0,
+	"desktop": 1,
+	"tablet":  2,
+	"unknown": 3,
+}
+
+// groupScreensByBreakpoint groups screens and returns them sorted by breakpoint priority.
+func groupScreensByBreakpoint(screens []screenInfo) []struct {
+	Breakpoint string
+	Viewport   string
+	Screens    []screenInfo
+} {
+	type group struct {
+		Breakpoint string
+		Viewport   string
+		Screens    []screenInfo
+	}
+	byBP := map[string]*group{}
+	var order []string
+
+	for _, s := range screens {
+		bp := s.Breakpoint
+		if bp == "" {
+			bp = "unknown"
+		}
+		if _, ok := byBP[bp]; !ok {
+			byBP[bp] = &group{Breakpoint: bp, Viewport: s.Viewport}
+			order = append(order, bp)
+		}
+		byBP[bp].Screens = append(byBP[bp].Screens, s)
+	}
+
+	sort.SliceStable(order, func(i, j int) bool {
+		oi, ok := breakpointOrder[order[i]]
+		if !ok {
+			oi = 99
+		}
+		oj, ok := breakpointOrder[order[j]]
+		if !ok {
+			oj = 99
+		}
+		return oi < oj
+	})
+
+	result := make([]struct {
+		Breakpoint string
+		Viewport   string
+		Screens    []screenInfo
+	}, 0, len(order))
+	for _, bp := range order {
+		g := byBP[bp]
+		result = append(result, struct {
+			Breakpoint string
+			Viewport   string
+			Screens    []screenInfo
+		}{g.Breakpoint, g.Viewport, g.Screens})
+	}
+	return result
+}
+
 // buildSpecMarkdown assembles the spec.md content.
 func buildSpecMarkdown(
 	projectName, framework, sessionDir string,
@@ -871,15 +1119,18 @@ func buildSpecMarkdown(
 	interactions []interactionPoint,
 	fonts []string,
 	iconCDNs []string,
+	componentSpecs []ComponentSpec,
+	annotatedInteractions []AnnotatedInteraction,
 ) string {
 	var sb strings.Builder
 	ts := time.Now().Format("2006-01-02 15:04:05")
 
+	// 1. Header
 	sb.WriteString(fmt.Sprintf("# Design Spec: %s\n\n", projectName))
 	sb.WriteString(fmt.Sprintf("Generated: %s\n", ts))
 	sb.WriteString(fmt.Sprintf("Framework target: %s\n\n", framework))
 
-	// Reference Files
+	// 2. Reference Files
 	sb.WriteString("## Reference Files\n\n")
 	sb.WriteString("- Bundle: bundle/mockup.html\n")
 	sb.WriteString("- Screenshots: screenshots/\n")
@@ -889,37 +1140,122 @@ func buildSpecMarkdown(
 	sb.WriteString("- Rendered screens: handoff/rendered/\n")
 	sb.WriteString("\n")
 
-	// Screens — with paths and per-screen interaction tables
-	sb.WriteString("## Screens\n\n")
-	if len(screens) == 0 {
-		sb.WriteString("- (none detected)\n\n")
-	}
-	for _, s := range screens {
-		sb.WriteString(fmt.Sprintf("### %s\n\n", s.Name))
-		sb.WriteString(fmt.Sprintf("- Screenshot: `screenshots/%s.png`\n", s.Name))
-		sb.WriteString(fmt.Sprintf("- Rendered HTML: `screenshots/rendered/%s.html`\n", s.Name))
-		// Load interactions.json for this screen if available
-		if sessionDir != "" {
-			ijPath := filepath.Join(sessionDir, "screenshots", "rendered", s.Name+".interactions.json")
-			if raw, err := os.ReadFile(ijPath); err == nil {
-				var elems []renderedInteraction
-				if json.Unmarshal(raw, &elems) == nil && len(elems) > 0 {
-					sb.WriteString("\n**Interactive Elements:**\n\n")
-					sb.WriteString("| Element | Text | Type |\n")
-					sb.WriteString("|---------|------|------|\n")
-					for _, el := range elems {
-						sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", el.Tag, el.Text, tagToType(el.Tag)))
-					}
-				}
+	// 3. Breakpoints table
+	groups := groupScreensByBreakpoint(screens)
+	if len(groups) > 0 {
+		sb.WriteString("## Breakpoints\n\n")
+		sb.WriteString("| Name | Width | Screens |\n")
+		sb.WriteString("|------|-------|---------|\n")
+		for _, g := range groups {
+			vp := g.Viewport
+			if vp == "" || vp == "—" {
+				vp = "—"
 			}
+			var names []string
+			for _, s := range g.Screens {
+				names = append(names, s.Name)
+			}
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", g.Breakpoint, vp, strings.Join(names, ", ")))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Design Tokens — inline color summary from tokens.json
+	// 4. Component Registry (from annotations)
+	if len(componentSpecs) > 0 {
+		sb.WriteString("## Component Registry\n\n")
+		for _, cs := range componentSpecs {
+			sb.WriteString(fmt.Sprintf("### %s\n\n", cs.Name))
+			if len(cs.ScreenNames) > 0 {
+				sb.WriteString(fmt.Sprintf("- **Screens:** %s\n", strings.Join(cs.ScreenNames, ", ")))
+			}
+			if len(cs.Breakpoints) > 0 {
+				sb.WriteString(fmt.Sprintf("- **Breakpoints:** %s\n", strings.Join(cs.Breakpoints, ", ")))
+			}
+			if len(cs.States) > 0 {
+				sb.WriteString(fmt.Sprintf("- **States:** %s\n", strings.Join(cs.States, ", ")))
+			}
+			if len(cs.Tokens) > 0 {
+				sb.WriteString(fmt.Sprintf("- **Tokens:** %s\n", strings.Join(cs.Tokens, ", ")))
+			}
+			if cs.Measurements != "" {
+				sb.WriteString(fmt.Sprintf("- **Key measurements:** %s\n", cs.Measurements))
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	// 5. Interaction Map (from annotations)
+	if len(annotatedInteractions) > 0 {
+		sb.WriteString("## Interaction Map\n\n")
+		sb.WriteString("| Element | Trigger | Result | Transition |\n")
+		sb.WriteString("|---------|---------|--------|------------|\n")
+		for _, ai := range annotatedInteractions {
+			result := ai.Action
+			if ai.Result != "" {
+				result += " " + ai.Result
+			}
+			transition := ai.Transition
+			if transition == "" {
+				transition = "—"
+			}
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", ai.Element, ai.Trigger, result, transition))
+		}
+		sb.WriteString("\n")
+	}
+
+	// 6. Implementation Checklist (from component annotations)
+	if len(componentSpecs) > 0 {
+		sb.WriteString("## Implementation Checklist\n\n")
+		for _, cs := range componentSpecs {
+			measurements := cs.Measurements
+			if measurements == "" {
+				measurements = "see Component Registry above"
+			}
+			sb.WriteString(fmt.Sprintf("- [ ] %s: %s\n", cs.Name, measurements))
+		}
+		sb.WriteString("\n")
+	}
+
+	// 7. Screens — grouped by breakpoint
+	if len(screens) == 0 {
+		sb.WriteString("## Screens\n\n- (none detected)\n\n")
+	}
+	for _, g := range groups {
+		title := strings.Title(g.Breakpoint) //nolint:staticcheck
+		if g.Viewport != "" && g.Viewport != "—" {
+			sb.WriteString(fmt.Sprintf("## Screens — %s (%s)\n\n", title, g.Viewport))
+		} else {
+			sb.WriteString(fmt.Sprintf("## Screens — %s\n\n", title))
+		}
+		for _, s := range g.Screens {
+			sb.WriteString(fmt.Sprintf("### %s\n\n", s.Name))
+			sb.WriteString(fmt.Sprintf("- Screenshot: `screenshots/%s.png`\n", s.Name))
+			sb.WriteString(fmt.Sprintf("- Rendered HTML: `screenshots/rendered/%s.html`\n", s.Name))
+			if s.Description != "" {
+				sb.WriteString(fmt.Sprintf("- Description: %s\n", s.Description))
+			}
+			// Load interactions.json for this screen if available
+			if sessionDir != "" {
+				ijPath := filepath.Join(sessionDir, "screenshots", "rendered", s.Name+".interactions.json")
+				if raw, err := os.ReadFile(ijPath); err == nil {
+					var elems []renderedInteraction
+					if json.Unmarshal(raw, &elems) == nil && len(elems) > 0 {
+						sb.WriteString("\n**Interactive Elements:**\n\n")
+						sb.WriteString("| Element | Text | Type |\n")
+						sb.WriteString("|---------|------|------|\n")
+						for _, el := range elems {
+							sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", el.Tag, el.Text, tagToType(el.Tag)))
+						}
+					}
+				}
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	// 8. Design Tokens — inline summary from tokens.json
 	sb.WriteString("## Design Tokens\n\n")
 	if tokensJsonData != nil {
-		// Colors
 		if colors, ok := tokensJsonData["colors"]; ok {
 			if colorMap, ok := colors.(map[string]interface{}); ok && len(colorMap) > 0 {
 				sb.WriteString("**Colors:**\n\n")
@@ -929,7 +1265,6 @@ func buildSpecMarkdown(
 				sb.WriteString("\n")
 			}
 		}
-		// Typography
 		if typo, ok := tokensJsonData["typography"]; ok {
 			if typoMap, ok := typo.(map[string]interface{}); ok && len(typoMap) > 0 {
 				sb.WriteString("**Typography:**\n\n")
@@ -940,34 +1275,28 @@ func buildSpecMarkdown(
 				sb.WriteString("\n")
 			}
 		}
-		// Spacing
 		if spacing, ok := tokensJsonData["spacing"]; ok {
 			if spacingMap, ok := spacing.(map[string]interface{}); ok && len(spacingMap) > 0 {
 				sb.WriteString("**Spacing:**\n\n")
-				keys := sortedKeys(spacingMap)
-				for _, k := range keys {
+				for _, k := range sortedKeys(spacingMap) {
 					sb.WriteString(fmt.Sprintf("  %s: %v\n", k, spacingMap[k]))
 				}
 				sb.WriteString("\n")
 			}
 		}
-		// Radii
 		if radii, ok := tokensJsonData["radii"]; ok {
 			if radiiMap, ok := radii.(map[string]interface{}); ok && len(radiiMap) > 0 {
 				sb.WriteString("**Radii:**\n\n")
-				keys := sortedKeys(radiiMap)
-				for _, k := range keys {
+				for _, k := range sortedKeys(radiiMap) {
 					sb.WriteString(fmt.Sprintf("  %s: %v\n", k, radiiMap[k]))
 				}
 				sb.WriteString("\n")
 			}
 		}
-		// Shadows
 		if shadows, ok := tokensJsonData["shadows"]; ok {
 			if shadowMap, ok := shadows.(map[string]interface{}); ok && len(shadowMap) > 0 {
 				sb.WriteString("**Shadows:**\n\n")
-				keys := sortedKeys(shadowMap)
-				for _, k := range keys {
+				for _, k := range sortedKeys(shadowMap) {
 					sb.WriteString(fmt.Sprintf("  %s: %v\n", k, shadowMap[k]))
 				}
 				sb.WriteString("\n")
@@ -977,7 +1306,7 @@ func buildSpecMarkdown(
 		sb.WriteString("See tokens.json (not yet generated)\n\n")
 	}
 
-	// Component Inventory
+	// 9. Components (Tailwind class inventory)
 	sb.WriteString("## Components\n\n")
 	sb.WriteString("| Component | Count | Tailwind Classes | Notes |\n")
 	sb.WriteString("|-----------|-------|-----------------|-------|\n")
@@ -990,7 +1319,7 @@ func buildSpecMarkdown(
 	}
 	sb.WriteString("\n")
 
-	// Asset References
+	// 10. Asset References
 	sb.WriteString("## Asset References\n\n")
 	sb.WriteString("| Asset | Type |\n")
 	sb.WriteString("|-------|------|\n")
@@ -1002,19 +1331,7 @@ func buildSpecMarkdown(
 	}
 	sb.WriteString("\n")
 
-	// Interaction Spec
-	sb.WriteString("## Interaction Spec\n\n")
-	sb.WriteString("| Element | Trigger | Expected Behavior |\n")
-	sb.WriteString("|---------|---------|-------------------|\n")
-	if len(interactions) == 0 {
-		sb.WriteString("| (none detected) | — | — |\n")
-	}
-	for _, ia := range interactions {
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", ia.Element, ia.Trigger, ia.Behavior))
-	}
-	sb.WriteString("\n")
-
-	// Implementation Notes
+	// 11. Implementation Notes
 	sb.WriteString("## Implementation Notes\n\n")
 	sb.WriteString(fmt.Sprintf("- Framework: %s\n", framework))
 	sb.WriteString("- All components are presentational — add state management as needed\n")
