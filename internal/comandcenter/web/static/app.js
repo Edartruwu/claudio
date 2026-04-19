@@ -215,6 +215,9 @@
           var msgsEl = document.getElementById('messages');
           if (msgsEl) msgsEl.innerHTML = '';
 
+        } else if (type === 'task.created' || type === 'task.updated') {
+          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
+
         } else if (type === 'messages.compacted') {
           var msgsEl = document.getElementById('messages');
           if (msgsEl && sessionId) {

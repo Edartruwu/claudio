@@ -1188,6 +1188,33 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			ws.pushToSessionClients(ev.SessionID, payload)
+
+		case attach.EventClearHistory:
+			payload, err := json.Marshal(map[string]string{
+				"type": "messages.cleared",
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
+
+		case attach.EventTaskCreated:
+			payload, err := json.Marshal(map[string]string{
+				"type": "task.created",
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
+
+		case attach.EventTaskUpdated:
+			payload, err := json.Marshal(map[string]string{
+				"type": "task.updated",
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, payload)
 		}
 	}
 }
