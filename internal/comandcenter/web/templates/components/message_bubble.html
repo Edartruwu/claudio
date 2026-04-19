@@ -2,9 +2,9 @@
 {{define "message-bubble"}}
 
 {{if eq .Role "user"}}
-{{/* ── USER: right-aligned, brand bg ── */}}
-<div class="flex justify-end mb-2">
-  <div class="px-3 py-2 rounded-2xl rounded-tr-sm msg-bubble-user" style="max-width:80%;background:var(--color-brand);color:#fff;">
+{{/* ── USER: right-aligned, #075E54 bg ── */}}
+<div class="flex flex-col items-end mb-2">
+  <div class="px-3 py-2 rounded-2xl rounded-tr-sm msg-bubble-user" style="max-width:75%;">
     {{if .ReplyToSession}}
     <div class="mb-2 rounded" style="border-left:3px solid rgba(255,255,255,0.5);padding:4px 8px;background:rgba(255,255,255,0.15);">
       <p class="text-xs font-semibold" style="color:rgba(255,255,255,0.9);">@{{.ReplyToSession}}</p>
@@ -33,14 +33,14 @@
         </a>
       {{end}}
     {{end}}
-    <p class="text-xs text-right mt-1" style="color:rgba(255,255,255,0.7);">{{relTime .CreatedAt}}</p>
   </div>
+  <p class="text-xs text-right mt-0.5 pr-1" style="color: var(--color-textMuted);">{{relTime .CreatedAt}}</p>
 </div>
 
 {{else if eq .Role "tool_use"}}
 {{/* ── TOOL CALL (tool_use): left-aligned, tool border, collapsible ── */}}
-<div class="flex justify-start mb-2">
-  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:80%;background:var(--color-surfaceHigh);border-left:4px solid var(--color-tool);">
+<div class="flex flex-col items-start mb-2">
+  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:75%;background:var(--color-surfaceHigh);border-left:3px solid var(--color-tool);">
     <details>
       <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2" style="color:var(--color-tool);">
         🔧 <span>{{if .AgentName}}{{.AgentName}}{{else}}Tool{{end}}</span>
@@ -48,22 +48,22 @@
       </summary>
       <pre class="text-xs overflow-auto mt-2 whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);">{{.Content}}</pre>
     </details>
-    <p class="text-xs mt-2" style="color:var(--color-textMuted);">{{relTime .CreatedAt}}</p>
   </div>
+  <p class="text-xs mt-0.5 pl-1" style="color: var(--color-textMuted);">{{relTime .CreatedAt}}</p>
 </div>
 
 {{else if eq .Role "tool_call"}}
 {{/* ── TOOL CALL (alt name): same as tool_use ── */}}
-<div class="flex justify-start mb-2">
-  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:80%;background:var(--color-surfaceHigh);border-left:4px solid var(--color-tool);">
+<div class="flex flex-col items-start mb-2">
+  <div class="rounded-2xl rounded-tl-sm p-3 msg-bubble-tool" style="max-width:75%;background:var(--color-surfaceHigh);border-left:3px solid var(--color-tool);">
     <details>
       <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2" style="color:var(--color-tool);">
         🔧 <span>{{if .AgentName}}{{.AgentName}}{{else}}Tool{{end}}</span>
       </summary>
       <pre class="text-xs overflow-auto mt-2 whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);">{{.Content}}</pre>
     </details>
-    <p class="text-xs mt-2" style="color:var(--color-textMuted);">{{relTime .CreatedAt}}</p>
   </div>
+  <p class="text-xs mt-0.5 pl-1" style="color: var(--color-textMuted);">{{relTime .CreatedAt}}</p>
 </div>
 
 {{else if eq .Role "tool_result"}}
@@ -88,8 +88,8 @@
 
 {{else}}
 {{/* ── ASSISTANT (default): left-aligned, ai border ── */}}
-<div class="flex justify-start mb-2">
-  <div class="rounded-2xl rounded-tl-sm p-3 {{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}}" style="max-width:80%;background:var(--color-surface);border-left:4px solid {{if and .AgentName (hasPrefix .AgentName "⏰")}}var(--color-cron){{else}}var(--color-ai){{end}};">
+<div class="flex flex-col items-start mb-2">
+  <div class="rounded-2xl rounded-tl-sm p-3 {{if and .AgentName (hasPrefix .AgentName "⏰")}}msg-bubble-cron{{else}}msg-bubble-assistant{{end}}" style="max-width:75%;background:var(--color-surface);border-left:3px solid {{if and .AgentName (hasPrefix .AgentName "⏰")}}var(--color-cron){{else}}var(--color-ai){{end}};">
     {{if .AgentName}}<p class="text-xs font-semibold mb-1" style="color:{{if hasPrefix .AgentName "⏰"}}var(--color-cron){{else}}var(--color-ai){{end}};">{{.AgentName}}</p>{{end}}
     <div class="text-sm leading-relaxed md-content" style="color:var(--color-textPrimary);">{{renderMD .Content}}</div>
     {{range .Attachments}}
@@ -113,8 +113,8 @@
         </a>
       {{end}}
     {{end}}
-    <p class="text-xs mt-1" style="color:var(--color-textMuted);">{{relTime .CreatedAt}}</p>
   </div>
+  <p class="text-xs mt-0.5 pl-1" style="color: var(--color-textMuted);">{{relTime .CreatedAt}}</p>
 </div>
 {{end}}
 
