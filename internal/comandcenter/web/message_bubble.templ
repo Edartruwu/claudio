@@ -1,0 +1,159 @@
+package web
+
+import (
+	"fmt"
+
+	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+)
+
+templ MessageBubble(msg MessageView) {
+	if msg.Role == "user" {
+		<!-- USER: right-aligned -->
+		<div class="flex justify-end mb-1">
+			<div class="msg-bubble-user shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+				if msg.ReplyToSession != "" {
+					<div class="mb-2 rounded" style="border-left:3px solid rgba(255,255,255,0.5);padding:4px 8px;background:rgba(255,255,255,0.15);">
+						<p style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.9);">{ "@" + msg.ReplyToSession }</p>
+						<p style="font-size:11px;line-height:1.4;color:rgba(255,255,255,0.7);">{ Truncate(80, msg.QuotedContent) }</p>
+					</div>
+				}
+				if msg.Content != "" {
+					<p style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;margin:0;white-space:pre-wrap;">{ msg.Content }</p>
+				}
+				for _, att := range msg.Attachments {
+					if IsImage(att.MimeType) {
+						<img
+							src={ fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename) }
+							alt={ att.OriginalName }
+							class="mt-2 rounded-lg object-cover cursor-pointer"
+							style="max-width:240px;max-height:240px;"
+							loading="lazy"
+							onclick="openAnnotator(this)"
+						/>
+					} else {
+						<a
+							href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)) }
+							download={ att.OriginalName }
+							class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline"
+							style="background:rgba(255,255,255,0.2);color:#fff;font-size:13px;"
+						>
+							<svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"></path>
+								<polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"></polyline>
+							</svg>
+							<span class="truncate" style="max-width:160px;">{ att.OriginalName }</span>
+						</a>
+					}
+				}
+				<p style="color:var(--color-textMuted);font-size:11px;text-align:right;margin-top:4px;">{ RelTime(msg.CreatedAt) }</p>
+			</div>
+		</div>
+	} else if msg.Role == "tool_use" || msg.Role == "tool_call" {
+		<!-- TOOL CALL: collapsed by default -->
+		<div class="flex justify-start mb-1">
+			<div class="msg-bubble-tool" data-tool-use-id={ msg.ToolUseID } style={ "max-width:min(300px,85%);border-left:2px solid var(--color-tool);" }>
+				<details>
+					<summary class="cursor-pointer list-none flex items-center gap-2 justify-between" style="padding:8px 12px;">
+						<div class="flex items-center gap-2">
+							<svg class="flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-tool)" stroke-width="2.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"></path></svg>
+							<span style="color:var(--color-tool);font-size:13px;font-weight:600;">{ ToolName(msg.Content) }</span>
+							if msg.AgentName != "" {
+								<span style="color:var(--color-textMuted);font-size:11px;">· { msg.AgentName }</span>
+							}
+						</div>
+						<svg class="tool-chevron flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2" style="transition:transform 0.2s;"><path d="M9 5l7 7-7 7"></path></svg>
+					</summary>
+					<div class="tool-sections px-3 pb-3 pt-1 space-y-2">
+						if ToolInput(msg.Content) != "" {
+							<div>
+								<p style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;">Input</p>
+								<pre style="font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">{ ToolInput(msg.Content) }</pre>
+							</div>
+						}
+						if msg.Output != "" {
+							<div class="tool-output-section">
+								<p style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;">Output</p>
+								<pre style="font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">{ msg.Output }</pre>
+							</div>
+						}
+					</div>
+				</details>
+			</div>
+		</div>
+	} else if msg.Role == "tool_result" {
+		<!-- TOOL RESULT: indented, muted -->
+		<div class="flex justify-start mb-1" style="margin-left:2rem;">
+			<div style="max-width:80%;padding:4px 8px;border-radius:8px;font-size:11px;background:var(--color-surfaceHigh);color:var(--color-textMuted);">
+				{ msg.Content }
+			</div>
+		</div>
+	} else if msg.Role == "error" {
+		<!-- ERROR: red-tinted with warning icon -->
+		<div class="flex justify-start mb-2">
+			<div class="flex items-start gap-2" style="max-width:80%;padding:10px 14px;border-radius:12px;background:rgba(224,80,80,0.10);border:1px solid var(--color-error);">
+				<span class="flex-shrink-0 mt-0.5">⚠</span>
+				<div class="min-w-0">
+					<p style="font-size:14px;color:var(--color-error);">{ msg.Content }</p>
+					<p style="font-size:11px;margin-top:4px;color:var(--color-textMuted);">{ RelTime(msg.CreatedAt) }</p>
+				</div>
+			</div>
+		</div>
+	} else {
+		<!-- ASSISTANT / CRON: left-aligned -->
+		<div class="flex flex-col items-start mb-1">
+			if msg.AgentName != "" {
+				if HasPrefix(msg.AgentName, "⏰") {
+					<p style="color:var(--color-cron);font-size:11px;font-weight:600;margin-bottom:4px;letter-spacing:0.5px;padding-left:2px;">{ msg.AgentName }</p>
+				} else {
+					<p style="color:var(--color-ai);font-size:11px;font-weight:600;margin-bottom:4px;letter-spacing:0.5px;padding-left:2px;">{ msg.AgentName }</p>
+				}
+			}
+			if msg.AgentName != "" && HasPrefix(msg.AgentName, "⏰") {
+				<div class="msg-bubble-cron shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-cron);">
+					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
+						@templ.Raw(string(RenderMD(msg.Content)))
+					</div>
+					for _, att := range msg.Attachments {
+						@assistantAttachment(att)
+					}
+				</div>
+			} else {
+				<div class="msg-bubble-assistant shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-ai);">
+					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
+						@templ.Raw(string(RenderMD(msg.Content)))
+					</div>
+					for _, att := range msg.Attachments {
+						@assistantAttachment(att)
+					}
+				</div>
+			}
+			<p style="color:var(--color-textMuted);font-size:11px;margin-top:4px;padding-left:2px;">{ RelTime(msg.CreatedAt) }</p>
+		</div>
+	}
+}
+
+templ assistantAttachment(att cc.Attachment) {
+	if IsImage(att.MimeType) {
+		<img
+			src={ fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename) }
+			alt={ att.OriginalName }
+			class="mt-2 rounded-lg object-cover cursor-pointer"
+			style="max-width:240px;max-height:240px;"
+			loading="lazy"
+			onclick="openAnnotator(this)"
+		/>
+	} else {
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)) }
+			download={ att.OriginalName }
+			class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline"
+			style="background:rgba(255,255,255,0.08);color:var(--color-textPrimary);font-size:13px;"
+		>
+			<svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+				<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"></path>
+				<polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"></polyline>
+			</svg>
+			<span class="truncate" style="max-width:160px;">{ att.OriginalName }</span>
+		</a>
+	}
+}

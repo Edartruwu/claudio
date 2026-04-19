@@ -1,0 +1,220 @@
+package web
+
+// LoginPageData mirrors the map[string]any{"Error": "..."} passed by server.go.
+type LoginPageData struct {
+	Error string
+}
+
+templ Login(data LoginPageData) {
+	@Layout("") {
+		@LoginContent(data)
+	}
+}
+
+templ LoginContent(data LoginPageData) {
+	<style>
+	  .login-page {
+	    min-height: 100vh;
+	    display: flex;
+	    flex-direction: column;
+	    align-items: center;
+	    justify-content: center;
+	    background: var(--color-bg);
+	    padding: 40px;
+	    padding-top: calc(env(safe-area-inset-top) + 40px);
+	    padding-bottom: calc(env(safe-area-inset-bottom) + 40px);
+	  }
+	  .login-header {
+	    margin-bottom: 40px;
+	    display: flex;
+	    flex-direction: column;
+	    align-items: center;
+	    gap: 16px;
+	  }
+	  .login-icon {
+	    width: 72px;
+	    height: 72px;
+	    border-radius: 24px;
+	    background: #003D2E;
+	    border: 1.5px solid var(--color-brand);
+	    display: flex;
+	    align-items: center;
+	    justify-content: center;
+	    box-shadow: 0 0 20px rgba(0,196,140,0.25);
+	  }
+	  .login-title {
+	    font-size: 26px;
+	    font-weight: 700;
+	    color: var(--color-textPrimary);
+	    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	    margin: 0;
+	  }
+	  .login-subtitle {
+	    color: var(--color-textMuted);
+	    font-size: 13px;
+	    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	    margin-top: 4px;
+	  }
+	  .login-card {
+	    width: 100%;
+	    max-width: 360px;
+	    background: var(--color-surface);
+	    border-radius: 24px;
+	    padding: 24px;
+	    border: 1px solid var(--color-border);
+	  }
+	  .login-label {
+	    color: var(--color-textMuted);
+	    font-size: 11px;
+	    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	    font-weight: 600;
+	    letter-spacing: 0.8px;
+	    margin-bottom: 16px;
+	    display: block;
+	  }
+	  .login-input-wrap {
+	    position: relative;
+	    margin-bottom: 16px;
+	  }
+	  .login-input {
+	    width: 100%;
+	    box-sizing: border-box;
+	    background: var(--color-surfaceHigh);
+	    border: 1px solid var(--color-border);
+	    border-radius: 12px;
+	    padding: 12px 44px 12px 14px;
+	    color: var(--color-textPrimary);
+	    font-size: 15px;
+	    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	    outline: none;
+	  }
+	  .login-input::placeholder {
+	    color: var(--color-textMuted);
+	  }
+	  .login-input:focus {
+	    border-color: var(--color-border);
+	  }
+	  .eye-toggle {
+	    position: absolute;
+	    right: 12px;
+	    top: 50%;
+	    transform: translateY(-50%);
+	    background: none;
+	    border: none;
+	    cursor: pointer;
+	    padding: 0;
+	    display: flex;
+	    align-items: center;
+	    justify-content: center;
+	  }
+	  .login-btn {
+	    width: 100%;
+	    background: var(--color-brand);
+	    border: none;
+	    border-radius: 12px;
+	    padding: 13px;
+	    color: var(--color-bg);
+	    font-size: 15px;
+	    font-weight: 700;
+	    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	    cursor: pointer;
+	    letter-spacing: 0.3px;
+	  }
+	  .login-btn:hover { opacity: 0.9; }
+	  .login-btn:active { opacity: 0.8; }
+	  .login-error {
+	    background: rgba(224,80,80,0.12);
+	    border: 1px solid rgba(224,80,80,0.3);
+	    border-radius: 10px;
+	    padding: 10px 14px;
+	    font-size: 13px;
+	    color: var(--color-error);
+	    margin-bottom: 16px;
+	    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	  }
+	  .login-footer {
+	    color: var(--color-textMuted);
+	    font-size: 13px;
+	    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	    margin-top: 24px;
+	    text-align: center;
+	    line-height: 1.5;
+	  }
+	  .login-footer-path {
+	    color: var(--color-brand);
+	  }
+	</style>
+	<div class="login-page">
+		<!-- Header: icon + title -->
+		<div class="login-header">
+			<div class="login-icon">
+				<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#00C48C" stroke-width="1.8">
+					<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"></path>
+					<path d="M8 10h8M8 14h5" stroke-linecap="round"></path>
+				</svg>
+			</div>
+			<div style="text-align: center;">
+				<h1 class="login-title">ComandCenter</h1>
+				<p class="login-subtitle">AI agent control panel</p>
+			</div>
+		</div>
+		<!-- Form Card -->
+		<div class="login-card">
+			if data.Error != "" {
+				<div class="login-error">{ data.Error }</div>
+			}
+			<form
+				id="login-form"
+				hx-post="/login"
+				hx-target="body"
+				hx-swap="outerHTML"
+			>
+				<label class="login-label" for="password-input">ACCESS PASSWORD</label>
+				<div class="login-input-wrap">
+					<input
+						id="password-input"
+						type="password"
+						name="password"
+						placeholder="Enter password"
+						autofocus
+						autocomplete="current-password"
+						class="login-input"
+					/>
+					<button type="button" class="eye-toggle" onclick="toggleEye(this)" aria-label="Toggle password visibility">
+						<svg id="eye-icon-show" width="18" height="18" fill="none" stroke="#4E6268" stroke-width="2" viewBox="0 0 24 24">
+							<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+							<circle cx="12" cy="12" r="3"></circle>
+						</svg>
+						<svg id="eye-icon-hide" width="18" height="18" fill="none" stroke="#4E6268" stroke-width="2" viewBox="0 0 24 24" style="display:none;">
+							<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"></path>
+							<line x1="1" y1="1" x2="23" y2="23"></line>
+						</svg>
+					</button>
+				</div>
+				<button type="submit" class="login-btn">Connect</button>
+			</form>
+		</div>
+		<!-- Footer -->
+		<p class="login-footer">Set your password in<br/><span class="login-footer-path">~/.claudio/config.json</span></p>
+	</div>
+	<script>
+	  function toggleEye(btn) {
+	    var input = document.getElementById('password-input');
+	    var showIcon = document.getElementById('eye-icon-show');
+	    var hideIcon = document.getElementById('eye-icon-hide');
+	    if (input.type === 'password') {
+	      input.type = 'text';
+	      showIcon.style.display = 'none';
+	      hideIcon.style.display = 'block';
+	    } else {
+	      input.type = 'password';
+	      showIcon.style.display = 'block';
+	      hideIcon.style.display = 'none';
+	    }
+	  }
+	  document.getElementById('login-form').addEventListener('submit', function () {
+	    var pass = document.getElementById('password-input').value;
+	    if (pass) localStorage.setItem('cc_token', pass);
+	  });
+	</script>
+}
