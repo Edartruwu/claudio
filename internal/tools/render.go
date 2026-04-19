@@ -77,24 +77,40 @@ type ViewportSize struct {
 // ScreenManifest holds metadata for a single artboard screen in a design session.
 type ScreenManifest struct {
 	Name        string       `json:"name"`
+	Type        string       `json:"type,omitempty"`        // "screen"|"foundation"|"component"|"state" — default "screen"
 	Breakpoint  string       `json:"breakpoint"`            // "mobile" | "desktop" | "tablet" | "unknown"
 	Viewport    ViewportSize `json:"viewport"`
 	Description string       `json:"description,omitempty"`
 }
 
-// inferScreenManifest returns a ScreenManifest for name, inferring breakpoint
-// and viewport from name keywords.
+// inferScreenManifest returns a ScreenManifest for name, inferring type,
+// breakpoint and viewport from name keywords.
 func inferScreenManifest(name string) ScreenManifest {
 	lower := strings.ToLower(name)
+
+	// Infer screen type from name keywords.
+	var screenType string
+	switch {
+	case strings.Contains(lower, "foundation"):
+		screenType = "foundation"
+	case strings.Contains(lower, "component"):
+		screenType = "component"
+	case strings.Contains(lower, "state") || strings.Contains(lower, "states"):
+		screenType = "state"
+	default:
+		screenType = "screen"
+	}
+
+	// Infer breakpoint from name keywords.
 	switch {
 	case strings.Contains(lower, "mobile"):
-		return ScreenManifest{Name: name, Breakpoint: "mobile", Viewport: ViewportSize{390, 844}}
+		return ScreenManifest{Name: name, Type: screenType, Breakpoint: "mobile", Viewport: ViewportSize{390, 844}}
 	case strings.Contains(lower, "desktop"):
-		return ScreenManifest{Name: name, Breakpoint: "desktop", Viewport: ViewportSize{1440, 900}}
+		return ScreenManifest{Name: name, Type: screenType, Breakpoint: "desktop", Viewport: ViewportSize{1440, 900}}
 	case strings.Contains(lower, "tablet"):
-		return ScreenManifest{Name: name, Breakpoint: "tablet", Viewport: ViewportSize{768, 1024}}
+		return ScreenManifest{Name: name, Type: screenType, Breakpoint: "tablet", Viewport: ViewportSize{768, 1024}}
 	default:
-		return ScreenManifest{Name: name, Breakpoint: "unknown", Viewport: ViewportSize{390, 844}}
+		return ScreenManifest{Name: name, Type: screenType, Breakpoint: "unknown", Viewport: ViewportSize{390, 844}}
 	}
 }
 
