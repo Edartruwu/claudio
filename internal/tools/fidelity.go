@@ -88,10 +88,12 @@ type BreakpointResult struct {
 
 // ReviewDesignFidelityOutput is the structured result.
 type ReviewDesignFidelityOutput struct {
-	OverallScore int                        `json:"overall_score"`
-	Pass         bool                       `json:"pass"`
-	SessionName  string                     `json:"session_name"`
-	Screens      []ScreenFidelityResult     `json:"screens"`
+	OverallScore int                         `json:"overall_score"`
+	Pass         bool                        `json:"pass"`
+	SessionName  string                      `json:"session_name"`
+	Screens      []ScreenFidelityResult      `json:"screens"`
+	Skipped      []string                    `json:"skipped,omitempty"`      // reference screens excluded from verification
+	SkippedNote  string                      `json:"skipped_note,omitempty"` // explanation for skipped screens
 	ByBreakpoint map[string]BreakpointResult `json:"by_breakpoint,omitempty"`
 }
 
@@ -360,9 +362,16 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 	tmpURLScript.Close()
 
 	var results []ScreenFidelityResult
+	var skipped []string
 	totalScore := 0
 
 	for _, screen := range in.Screens {
+		// Skip reference screens — foundation/component are design guidance, not navigable pages.
+		if sm := manifestByName[screen.Name]; sm.Type == "foundation" || sm.Type == "component" {
+			skipped = append(skipped, screen.Name)
+			continue
+		}
+
 		res := ScreenFidelityResult{
 			Name:             screen.Name,
 			DesignScreenshot: filepath.Join(session.ScreenshotsDir, screen.Name+".png"),
@@ -610,6 +619,20 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		os.RemoveAll(tmpOutDir)
 	}
 
+	// All-skipped: nothing to verify — return graceful result.
+	if len(results) == 0 && len(skipped) > 0 {
+		out := ReviewDesignFidelityOutput{
+			OverallScore: 0,
+			Pass:         false,
+			SessionName:  session.Session,
+			Screens:      []ScreenFidelityResult{},
+			Skipped:      skipped,
+			SkippedNote:  "All screens are reference material (foundation/component). No navigable pages to verify. These screens are used as design guidance for implementation.",
+		}
+		outJSON, _ := json.MarshalIndent(out, "", "  ")
+		return &Result{Content: string(outJSON)}, nil
+	}
+
 	// 5. Aggregate.
 	overallScore := 0
 	if len(results) > 0 {
@@ -644,6 +667,10 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 		SessionName:  session.Session,
 		Screens:      results,
 		ByBreakpoint: byBreakpoint,
+	}
+	if len(skipped) > 0 {
+		out.Skipped = skipped
+		out.SkippedNote = "Reference screens (foundation/component) excluded from URL verification — these are design guidance for developer agents, not navigable pages."
 	}
 
 	outJSON, _ := json.MarshalIndent(out, "", "  ")
