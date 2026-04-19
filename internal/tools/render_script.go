@@ -103,12 +103,34 @@ async function main() {
     // Full-canvas is only taken as fallback when no artboards exist.
     if (capture && artboardsFound) {
         const artboards = await page.$$('[data-artboard]');
+        const renderedDir = path.join(outDir, 'rendered');
+        await fs.mkdir(renderedDir, { recursive: true });
         for (const el of artboards) {
             const name = await el.getAttribute('data-artboard');
             if (!name) continue;
             const p = path.join(outDir, name + '.png');
             await el.screenshot({ path: p });
             screenshots.push({ name, path: p });
+
+            // Extract plain rendered HTML (framework-agnostic)
+            const html = await el.evaluate(el => el.outerHTML);
+            const renderedPath = path.join(renderedDir, name + '.html');
+            await fs.writeFile(renderedPath, html, 'utf8');
+
+            // Extract interactive elements
+            const interactives = await el.$$eval(
+                'button, a[href], input, select, textarea, [role="button"]',
+                els => els.map(el => ({
+                    tag: el.tagName.toLowerCase(),
+                    text: el.textContent.trim().slice(0, 80),
+                    id: el.id || '',
+                    className: el.className || '',
+                    type: el.getAttribute('type') || '',
+                    href: el.getAttribute('href') || ''
+                }))
+            );
+            const interactionsPath = path.join(renderedDir, name + '.interactions.json');
+            await fs.writeFile(interactionsPath, JSON.stringify(interactives, null, 2), 'utf8');
         }
     } else {
         // Fallback: full-page screenshot clipped to max 4000px to avoid
