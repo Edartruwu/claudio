@@ -39,7 +39,7 @@
         <div class="relative w-full overflow-hidden flex items-center justify-center" style="aspect-ratio:16/9;background:#0D1117;">
           {{if .Screenshots}}
           <img
-            src="/designs/project/{{.Slug}}/{{.ID}}/screenshots/{{index .Screenshots 0}}"
+            src="/designs/static/{{.ID}}/screenshots/{{index .Screenshots 0}}"
             alt="Screenshot preview"
             loading="lazy"
             class="w-full h-full object-cover screenshot-thumb"
@@ -99,7 +99,7 @@
           <!-- Action links -->
           <div class="flex gap-2 mt-auto pt-1">
             {{if .HasBundle}}
-            <a href="/designs/project/{{.Slug}}/{{.ID}}/bundle/mockup.html"
+            <a href="/designs/static/{{.ID}}/bundle/mockup.html"
                target="_blank" rel="noopener"
                class="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
                style="background:#25D366;color:#000;">
@@ -110,7 +110,7 @@
             </a>
             {{end}}
             {{if .HasHandoff}}
-            <a href="/designs/project/{{.Slug}}/{{.ID}}/handoff/spec.md"
+            <a href="/designs/static/{{.ID}}/handoff/spec.md"
                download
                class="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
                style="background:#2C2C2E;color:#EBEBF5;">

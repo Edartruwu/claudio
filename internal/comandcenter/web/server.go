@@ -1782,8 +1782,7 @@ func (ws *WebServer) handleBrowseSession(w http.ResponseWriter, r *http.Request)
 
 // DesignSession holds metadata for one design output directory.
 type DesignSession struct {
-	ID          string   // timestamp directory name
-	Slug        string   // project slug (empty for legacy flat sessions)
+	ID          string   // directory name (timestamp used as identifier)
 	HasBundle   bool     // bundle/mockup.html exists
 	HasHandoff  bool     // handoff/spec.md exists
 	Screenshots []string // filenames inside screenshots/
@@ -1820,7 +1819,7 @@ func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request)
 			id := e.Name()
 			sessionDir := filepath.Join(designsDir, id)
 
-			ds := DesignSession{ID: id, Slug: proj.Name()}
+			ds := DesignSession{ID: proj.Name() + "/" + id}
 
 			if _, err := os.Stat(filepath.Join(sessionDir, "bundle", "mockup.html")); err == nil {
 				ds.HasBundle = true
