@@ -7,13 +7,14 @@ import (
 
 // Events: Claudio → ComandCenter
 const (
-	EventSessionHello = "session.hello"
-	EventMsgAssistant = "message.assistant"
-	EventMsgToolUse   = "message.tool_use"
-	EventTaskCreated  = "task.created"
-	EventTaskUpdated  = "task.updated"
-	EventAgentStatus  = "agent.status"
-	EventSessionBye   = "session.bye"
+	EventSessionHello    = "session.hello"
+	EventMsgAssistant    = "message.assistant"
+	EventMsgToolUse      = "message.tool_use"
+	EventTaskCreated     = "task.created"
+	EventTaskUpdated     = "task.updated"
+	EventAgentStatus     = "agent.status"
+	EventSessionBye      = "session.bye"
+	EventDesignScreenshot = "design.screenshot"
 )
 
 // Events: ComandCenter → Claudio
@@ -81,6 +82,15 @@ type AgentStatusPayload struct {
 	Name        string `json:"name"`
 	Status      string `json:"status"` // idle|working|done|waiting
 	CurrentTask string `json:"current_task,omitempty"`
+}
+
+// DesignScreenshotPayload for EventDesignScreenshot.
+// Sent by the CLI after RenderMockupTool saves a screenshot to disk.
+// The server copies the file into the uploads directory and pushes an image
+// bubble to all browser clients watching the session.
+type DesignScreenshotPayload struct {
+	FilePath string `json:"file_path"`
+	Filename string `json:"filename"`
 }
 
 // UserMsgPayload for EventMsgUser.

@@ -1196,8 +1196,88 @@ func (ws *WebServer) fanout() {
 				continue
 			}
 			ws.pushToSessionClients(ev.SessionID, typingPayload)
+
+		case attach.EventDesignScreenshot:
+			var p attach.DesignScreenshotPayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			ws.handleScreenshotPush(ev.SessionID, p)
 		}
 	}
+}
+
+// handleScreenshotPush copies a screenshot saved by the CLI into the uploads
+// directory and pushes an image bubble to all browser clients watching the session.
+func (ws *WebServer) handleScreenshotPush(sessionID string, p attach.DesignScreenshotPayload) {
+	// 1. Copy screenshot into uploads dir so it's served at /uploads/{sessionID}/{filename}.
+	destDir := filepath.Join(ws.uploadsDir, sessionID)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return
+	}
+	destPath := filepath.Join(destDir, p.Filename)
+	if err := copyFile(p.FilePath, destPath); err != nil {
+		return
+	}
+
+	fi, _ := os.Stat(destPath)
+	var size int64
+	if fi != nil {
+		size = fi.Size()
+	}
+
+	// 2. Insert assistant message row (content empty; image attachment carries the payload).
+	now := time.Now()
+	msg := cc.Message{
+		ID:        cc.NewID(),
+		SessionID: sessionID,
+		Role:      "assistant",
+		Content:   "",
+		CreatedAt: now,
+	}
+	if err := ws.storage.InsertMessage(msg); err != nil {
+		return
+	}
+
+	// 3. Record attachment.
+	att := cc.Attachment{
+		ID:           cc.NewID(),
+		SessionID:    sessionID,
+		MessageID:    msg.ID,
+		Filename:     p.Filename,
+		OriginalName: p.Filename,
+		MimeType:     "image/png",
+		Size:         size,
+		CreatedAt:    now,
+	}
+	if err := ws.storage.InsertAttachment(att); err != nil {
+		return
+	}
+
+	// 4. Render message-bubble template and push to browser clients.
+	var buf bytes.Buffer
+	view := MessageView{Message: msg, Attachments: []cc.Attachment{att}}
+	if err := bubbleTmpl.ExecuteTemplate(&buf, "message-bubble", view); err != nil {
+		return
+	}
+	wsPayload, _ := json.Marshal(map[string]string{"type": "message.assistant", "html": buf.String()})
+	ws.pushToSessionClients(sessionID, wsPayload)
+}
+
+// copyFile copies src to dst, creating dst if it does not exist.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }
 
 func (ws *WebServer) addClient(c *uiClient) {

@@ -189,6 +189,10 @@ type Model struct {
 	agentDetail *agentDetailOverlay
 	prevFocus   Focus // saved focus before opening agent detail
 
+	// screenshotPusher forwards design screenshots to ComandCenter chat.
+	// nil in TUI-only mode; non-nil when --attach is set.
+	screenshotPusher tools.ScreenshotPusher
+
 	// Welcome screen logo animation
 	logoFrame int // increments on each logoTickMsg to drive the color-wave animation
 
@@ -297,6 +301,13 @@ func WithTeamTemplatesDir(dir string) ModelOption {
 // (e.g. the advisor tool GetMessages callback) to access the live engine.
 func WithEngineRef(ref **query.Engine) ModelOption {
 	return func(m *Model) { m.engineRef = ref }
+}
+
+// WithScreenshotPusher sets a ScreenshotPusher on the model so that design
+// screenshots are automatically pushed to ComandCenter chat after rendering.
+// Pass nil (or omit) to disable pushing (TUI-only mode).
+func WithScreenshotPusher(p tools.ScreenshotPusher) ModelOption {
+	return func(m *Model) { m.screenshotPusher = p }
 }
 
 // New creates a new TUI model.
@@ -1764,7 +1775,11 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 	for _, name := range msg.DisallowedTools {
 		filtered.Remove(name)
 	}
-	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient)
+	var capSessID string
+	if m.session != nil {
+		capSessID = m.session.Current().ID
+	}
+	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID)
 	var agentCfg *config.Settings
 	if m.appCtx != nil {
 		agentCfg = m.appCtx.Config
@@ -1920,7 +1935,11 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	for _, name := range msg.DisallowedTools {
 		filtered.Remove(name)
 	}
-	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient)
+	var capSessID2 string
+	if m.session != nil {
+		capSessID2 = m.session.Current().ID
+	}
+	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID2)
 	var startupCfg *config.Settings
 	if m.appCtx != nil {
 		startupCfg = m.appCtx.Config
@@ -1948,11 +1967,15 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 // registerCapabilityTools adds capability-gated tools to the registry based on
 // the active agent's declared capabilities. Called on both startup and agent switch.
 // Each capability maps to a set of tools; agents without that capability never see them.
-func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client) {
+func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client, pusher tools.ScreenshotPusher, sessionID string) {
 	if slices.Contains(capabilities, "design") {
 		paths := config.GetPaths()
 		registry.Register(tools.NewBundleMockupTool(paths.Designs))
-		registry.Register(tools.NewRenderMockupTool(paths.Designs))
+		renderTool := tools.NewRenderMockupTool(paths.Designs)
+		if pusher != nil {
+			renderTool = renderTool.WithPusher(pusher, sessionID)
+		}
+		registry.Register(renderTool)
 		registry.Register(tools.NewVerifyMockupTool(paths.Designs, client, ""))
 		registry.Register(tools.NewExportHandoffTool(paths.Designs))
 	}
