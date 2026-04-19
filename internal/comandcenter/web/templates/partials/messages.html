@@ -11,10 +11,8 @@
 {{define "messages"}}
 <div id="messages-inner">
 {{if .Messages}}
-<div class="date-separator flex items-center gap-3 my-4 px-2">
-  <div class="flex-1" style="height:1px;background:var(--color-border);"></div>
-  <span class="text-xs px-2" style="color:var(--color-textMuted);font-size:0.7rem;letter-spacing:0.05em;">TODAY</span>
-  <div class="flex-1" style="height:1px;background:var(--color-border);"></div>
+<div style="display:flex;justify-content:center;margin:8px 0;">
+  <span style="background:var(--color-surfaceHigh);color:var(--color-textMuted);font-size:11px;padding:3px 12px;border-radius:9999px;letter-spacing:0.5px;border:1px solid var(--color-border);">Today</span>
 </div>
 {{end}}
 {{range .Messages}}
