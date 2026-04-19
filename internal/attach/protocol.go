@@ -92,10 +92,11 @@ type TaskUpdatedPayload struct {
 
 // AgentStatusPayload for EventAgentStatus.
 type AgentStatusPayload struct {
-	Name        string `json:"name"`
-	Status      string `json:"status"` // idle|working|done|waiting
-	CurrentTask string `json:"current_task,omitempty"`
-	Result      string `json:"result,omitempty"` // final output text when status is done/failed
+	Name          string `json:"name"`
+	Status        string `json:"status"` // idle|working|done|waiting
+	CurrentTask   string `json:"current_task,omitempty"`
+	Result        string `json:"result,omitempty"`        // final output text when status is done/failed
+	ParentAgentID string `json:"parent_agent_id,omitempty"` // non-empty when spawned by another teammate
 }
 
 // DesignBundlePayload for EventDesignBundleReady.

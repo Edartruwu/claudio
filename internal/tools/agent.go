@@ -379,22 +379,23 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		teamName := t.TeamRunner.ActiveTeamName()
 		shortName := slugifyName(desc)
 		state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
-			TeamName:   teamName,
-			AgentName:  shortName,
-			Prompt:     in.Prompt,
-			System:     agentDef.SystemPrompt,
-			Model:      modelOverride,
-			MaxTurns:   maxTurns,
-			MemoryDir:  agentDef.MemoryDir,
-			Foreground: !in.RunInBackground,
-			TaskIDs:    in.TaskIDs,
+			TeamName:      teamName,
+			AgentName:     shortName,
+			Prompt:        in.Prompt,
+			System:        agentDef.SystemPrompt,
+			Model:         modelOverride,
+			MaxTurns:      maxTurns,
+			MemoryDir:     agentDef.MemoryDir,
+			Foreground:    !in.RunInBackground,
+			TaskIDs:       in.TaskIDs,
+			ParentAgentID: teams.TeammateAgentIDFromContext(ctx),
 		})
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Failed to spawn teammate: %v", err), IsError: true}, nil
 		}
 
 		if in.RunInBackground {
-			msg := fmt.Sprintf("Teammate spawned in team %q: %s\nAgent ID: %s\nOpen the Agents panel (space a) to monitor progress.", teamName, desc, state.Identity.AgentID)
+			msg := fmt.Sprintf("Teammate spawned in team %q: %s\nAgent ID: %s", teamName, desc, state.Identity.AgentID)
 			if state.WorktreePath != "" {
 				msg += fmt.Sprintf("\nRunning in isolated worktree: %s", state.WorktreePath)
 			}

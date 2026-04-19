@@ -29,6 +29,11 @@ func SubscribeTeammateNotifications(b *bus.Bus, sessionID string, injectCh chan<
 		if p.Status != "done" {
 			return
 		}
+		// Grandchildren (spawned by a teammate, not directly by the main session)
+		// report back via their parent's tool result — do not inject into the main engine.
+		if p.ParentAgentID != "" {
+			return
+		}
 
 		msg := fmt.Sprintf(
 			"[Teammate %s completed]\n\nResult:\n%s",

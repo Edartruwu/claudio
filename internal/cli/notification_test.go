@@ -23,6 +23,21 @@ func publishAgentStatus(b *bus.Bus, sessionID, name, status, result string) {
 	})
 }
 
+// publishAgentStatusWithParent publishes an EventAgentStatus with a non-empty ParentAgentID.
+func publishAgentStatusWithParent(b *bus.Bus, sessionID, name, status, result, parentID string) {
+	payload, _ := json.Marshal(attach.AgentStatusPayload{
+		Name:          name,
+		Status:        status,
+		Result:        result,
+		ParentAgentID: parentID,
+	})
+	b.Publish(bus.Event{
+		Type:      attach.EventAgentStatus,
+		Payload:   payload,
+		SessionID: sessionID,
+	})
+}
+
 // TestTeammateNotification_InjectsWithoutUserMessage is the critical regression test.
 //
 // The historical bug: teammate completion only fired on the next user message because
@@ -89,5 +104,26 @@ func TestTeammateNotification_IgnoresWorkingStatus(t *testing.T) {
 		t.Errorf("unexpected injection for working status: %q", msg.Content)
 	case <-time.After(50 * time.Millisecond):
 		// Correct: working status must not wake the engine.
+	}
+}
+
+// TestTeammateNotification_IgnoresGrandchildren verifies that completion events from
+// teammates spawned BY other teammates (grandchildren) are not injected into the main
+// engine. Only direct children of the main session should wake it.
+func TestTeammateNotification_IgnoresGrandchildren(t *testing.T) {
+	b := bus.New()
+	injectCh := make(chan attach.UserMsgPayload, 1)
+
+	unsub := SubscribeTeammateNotifications(b, "s1", injectCh)
+	defer unsub()
+
+	// Grandchild: has a non-empty ParentAgentID pointing to its parent teammate.
+	publishAgentStatusWithParent(b, "s1", "orion", "done", "exploration complete", "agent-alex-id")
+
+	select {
+	case msg := <-injectCh:
+		t.Errorf("grandchild completion must not inject into main engine: %q", msg.Content)
+	case <-time.After(50 * time.Millisecond):
+		// Correct: grandchild result stays within parent teammate's tool context.
 	}
 }

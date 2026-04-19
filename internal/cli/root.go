@@ -502,6 +502,9 @@ func runHeadlessAttach(args []string) error {
 		if p.Status != "done" && p.Status != "failed" {
 			return // only act on terminal states
 		}
+		if p.ParentAgentID != "" {
+			return // grandchild — reports to its parent teammate, not main engine
+		}
 		msg := fmt.Sprintf("[System: teammate '%s' %s.\nResult: %s\nContinue — check TaskList for next steps.]", p.Name, p.Status, p.Result)
 		select {
 		case notifQueue <- msg:

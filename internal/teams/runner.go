@@ -776,9 +776,10 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			protocolStatus = "done"
 		}
 		payload, _ := json.Marshal(attach.AgentStatusPayload{
-			Name:   state.Identity.AgentName,
-			Status: protocolStatus,
-			Result: state.Result,
+			Name:          state.Identity.AgentName,
+			Status:        protocolStatus,
+			Result:        state.Result,
+			ParentAgentID: state.ParentAgentID,
 		})
 		r.eventBus.Publish(bus.Event{
 			Type:      attach.EventAgentStatus,
