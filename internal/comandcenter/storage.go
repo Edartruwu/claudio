@@ -151,6 +151,10 @@ func (s *Storage) migrate() error {
 		`ALTER TABLE cc_sessions ADD COLUMN agent_type TEXT`,
 		// 15 — team template name per session.
 		`ALTER TABLE cc_sessions ADD COLUMN team_template TEXT`,
+		// 16 — tool_use_id links tool_use message to its result.
+		`ALTER TABLE cc_messages ADD COLUMN tool_use_id TEXT`,
+		// 17 — output stores tool result content.
+		`ALTER TABLE cc_messages ADD COLUMN output TEXT`,
 	}
 
 	for i, m := range migrations {
@@ -405,12 +409,24 @@ func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 // InsertMessage stores a message for a session.
 func (s *Storage) InsertMessage(msg Message) error {
 	_, err := s.db.Exec(`
-		INSERT INTO cc_messages (id, session_id, role, content, agent_name, created_at, reply_to_session, quoted_content)
-		VALUES (?, ?, ?, ?, ?, ?, NULLIF(?,?), NULLIF(?,?))
+		INSERT INTO cc_messages (id, session_id, role, content, agent_name, created_at,
+		                         reply_to_session, quoted_content, tool_use_id)
+		VALUES (?, ?, ?, ?, ?, ?, NULLIF(?,?), NULLIF(?,?), NULLIF(?,?))
 	`, msg.ID, msg.SessionID, msg.Role, msg.Content, msg.AgentName, msg.CreatedAt,
-		msg.ReplyToSession, "", msg.QuotedContent, "")
+		msg.ReplyToSession, "", msg.QuotedContent, "", msg.ToolUseID, "")
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
+	}
+	return nil
+}
+
+// UpdateMessageOutput sets the output field on a tool_use message by ToolUseID.
+func (s *Storage) UpdateMessageOutput(sessionID, toolUseID, output string) error {
+	_, err := s.db.Exec(`
+		UPDATE cc_messages SET output=? WHERE session_id=? AND tool_use_id=?
+	`, output, sessionID, toolUseID)
+	if err != nil {
+		return fmt.Errorf("update message output: %w", err)
 	}
 	return nil
 }
@@ -422,7 +438,8 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	}
 	rows, err := s.db.Query(`
 		SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
-		       COALESCE(reply_to_session,''), COALESCE(quoted_content,'')
+		       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
+		       COALESCE(tool_use_id,''), COALESCE(output,'')
 		FROM cc_messages WHERE session_id=?
 		ORDER BY created_at DESC LIMIT ?
 	`, sessionID, limit)
@@ -435,7 +452,8 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content,
-			&m.AgentName, &m.CreatedAt, &m.ReplyToSession, &m.QuotedContent); err != nil {
+			&m.AgentName, &m.CreatedAt, &m.ReplyToSession, &m.QuotedContent,
+			&m.ToolUseID, &m.Output); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
 		msgs = append(msgs, m)

@@ -1273,6 +1273,22 @@ func (ws *WebServer) fanout() {
 			}
 			ws.pushToSessionClients(ev.SessionID, typingPayload)
 
+		case attach.EventMsgToolResult:
+			var p attach.ToolResultPayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			// Push updated bubble HTML with output filled in.
+			resultPayload, err := json.Marshal(map[string]string{
+				"type":       "message.tool_result",
+				"toolUseID":  p.ToolUseID,
+				"output":     p.Output,
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, resultPayload)
+
 		case attach.EventMsgStreamDelta:
 			var p attach.StreamDeltaPayload
 			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
@@ -1996,7 +2012,7 @@ func envelopeToMessage(ev cc.UIEvent) *cc.Message {
 			return nil
 		}
 		content := p.Tool
-		if len(p.Input) > 0 {
+		if len(p.Input) > 0 && string(p.Input) != "null" {
 			content = p.Tool + ": " + string(p.Input)
 		}
 		return &cc.Message{
@@ -2004,6 +2020,7 @@ func envelopeToMessage(ev cc.UIEvent) *cc.Message {
 			Role:      "tool_use",
 			Content:   content,
 			AgentName: p.AgentName,
+			ToolUseID: p.ID,
 			CreatedAt: now,
 		}
 	}

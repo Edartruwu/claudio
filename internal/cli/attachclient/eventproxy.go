@@ -66,6 +66,7 @@ func (e *EventProxy) OnToolUseStart(toolUse tools.ToolUse) {
 
 	if e.client != nil {
 		payload := attach.ToolUsePayload{
+			ID:    toolUse.ID,
 			Tool:  toolUse.Name,
 			Input: toolUse.Input,
 		}
@@ -77,8 +78,16 @@ func (e *EventProxy) OnToolUseStart(toolUse tools.ToolUse) {
 	}
 }
 
-// OnToolUseEnd delegates to inner only.
+// OnToolUseEnd forwards tool result to client, delegates to inner.
 func (e *EventProxy) OnToolUseEnd(toolUse tools.ToolUse, result *tools.Result) {
+	if e.client != nil && result != nil {
+		payload := attach.ToolResultPayload{
+			ToolUseID: toolUse.ID,
+			Output:    result.Content,
+		}
+		_ = e.client.SendEvent(attach.EventMsgToolResult, payload)
+	}
+
 	if e.inner != nil {
 		e.inner.OnToolUseEnd(toolUse, result)
 	}

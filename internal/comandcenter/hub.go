@@ -380,9 +380,9 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 		if err := env.UnmarshalPayload(&p); err != nil {
 			return
 		}
-		content := string(p.Input)
-		if content == "" {
-			content = p.Tool
+		content := p.Tool
+		if len(p.Input) > 0 && string(p.Input) != "null" {
+			content = p.Tool + ": " + string(p.Input)
 		}
 		_ = h.storage.InsertMessage(Message{
 			ID:        newID(),
@@ -390,8 +390,16 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			Role:      "tool_use",
 			Content:   content,
 			AgentName: p.AgentName,
+			ToolUseID: p.ID,
 			CreatedAt: now,
 		})
+
+	case attach.EventMsgToolResult:
+		var p attach.ToolResultPayload
+		if err := env.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		_ = h.storage.UpdateMessageOutput(sessionID, p.ToolUseID, p.Output)
 
 	case attach.EventTaskCreated:
 		var p attach.TaskCreatedPayload

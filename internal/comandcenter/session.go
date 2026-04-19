@@ -30,6 +30,8 @@ type Message struct {
 	CreatedAt       time.Time
 	ReplyToSession  string // name of target session for @mention routing (empty if none)
 	QuotedContent   string // first 80 chars of content stored as reply-quote metadata
+	ToolUseID       string // unique tool-call ID from the attach protocol (tool_use only)
+	Output          string // tool result content (populated when result arrives)
 }
 
 // Task is a tracked task associated with a session.

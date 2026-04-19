@@ -17,6 +17,7 @@ const (
 	EventDesignScreenshot = "design.screenshot"
 	EventDesignBundleReady  = "design.bundle_ready"
 	EventMsgStreamDelta     = "message.stream_delta"
+	EventMsgToolResult      = "message.tool_result"
 )
 
 // Events: ComandCenter → Claudio
@@ -61,9 +62,17 @@ type AssistantMsgPayload struct {
 
 // ToolUsePayload for EventMsgToolUse.
 type ToolUsePayload struct {
+	ID        string          `json:"id"`   // unique tool-call ID
 	Tool      string          `json:"tool"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	AgentName string          `json:"agent_name,omitempty"`
+}
+
+// ToolResultPayload for EventMsgToolResult.
+type ToolResultPayload struct {
+	ToolUseID string `json:"tool_use_id"` // matches ToolUsePayload.ID
+	Output    string `json:"output"`
+	AgentName string `json:"agent_name,omitempty"`
 }
 
 // TaskCreatedPayload for EventTaskCreated.

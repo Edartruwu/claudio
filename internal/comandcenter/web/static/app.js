@@ -193,6 +193,24 @@
           if (sb) sb.remove();
           if (data.html) appendMessage(data.html);
 
+        } else if (type === 'message.tool_result') {
+          // Find the tool_use bubble by toolUseID and inject the output section.
+          var bubble = document.querySelector('[data-tool-use-id="' + data.toolUseID + '"]');
+          if (bubble) {
+            var outputSection = bubble.querySelector('.tool-output-section');
+            if (!outputSection) {
+              var container = bubble.querySelector('.tool-sections');
+              if (container && data.output) {
+                var section = document.createElement('div');
+                section.className = 'tool-output-section';
+                section.innerHTML = '<p class="text-xs font-semibold mb-1" style="color:var(--color-textMuted);">Output</p>' +
+                  '<pre class="text-xs overflow-auto whitespace-pre-wrap rounded p-2" style="color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">' +
+                  data.output.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+                container.appendChild(section);
+              }
+            }
+          }
+
         } else if (type === 'messages.cleared') {
           var msgsEl = document.getElementById('messages');
           if (msgsEl) msgsEl.innerHTML = '';
