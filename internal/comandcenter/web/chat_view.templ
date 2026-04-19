@@ -145,12 +145,9 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 					<div id="fb-status" class="hidden text-center py-6" style="color:#8E8E93;font-size:14px;"></div>
 				</div>
 			</div>
-			<!-- File preview -->
-			<div id="file-preview" class="hidden px-3 py-2 flex items-center gap-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
-				<img id="file-preview-img" class="hidden rounded-lg object-cover flex-shrink-0" style="width:48px;height:48px;border:1px solid #3A3A3C;cursor:pointer;" alt="preview" onclick="ccAnnotateStaged()"/>
-				<span id="file-preview-name" class="hidden text-sm text-white truncate flex-1" style="max-width:200px;"></span>
-				<button type="button" id="annotate-staged-btn" onclick="ccAnnotateStaged()" class="hidden" style="color:#0A84FF;background:transparent;border:1px solid #0A84FF;border-radius:6px;cursor:pointer;font-size:12px;padding:4px 10px;min-height:28px;display:flex;align-items:center;gap:4px;" aria-label="Annotate image">✏️ Annotate</button>
-				<button type="button" onclick="ccClearStagedFile()" style="color:#8E8E93;background:transparent;border:none;cursor:pointer;font-size:18px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;margin-left:auto;" aria-label="Remove staged file">✕</button>
+			<!-- Staged files preview strip (multi-file) -->
+			<div id="staged-files-preview" class="hidden px-3 py-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
+				<div id="staged-thumbs" class="flex gap-2 overflow-x-auto pb-1"></div>
 			</div>
 			<!-- Compact loading indicator -->
 			<div id="compact-loading" style="display:none;padding:10px 16px;background:#1C1C1E;border-top:1px solid #2C2C2E;text-align:center;font-size:13px;color:#8E8E93;">
@@ -158,7 +155,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 			</div>
 			<!-- Input bar -->
 			<form class="input-bar flex items-center flex-shrink-0" style="background:var(--color-surface);border-top:1px solid var(--color-border);padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom));gap:8px;" onsubmit="return false;">
-				<input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip"/>
+				<input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip" multiple/>
 				<!-- Mobile: + button -->
 				<button
 					id="plus-btn"
@@ -286,14 +283,7 @@ templ chatViewScript(sessionID string) {
 						if (!blob) continue;
 						var ext = items[i].type.split('/')[1] || 'png';
 						var file = new File([blob], 'paste.' + ext, { type: items[i].type });
-						var dt = new DataTransfer();
-						dt.items.add(file);
-						var fileInput = document.getElementById('file-input');
-						if (fileInput) {
-							fileInput.files = dt.files;
-							fileInput.dispatchEvent(new Event('change'));
-						}
-						break;
+						if (window.addStagedFile) window.addStagedFile(file);
 					}
 				}
 			});
@@ -306,12 +296,9 @@ templ chatViewScript(sessionID string) {
 			var progress    = document.getElementById('upload-progress');
 			var progressBar = document.getElementById('upload-progress-bar');
 			var pctLabel    = document.getElementById('upload-pct');
-			var previewDiv  = document.getElementById('file-preview');
-			var previewImg  = document.getElementById('file-preview-img');
-			var previewName = document.getElementById('file-preview-name');
 
 			if (!fileInput) return;
-			var stagedFile = null;
+			var stagedFiles = [];
 
 			document.addEventListener('click', function(e) {
 				var popover = document.getElementById('plus-popover');
@@ -321,63 +308,84 @@ templ chatViewScript(sessionID string) {
 				}
 			});
 
-			fileInput.addEventListener('change', function(e) {
-				var file = e.target.files[0];
-				if (!file) return;
-				stagedFile = file;
-				previewDiv.classList.remove('hidden');
-				previewImg.classList.add('hidden');
-				previewImg.src = '';
-				previewName.classList.add('hidden');
-				previewName.textContent = '';
+			function reindexCards() {
+				var thumbs = document.getElementById('staged-thumbs');
+				if (!thumbs) return;
+				var cards = thumbs.querySelectorAll('[data-idx]');
+				cards.forEach(function(card, i) {
+					card.dataset.idx = i;
+					var btn = card.querySelector('button[data-remove]');
+					if (btn) btn.dataset.remove = i;
+				});
+			}
+
+			window.addStagedFile = function(file) {
+				stagedFiles.push(file);
+				var idx = stagedFiles.length - 1;
+				var thumbs = document.getElementById('staged-thumbs');
+				var preview = document.getElementById('staged-files-preview');
+				if (!thumbs || !preview) return;
+
+				var card = document.createElement('div');
+				card.dataset.idx = idx;
+				card.style.cssText = 'position:relative;width:60px;height:60px;flex-shrink:0;border-radius:8px;overflow:visible;border:1px solid #3A3A3C;background:#2C2C2E;display:flex;align-items:center;justify-content:center;';
+
+				var removeBtn = document.createElement('button');
+				removeBtn.type = 'button';
+				removeBtn.dataset.remove = idx;
+				removeBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#FF3B30;border:none;cursor:pointer;color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;z-index:1;padding:0;';
+				removeBtn.textContent = '×';
+				removeBtn.setAttribute('aria-label', 'Remove file');
+				removeBtn.addEventListener('click', function() {
+					var i = parseInt(card.dataset.idx, 10);
+					window.removeStagedFile(i);
+				});
+
 				if (file.type.startsWith('image/')) {
+					var img = document.createElement('img');
+					img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:7px;display:block;';
+					img.alt = file.name;
 					var reader = new FileReader();
-					reader.onload = function(ev) {
-						previewImg.src = ev.target.result;
-						previewImg.classList.remove('hidden');
-						var annotateBtn = document.getElementById('annotate-staged-btn');
-						if (annotateBtn) annotateBtn.classList.remove('hidden');
-					};
+					reader.onload = function(ev) { img.src = ev.target.result; };
 					reader.readAsDataURL(file);
+					card.appendChild(img);
 				} else {
-					previewName.textContent = file.name;
-					previewName.classList.remove('hidden');
+					var label = document.createElement('span');
+					label.style.cssText = 'font-size:10px;color:#8E8E93;text-align:center;word-break:break-all;padding:4px;line-height:1.2;';
+					label.textContent = file.name.length > 12 ? file.name.slice(0, 10) + '…' : file.name;
+					card.appendChild(label);
 				}
+				card.appendChild(removeBtn);
+				thumbs.appendChild(card);
+				preview.classList.remove('hidden');
+			};
+
+			window.removeStagedFile = function(idx) {
+				stagedFiles.splice(idx, 1);
+				var thumbs = document.getElementById('staged-thumbs');
+				var preview = document.getElementById('staged-files-preview');
+				if (!thumbs) return;
+				var card = thumbs.querySelector('[data-idx="' + idx + '"]');
+				if (card) thumbs.removeChild(card);
+				reindexCards();
+				if (stagedFiles.length === 0 && preview) preview.classList.add('hidden');
+			};
+
+			fileInput.addEventListener('change', function(e) {
+				var files = e.target.files;
+				for (var i = 0; i < files.length; i++) {
+					window.addStagedFile(files[i]);
+				}
+				fileInput.value = '';
 			});
 
 			window.ccClearStagedFile = function() {
-				stagedFile = null;
+				stagedFiles = [];
 				fileInput.value = '';
-				previewDiv.classList.add('hidden');
-				previewImg.classList.add('hidden');
-				previewImg.src = '';
-				previewName.classList.add('hidden');
-				previewName.textContent = '';
-				var annotateBtn = document.getElementById('annotate-staged-btn');
-				if (annotateBtn) annotateBtn.classList.add('hidden');
-			};
-
-			window.ccAnnotateStaged = function() {
-				if (!stagedFile || !stagedFile.type.startsWith('image/')) return;
-				var url = URL.createObjectURL(stagedFile);
-				var img = new Image();
-				img.onload = function() {
-					if (window.openAnnotator) {
-						var synth = document.createElement('img');
-						synth.src = url;
-						synth.dataset.sessionId = sessionId;
-						window._annotatorCallback = function(blob) {
-							var ext = stagedFile.name.split('.').pop() || 'png';
-							stagedFile = new File([blob], 'annotated.' + ext, { type: 'image/png' });
-							var reader = new FileReader();
-							reader.onload = function(ev) { previewImg.src = ev.target.result; };
-							reader.readAsDataURL(stagedFile);
-							URL.revokeObjectURL(url);
-						};
-						window.openAnnotator(synth, true);
-					}
-				};
-				img.src = url;
+				var thumbs = document.getElementById('staged-thumbs');
+				var preview = document.getElementById('staged-files-preview');
+				if (thumbs) thumbs.innerHTML = '';
+				if (preview) preview.classList.add('hidden');
 			};
 
 			var _sending = false;
@@ -385,9 +393,11 @@ templ chatViewScript(sessionID string) {
 				if (_sending) return;
 				var msgInput = document.getElementById('msg-input');
 				var text = msgInput ? msgInput.value.trim() : '';
-				if (stagedFile) {
+				if (stagedFiles.length > 0) {
 					var fd = new FormData();
-					fd.append('file', stagedFile);
+					for (var i = 0; i < stagedFiles.length; i++) {
+						fd.append('file', stagedFiles[i]);
+					}
 					if (text) fd.append('content', text);
 					progress.classList.remove('hidden');
 					progressBar.style.width = '0%';

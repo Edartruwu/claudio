@@ -1582,7 +1582,7 @@ func reverseMessages(msgs []cc.Message) []cc.Message {
 }
 
 // POST /api/sessions/{session_id}/upload
-// Multipart form: "file" (required), "content" (optional caption).
+// Multipart form: "file" (one or more, required), "content" (optional caption).
 func (ws *WebServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("session_id")
 
@@ -1598,63 +1598,16 @@ func (ws *WebServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
+	fileHeaders := r.MultipartForm.File["file"]
+	if len(fileHeaders) == 0 {
 		http.Error(w, "file field missing", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// Detect MIME from first 512 bytes then reset reader.
-	sniff := make([]byte, 512)
-	n, _ := file.Read(sniff)
-	mimeType := http.DetectContentType(sniff[:n])
-	// Also honour the content-type from the part header if available.
-	if ct := header.Header.Get("Content-Type"); ct != "" && ct != "application/octet-stream" {
-		mimeType = ct
-	}
-
-	// Strip MIME parameters (e.g. "image/jpeg; name=...").
-	if idx := strings.Index(mimeType, ";"); idx != -1 {
-		mimeType = strings.TrimSpace(mimeType[:idx])
-	}
-
-	// Seek back to start by seeking on the underlying file.
-	if seeker, ok := file.(io.Seeker); ok {
-		seeker.Seek(0, io.SeekStart)
-	}
-
-	ext := filepath.Ext(header.Filename)
-	storedName := cc.NewID() + ext
-
-	// Ensure per-session upload directory exists.
-	dir := filepath.Join(ws.uploadsDir, sessionID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		http.Error(w, "storage error", http.StatusInternalServerError)
-		return
-	}
-
-	// Write file to disk.
-	dst, err := os.Create(filepath.Join(dir, storedName))
-	if err != nil {
-		http.Error(w, "storage error", http.StatusInternalServerError)
-		return
-	}
-	size, err := io.Copy(dst, file)
-	dst.Close()
-	if err != nil {
-		http.Error(w, "write error", http.StatusInternalServerError)
 		return
 	}
 
 	caption := strings.TrimSpace(r.FormValue("content"))
-	if caption == "" {
-		caption = header.Filename
-	}
-
 	now := time.Now()
 
-	// Create a user message for this upload.
+	// One message for all files.
 	msg := cc.Message{
 		ID:        cc.NewID(),
 		SessionID: sessionID,
@@ -1667,48 +1620,90 @@ func (ws *WebServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Record attachment linked to the message.
-	att := cc.Attachment{
-		ID:           cc.NewID(),
-		SessionID:    sessionID,
-		MessageID:    msg.ID,
-		Filename:     storedName,
-		OriginalName: header.Filename,
-		MimeType:     mimeType,
-		Size:         size,
-		CreatedAt:    now,
-	}
-	if err := ws.storage.InsertAttachment(att); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+	// Ensure per-session upload directory exists.
+	dir := filepath.Join(ws.uploadsDir, sessionID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
 		return
 	}
 
-	// Push bubble to WS clients.
+	var atts []cc.Attachment
+	var attachPayloads []attach.Attachment
+
+	for _, fh := range fileHeaders {
+		f, err := fh.Open()
+		if err != nil {
+			continue
+		}
+
+		// Detect MIME from first 512 bytes then reset reader.
+		sniff := make([]byte, 512)
+		n, _ := f.Read(sniff)
+		mimeType := http.DetectContentType(sniff[:n])
+		if ct := fh.Header.Get("Content-Type"); ct != "" && ct != "application/octet-stream" {
+			mimeType = ct
+		}
+		if idx := strings.Index(mimeType, ";"); idx != -1 {
+			mimeType = strings.TrimSpace(mimeType[:idx])
+		}
+		if seeker, ok := f.(io.Seeker); ok {
+			seeker.Seek(0, io.SeekStart)
+		}
+
+		storedName := cc.NewID() + filepath.Ext(fh.Filename)
+		dst, err := os.Create(filepath.Join(dir, storedName))
+		if err != nil {
+			f.Close()
+			continue
+		}
+		size, _ := io.Copy(dst, f)
+		dst.Close()
+		f.Close()
+
+		att := cc.Attachment{
+			ID:           cc.NewID(),
+			SessionID:    sessionID,
+			MessageID:    msg.ID,
+			Filename:     storedName,
+			OriginalName: fh.Filename,
+			MimeType:     mimeType,
+			Size:         size,
+			CreatedAt:    now,
+		}
+		if err := ws.storage.InsertAttachment(att); err != nil {
+			continue
+		}
+		atts = append(atts, att)
+		attachPayloads = append(attachPayloads, attach.Attachment{
+			FilePath: filepath.Join(ws.uploadsDir, sessionID, storedName),
+			MimeType: mimeType,
+		})
+	}
+
+	if len(atts) == 0 {
+		http.Error(w, "no files saved", http.StatusInternalServerError)
+		return
+	}
+
+	// Push single bubble with all attachments.
 	var buf bytes.Buffer
-	view := MessageView{Message: msg, Attachments: []cc.Attachment{att}}
+	view := MessageView{Message: msg, Attachments: atts}
 	if err := MessageBubble(view).Render(r.Context(), &buf); err == nil {
 		payload, _ := json.Marshal(map[string]string{"type": "message.user", "html": buf.String()})
 		ws.pushToSessionClients(sessionID, payload)
 	}
 
-	// Forward to headless Claudio session.
-	diskPath := filepath.Join(ws.uploadsDir, sessionID, storedName)
+	// Forward one UserMsgPayload with all attachments.
 	fwdEnv, fwdErr := attach.NewEnvelope(attach.EventMsgUser, attach.UserMsgPayload{
 		Content:     caption,
-		Attachments: []attach.Attachment{{FilePath: diskPath, MimeType: mimeType}},
+		Attachments: attachPayloads,
 	})
 	if fwdErr == nil {
-		_ = ws.hub.Send(sessionID, fwdEnv) // ignore error — session may not be connected
+		_ = ws.hub.Send(sessionID, fwdEnv)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"url":          "/uploads/" + sessionID + "/" + storedName,
-		"filename":     storedName,
-		"originalName": header.Filename,
-		"mimeType":     mimeType,
-		"size":         size,
-	})
+	json.NewEncoder(w).Encode(map[string]any{"count": len(atts)})
 }
 
 // GET /uploads/{session_id}/{filename}
