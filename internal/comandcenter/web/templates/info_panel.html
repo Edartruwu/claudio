@@ -307,7 +307,9 @@
         opt.textContent = a.type;
         agentSel.appendChild(opt);
       });
-      agentSel.value = currentAgent;
+      if (currentAgent) agentSel.value = currentAgent;
+      // If value didn't match any option, fall back to placeholder.
+      if (agentSel.value !== currentAgent) agentSel.value = '';
     }).catch(function(){});
 
     fetch('/api/teams', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(teams) {
@@ -317,7 +319,8 @@
         opt.textContent = t.name;
         teamSel.appendChild(opt);
       });
-      teamSel.value = currentTeam;
+      if (currentTeam) teamSel.value = currentTeam;
+      if (teamSel.value !== currentTeam) teamSel.value = '';
     }).catch(function(){});
   }
 
