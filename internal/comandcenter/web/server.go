@@ -1052,7 +1052,7 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 					if !ok {
 						return
 					}
-					if _, err := conn.Write(msg); err != nil {
+					if err := websocket.Message.Send(conn, string(msg)); err != nil {
 						return
 					}
 				case <-done:
