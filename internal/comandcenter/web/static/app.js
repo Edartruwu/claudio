@@ -130,10 +130,29 @@
         var type = data.type;
 
         if (type === 'message.assistant') {
-          // Remove typing bubble, then append assistant response.
+          // Remove streaming bubble + typing bubble, then append final response.
+          var sb = document.getElementById('streaming-bubble');
+          if (sb) sb.remove();
           removeTypingBubble();
           setTyping('● online');
           if (data.html) appendMessage(data.html);
+
+        } else if (type === 'message.stream_delta') {
+          // Live streaming token — create or update transient streaming bubble.
+          var bubble = document.getElementById('streaming-bubble');
+          if (!bubble) {
+            bubble = document.createElement('div');
+            bubble.id = 'streaming-bubble';
+            bubble.className = 'msg-bubble msg-bubble-assistant';
+            bubble.style.cssText = 'opacity:0.8; white-space: pre-wrap; font-family: inherit;';
+            var msgList = document.getElementById('messages');
+            if (msgList) {
+              msgList.appendChild(bubble);
+              scrollToBottom();
+            }
+          }
+          bubble.textContent = data.accumulated;
+          scrollToBottom();
 
         } else if (type === 'typing') {
           // Show transient typing indicator bubble + update header.
@@ -145,7 +164,9 @@
           if (data.html) appendMessage(data.html);
 
         } else if (type === 'message.tool_use') {
-          // Permanent tool-use bubble in chat history.
+          // Permanent tool-use bubble in chat history; clear any streaming bubble first.
+          var sb = document.getElementById('streaming-bubble');
+          if (sb) sb.remove();
           if (data.html) appendMessage(data.html);
 
         } else if (type === 'messages.cleared') {

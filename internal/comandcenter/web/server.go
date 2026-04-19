@@ -1215,6 +1215,21 @@ func (ws *WebServer) fanout() {
 			}
 			ws.pushToSessionClients(ev.SessionID, typingPayload)
 
+		case attach.EventMsgStreamDelta:
+			var p attach.StreamDeltaPayload
+			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+				continue
+			}
+			pushMsg, err := json.Marshal(map[string]interface{}{
+				"type":        "message.stream_delta",
+				"delta":       p.Delta,
+				"accumulated": p.Accumulated,
+			})
+			if err != nil {
+				continue
+			}
+			ws.pushToSessionClients(ev.SessionID, pushMsg)
+
 		case attach.EventDesignScreenshot:
 			var p attach.DesignScreenshotPayload
 			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {

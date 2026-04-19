@@ -33,10 +33,19 @@ func NewEventProxy(inner query.EventHandler, client ClientSender) *EventProxy {
 }
 
 // OnTextDelta accumulates text delta, calls inner if not nil.
+// Also sends a best-effort EventMsgStreamDelta to the client for live streaming.
 func (e *EventProxy) OnTextDelta(text string) {
 	e.mu.Lock()
 	e.buf.WriteString(text)
+	accumulated := e.buf.String()
 	e.mu.Unlock()
+
+	if e.client != nil {
+		_ = e.client.SendEvent(attach.EventMsgStreamDelta, attach.StreamDeltaPayload{
+			Delta:       text,
+			Accumulated: accumulated,
+		})
+	}
 
 	if e.inner != nil {
 		e.inner.OnTextDelta(text)

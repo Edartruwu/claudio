@@ -15,7 +15,8 @@ const (
 	EventAgentStatus     = "agent.status"
 	EventSessionBye       = "session.bye"
 	EventDesignScreenshot = "design.screenshot"
-	EventDesignBundleReady = "design.bundle_ready"
+	EventDesignBundleReady  = "design.bundle_ready"
+	EventMsgStreamDelta     = "message.stream_delta"
 )
 
 // Events: ComandCenter → Claudio
@@ -94,6 +95,15 @@ type DesignBundlePayload struct {
 	SessionID   string `json:"session_id"`
 	BundleURL   string `json:"bundle_url"`   // relative: /designs/project/{slug}/{session}/bundle/mockup.html
 	SessionName string `json:"session_name"` // display label for the link bubble
+}
+
+// StreamDeltaPayload for EventMsgStreamDelta.
+// Sent per token as the assistant streams its response.
+// Delta is the new token; Accumulated is the full text so far.
+type StreamDeltaPayload struct {
+	SessionID   string `json:"session_id"`
+	Delta       string `json:"delta"`
+	Accumulated string `json:"accumulated"`
 }
 
 // DesignScreenshotPayload for EventDesignScreenshot.
