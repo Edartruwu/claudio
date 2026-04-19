@@ -82,13 +82,13 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 			<div
 				id="messages"
 				class="flex-1 overflow-y-auto"
-				style="background:var(--color-bg);padding:16px 20px 0;"
+				style="background:var(--color-bg);padding:16px 20px;"
 				hx-ext="ws"
 				ws-connect={ fmt.Sprintf("/ws/ui?session=%s", sess.ID) }
 			>
 				@MessagesContainer(messages)
 				<div id="typing-indicator-dots" class="hidden flex items-center gap-2" style="padding:6px 0 12px;">
-					<div class="msg-bubble-assistant flex items-center gap-2" style="padding:10px 14px;border-left:2px solid var(--color-ai);">
+					<div class="msg-bubble-assistant flex items-center gap-2" style="padding:10px 14px;">
 						<span class="typing-text" style="color:var(--color-textMuted);font-size:13px;"></span>
 						<span class="typing-dots" aria-label="typing">
 							<span></span><span></span><span></span>
@@ -96,7 +96,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 					</div>
 				</div>
 				<div id="typing-bubble" class="hidden flex items-center gap-2" style="padding:6px 0 12px;">
-					<div class="msg-bubble-assistant flex items-center gap-2" style="padding:10px 14px;border-left:2px solid var(--color-ai);">
+					<div class="msg-bubble-assistant flex items-center gap-2" style="padding:10px 14px;">
 						<span class="typing-text" style="color:var(--color-textMuted);font-size:13px;"></span>
 						<span class="typing-dots" aria-label="typing">
 							<span></span><span></span><span></span>

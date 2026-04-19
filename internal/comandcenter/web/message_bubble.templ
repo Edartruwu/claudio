@@ -51,7 +51,7 @@ templ MessageBubble(msg MessageView) {
 	} else if msg.Role == "tool_use" || msg.Role == "tool_call" {
 		<!-- TOOL CALL: collapsed by default -->
 		<div class="flex justify-start mb-1">
-			<div class="msg-bubble-tool" data-tool-use-id={ msg.ToolUseID } style={ "max-width:min(300px,85%);border-left:2px solid var(--color-tool);" }>
+			<div class="msg-bubble-tool" data-tool-use-id={ msg.ToolUseID } style={ "max-width:min(300px,85%);border-left:2px solid var(--color-tool);cursor:pointer;" }>
 				<details>
 					<summary class="cursor-pointer list-none flex items-center gap-2 justify-between" style="padding:8px 12px;">
 						<div class="flex items-center gap-2">
