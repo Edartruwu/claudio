@@ -1,15 +1,52 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"os"
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/api"
 )
+
+// maxImageDimension is Claude's vision API limit per dimension.
+const maxImageDimension = 7000
+
+// cropImageIfNeeded decodes a PNG, crops it to maxImageDimension height if
+// taller, and re-encodes to PNG bytes. Returns original bytes unchanged if
+// within limits or decode fails (non-fatal — let the API return the error).
+func cropImageIfNeeded(data []byte) []byte {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return data
+	}
+	b := img.Bounds()
+	if b.Dy() <= maxImageDimension && b.Dx() <= maxImageDimension {
+		return data
+	}
+	// Crop to maxImageDimension in each axis.
+	maxW := b.Dx()
+	if maxW > maxImageDimension {
+		maxW = maxImageDimension
+	}
+	maxH := b.Dy()
+	if maxH > maxImageDimension {
+		maxH = maxImageDimension
+	}
+	cropped := image.NewRGBA(image.Rect(0, 0, maxW, maxH))
+	draw.Draw(cropped, cropped.Bounds(), img, b.Min, draw.Src)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, cropped); err != nil {
+		return data
+	}
+	return buf.Bytes()
+}
 
 // maxHTMLContext is the max chars of HTML source included in the critic prompt.
 const maxHTMLContext = 8000
@@ -129,6 +166,7 @@ func (t *VerifyMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to read screenshot %q: %v", screenshotPath, err), IsError: true}, nil
 	}
+	imgBytes = cropImageIfNeeded(imgBytes)
 	imgBase64 := base64.StdEncoding.EncodeToString(imgBytes)
 
 	// 2. Read HTML source for context (optional, truncated).

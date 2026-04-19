@@ -337,8 +337,20 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	// Push each screenshot to ComandCenter chat if a pusher is configured.
+	// Skip full-canvas when artboard shots exist — artboards are the deliverable
+	// and full-canvas can be enormous (crashes vision API at >8000px).
 	if t.pusher != nil {
+		hasArtboards := false
 		for _, s := range out.Screenshots {
+			if s.Name != "full-canvas" {
+				hasArtboards = true
+				break
+			}
+		}
+		for _, s := range out.Screenshots {
+			if hasArtboards && s.Name == "full-canvas" {
+				continue
+			}
 			_ = t.pusher.PushScreenshot(t.sessionID, s.Path, filepath.Base(s.Path))
 		}
 	}

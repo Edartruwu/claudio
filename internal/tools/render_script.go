@@ -99,12 +99,8 @@ async function main() {
 
     const screenshots = [];
 
-    // Full-page screenshot.
-    const fullPath = path.join(outDir, 'full-canvas.png');
-    await page.screenshot({ path: fullPath, fullPage: true });
-    screenshots.push({ name: 'full-canvas', path: fullPath });
-
-    // Per-artboard screenshots.
+    // Per-artboard screenshots — these are the primary deliverable.
+    // Full-canvas is only taken as fallback when no artboards exist.
     if (capture && artboardsFound) {
         const artboards = await page.$$('[data-artboard]');
         for (const el of artboards) {
@@ -114,6 +110,17 @@ async function main() {
             await el.screenshot({ path: p });
             screenshots.push({ name, path: p });
         }
+    } else {
+        // Fallback: full-page screenshot clipped to max 4000px to avoid
+        // vision API limits (Claude max: 8000px per dimension).
+        const fullPath = path.join(outDir, 'full-canvas.png');
+        const bodyHeight = await page.evaluate(() => document.body.scrollHeight);
+        const clipH = Math.min(bodyHeight, 4000);
+        await page.screenshot({
+            path: fullPath,
+            clip: { x: 0, y: 0, width: viewportW, height: clipH },
+        });
+        screenshots.push({ name: 'full-canvas', path: fullPath });
     }
 
     await browser.close();
