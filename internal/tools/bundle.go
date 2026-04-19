@@ -441,7 +441,7 @@ else{window.addEventListener('load',function(){tryFit(30);});}
 })();</script>`
 
 	toolbar := `<div id="cc-toolbar">
-<button id="cc-btn-back" title="Back" onclick="history.back()">← Back</button>
+<button id="cc-btn-back" title="Back" onclick="history.length>1?history.back():window.close()">← Back</button>
 <div class="cc-sep"></div>
 <button id="cc-btn-out" title="Zoom out (⌘-)">−</button>
 <span class="cc-zoom-label" id="cc-zoom-label">100%</span>
