@@ -347,7 +347,12 @@
   startChat((document.getElementById('chat-app') || document.body).dataset.sessionId);
 
   // Re-init when HTMX swaps in a new chat view (session navigation without full reload).
-  document.addEventListener('htmx:afterSwap', function() {
+  // Only trigger when #main itself was swapped — NOT for sidebar/session-list polls.
+  document.addEventListener('htmx:afterSwap', function(evt) {
+    var target = evt.detail && evt.detail.target;
+    var main = document.getElementById('main');
+    // Ignore swaps that didn't touch #main (e.g. session-list 3s poll, info panel, etc.)
+    if (!main || !target || (target !== main && !main.contains(target))) return;
     var el = document.getElementById('chat-app');
     if (el && el.dataset.sessionId) startChat(el.dataset.sessionId);
   });
