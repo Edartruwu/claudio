@@ -535,6 +535,11 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			tool.Manager = teamMgr
 		}
 	}
+	if pt, err := registry.Get("PurgeTeammates"); err == nil {
+		if tool, ok := pt.(*tools.PurgeTeammatesTool); ok {
+			tool.Runner = teamRunner
+		}
+	}
 
 	// Wire memory store into MemoryTool and RecallTool
 	if memTool, err := registry.Get("Memory"); err == nil {
