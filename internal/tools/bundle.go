@@ -295,7 +295,7 @@ func injectInfiniteCanvas(html string) string {
 	canvasCSS := `<style id="cc-canvas-style">
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0B0E0F}
-#cc-canvas-root{position:fixed;inset:0;overflow:hidden;background:#0B0E0F;background-image:radial-gradient(circle,rgba(255,255,255,0.07) 1px,transparent 1px);background-size:24px 24px;cursor:grab;user-select:none;-webkit-user-select:none}
+#cc-canvas-root{position:fixed;inset:0;overflow:hidden;background:#242424;background-image:radial-gradient(circle,rgba(255,255,255,0.09) 1px,transparent 1px);background-size:24px 24px;cursor:grab;user-select:none;-webkit-user-select:none}
 #cc-canvas-root.cc-grabbing{cursor:grabbing}
 #cc-canvas-content{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
 #cc-toolbar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:6px;align-items:center;background:rgba(15,18,19,0.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:8px 14px;color:#D4DDE0;font-family:'JetBrains Mono',monospace,-apple-system,sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.6);white-space:nowrap}
