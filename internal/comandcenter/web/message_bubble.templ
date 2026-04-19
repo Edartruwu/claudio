@@ -65,16 +65,16 @@ templ MessageBubble(msg MessageView) {
 					</summary>
 					<div class="tool-sections px-3 pb-3 pt-1 space-y-2">
 						if ToolInput(msg.Content) != "" {
-							<div>
-								<p style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;">Input</p>
+							<details open>
+								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;">▾ Input</summary>
 								<pre style="font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">{ ToolInput(msg.Content) }</pre>
-							</div>
+							</details>
 						}
 						if msg.Output != "" {
-							<div class="tool-output-section">
-								<p style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;">Output</p>
+							<details open class="tool-output-section">
+								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;">▾ Output</summary>
 								<pre style="font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">{ msg.Output }</pre>
-							</div>
+							</details>
 						}
 					</div>
 				</details>
