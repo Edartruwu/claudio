@@ -1936,7 +1936,7 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 		filtered.Remove(name)
 	}
 	var capSessID2 string
-	if m.session != nil {
+	if m.session != nil && m.session.Current() != nil {
 		capSessID2 = m.session.Current().ID
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID2)

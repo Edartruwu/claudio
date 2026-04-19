@@ -104,33 +104,41 @@ async function main() {
     if (capture && artboardsFound) {
         const artboards = await page.$$('[data-artboard]');
         const renderedDir = path.join(outDir, 'rendered');
-        await fs.mkdir(renderedDir, { recursive: true });
+        fs.mkdirSync(renderedDir, { recursive: true });
         for (const el of artboards) {
             const name = await el.getAttribute('data-artboard');
             if (!name) continue;
+
+            // Guard: skip artboards with 0 height (React render failed / no content)
+            const box = await el.boundingBox();
+            if (!box || box.height === 0) {
+                warnings.push('Artboard "' + name + '" has 0 height — skipping screenshot. Check React render.');
+                continue;
+            }
+
             const p = path.join(outDir, name + '.png');
             await el.screenshot({ path: p });
             screenshots.push({ name, path: p });
 
             // Extract plain rendered HTML (framework-agnostic)
-            const html = await el.evaluate(el => el.outerHTML);
+            const html = await el.evaluate(node => node.outerHTML);
             const renderedPath = path.join(renderedDir, name + '.html');
-            await fs.writeFile(renderedPath, html, 'utf8');
+            fs.writeFileSync(renderedPath, html, 'utf8');
 
             // Extract interactive elements
             const interactives = await el.$$eval(
                 'button, a[href], input, select, textarea, [role="button"]',
-                els => els.map(el => ({
-                    tag: el.tagName.toLowerCase(),
-                    text: el.textContent.trim().slice(0, 80),
-                    id: el.id || '',
-                    className: el.className || '',
-                    type: el.getAttribute('type') || '',
-                    href: el.getAttribute('href') || ''
+                els => els.map(e => ({
+                    tag: e.tagName.toLowerCase(),
+                    text: e.textContent.trim().slice(0, 80),
+                    id: e.id || '',
+                    className: e.className || '',
+                    type: e.getAttribute('type') || '',
+                    href: e.getAttribute('href') || ''
                 }))
             );
             const interactionsPath = path.join(renderedDir, name + '.interactions.json');
-            await fs.writeFile(interactionsPath, JSON.stringify(interactives, null, 2), 'utf8');
+            fs.writeFileSync(interactionsPath, JSON.stringify(interactives, null, 2), 'utf8');
         }
     } else {
         // Fallback: full-page screenshot clipped to max 4000px to avoid
