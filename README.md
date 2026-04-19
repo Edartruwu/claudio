@@ -404,6 +404,9 @@ Open with `<Space>ic`. The panel shows:
 | `maxBudget` | USD amount, 0 = unlimited | Session spend limit |
 | `outputFilter` | `true`/`false` | RTK-style command output filtering (see below) |
 | `cavemanMode` | `""`, `lite`, `full`, `ultra` | Compressed output mode (see [CavemanMode](#cavemanmode)) |
+| `eagerPlugins` | `[]string` | Plugin names to load as eager (non-deferred) tools. Names without `plugin_` prefix. E.g. `["claudio-codex"]` |
+| `toolModels` | `map[string]string` | Per-tool model override. Key = tool name, value = model ID. E.g. `{"ReviewDesignFidelity": "claude-haiku-4-5"}` |
+| `publicUrl` | `string` | Public base URL for bundle share links (e.g. `https://myserver.ts.net`) |
 
 ### CLAUDIO.md / CLAUDE.md
 
@@ -1306,6 +1309,7 @@ Claudio supports spawning parallel worker agents ("teammates") coordinated by a 
 | `InstantiateTeam` | Re-create a team from a saved template |
 | `TaskCreate` | Create a tracked task, optionally assigned to an agent |
 | `TaskUpdate` | Update task status / description |
+| `PurgeTeammates` | Remove all done/idle teammates from memory to keep context clean |
 
 ### Team templates — reusable team compositions
 
@@ -2301,6 +2305,18 @@ Once installed, just ask Claudio: *"take a screenshot of localhost:8080/dashboar
 
 ---
 
+### Eager plugin loading
+
+By default all plugins are **deferred** — their schema is loaded on demand via `ToolSearch`, keeping the system prompt lean. To make a plugin always available (eager), add its name to `eagerPlugins` in your settings:
+
+```json
+{ "eagerPlugins": ["claudio-codex"] }
+```
+
+Names are without the `plugin_` prefix. Eager plugins appear in the tool list on every turn without requiring a `ToolSearch` call first.
+
+---
+
 ## Model Configuration
 
 ### Multi-Provider Support
@@ -2909,6 +2925,90 @@ Claudio tracks file changes per conversation turn:
 
 # Show current git diff (unchanged)
 /diff
+```
+
+---
+
+## 🎨 Design Agent
+
+Claudio can create interactive HTML mockups, export developer handoff bundles, and verify that your implementation visually matches the design — all from the same session.
+
+### Overview
+
+Design sessions are stored at `~/.claudio/projects/{project-slug}/designs/{session-name}/`. Each session contains:
+- `manifest.json` (v2 format) — screen list with breakpoint + viewport metadata per screen
+- `screenshots/` — PNG captures of each artboard
+- `bundle/mockup.html` — self-contained offline-capable bundle (written by `BundleMockup`)
+
+The `/ui-ux-pro-max` skill gives agents access to 50+ styles, 161 color palettes, 57 font pairings, and design system guidance.
+
+### Design tools
+
+| Tool | Availability | Description |
+|------|-------------|-------------|
+| `ListDesigns` | All agents | List all design sessions for the current project |
+| `BundleMockup` | `design` capability | Inline all assets into a single self-contained HTML file with an infinite pan/zoom canvas |
+| `ExportHandoff` | `design` capability | Package a session into a developer handoff bundle: `spec.md`, component inventory, interaction map, `tokens-used.json` |
+| `ReviewDesignFidelity` | All agents | Compare rendered HTML templates or live URLs against saved design screenshots via vision AI; returns fidelity score 0–100; pass threshold ≥ 75 |
+
+> `BundleMockup` and `ExportHandoff` are only registered when the active agent declares the `design` capability. `ListDesigns` and `ReviewDesignFidelity` are always available.
+
+### Typical workflow
+
+```
+1. Design agent generates mockup → RenderMockup (screenshots each screen)
+2. BundleMockup        → self-contained HTML (shareable link via publicUrl)
+3. ExportHandoff       → spec.md + component inventory for the dev team
+4. Dev implements UI
+5. ReviewDesignFidelity → compares live pages against design screenshots → score ≥ 75 = pass
+```
+
+**ReviewDesignFidelity** accepts either a local template path or a live URL (screenshotted via Playwright):
+
+```json
+{
+  "screens": [
+    { "name": "Dashboard", "url": "http://localhost:8080/dashboard" },
+    { "name": "Login",     "template_path": "templates/login.html", "css_paths": ["static/app.css"] }
+  ],
+  "session_name": "my-design-session"
+}
+```
+
+Pass threshold: `overall_score >= 75`. Results include per-screen gaps and suggestions.
+
+### Manifest format (v2)
+
+```json
+{
+  "version": 2,
+  "session": "my-design-session",
+  "created_at": "2025-01-01T00:00:00Z",
+  "screens": [
+    {
+      "name": "Dashboard",
+      "breakpoint": "desktop",
+      "viewport": { "width": 1440, "height": 900 }
+    },
+    {
+      "name": "Dashboard Mobile",
+      "breakpoint": "mobile",
+      "viewport": { "width": 390, "height": 844 }
+    }
+  ]
+}
+```
+
+`ReviewDesignFidelity` uses the per-screen viewport from the manifest when no global `viewport_width`/`viewport_height` override is provided, and groups results `by_breakpoint` in the output.
+
+### Prerequisites for ReviewDesignFidelity
+
+```bash
+# Node.js >= 18 required
+node --version
+
+# Install Playwright Chromium
+npx playwright install chromium
 ```
 
 ---
