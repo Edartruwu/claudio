@@ -187,6 +187,11 @@
         var data = JSON.parse(e.data);
         var type = data.type;
 
+        if (type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+
         if (type === 'message.assistant') {
           _streaming = false;
           if (_reloadTimer) { clearTimeout(_reloadTimer); _reloadTimer = null; }
