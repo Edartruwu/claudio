@@ -1137,6 +1137,12 @@ func runInteractive() error {
 				Members:      tmpl.Members,
 			}
 			model = model.ApplyTeamContextAtStartup(msg, appCtx)
+			// Instantiate team so SpawnTeammate works immediately
+			sessionID := ""
+			if cur := sess.Current(); cur != nil {
+				sessionID = cur.ID
+			}
+			instantiateTeamDirect(tmpl, sessionID)
 		}
 	}
 
