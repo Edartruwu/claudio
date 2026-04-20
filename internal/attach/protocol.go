@@ -117,7 +117,10 @@ type AgentStatusPayload struct {
 	Name          string `json:"name"`
 	Status        string `json:"status"` // idle|working|done|waiting
 	CurrentTask   string `json:"current_task,omitempty"`
-	Result        string `json:"result,omitempty"`        // final output text when status is done/failed
+	CurrentTool   string `json:"current_tool,omitempty"`   // tool currently executing; empty when idle
+	CallCount     int    `json:"call_count,omitempty"`     // total API/tool calls made
+	ElapsedSecs   int    `json:"elapsed_secs,omitempty"`   // seconds since agent started
+	Result        string `json:"result,omitempty"`         // final output text when status is done/failed
 	ParentAgentID string `json:"parent_agent_id,omitempty"` // non-empty when spawned by another teammate
 }
 

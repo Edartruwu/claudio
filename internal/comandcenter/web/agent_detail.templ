@@ -108,8 +108,6 @@ templ agentDetailHeader(data AgentDetailData) {
 }
 
 // agentStatStrip renders the 4-column stat bar: TOOL / FILE / CALLS / ELAPSED.
-// TODO: cc.Agent does not have CurrentTool, CurrentFile, CallCount, ElapsedSecs fields yet.
-// Placeholder "-" values are used until those fields are added to the Agent struct.
 templ agentStatStrip(data AgentDetailData) {
 	<div
 		class="flex flex-shrink-0"

@@ -165,6 +165,12 @@ func (s *Storage) migrate() error {
 		`ALTER TABLE cc_messages ADD COLUMN output TEXT`,
 		// 18 — context token count per session (latest input tokens sent to Claude).
 		`ALTER TABLE cc_sessions ADD COLUMN context_tokens INTEGER DEFAULT 0`,
+		// 19 — agent metrics: current tool, call count, elapsed seconds.
+		`ALTER TABLE cc_agents ADD COLUMN current_tool TEXT NOT NULL DEFAULT ''`,
+		// 20
+		`ALTER TABLE cc_agents ADD COLUMN call_count INTEGER NOT NULL DEFAULT 0`,
+		// 21
+		`ALTER TABLE cc_agents ADD COLUMN elapsed_secs INTEGER NOT NULL DEFAULT 0`,
 	}
 
 	for i, m := range migrations {
@@ -602,14 +608,17 @@ func (s *Storage) UpsertTask(task Task) error {
 // UpsertAgent inserts or updates an agent record.
 func (s *Storage) UpsertAgent(agent Agent) error {
 	_, err := s.db.Exec(`
-		INSERT INTO cc_agents (id, session_id, name, status, current_task_id, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO cc_agents (id, session_id, name, status, current_task_id, current_tool, call_count, elapsed_secs, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			status=excluded.status,
 			current_task_id=excluded.current_task_id,
+			current_tool=excluded.current_tool,
+			call_count=excluded.call_count,
+			elapsed_secs=excluded.elapsed_secs,
 			updated_at=excluded.updated_at
 	`, agent.ID, agent.SessionID, agent.Name, agent.Status, agent.CurrentTaskID,
-		agent.UpdatedAt)
+		agent.CurrentTool, agent.CallCount, agent.ElapsedSecs, agent.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upsert agent: %w", err)
 	}
@@ -670,7 +679,8 @@ func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 // ListAgents returns all agents for a session.
 func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, session_id, name, status, COALESCE(current_task_id,''), updated_at
+		SELECT id, session_id, name, status, COALESCE(current_task_id,''),
+		       COALESCE(current_tool,''), COALESCE(call_count,0), COALESCE(elapsed_secs,0), updated_at
 		FROM cc_agents WHERE session_id=?
 	`, sessionID)
 	if err != nil {
@@ -682,7 +692,7 @@ func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
 	for rows.Next() {
 		var a Agent
 		if err := rows.Scan(&a.ID, &a.SessionID, &a.Name, &a.Status,
-			&a.CurrentTaskID, &a.UpdatedAt); err != nil {
+			&a.CurrentTaskID, &a.CurrentTool, &a.CallCount, &a.ElapsedSecs, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan agent: %w", err)
 		}
 		agents = append(agents, a)
