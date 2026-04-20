@@ -512,6 +512,21 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 	// Update team status
 	r.manager.UpdateMemberStatus(cfg.TeamName, member.Identity.AgentID, StatusWorking)
 
+	// Emit agent spawn event (initial status="running") so agent appears immediately in CommandCenter team list.
+	// Without this, agents only appear after completion (EventAgentStatus fired in runTeammate cleanup).
+	if r.eventBus != nil {
+		payload, _ := json.Marshal(attach.AgentStatusPayload{
+			Name:          cfg.AgentName,
+			Status:        "working",
+			ParentAgentID: cfg.ParentAgentID,
+		})
+		r.eventBus.Publish(bus.Event{
+			Type:      attach.EventAgentStatus,
+			SessionID: r.sessionID,
+			Payload:   payload,
+		})
+	}
+
 	// Set up mailbox for this team (one per team)
 	if _, ok := r.mailboxes[cfg.TeamName]; !ok {
 		team, _ := r.manager.GetTeam(cfg.TeamName)
