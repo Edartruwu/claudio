@@ -120,3 +120,34 @@ templ SessionRow(row sessionRow) {
 		</div>
 	</div>
 }
+
+templ SkeletonSessionRow() {
+	<div style="display:flex;align-items:center;padding:12px 16px;gap:12px;border-bottom:1px solid var(--color-border);">
+		<!-- Avatar skeleton -->
+		<div style="width:40px;height:40px;border-radius:50%;flex-shrink:0;" class="skeleton-shimmer"></div>
+		<!-- Text lines skeleton -->
+		<div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+			<div style="height:14px;border-radius:4px;width:60%;" class="skeleton-shimmer"></div>
+			<div style="height:12px;border-radius:4px;width:80%;" class="skeleton-shimmer"></div>
+		</div>
+		<!-- Time skeleton -->
+		<div style="width:32px;height:12px;border-radius:4px;" class="skeleton-shimmer"></div>
+	</div>
+}
+
+templ ErrorState(title, subtitle, retryTarget, retryURL string) {
+	<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;padding:24px;gap:12px;text-align:center;">
+		<svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+			<circle cx="24" cy="24" r="22" stroke="#E05050" stroke-width="2"></circle>
+			<path d="M16 16l16 16M32 16L16 32" stroke="#E05050" stroke-width="2" stroke-linecap="round"></path>
+		</svg>
+		<p style="margin:0;font-size:16px;font-weight:600;color:var(--color-textPrimary);">{ title }</p>
+		<p style="margin:0;font-size:13px;color:var(--color-textSecondary);">{ subtitle }</p>
+		<button
+			hx-get={ retryURL }
+			hx-target={ retryTarget }
+			hx-swap="innerHTML"
+			style="padding:8px 20px;border-radius:8px;border:1px solid var(--color-border);background:transparent;color:var(--color-textPrimary);font-family:inherit;font-size:14px;cursor:pointer;"
+		>Retry</button>
+	</div>
+}

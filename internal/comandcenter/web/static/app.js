@@ -386,49 +386,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Only show in chat view (session page)
     if (!document.body.dataset.sessionId) return;
 
-    // Guard: don't inject twice
-    if (document.getElementById('push-prompt')) return;
-
-    var banner = document.createElement('div');
-    banner.id = 'push-prompt';
-    banner.style.cssText = [
-      'position:fixed',
-      'bottom:80px',
-      'left:12px',
-      'right:12px',
-      'z-index:500',
-      'background:#1C1C1E',
-      'border-radius:16px',
-      'padding:16px',
-      'box-shadow:0 4px 24px rgba(0,0,0,0.6)',
-      'border:1px solid #2C2C2E',
-      'font-family:inherit'
-    ].join(';');
-
-    banner.innerHTML =
-      '<div style="display:flex;align-items:flex-start;gap:12px;">' +
-        '<div style="width:40px;height:40px;border-radius:10px;background:#075E54;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px;">🔔</div>' +
-        '<div style="flex:1;min-width:0;">' +
-          '<p style="color:#D4DDE8;font-weight:600;font-size:15px;margin:0 0 4px 0;">Enable notifications</p>' +
-          '<p style="color:#8A9BA0;font-size:13px;margin:0 0 12px 0;">Get notified when agents finish tasks or need input.</p>' +
-          '<div style="display:flex;gap:8px;">' +
-            '<button id="push-dismiss-btn" style="flex:1;padding:10px;border-radius:10px;border:1px solid #3A3A3C;background:transparent;color:#8A9BA0;font-family:inherit;font-size:14px;cursor:pointer;">Not now</button>' +
-            '<button id="push-enable-btn"  style="flex:2;padding:10px;border-radius:10px;border:none;background:#25D366;color:#000;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Enable</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-
-    document.body.appendChild(banner);
-
-    document.getElementById('push-dismiss-btn').addEventListener('click', function() {
-      localStorage.setItem('push-dismissed', '1');
-      banner.remove();
-    });
-
-    document.getElementById('push-enable-btn').addEventListener('click', function() {
-      banner.remove();
-      subscribePush();
-    });
+    // Show the templ-rendered prompt if present; otherwise no-op.
+    var prompt = document.getElementById('push-prompt');
+    if (prompt) prompt.style.display = 'flex';
   })();
 
   // --- Push subscription helper (used by prompt banner) ---
@@ -474,4 +434,16 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }).catch(function() {});
   }
+
+  // Global handlers called by PushPrompt templ component buttons.
+  window.ccSubscribePush = function() {
+    var p = document.getElementById('push-prompt');
+    if (p) p.style.display = 'none';
+    subscribePush();
+  };
+  window.ccDismissPush = function() {
+    localStorage.setItem('push-dismissed', '1');
+    var p = document.getElementById('push-prompt');
+    if (p) p.style.display = 'none';
+  };
 });
