@@ -47,7 +47,9 @@ type TeammateEvent struct {
 	Color          string
 	WorktreePath   string // set on complete/error if worktree has changes
 	WorktreeBranch string
-	Background     bool // true when the agent runs in the background (not blocking the lead)
+	Summary        string // extracted ### Done section or last-N-lines fallback
+	ReportPath     string // extracted from "Report: /path" line in result
+	Background     bool   // true when the agent runs in the background (not blocking the lead)
 }
 
 // TeammateEventHandler receives events from teammate execution.
@@ -847,6 +849,9 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	status := state.Status
 	state.mu.Unlock()
 
+	// Extract summary + report path from result (used by both bus event and teammate event).
+	resultSummary, reportPath := extractSummary(state.Result)
+
 	// Publish agent status event.
 	// Normalize internal MemberStatus to the protocol status vocabulary:
 	// StatusComplete → "done" (matches attach.AgentStatusPayload comment: idle|working|done|waiting).
@@ -862,6 +867,8 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			CallCount:     state.GetCallCount(),
 			ElapsedSecs:   state.GetElapsedSecs(),
 			Result:        state.Result,
+			Summary:       resultSummary,
+			ReportPath:    reportPath,
 			ParentAgentID: state.ParentAgentID,
 		})
 		r.eventBus.Publish(bus.Event{
@@ -948,6 +955,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 			Content: state.Error,
 		})
 		if !state.Foreground {
+			errSummary, errReportPath := extractSummary(state.Error)
 			r.EmitEvent(TeammateEvent{
 				TeamName:       cfg.TeamName,
 				AgentID:        state.Identity.AgentID,
@@ -957,6 +965,8 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				Color:          state.Identity.Color,
 				WorktreePath:   state.WorktreePath,
 				WorktreeBranch: state.WorktreeBranch,
+				Summary:        errSummary,
+				ReportPath:     errReportPath,
 			})
 		}
 	} else {
@@ -975,31 +985,12 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				Color:          state.Identity.Color,
 				WorktreePath:   state.WorktreePath,
 				WorktreeBranch: state.WorktreeBranch,
+				Summary:        resultSummary,
+				ReportPath:     reportPath,
 			})
 		}
 	}
 
-	// Auto-cleanup: remove worktree, branch, and config entry when agent reaches a
-	// terminal status (Complete, Failed, Shutdown). Lead agent is never auto-removed.
-	if !state.Identity.IsLead &&
-		(status == StatusComplete || status == StatusFailed || status == StatusShutdown) {
-		if state.WorktreePath != "" {
-			root := state.WorktreeMainRoot
-			if root == "" {
-				root, _ = os.Getwd()
-			}
-			cmd := exec.Command("git", "worktree", "remove", "--force", state.WorktreePath)
-			cmd.Dir = root
-			_ = cmd.Run() // ignore error — worktree may already be gone
-
-			if state.WorktreeBranch != "" {
-				bcmd := exec.Command("git", "branch", "-D", state.WorktreeBranch)
-				bcmd.Dir = root
-				_ = bcmd.Run() // ignore error — branch may already be gone
-			}
-		}
-		_ = r.RemoveAgent(state.Identity.AgentID)
-	}
 }
 
 // GetState returns a teammate's current state.
@@ -1612,4 +1603,32 @@ func containsQuestion(result string) bool {
 		}
 	}
 	return false
+}
+
+// extractSummary extracts a structured summary and optional report path from an agent result.
+// It looks for a "Report: /path" line, then extracts the "### Done" section. Falls back to
+// the last 15 lines / 600 chars when no ### Done section is present.
+func extractSummary(result string) (summary string, reportPath string) {
+	// Extract Report: path if present
+	for _, line := range strings.Split(result, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Report:") {
+			reportPath = strings.TrimSpace(strings.TrimPrefix(trimmed, "Report:"))
+		}
+	}
+	// Extract ### Done section
+	if idx := strings.LastIndex(result, "### Done"); idx >= 0 {
+		summary = result[idx:]
+		return
+	}
+	// Fallback: last 15 lines, max 600 chars
+	lines := strings.Split(strings.TrimSpace(result), "\n")
+	if len(lines) > 15 {
+		lines = lines[len(lines)-15:]
+	}
+	summary = strings.Join(lines, "\n")
+	if len(summary) > 600 {
+		summary = summary[len(summary)-600:]
+	}
+	return
 }

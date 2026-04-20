@@ -1370,9 +1370,11 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 			return
 		}
 		payload, err := json.Marshal(map[string]string{
-			"type":   "agent_status",
-			"name":   p.Name,
-			"status": p.Status,
+			"type":        "agent_status",
+			"name":        p.Name,
+			"status":      p.Status,
+			"summary":     p.Summary,
+			"report_path": p.ReportPath,
 		})
 		if err != nil {
 			return

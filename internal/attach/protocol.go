@@ -122,6 +122,8 @@ type AgentStatusPayload struct {
 	CallCount     int    `json:"call_count,omitempty"`     // total API/tool calls made
 	ElapsedSecs   int    `json:"elapsed_secs,omitempty"`   // seconds since agent started
 	Result        string `json:"result,omitempty"`         // final output text when status is done/failed
+	Summary       string `json:"summary,omitempty"`        // extracted ### Done section or last-N-lines fallback
+	ReportPath    string `json:"report_path,omitempty"`    // extracted from "Report: /path" line in result
 	ParentAgentID string `json:"parent_agent_id,omitempty"` // non-empty when spawned by another teammate
 }
 
