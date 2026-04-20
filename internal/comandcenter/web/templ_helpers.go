@@ -160,4 +160,31 @@ func mainHiddenClass(sessionID string) string {
 	return ""
 }
 
+// imgURL returns the serving URL for an attachment.
+func imgURL(att cc.Attachment) string {
+	return fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)
+}
+
+// FilterImages returns only image attachments.
+func FilterImages(atts []cc.Attachment) []cc.Attachment {
+	var out []cc.Attachment
+	for _, a := range atts {
+		if IsImage(a.MimeType) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// FilterNonImages returns only non-image attachments.
+func FilterNonImages(atts []cc.Attachment) []cc.Attachment {
+	var out []cc.Attachment
+	for _, a := range atts {
+		if !IsImage(a.MimeType) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 
