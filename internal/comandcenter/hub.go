@@ -423,6 +423,15 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			ElapsedSecs:   p.ElapsedSecs,
 			UpdatedAt:     now,
 		})
+		if p.Status == "done" {
+			go func() {
+				sess, err := h.storage.GetSession(sessionID)
+				if err != nil {
+					return
+				}
+				h.sendPushNotifications(sess.Name, sessionID, fmt.Sprintf("%s completed its task", p.Name))
+			}()
+		}
 
 	case attach.EventTaskCreated:
 		var p attach.TaskCreatedPayload
