@@ -24,6 +24,7 @@ type Client struct {
 	agentType    string
 	teamTemplate string
 	conn         *websocket.Conn
+	outbox       chan attach.Envelope
 	onUserMsg      func(attach.UserMsgPayload)
 	onInterrupt    func()
 	onSetAgent     func(attach.SetAgentPayload)
@@ -99,37 +100,46 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("send hello: %w", err)
 	}
 
-	// Start read loop
+	// Start outbox writer and read loop
+	c.outbox = make(chan attach.Envelope, 1000)
+	go c.writeLoop()
 	go c.readLoop()
 
 	return nil
 }
 
-// SendEvent marshals payload into Envelope and writes to WS.
-// Mutex is released before the blocking WS write to prevent deadlock on stale connections.
+// SendEvent marshals payload into Envelope and pushes to outbox channel.
+// Returns immediately — actual WS write happens in writeLoop goroutine.
 func (c *Client) SendEvent(eventType string, payload any) error {
-	c.mu.Lock()
-	if c.conn == nil {
-		c.mu.Unlock()
-		return fmt.Errorf("not connected")
-	}
-	conn := c.conn
-	c.mu.Unlock()
-
 	env, err := attach.NewEnvelope(eventType, payload)
 	if err != nil {
 		return err
 	}
 
-	// Set write deadline to avoid blocking forever on stale connections.
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	err = websocket.JSON.Send(conn, env)
-	conn.SetWriteDeadline(time.Time{}) // clear deadline
-	if err != nil {
-		log.Printf("[attachclient] WS send error (event=%s): %v", eventType, err)
-		return err
+	select {
+	case c.outbox <- env:
+	default:
+		log.Printf("[attachclient] outbox full, dropping event type=%s", eventType)
 	}
 	return nil
+}
+
+// writeLoop drains the outbox channel and writes envelopes to WS.
+// Exits when outbox is closed (during Close()).
+func (c *Client) writeLoop() {
+	for envelope := range c.outbox {
+		c.mu.Lock()
+		conn := c.conn
+		c.mu.Unlock()
+		if conn == nil {
+			continue
+		}
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := websocket.JSON.Send(conn, envelope); err != nil {
+			log.Printf("[attachclient] write error: %v", err)
+		}
+		conn.SetWriteDeadline(time.Time{})
+	}
 }
 
 // sendEnvelopeUnlocked sends envelope without lock (caller responsible).
@@ -199,12 +209,15 @@ func (c *Client) Close() error {
 	conn := c.conn
 	c.mu.Unlock()
 
-	// Send bye
+	// Send bye directly (not via outbox — we're shutting down)
 	_ = c.sendEnvelopeUnlocked(attach.EventSessionBye, nil)
+
+	// Close outbox → writeLoop drains remaining + exits
+	close(c.outbox)
 
 	close(c.closedChan)
 
-	// Close connection
+	// Close WS connection
 	if conn != nil {
 		return conn.Close()
 	}
