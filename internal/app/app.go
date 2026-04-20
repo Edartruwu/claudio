@@ -1082,6 +1082,7 @@ func (o *teammateObserver) OnSubAgentToolStart(_ string, tu tools.ToolUse) {
 	}
 
 	o.state.IncrToolCalls()
+	o.state.SetCurrentTool(tu.Name)
 	o.state.AddActivity(tu.Name)
 	o.state.AddConversation(teams.ConversationEntry{
 		Time:     time.Now(),
@@ -1102,6 +1103,7 @@ func (o *teammateObserver) OnSubAgentToolStart(_ string, tu tools.ToolUse) {
 }
 
 func (o *teammateObserver) OnSubAgentToolEnd(_ string, tu tools.ToolUse, result *tools.Result) {
+	o.state.SetCurrentTool("")
 	content := ""
 	if result != nil {
 		content = result.Content

@@ -79,6 +79,9 @@ type TeammateState struct {
 	MemoryDir      string // agent-scoped memory directory (empty for ephemeral teammates)
 	SystemPrompt   string // resolved system prompt used for the run (for revival)
 
+	// CurrentTool is the name of the tool currently executing (empty when idle).
+	CurrentTool string
+
 	// ParentAgentID is non-empty when this agent was spawned by another teammate.
 	ParentAgentID string
 
@@ -143,6 +146,37 @@ func (s *TeammateState) IncrToolCalls() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Progress.ToolCalls++
+}
+
+// SetCurrentTool sets the currently executing tool name, thread-safe.
+func (s *TeammateState) SetCurrentTool(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CurrentTool = name
+}
+
+// GetCurrentTool returns the currently executing tool name, thread-safe.
+func (s *TeammateState) GetCurrentTool() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.CurrentTool
+}
+
+// GetCallCount returns the current tool call count, thread-safe.
+func (s *TeammateState) GetCallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Progress.ToolCalls
+}
+
+// GetElapsedSecs returns seconds since agent started, thread-safe.
+func (s *TeammateState) GetElapsedSecs() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.StartedAt.IsZero() {
+		return 0
+	}
+	return int(time.Since(s.StartedAt).Seconds())
 }
 
 // GetStatus returns the current status, thread-safe.
@@ -358,6 +392,7 @@ func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 				}
 			case "tool_start":
 				state.IncrToolCalls()
+				state.SetCurrentTool(event.ToolName)
 				state.AddConversation(ConversationEntry{
 					Time:     time.Now(),
 					Type:     "tool_start",
@@ -366,6 +401,7 @@ func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 				})
 				state.AddActivity("→ " + event.ToolName)
 			case "tool_end":
+				state.SetCurrentTool("")
 				state.AddConversation(ConversationEntry{
 					Time:     time.Now(),
 					Type:     "tool_end",
@@ -518,6 +554,9 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		payload, _ := json.Marshal(attach.AgentStatusPayload{
 			Name:          cfg.AgentName,
 			Status:        "working",
+			CurrentTool:   state.GetCurrentTool(),
+			CallCount:     state.GetCallCount(),
+			ElapsedSecs:   state.GetElapsedSecs(),
 			ParentAgentID: cfg.ParentAgentID,
 		})
 		r.eventBus.Publish(bus.Event{
@@ -787,11 +826,12 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		if status == StatusComplete {
 			protocolStatus = "done"
 		}
-		// TODO: populate CurrentTool, CallCount, ElapsedSecs from runtime state
-		// once the engine exposes those metrics on TeammateState.
 		payload, _ := json.Marshal(attach.AgentStatusPayload{
 			Name:          state.Identity.AgentName,
 			Status:        protocolStatus,
+			CurrentTool:   state.GetCurrentTool(),
+			CallCount:     state.GetCallCount(),
+			ElapsedSecs:   state.GetElapsedSecs(),
 			Result:        state.Result,
 			ParentAgentID: state.ParentAgentID,
 		})
