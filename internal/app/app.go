@@ -911,13 +911,13 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 	}
 
 	if runErr != nil {
-		if forwarder.text.Len() > 0 {
-			return forwarder.text.String() + fmt.Sprintf("\n\n[Agent error: %v]", runErr), nil
+		if forwarder.lastTurn.Len() > 0 {
+			return forwarder.lastTurn.String() + fmt.Sprintf("\n\n[Agent error: %v]", runErr), nil
 		}
 		return "", fmt.Errorf("sub-agent failed: %w", runErr)
 	}
 
-	result := strings.TrimSpace(forwarder.text.String())
+	result := strings.TrimSpace(forwarder.lastTurn.String())
 	if result == "" {
 		return "(agent produced no output)", nil
 	}
@@ -940,6 +940,12 @@ type subAgentForwarder struct {
 	db        *storage.DB            // nil = no persistence
 	sessionID string
 
+	// lastTurn holds only the current/last assistant turn text.
+	// Reset at the start of each new turn so the sync return path
+	// can return just the final output instead of the full transcript.
+	lastTurn       strings.Builder
+	newTurnPending bool // set by OnTurnComplete; consumed by OnTextDelta
+
 	// per-turn buffers — flushed atomically at OnTurnComplete
 	pendingText  strings.Builder
 	pendingTools []subAgentToolCall
@@ -955,7 +961,13 @@ type subAgentToolCall struct {
 }
 
 func (f *subAgentForwarder) OnTextDelta(text string) {
+	// Start of a new assistant turn — reset the last-turn buffer.
+	if f.newTurnPending {
+		f.lastTurn.Reset()
+		f.newTurnPending = false
+	}
 	f.text.WriteString(text)
+	f.lastTurn.WriteString(text)
 	if f.db != nil && f.sessionID != "" {
 		f.pendingText.WriteString(text)
 	}
@@ -1007,6 +1019,9 @@ func (f *subAgentForwarder) OnToolUseEnd(tu tools.ToolUse, result *tools.Result)
 // Only completed tool pairs are written; orphaned tool_uses (no result received
 // before this call) are dropped — matching claude-code's filterUnresolvedToolUses.
 func (f *subAgentForwarder) OnTurnComplete(usage api.Usage) {
+	// Signal that the next OnTextDelta begins a new assistant turn.
+	f.newTurnPending = true
+
 	if f.db == nil || f.sessionID == "" {
 		return
 	}
