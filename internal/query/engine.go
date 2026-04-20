@@ -270,11 +270,21 @@ func (e *Engine) Messages() []api.Message {
 // SessionID returns the session ID associated with this engine.
 func (e *Engine) SessionID() string { return e.sessionID }
 
-// SetMessages replaces the conversation messages (used after compaction).
+// SetMessages replaces the conversation messages (used after compaction or clear).
+// If messages are cleared (nil or empty), also resets injection state flags so the
+// next turn will re-inject user context, memory index, and caveman mode if configured.
 func (e *Engine) SetMessages(msgs []api.Message) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.messages = msgs
+	
+	// When clearing messages (after /clear in CommandCenter), reset injection flags
+	// so the next turn's RunWithBlocks will re-inject configured preambles.
+	if len(msgs) == 0 {
+		e.userContextInjected = false
+		e.memoryIndexInjected = false
+		e.cavemanInjected = false
+	}
 }
 
 // SetOnTurnEnd registers a callback that fires when a turn ends (end_turn stop reason).
