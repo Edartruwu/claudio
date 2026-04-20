@@ -1101,14 +1101,56 @@ func (ws *WebServer) pushMsgBubble(sessionID string, msg cc.Message) {
 	}
 }
 
+// wsMaxMessageSize is the maximum allowed incoming WebSocket message size (1 MB).
+const wsMaxMessageSize = 1 << 20
+
+// wsPingInterval is how often the server sends a ping to connected UI clients.
+const wsPingInterval = 30 * time.Second
+
+// wsReadDeadline is the maximum time to wait for a message (including pong).
+const wsReadDeadline = 60 * time.Second
+
+// checkWSOrigin validates the Origin header during WebSocket upgrade.
+// Allows localhost variants and the configured publicURL.
+func (ws *WebServer) checkWSOrigin(cfg *websocket.Config, req *http.Request) error {
+	origin := req.Header.Get("Origin")
+	if origin == "" {
+		// No origin header (non-browser clients) — allow
+		return nil
+	}
+
+	// Always allow localhost variants
+	lower := strings.ToLower(origin)
+	for _, prefix := range []string{
+		"http://localhost", "https://localhost",
+		"http://127.0.0.1", "https://127.0.0.1",
+		"http://[::1]", "https://[::1]",
+	} {
+		if strings.HasPrefix(lower, prefix) {
+			return nil
+		}
+	}
+
+	// Allow configured publicURL origin
+	if ws.publicURL != "" {
+		pub := strings.TrimRight(strings.ToLower(ws.publicURL), "/")
+		if strings.HasPrefix(lower, pub) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("websocket: origin %q not allowed", origin)
+}
+
 // handleWSUI upgrades to WebSocket and streams new messages to the browser.
 func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.URL.Query().Get("session_id")
 	wsServer := websocket.Server{
-		Handshake: func(cfg *websocket.Config, req *http.Request) error {
-			return nil
-		},
+		Handshake: ws.checkWSOrigin,
 		Handler: websocket.Handler(func(conn *websocket.Conn) {
+			// Set message size limit
+			conn.MaxPayloadBytes = wsMaxMessageSize
+
 			client := &uiClient{
 				sessionID: sessionID,
 				send:      make(chan []byte, 64),
@@ -1116,18 +1158,50 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 			ws.addClient(client)
 			defer ws.removeClient(client)
 
-			// Write loop: send messages until connection closes or send closes.
+			// Set initial read deadline
+			conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
+
+			// Read loop: detect client disconnect + handle pong.
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				// Read loop: detect client disconnect.
-				buf := make([]byte, 1)
 				for {
-					if _, err := conn.Read(buf); err != nil {
+					var msg string
+					if err := websocket.Message.Receive(conn, &msg); err != nil {
+						return
+					}
+					// Reset read deadline on any received message
+					conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
+					// Check for pong (app-level)
+					if strings.Contains(msg, `"type":"pong"`) || strings.Contains(msg, `"type": "pong"`) {
+						continue
+					}
+					// Other client messages ignored for now
+				}
+			}()
+
+			// Ping ticker goroutine
+			pingTicker := time.NewTicker(wsPingInterval)
+			pingDone := make(chan struct{})
+			go func() {
+				defer pingTicker.Stop()
+				pingMsg := `{"type":"ping"}`
+				for {
+					select {
+					case <-pingTicker.C:
+						conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+						if err := websocket.Message.Send(conn, pingMsg); err != nil {
+							return
+						}
+						conn.SetWriteDeadline(time.Time{})
+					case <-done:
+						return
+					case <-pingDone:
 						return
 					}
 				}
 			}()
+			defer close(pingDone)
 
 			for {
 				select {
