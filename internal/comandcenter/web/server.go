@@ -1139,6 +1139,23 @@ func (ws *WebServer) checkWSOrigin(cfg *websocket.Config, req *http.Request) err
 		}
 	}
 
+	// Allow any origin matching the request's own host (e.g. Tailscale hostname)
+	requestHost := req.Host
+	if h, _, err := net.SplitHostPort(requestHost); err == nil {
+		requestHost = h
+	}
+	originHost := origin
+	if h, _, err := net.SplitHostPort(originHost); err == nil {
+		originHost = h
+	}
+	// Strip scheme from origin for host comparison
+	if idx := strings.Index(originHost, "://"); idx >= 0 {
+		originHost = originHost[idx+3:]
+	}
+	if strings.EqualFold(originHost, requestHost) {
+		return nil
+	}
+
 	return fmt.Errorf("websocket: origin %q not allowed", origin)
 }
 
