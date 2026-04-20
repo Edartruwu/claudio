@@ -352,7 +352,9 @@ func (h *Hub) handleConn(conn wsConn) {
 			break
 		}
 
-		h.processEvent(sessionID, ev)
+		// processEvent does DB writes (SQLite) — run async to avoid blocking
+		// the read loop under write pressure. Broadcast is already non-blocking.
+		go h.processEvent(sessionID, ev)
 		h.Broadcast(sessionID, ev)
 	}
 }

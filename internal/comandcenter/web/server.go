@@ -99,6 +99,7 @@ type WebServer struct {
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
+	done    chan struct{} // closed on Close() to stop fanout goroutine
 }
 
 // NewWebServer creates a WebServer. uploadsDir is the base directory for uploaded files.
@@ -109,9 +110,15 @@ func NewWebServer(storage *cc.Storage, hub *cc.Hub, password, uploadsDir string)
 		password: password,
 		clients:    make(map[*uiClient]struct{}),
 		uploadsDir: uploadsDir,
+		done:       make(chan struct{}),
 	}
 	go ws.fanout()
 	return ws
+}
+
+// Close shuts down the fanout goroutine and releases resources.
+func (ws *WebServer) Close() {
+	close(ws.done)
 }
 
 // RegisterRoutes mounts all UI routes on mux.
@@ -1128,9 +1135,11 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 					if !ok {
 						return
 					}
+					conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 					if err := websocket.Message.Send(conn, string(msg)); err != nil {
 						return
 					}
+					conn.SetWriteDeadline(time.Time{})
 				case <-done:
 					return
 				}
@@ -1155,11 +1164,19 @@ func (ws *WebServer) pushToSessionClients(sessionID string, payload []byte) {
 }
 
 // fanout reads UIBroadcast events and forwards rendered HTML to interested clients.
-// Wrapped with per-iteration panic recovery so a single bad event cannot kill the goroutine.
+// Exits when ws.done is closed or the UIBroadcast channel is closed.
 func (ws *WebServer) fanout() {
 	ch := ws.hub.UIBroadcast()
-	for ev := range ch {
-		ws.fanoutHandleEvent(ev)
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			ws.fanoutHandleEvent(ev)
+		case <-ws.done:
+			return
+		}
 	}
 }
 

@@ -38,22 +38,25 @@ func New() *Bus {
 }
 
 // Publish sends an event to all subscribers of the given event type.
+// Snapshot subscriber list under lock, release before invoking handlers,
+// so handlers may safely call Subscribe/Unsubscribe without deadlock.
 func (b *Bus) Publish(event Event) {
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}
 
 	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	// Type-specific subscribers
+	handlers := make([]Handler, 0, len(b.subscribers[event.Type])+len(b.allSubs))
 	for _, sub := range b.subscribers[event.Type] {
-		sub.handler(event)
+		handlers = append(handlers, sub.handler)
 	}
-
-	// Wildcard subscribers (subscribe to all events)
 	for _, sub := range b.allSubs {
-		sub.handler(event)
+		handlers = append(handlers, sub.handler)
+	}
+	b.mu.RUnlock()
+
+	for _, h := range handlers {
+		h(event)
 	}
 }
 

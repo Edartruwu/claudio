@@ -202,6 +202,7 @@ func main() {
 	launcher.Stop()
 	cronCancel()
 	cronRunner.Stop()
+	webSrv.Close()
 	if err := httpSrv.Close(); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}

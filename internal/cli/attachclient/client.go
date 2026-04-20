@@ -32,6 +32,7 @@ type Client struct {
 	onClearHistory func()
 	onSetMessages  func([]api.Message)
 	mu           sync.Mutex
+	writeMu      sync.Mutex // protects all websocket writes (writeLoop + Close bye)
 	closed       bool
 	closedChan   chan struct{}
 }
@@ -134,25 +135,29 @@ func (c *Client) writeLoop() {
 		if conn == nil {
 			continue
 		}
+		c.writeMu.Lock()
 		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err := websocket.JSON.Send(conn, envelope); err != nil {
 			log.Printf("[attachclient] write error: %v", err)
 		}
 		conn.SetWriteDeadline(time.Time{})
+		c.writeMu.Unlock()
 	}
 }
 
-// sendEnvelopeUnlocked sends envelope without lock (caller responsible).
-// Used only during Connect() where the connection is not yet shared.
+// sendEnvelopeUnlocked sends envelope directly on the connection.
+// Acquires writeMu to serialize with writeLoop. Safe to call without c.mu held.
 func (c *Client) sendEnvelopeUnlocked(eventType string, payload any) error {
 	env, err := attach.NewEnvelope(eventType, payload)
 	if err != nil {
 		return err
 	}
 
+	c.writeMu.Lock()
 	c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	err = websocket.JSON.Send(c.conn, env)
 	c.conn.SetWriteDeadline(time.Time{})
+	c.writeMu.Unlock()
 	return err
 }
 
@@ -226,6 +231,11 @@ func (c *Client) Close() error {
 }
 
 // readLoop reads inbound Envelopes and fires callbacks.
+// Callbacks are copied under lock then invoked without lock. All registered
+// callbacks (OnUserMessage, OnInterrupt, etc.) must be non-blocking — they
+// send to buffered channels or perform fast in-memory ops. If a future
+// callback could block, wrap its invocation in a goroutine to avoid stalling
+// the read loop.
 func (c *Client) readLoop() {
 	for {
 		select {
