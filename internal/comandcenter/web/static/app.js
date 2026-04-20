@@ -291,6 +291,19 @@
             if (isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
           }
 
+        } else if (type === 'agent.log') {
+          if (window._ccLogAgent && data.agent_name === window._ccLogAgent.name && data.session_id === window._ccLogAgent.sessionID) {
+            fetch('/chat/' + data.session_id + '/agents/' + encodeURIComponent(data.agent_name) + '/logs', {credentials:'include'})
+              .then(function(r){return r.text();})
+              .then(function(html){
+                var body = document.getElementById('agent-log-body');
+                if (!body) return;
+                var near = body.scrollTop >= body.scrollHeight - body.clientHeight - 50;
+                body.innerHTML = html;
+                if (near) body.scrollTop = body.scrollHeight;
+              });
+          }
+
         } else if (type === 'config.changed') {
           // Update model display if present on the page.
           var modelEl = document.getElementById('current-model');
