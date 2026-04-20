@@ -9,48 +9,56 @@ import (
 templ InfoPanel(data InfoPageData) {
 	<div class="flex flex-col h-full" style="background:var(--color-bg);">
 		<!-- Header -->
-		<header class="info-panel-header flex-shrink-0" style="background:var(--color-surface);padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;border-bottom:1px solid var(--color-border);">
+		<header class="info-panel-header flex-shrink-0" style="background:var(--color-surface);padding:12px 16px;display:flex;flex-direction:row;align-items:center;gap:12px;border-bottom:1px solid var(--color-border);">
+			<!-- Back chevron -->
+			<button onclick="history.back()" style="background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0;display:flex;align-items:center;color:var(--color-textMuted);">
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+			</button>
+			<!-- Avatar with status dot -->
 			<div style="position:relative;flex-shrink:0;">
-				<div class="flex items-center justify-center font-bold flex-shrink-0" style="width:64px;height:64px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:24px;">
+				<div class="flex items-center justify-center font-bold" style="width:40px;height:40px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:16px;">
 					{ FirstChar(data.Session.Name) }
 				</div>
 				if data.Session.Status == "active" {
-					<span style="position:absolute;bottom:1px;right:1px;width:16.64px;height:16.64px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;"></span>
+					<span style="position:absolute;bottom:0;right:0;width:11px;height:11px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;"></span>
 				}
 			</div>
-			<div style="text-align:center;">
-				<p style="color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;">
+			<!-- Name + path -->
+			<div style="flex:1;min-width:0;">
+				<p style="color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
 					if data.Session.Master {
 						<span style="color:#F0A500;">&#9733; </span>
 					}
 					{ data.Session.Name }
 				</p>
-				if data.Session.Status == "active" {
-					<p style="color:var(--color-brand);font-size:13px;margin:0;"><span style="display:inline-block;width:6px;height:6px;border-radius:9999px;background:var(--color-brand);margin-right:4px;vertical-align:middle;"></span>online</p>
-				} else {
-					<p style="color:var(--color-textMuted);font-size:13px;margin:0;">offline</p>
-				}
+				<p style="color:var(--color-textMuted);font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Path }</p>
 			</div>
-			<!-- Info card -->
-			<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:10px 14px;width:100%;border:1px solid var(--color-border);">
+		</header>
+		<!-- Metadata info card -->
+		<div style="padding:12px 16px 0;flex-shrink:0;">
+			<div style="background:var(--color-surface);border-radius:12px;padding:10px 14px;border:1px solid var(--color-border);">
 				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
 					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Path</span>
 					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Path }</span>
 				</div>
 				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Model</span>
-					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Model }</span>
+					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Status</span>
+					if data.Session.Status == "active" {
+						<span style="color:var(--color-brand);font-size:13px;flex:1;text-align:right;"><span style="display:inline-block;width:7px;height:7px;border-radius:9999px;background:var(--color-brand);margin-right:4px;vertical-align:middle;"></span>online</span>
+					} else {
+						<span style="color:var(--color-textMuted);font-size:13px;flex:1;text-align:right;">offline</span>
+					}
 				</div>
 				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Context</span>
-					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;">{ FormatTokens(data.Session.ContextTokens) } tokens</span>
+					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Model</span>
+					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.AgentType }</span>
 				</div>
 				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
 					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Connected</span>
-					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ RelTime(data.Session.CreatedAt) }</span>
+					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ RelTime(data.Session.LastActiveAt) }</span>
 				</div>
 			</div>
-		</header>
+		</div>
 		<!-- Tab bar -->
 		<div id="info-tab-bar" style="display:flex;background:var(--color-surface);border-bottom:1px solid var(--color-border);flex-shrink:0;">
 			@infoTab(data.Session.ID, "tasks", "Tasks", data.ActiveTab, infoTabIconTasks())
@@ -229,12 +237,12 @@ templ TaskRows(tasks []cc.Task, sessionID string) {
 					</div>
 				} else if task.Status == "blocked" {
 					<span style="color:var(--color-error);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#10005;</span>
-					<div style="flex:1;min-width:0;"><p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
+					<div style="flex:1;min-width:0;"><p style="color:var(--color-error);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
 				} else {
 					<span style="color:var(--color-textMuted);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#9675;</span>
 					<div style="flex:1;min-width:0;"><p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
 				}
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2" style="flex-shrink:0;" class="task-chevron"><path d="M9 5l7 7-7 7"></path></svg>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E6268" stroke-width="2" style="flex-shrink:0;" class="task-chevron"><path d="M9 5l7 7-7 7"></path></svg>
 			</div>
 			<div class="task-detail hidden"></div>
 		</div>
