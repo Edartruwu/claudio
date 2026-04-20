@@ -361,14 +361,17 @@
 
   // On app resume (phone unlock / tab focus), reconnect immediately.
   document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible') {
-      var dead = !wsInstance ||
-                 wsInstance.readyState === WebSocket.CLOSED ||
-                 wsInstance.readyState === WebSocket.CLOSING;
-      if (dead) {
-        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-        initWS();
-      }
+    if (document.visibilityState === 'visible' && !wsConnected) {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      initWS();
+    }
+  });
+
+  // Reconnect immediately when network comes back online.
+  window.addEventListener('online', function() {
+    if (!wsConnected) {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      initWS();
     }
   });
 
