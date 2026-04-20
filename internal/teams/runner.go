@@ -871,16 +871,6 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		})
 	}
 
-	// Worktree preservation: all worktrees are kept after agent finishes.
-	// Cleanup is explicitly requested via PurgeDone() or explicit deletion — not automatic.
-	// This ensures agent work is not lost if cleanup is triggered unintentionally.
-	if state.WorktreePath != "" {
-		worktreeNote := fmt.Sprintf("\n\n[Agent worktree preserved at: %s (branch: %s) — use PurgeDone() to remove when ready]", state.WorktreePath, state.WorktreeBranch)
-		state.mu.Lock()
-		state.Result += worktreeNote
-		state.mu.Unlock()
-	}
-
 	// Auto-complete assigned tasks
 	if r.taskCompleter != nil && len(cfg.TaskIDs) > 0 {
 		taskStatus := "completed"
@@ -987,6 +977,28 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 				WorktreeBranch: state.WorktreeBranch,
 			})
 		}
+	}
+
+	// Auto-cleanup: remove worktree, branch, and config entry when agent reaches a
+	// terminal status (Complete, Failed, Shutdown). Lead agent is never auto-removed.
+	if !state.Identity.IsLead &&
+		(status == StatusComplete || status == StatusFailed || status == StatusShutdown) {
+		if state.WorktreePath != "" {
+			root := state.WorktreeMainRoot
+			if root == "" {
+				root, _ = os.Getwd()
+			}
+			cmd := exec.Command("git", "worktree", "remove", "--force", state.WorktreePath)
+			cmd.Dir = root
+			_ = cmd.Run() // ignore error — worktree may already be gone
+
+			if state.WorktreeBranch != "" {
+				bcmd := exec.Command("git", "branch", "-D", state.WorktreeBranch)
+				bcmd.Dir = root
+				_ = bcmd.Run() // ignore error — branch may already be gone
+			}
+		}
+		_ = r.RemoveAgent(state.Identity.AgentID)
 	}
 }
 
