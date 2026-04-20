@@ -372,6 +372,22 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		return &Result{Content: "html_path is required", IsError: true}, nil
 	}
 
+	// Guard: extension check
+	if !strings.EqualFold(filepath.Ext(in.HTMLPath), ".html") {
+		return &Result{Content: fmt.Sprintf("html_path must be an .html file, got: %q", in.HTMLPath), IsError: true}, nil
+	}
+
+	// Guard: content sniff
+	if f, err := os.Open(in.HTMLPath); err == nil {
+		peek := make([]byte, 512)
+		n, _ := f.Read(peek)
+		f.Close()
+		lower := strings.ToLower(string(peek[:n]))
+		if !strings.Contains(lower, "<html") && !strings.Contains(lower, "<!doctype") {
+			return &Result{Content: fmt.Sprintf("html_path does not look like HTML (no <html> or <!DOCTYPE> in first 512 bytes): %q", in.HTMLPath), IsError: true}, nil
+		}
+	}
+
 	// Apply defaults.
 	if in.ViewportWidth == 0 {
 		in.ViewportWidth = 1440
