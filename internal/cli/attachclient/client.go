@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
@@ -105,25 +106,44 @@ func (c *Client) Connect(ctx context.Context) error {
 }
 
 // SendEvent marshals payload into Envelope and writes to WS.
+// Mutex is released before the blocking WS write to prevent deadlock on stale connections.
 func (c *Client) SendEvent(eventType string, payload any) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.conn == nil {
+		c.mu.Unlock()
 		return fmt.Errorf("not connected")
 	}
+	conn := c.conn
+	c.mu.Unlock()
 
-	return c.sendEnvelopeUnlocked(eventType, payload)
+	env, err := attach.NewEnvelope(eventType, payload)
+	if err != nil {
+		return err
+	}
+
+	// Set write deadline to avoid blocking forever on stale connections.
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	err = websocket.JSON.Send(conn, env)
+	conn.SetWriteDeadline(time.Time{}) // clear deadline
+	if err != nil {
+		log.Printf("[attachclient] WS send error (event=%s): %v", eventType, err)
+		return err
+	}
+	return nil
 }
 
 // sendEnvelopeUnlocked sends envelope without lock (caller responsible).
+// Used only during Connect() where the connection is not yet shared.
 func (c *Client) sendEnvelopeUnlocked(eventType string, payload any) error {
 	env, err := attach.NewEnvelope(eventType, payload)
 	if err != nil {
 		return err
 	}
 
-	return websocket.JSON.Send(c.conn, env)
+	c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	err = websocket.JSON.Send(c.conn, env)
+	c.conn.SetWriteDeadline(time.Time{})
+	return err
 }
 
 // OnUserMessage registers callback for inbound EventMsgUser messages.
