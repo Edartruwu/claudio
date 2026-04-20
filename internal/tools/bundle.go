@@ -317,8 +317,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 #cc-canvas-root.cc-grabbing{cursor:grabbing}
 #cc-canvas-content{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
 #cc-toolbar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:6px;align-items:center;background:rgba(15,18,19,0.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:8px 14px;color:#D4DDE0;font-family:'JetBrains Mono',monospace,-apple-system,sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.6);white-space:nowrap}
-#cc-toolbar button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#D4DDE0;border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;transition:background 0.15s;font-family:inherit;font-weight:500}
+#cc-toolbar button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#D4DDE0;border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;transition:background 0.15s;font-family:inherit;font-weight:500;display:inline-flex;align-items:center;gap:5px}
 #cc-toolbar button:hover{background:rgba(0,196,140,0.15);border-color:rgba(0,196,140,0.4);color:#00C48C}
+#cc-btn-back{background:rgba(0,196,140,0.1)!important;border-color:rgba(0,196,140,0.3)!important;color:#00C48C!important}
 #cc-toolbar .cc-zoom-label{min-width:46px;text-align:center;color:#6B7E82;font-size:12px;font-family:inherit}
 #cc-toolbar .cc-sep{width:1px;height:18px;background:rgba(255,255,255,0.1);margin:0 2px}
 #cc-canvas-content [data-artboard]{border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08);overflow:hidden}
@@ -441,7 +442,7 @@ else{window.addEventListener('load',function(){tryFit(30);});}
 })();</script>`
 
 	toolbar := `<div id="cc-toolbar">
-<button id="cc-btn-back" title="Back" onclick="history.length>1?history.back():window.close()">← Back</button>
+<button id="cc-btn-back" title="Back" onclick="history.length>1?history.back():window.close()"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>Back</button>
 <div class="cc-sep"></div>
 <button id="cc-btn-out" title="Zoom out (⌘-)">−</button>
 <span class="cc-zoom-label" id="cc-zoom-label">100%</span>
