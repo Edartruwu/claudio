@@ -87,8 +87,8 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 			<!-- Messages -->
 			<div
 				id="messages"
-				class="flex-1 overflow-y-auto"
-				style="background:var(--color-bg);padding:16px 20px;overflow-anchor:none;"
+				class="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5"
+				style="background:var(--color-bg);overflow-anchor:none;"
 				data-session={ sess.ID }
 			>
 				@MessagesContainer(messages)

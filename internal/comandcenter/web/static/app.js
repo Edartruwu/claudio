@@ -108,6 +108,7 @@
 
   function appendMessage(html) {
     if (!msgs) return;
+    if (_reloading) return; // reload in progress — message will be in the reloaded HTML
     maybeInsertDateDivider();
     var near = isNearBottom();
     var bubble = document.getElementById('typing-bubble');
@@ -142,22 +143,25 @@
   var wsInstance = null;
   var _hadConnected = false;   // true after first successful onopen in this startChat call
   var _streaming = false;      // true while stream_delta events are arriving
+  var _reloading = false;      // true while reloadMessages() fetch is in flight
   var _reloadTimer = null;     // debounce handle for reconnect reloads
 
   function reloadMessages() {
     if (!msgs || _streaming) return;
+    _reloading = true;
     fetch('/partials/messages/' + sessionId)
       .then(function(res) { return res.text(); })
       .then(function(html) {
-        if (_streaming) return; // streaming started during fetch — don't clobber
+        if (_streaming) { _reloading = false; return; } // streaming started during fetch — don't clobber
         var near = isNearBottom();
         msgs.innerHTML = html;
+        _reloading = false;
         var bubble = document.getElementById('typing-bubble');
         if (bubble) msgs.appendChild(bubble);
         if (near) msgs.scrollTop = msgs.scrollHeight;
         lastMsgDate = new Date().toDateString();
       })
-      .catch(function() {});
+      .catch(function() { _reloading = false; });
   }
 
   function initWS() {
@@ -256,6 +260,7 @@
           }
 
         } else if (type === 'messages.compacted') {
+          if (_streaming) return;
           var msgsEl = document.getElementById('messages');
           if (msgsEl && sessionId) {
             fetch('/partials/messages/' + sessionId, { credentials: 'include' })
