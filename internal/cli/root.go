@@ -403,9 +403,11 @@ func runHeadlessAttach(args []string) error {
 	}
 
 	// --- Gap 2: Auto-instantiate team from --team flag in headless mode ---
+	var headlessTeamTemplate *teams.TeamTemplate
 	if flagTeam != "" {
 		templatesDir := config.GetPaths().TeamTemplates
 		if tmpl, err := teams.GetTemplate(templatesDir, flagTeam); err == nil {
+			headlessTeamTemplate = tmpl
 			sessionID := ""
 			if cur := sess.Current(); cur != nil {
 				sessionID = cur.ID
@@ -496,7 +498,8 @@ func runHeadlessAttach(args []string) error {
 
 	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, engineCfg)
 	sys := buildFullSystemPrompt()
-	if flagTeam != "" {
+	if headlessTeamTemplate != nil {
+		sys += "\n\n" + buildHeadlessTeamContextBlock(headlessTeamTemplate)
 		sys += "\n\nWhen all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents."
 	}
 	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
@@ -639,6 +642,29 @@ func instantiateTeamDirect(tmpl *teams.TeamTemplate, sessionID string) string {
 	appInstance.TeamRunner.SetActiveTeam(teamName)
 	log.Printf("team: instantiated %q from template %q", teamName, tmpl.Name)
 	return teamName
+}
+
+// buildHeadlessTeamContextBlock builds the system prompt block for team context in headless mode.
+// This mirrors the logic from TUI's ApplyTeamContextAtStartup but without BubbleTea dependencies.
+func buildHeadlessTeamContextBlock(tmpl *teams.TeamTemplate) string {
+	var memberLines []string
+	for _, mem := range tmpl.Members {
+		line := fmt.Sprintf("  - %s (%s)", mem.Name, mem.SubagentType)
+		if mem.Model != "" {
+			line += " model=" + mem.Model
+		}
+		memberLines = append(memberLines, line)
+	}
+	roster := strings.Join(memberLines, "\n")
+	desc := ""
+	if tmpl.Description != "" {
+		desc = "\nDescription: " + tmpl.Description
+	}
+	return fmt.Sprintf(`## Active Team: %s%s
+Members:
+%s
+
+The team is ready. Use SpawnTeammate to assign tasks to each member.`, tmpl.Name, desc, roster)
 }
 
 func buildAdvisorConfig(cfg *config.AdvisorSettings) (systemPrompt string, model string) {
