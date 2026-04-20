@@ -540,8 +540,6 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 	}
 
 	// Set up worktree isolation if requested
-	var worktreeRepo *git.Repo
-	var worktreeHeadCommit string // SHA captured before agent runs, used to detect new commits
 	if cfg.Isolation == "worktree" {
 		cwd, _ := os.Getwd()
 		repo := git.NewRepo(cwd)
@@ -551,13 +549,11 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 			branch := fmt.Sprintf("claudio/%s/%s-%s", cfg.TeamName, cfg.AgentName, runID)
 			root, _ := repo.Root()
 			wtPath := filepath.Join(root, ".claudio-worktrees", branch)
-			// Capture HEAD SHA before creating worktree — used to detect new commits later
-			if sha, err := repo.HeadCommit(); err == nil {
-				worktreeHeadCommit = sha
-			}
+			// Note: HEAD SHA capture removed — worktrees no longer auto-cleaned on agent completion.
+			// All worktrees are preserved; cleanup is explicit via PurgeDone().
 			wtErr := repo.WorktreeAddOrReuse(wtPath, branch)
 			if wtErr == nil {
-				worktreeRepo = git.NewRepo(wtPath)
+				_ = git.NewRepo(wtPath) // worktree repo created but no longer tracked for auto-cleanup
 
 				state.mu.Lock()
 				state.WorktreePath = wtPath
@@ -789,75 +785,14 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		})
 	}
 
-	// Worktree cleanup: remove if no changes; auto-merge into main if complete; keep on failure/question.
-	// Uses the pre-fork HEAD SHA to detect both uncommitted files and new commits.
-	if worktreeRepo != nil && state.WorktreePath != "" {
-		hasChanges, chkErr := worktreeRepo.HasAnyWork(worktreeHeadCommit)
-		if chkErr != nil || !hasChanges {
-			// No changes — clean up worktree and branch silently.
-			cwd, _ := os.Getwd()
-			mainRepo := git.NewRepo(cwd)
-			if mainRepo.IsRepo() {
-				_ = mainRepo.WorktreeRemove(state.WorktreePath, true)
-				if state.WorktreeBranch != "" {
-					_ = mainRepo.DeleteBranch(state.WorktreeBranch)
-				}
-			}
-			state.mu.Lock()
-			state.MergeStatus = "no-changes: worktree cleaned up (nothing to merge)"
-			state.WorktreePath = ""
-			state.WorktreeBranch = ""
-			state.mu.Unlock()
-		} else if state.Status == StatusComplete {
-			// Agent completed successfully and has commits — auto-merge into main.
-			cwd, _ := os.Getwd()
-			mainRepo := git.NewRepo(cwd)
-			mergedBranch := state.WorktreeBranch
-			mergeErr := mainRepo.MergeFFOnly(mergedBranch)
-			if mergeErr == nil {
-				// Merged cleanly — remove worktree and branch.
-				_ = mainRepo.WorktreeRemove(state.WorktreePath, true)
-				_ = mainRepo.DeleteBranch(mergedBranch)
-				mergeNote := fmt.Sprintf("[Worktree branch %s auto-merged into main and cleaned up.]", mergedBranch)
-				state.mu.Lock()
-				state.Result += "\n\n" + mergeNote
-				state.MergeStatus = fmt.Sprintf("auto-merged: %s → main (cleaned up)", mergedBranch)
-				state.WorktreePath = ""
-				state.WorktreeBranch = ""
-				state.mu.Unlock()
-				r.EmitEvent(TeammateEvent{
-					TeamName:  cfg.TeamName,
-					AgentID:   state.Identity.AgentID,
-					AgentName: cfg.AgentName,
-					Type:      "merged",
-					Text:      mergeNote,
-					Color:     state.Identity.Color,
-				})
-			} else {
-				// Fast-forward not possible (diverged) — keep worktree, warn team lead.
-				mergeNote := fmt.Sprintf("[Auto-merge failed (not fast-forwardable). Manual merge required: git merge %s — worktree kept at: %s]", mergedBranch, state.WorktreePath)
-				state.mu.Lock()
-				state.Result += "\n\n" + mergeNote
-				state.MergeStatus = fmt.Sprintf("merge-failed: manual merge required — git merge %s (worktree: %s)", mergedBranch, state.WorktreePath)
-				state.mu.Unlock()
-				r.EmitEvent(TeammateEvent{
-					TeamName:       cfg.TeamName,
-					AgentID:        state.Identity.AgentID,
-					AgentName:      cfg.AgentName,
-					Type:           "merge_failed",
-					Text:           mergeNote,
-					Color:          state.Identity.Color,
-					WorktreePath:   state.WorktreePath,
-					WorktreeBranch: mergedBranch,
-				})
-			}
-		} else {
-			// Failed or waiting for input — keep worktree for inspection/resumption.
-			worktreeNote := fmt.Sprintf("\n\n[Worktree with changes kept at: %s (branch: %s)]", state.WorktreePath, state.WorktreeBranch)
-			state.mu.Lock()
-			state.Result += worktreeNote
-			state.mu.Unlock()
-		}
+	// Worktree preservation: all worktrees are kept after agent finishes.
+	// Cleanup is explicitly requested via PurgeDone() or explicit deletion — not automatic.
+	// This ensures agent work is not lost if cleanup is triggered unintentionally.
+	if state.WorktreePath != "" {
+		worktreeNote := fmt.Sprintf("\n\n[Agent worktree preserved at: %s (branch: %s) — use PurgeDone() to remove when ready]", state.WorktreePath, state.WorktreeBranch)
+		state.mu.Lock()
+		state.Result += worktreeNote
+		state.mu.Unlock()
 	}
 
 	// Auto-complete assigned tasks

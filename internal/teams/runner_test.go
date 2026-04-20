@@ -205,8 +205,10 @@ func TestTeammateRunner_SpawnAndComplete(t *testing.T) {
 	if state.Status != StatusComplete {
 		t.Errorf("expected StatusComplete, got %s", state.Status)
 	}
-	if state.Result != "done: do something" {
-		t.Errorf("unexpected result: %q", state.Result)
+	// Result may have worktree preservation note appended; check prefix
+	expectedPrefix := "done: do something"
+	if !strings.HasPrefix(state.Result, expectedPrefix) {
+		t.Errorf("unexpected result prefix: %q (expected to start with %q)", state.Result, expectedPrefix)
 	}
 
 	// Check events
@@ -1229,7 +1231,9 @@ func TestTeammateRunner_Spawn_UsesMemoryAwareRunner(t *testing.T) {
 	if capturedMemDir != "/tmp/agents/crystal/memory" {
 		t.Errorf("expected memory dir propagated, got %q", capturedMemDir)
 	}
-	if state.Result != "with-memory: /tmp/agents/crystal/memory" {
+	// Result may have worktree preservation note appended; check prefix
+	expectedPrefix := "with-memory: /tmp/agents/crystal/memory"
+	if !strings.HasPrefix(state.Result, expectedPrefix) {
 		t.Errorf("expected result from memory-aware runner, got %q", state.Result)
 	}
 	if state.MemoryDir != "/tmp/agents/crystal/memory" {
@@ -1278,7 +1282,9 @@ func TestTeammateRunner_Spawn_FallsBackToPlainRunner_NoMemoryDir(t *testing.T) {
 	if memCalled != 0 {
 		t.Errorf("expected memory-aware runner NOT called, got %d", memCalled)
 	}
-	if state.Result != "plain-result" {
+	// Result may have worktree preservation note appended; check prefix
+	expectedPrefix := "plain-result"
+	if !strings.HasPrefix(state.Result, expectedPrefix) {
 		t.Errorf("expected plain result, got %q", state.Result)
 	}
 }
@@ -1350,7 +1356,9 @@ func TestTeammateRunner_Spawn_FallsBackToPlainRunner_NoMemoryRunnerSet(t *testin
 	if plainCalled != 1 {
 		t.Errorf("expected plain runner called once as fallback, got %d", plainCalled)
 	}
-	if state.Result != "plain-only" {
+	// Result may have worktree preservation note appended; check prefix
+	expectedPrefix := "plain-only"
+	if !strings.HasPrefix(state.Result, expectedPrefix) {
 		t.Errorf("expected plain result, got %q", state.Result)
 	}
 }
