@@ -3,6 +3,8 @@ package attach
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/Abraxas-365/claudio/internal/api"
 )
 
 // Events: Claudio → ComandCenter
@@ -30,7 +32,8 @@ const (
 	EventInterrupt    = "session.interrupt"
 	EventSetAgent     = "set_agent"
 	EventSetTeam      = "set_team"
-	EventClearHistory = "session.clear"
+	EventClearHistory    = "session.clear"
+	EventSetMessages     = "session.set_messages"
 )
 
 // SetAgentPayload for EventSetAgent.
@@ -41,6 +44,11 @@ type SetAgentPayload struct {
 // SetTeamPayload for EventSetTeam.
 type SetTeamPayload struct {
 	TeamName string `json:"team_name"`
+}
+
+// SetMessagesPayload for EventSetMessages.
+type SetMessagesPayload struct {
+	Messages []api.Message `json:"messages"`
 }
 
 // Envelope wraps event type + payload.

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"golang.org/x/net/websocket"
 )
@@ -27,6 +28,7 @@ type Client struct {
 	onSetAgent     func(attach.SetAgentPayload)
 	onSetTeam      func(attach.SetTeamPayload)
 	onClearHistory func()
+	onSetMessages  func([]api.Message)
 	mu           sync.Mutex
 	closed       bool
 	closedChan   chan struct{}
@@ -152,6 +154,13 @@ func (c *Client) OnClearHistory(fn func()) {
 	c.onClearHistory = fn
 }
 
+// OnSetMessages registers callback invoked when the server sends EventSetMessages.
+func (c *Client) OnSetMessages(fn func([]api.Message)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onSetMessages = fn
+}
+
 // OnSetTeam registers callback invoked when the server sends EventSetTeam.
 func (c *Client) OnSetTeam(fn func(attach.SetTeamPayload)) {
 	c.mu.Lock()
@@ -252,6 +261,19 @@ func (c *Client) readLoop() {
 			c.mu.Unlock()
 			if cb != nil {
 				cb()
+			}
+
+		case attach.EventSetMessages:
+			var payload attach.SetMessagesPayload
+			if err := env.UnmarshalPayload(&payload); err != nil {
+				log.Printf("unmarshal set_messages payload: %v", err)
+				continue
+			}
+			c.mu.Lock()
+			cb := c.onSetMessages
+			c.mu.Unlock()
+			if cb != nil {
+				cb(payload.Messages)
 			}
 		}
 	}
