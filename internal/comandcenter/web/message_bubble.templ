@@ -52,7 +52,7 @@ templ MessageBubble(msg MessageView) {
 		<!-- TOOL CALL: collapsed by default -->
 		<div class="flex justify-start mb-1">
 			<div class="msg-bubble-tool" data-tool-use-id={ msg.ToolUseID } style={ "max-width:min(300px,85%);border-left:2px solid var(--color-tool);cursor:pointer;" }>
-				<details>
+				<details ontoggle="this.setAttribute('aria-expanded', this.open)" aria-expanded="false">
 					<summary class="cursor-pointer list-none flex items-center gap-2 justify-between" style="padding:8px 12px;">
 						<div class="flex items-center gap-2">
 							<svg class="flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-tool)" stroke-width="2.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"></path></svg>
@@ -65,16 +65,27 @@ templ MessageBubble(msg MessageView) {
 					</summary>
 					<div class="tool-sections px-3 pb-3 pt-1 space-y-2">
 						if ToolInput(msg.Content) != "" {
-							<details open>
-								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;">▾ Input</summary>
-								<pre style="font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">{ ToolInput(msg.Content) }</pre>
+							<details>
+								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;">▾ Input</summary>
+								<div style="background:#0B0E0F;border-radius:6px;padding:8px 12px;">
+									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textSecondary);max-height:200px;margin:0;">{ ToolInput(msg.Content) }</pre>
+								</div>
 							</details>
 						}
 						if msg.Output != "" {
-							<details open class="tool-output-section">
-								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;">▾ Output</summary>
-								<pre style="font-size:11px;overflow:auto;white-space:pre-wrap;border-radius:4px;padding:8px;color:var(--color-textSecondary);background:var(--color-bg);max-height:200px;">{ msg.Output }</pre>
+							<details class="tool-output-section">
+								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;">▾ Output</summary>
+								<div style="background:#071a10;border-radius:6px;padding:8px 12px;border-left:2px solid var(--color-brand);">
+									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textPrimary);max-height:200px;margin:0;">{ msg.Output }</pre>
+								</div>
 							</details>
+						} else {
+							<div style="color:var(--color-textMuted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Output</div>
+							<div style="display:flex;gap:4px;padding:8px 12px;align-items:center;">
+								<span class="tool-dot"></span>
+								<span class="tool-dot"></span>
+								<span class="tool-dot"></span>
+							</div>
 						}
 					</div>
 				</details>
