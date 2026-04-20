@@ -253,7 +253,7 @@ templ TabTeam(data InfoPageData) {
 		hx-target="#team-members-list"
 		hx-swap="innerHTML"
 	>
-		@TeamMembers(data.Agents)
+		@TeamMembers(data.Agents, data.Session.ID)
 	</div>
 }
 

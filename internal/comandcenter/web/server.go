@@ -576,7 +576,7 @@ func (ws *WebServer) handleAPISessionTeam(w http.ResponseWriter, r *http.Request
 		agents = nil
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	TeamMembers(agents).Render(r.Context(), w)
+	TeamMembers(agents, id).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Request) {

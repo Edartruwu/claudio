@@ -684,7 +684,7 @@ func TabTeam(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = TeamMembers(data.Agents).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = TeamMembers(data.Agents, data.Session.ID).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
