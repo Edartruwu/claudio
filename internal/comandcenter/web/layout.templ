@@ -575,6 +575,45 @@ templ annotatorScript() {
 templ filterAndSwipeScript() {
 	<script>
 	window._ccCurrentFilter = '';
+
+	// ccOpenAgent — look up agent session by name, then navigate to it.
+	window.ccOpenAgent = function(name) {
+		fetch('/api/sessions/by-name/' + encodeURIComponent(name), {credentials: 'same-origin'})
+			.then(function(res) {
+				if (res.status === 404) {
+					ccShowToast('Session not available');
+					return null;
+				}
+				if (!res.ok) {
+					ccShowToast('Error looking up agent session');
+					return null;
+				}
+				return res.json();
+			})
+			.then(function(data) {
+				if (!data) return;
+				var id = data.id;
+				var main = document.getElementById('main');
+				if (main && window.innerWidth >= 768) {
+					htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true});
+				} else {
+					window.location.href = '/chat/' + id;
+				}
+			})
+			.catch(function() {
+				ccShowToast('Error looking up agent session');
+			});
+	};
+
+	// ccShowToast — brief toast notification.
+	window.ccShowToast = function(msg) {
+		var t = document.createElement('div');
+		t.textContent = msg;
+		t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--color-surfaceFloat);color:var(--color-textPrimary);border:1px solid var(--color-border);border-radius:8px;padding:10px 20px;font-size:13px;z-index:9999;pointer-events:none;opacity:1;transition:opacity 0.4s;';
+		document.body.appendChild(t);
+		setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }, 2200);
+	};
+
 	window.ccSetFilter = function(f) {
 		window._ccCurrentFilter = f;
 		var sl = document.getElementById('session-list');
