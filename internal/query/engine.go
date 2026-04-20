@@ -150,6 +150,9 @@ type Engine struct {
 	// written. The engine drains it in pollMailbox so stale signals do not
 	// accumulate between turns. Callers set this via SetMailboxNotifyChan.
 	mailboxNotifyChan <-chan struct{}
+
+	// mu guards fields accessed from multiple goroutines (e.g. messages).
+	mu sync.RWMutex
 }
 
 // defaultContextWindow is the context window size for all current Claude models.
@@ -259,6 +262,8 @@ func (e *Engine) SetHandler(h EventHandler) {
 
 // Messages returns the current conversation messages.
 func (e *Engine) Messages() []api.Message {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.messages
 }
 
@@ -267,6 +272,8 @@ func (e *Engine) SessionID() string { return e.sessionID }
 
 // SetMessages replaces the conversation messages (used after compaction).
 func (e *Engine) SetMessages(msgs []api.Message) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.messages = msgs
 }
 
