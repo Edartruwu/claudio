@@ -495,3 +495,27 @@ document.addEventListener('DOMContentLoaded', function() {
     if (p) p.style.display = 'none';
   };
 });
+
+// iOS keyboard height detection — reposition #plus-popover above keyboard
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', function () {
+    var keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
+    var popover = document.getElementById('plus-popover');
+    if (popover) {
+      if (keyboardHeight > 100) {
+        popover.style.bottom = (keyboardHeight + 68) + 'px';
+      } else {
+        popover.style.bottom = '68px';
+      }
+    }
+  });
+}
+
+// Scroll message input into view on focus (iOS keyboard overlap fix)
+document.addEventListener('focusin', function (e) {
+  if (e.target && e.target.id === 'msg-input') {
+    setTimeout(function () {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 300);
+  }
+});
