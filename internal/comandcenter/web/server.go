@@ -166,6 +166,9 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Team panel partial — HTMX polling endpoint.
 	mux.Handle("GET /api/sessions/{id}/team", ws.uiAuth(http.HandlerFunc(ws.handleAPISessionTeam)))
 
+	// Agent detail screen.
+	mux.Handle("GET /chat/{session_id}/agent/{agent_id}", ws.uiAuth(http.HandlerFunc(ws.handleAgentDetail)))
+
 	// Cron endpoints.
 	mux.Handle("GET /chat/{session_id}/crons", ws.uiAuth(http.HandlerFunc(ws.handleCronList)))
 	mux.Handle("DELETE /api/crons/{id}", ws.uiAuth(http.HandlerFunc(ws.handleCronDelete)))
@@ -577,6 +580,38 @@ func (ws *WebServer) handleAPISessionTeam(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	TeamMembers(agents).Render(r.Context(), w)
+}
+
+// handleAgentDetail renders the full agent detail screen (screen 16).
+// GET /chat/{session_id}/agent/{agent_id}
+func (ws *WebServer) handleAgentDetail(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	agentID := r.PathValue("agent_id")
+
+	agents, err := ws.storage.ListAgents(sessionID)
+	if err != nil {
+		agents = nil
+	}
+
+	var agent cc.Agent
+	for _, a := range agents {
+		if a.ID == agentID {
+			agent = a
+			break
+		}
+	}
+	// If agent not found, render with a stub so the page still loads.
+	if agent.ID == "" {
+		agent = cc.Agent{ID: agentID, SessionID: sessionID, Name: agentID, Status: "done"}
+	}
+
+	data := AgentDetailData{
+		SessionID: sessionID,
+		Agent:     agent,
+		Events:    nil, // pre-loaded events; real-time updates arrive via WS OOB swap
+	}
+
+	templ.Handler(AgentDetailPage(data)).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Request) {

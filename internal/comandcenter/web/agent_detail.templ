@@ -1,0 +1,212 @@
+package web
+
+import (
+	"fmt"
+	"time"
+
+	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+)
+
+// AgentDetailData holds all data for the agent detail screen.
+type AgentDetailData struct {
+	SessionID string
+	Agent     cc.Agent
+	Events    []AgentEvent
+}
+
+// AgentEvent is a single timeline entry shown in the ActivityTimeline.
+// Type is one of: "tool_call" | "thinking" | "streaming".
+type AgentEvent struct {
+	Type      string
+	Label     string
+	Content   string
+	CreatedAt time.Time
+}
+
+// AgentDetailPage renders the full agent detail screen wrapped in the app layout.
+templ AgentDetailPage(data AgentDetailData) {
+	@Layout(data.SessionID) {
+		<div class="flex h-full">
+			<div class="flex-1 flex flex-col h-full overflow-hidden" style="background:var(--color-bg);">
+				@agentDetailHeader(data)
+				@agentStatStrip(data)
+				<div class="flex-1 overflow-y-auto no-scrollbar" style="padding:12px 16px;" id={ fmt.Sprintf("agent-timeline-%s", data.Agent.ID) }>
+					@activityTimeline(data)
+				</div>
+				@agentMessageInput(data)
+			</div>
+		</div>
+		<script>
+		function ccInterruptAgent(agentID) {
+			if (window._ccWS && window._ccWS.readyState === 1) {
+				window._ccWS.send(JSON.stringify({type: "interrupt", agent_id: agentID}));
+			}
+		}
+		</script>
+	}
+}
+
+// agentDetailHeader renders the top bar: back arrow, avatar+pulse, name, status badge, stop button.
+templ agentDetailHeader(data AgentDetailData) {
+	<header
+		class="flex items-center flex-shrink-0"
+		style="background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;gap:12px;"
+	>
+		<!-- back arrow → team tab -->
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/chat/%s/info", data.SessionID)) }
+			hx-get={ fmt.Sprintf("/chat/%s/info?tab=team", data.SessionID) }
+			hx-target="#main"
+			hx-swap="innerHTML"
+			hx-push-url={ fmt.Sprintf("/chat/%s/info", data.SessionID) }
+			style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;min-width:40px;background:transparent;border:none;cursor:pointer;color:var(--color-textPrimary);text-decoration:none;flex-shrink:0;"
+			aria-label="Back to team"
+		>
+			<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"></path></svg>
+		</a>
+		<!-- avatar with optional pulse ring -->
+		<div style="position:relative;flex-shrink:0;">
+			if data.Agent.Status == "running" || data.Agent.Status == "working" {
+				<div
+					class="flex items-center justify-center font-bold flex-shrink-0 agent-pulse-ring"
+					style={ "width:44px;height:44px;border-radius:9999px;color:#000;font-size:16px;background:" + AvatarColor(data.Agent.Name) }
+				>
+					{ FirstChar(data.Agent.Name) }
+				</div>
+			} else {
+				<div
+					class="flex items-center justify-center font-bold flex-shrink-0"
+					style={ "width:44px;height:44px;border-radius:9999px;color:#000;font-size:16px;background:" + AvatarColor(data.Agent.Name) }
+				>
+					{ FirstChar(data.Agent.Name) }
+				</div>
+			}
+		</div>
+		<!-- name + status badge -->
+		<div style="flex:1;min-width:0;">
+			<p style="color:var(--color-textPrimary);font-size:18px;font-weight:700;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Agent.Name }</p>
+			<div style="margin-top:4px;">
+				if data.Agent.Status == "running" || data.Agent.Status == "working" {
+					<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-brand);color:var(--color-textInverse);">RUNNING</span>
+				} else {
+					<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:1px solid var(--color-border);">DONE</span>
+				}
+			</div>
+		</div>
+		<!-- stop button: only when running -->
+		if data.Agent.Status == "running" || data.Agent.Status == "working" {
+			<button
+				type="button"
+				data-agent-id={ data.Agent.ID }
+				onclick="ccInterruptAgent(this.dataset.agentId)"
+				style="padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;background:var(--color-error);color:#fff;border:none;cursor:pointer;flex-shrink:0;transition:background 0.15s;"
+				onmouseenter="this.style.background='var(--color-errorDim)'"
+				onmouseleave="this.style.background='var(--color-error)'"
+			>Stop</button>
+		}
+	</header>
+}
+
+// agentStatStrip renders the 4-column stat bar: TOOL / FILE / CALLS / ELAPSED.
+// TODO: cc.Agent does not have CurrentTool, CurrentFile, CallCount, ElapsedSecs fields yet.
+// Placeholder "-" values are used until those fields are added to the Agent struct.
+templ agentStatStrip(data AgentDetailData) {
+	<div
+		class="flex flex-shrink-0"
+		style="background:var(--color-surfaceHigh);border-bottom:1px solid var(--color-border);"
+	>
+		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;border-right:1px solid var(--color-border);">
+			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">Tool</span>
+			<span style="font-size:15px;color:var(--color-textPrimary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center;">-</span>
+		</div>
+		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;border-right:1px solid var(--color-border);">
+			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">File</span>
+			<span style="font-size:15px;color:var(--color-textPrimary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center;">-</span>
+		</div>
+		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;border-right:1px solid var(--color-border);">
+			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">Calls</span>
+			<span style="font-size:15px;color:var(--color-textPrimary);text-align:center;">-</span>
+		</div>
+		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;">
+			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">Elapsed</span>
+			<span style="font-size:15px;color:var(--color-textPrimary);text-align:center;">{ RelTime(data.Agent.UpdatedAt) }</span>
+		</div>
+	</div>
+}
+
+// activityTimeline renders all AgentEvents newest-first with variant styling.
+// Container id targets WS OOB swaps: agent-timeline-{agentID} is on the outer scroll div.
+templ activityTimeline(data AgentDetailData) {
+	if len(data.Events) == 0 {
+		<div class="flex flex-col items-center justify-center mt-16" style="color:var(--color-textMuted);">
+			<svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="opacity:0.3;margin-bottom:8px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+			<p style="font-size:13px;">No activity yet</p>
+		</div>
+	} else {
+		for _, event := range data.Events {
+			@agentTimelineItem(event)
+		}
+	}
+}
+
+// agentTimelineItem renders a single event row with the correct variant styling.
+templ agentTimelineItem(event AgentEvent) {
+	if event.Type == "tool_call" {
+		<div style="border-left:2px solid var(--color-tool);background:var(--color-toolDim);border-radius:8px;padding:12px 16px;margin-bottom:8px;">
+			<div class="flex items-center gap-2" style="margin-bottom:6px;">
+				<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-tool);color:#000;">{ event.Label }</span>
+				<span style="font-size:11px;color:var(--color-textMuted);">{ RelTime(event.CreatedAt) }</span>
+			</div>
+			<p style="font-size:13px;color:var(--color-textPrimary);margin:0;white-space:pre-wrap;word-break:break-word;">{ event.Content }</p>
+		</div>
+	} else if event.Type == "thinking" {
+		<div style="border-left:2px solid var(--color-ai);background:var(--color-aiDim);border-radius:8px;padding:12px 16px;margin-bottom:8px;">
+			<div style="margin-bottom:4px;">
+				<span style="font-size:11px;font-weight:600;color:var(--color-ai);">Thinking</span>
+				<span style="font-size:11px;color:var(--color-textMuted);margin-left:8px;">{ RelTime(event.CreatedAt) }</span>
+			</div>
+			<p style="font-size:13px;color:var(--color-ai);margin:0;font-style:italic;white-space:pre-wrap;word-break:break-word;">{ event.Content }</p>
+		</div>
+	} else {
+		<!-- streaming variant -->
+		<div style="border-left:2px solid var(--color-border);background:var(--color-surface);border-radius:8px;padding:12px 16px;margin-bottom:8px;">
+			<div style="margin-bottom:4px;">
+				<span style="font-size:11px;font-weight:600;color:var(--color-textMuted);">{ event.Label }</span>
+				<span style="font-size:11px;color:var(--color-textMuted);margin-left:8px;">{ RelTime(event.CreatedAt) }</span>
+			</div>
+			<p style="font-size:13px;color:var(--color-textPrimary);margin:0;white-space:pre-wrap;word-break:break-word;">
+				{ event.Content }
+				<span class="typing-dots">
+					<span></span><span></span><span></span>
+				</span>
+			</p>
+		</div>
+	}
+}
+
+// agentMessageInput renders the bottom message bar for sending a message to this agent.
+templ agentMessageInput(data AgentDetailData) {
+	<div
+		class="input-bar flex items-end gap-2 flex-shrink-0"
+		style="background:var(--color-surface);border-top:1px solid var(--color-border);padding:10px 12px;padding-bottom:max(10px, env(safe-area-inset-bottom));"
+	>
+		<textarea
+			id="agent-msg-input"
+			name="content"
+			placeholder={ fmt.Sprintf("Message %s...", data.Agent.Name) }
+			rows="1"
+			style="flex:1;resize:none;padding:10px 14px;border-radius:12px;border:1px solid var(--color-border);background:var(--color-surfaceHigh);color:var(--color-textPrimary);font-family:inherit;font-size:14px;outline:none;max-height:80px;overflow-y:auto;line-height:1.4;"
+			oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"
+			onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();document.getElementById('agent-msg-send').click();}"
+		></textarea>
+		<button
+			id="agent-msg-send"
+			type="button"
+			style="padding:10px 16px;border-radius:12px;background:var(--color-brand);color:#000;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;flex-shrink:0;"
+			hx-post={ fmt.Sprintf("/api/sessions/%s/agents/%s/message", data.SessionID, data.Agent.ID) }
+			hx-include="#agent-msg-input"
+			hx-swap="none"
+			hx-on::after-request="document.getElementById('agent-msg-input').value='';document.getElementById('agent-msg-input').style.height='auto';"
+		>Send</button>
+	</div>
+}
