@@ -38,7 +38,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, agent := range agents {
-			templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, templ.JSFuncCall("ccOpenAgent", agent.Name))
+			templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, templ.JSFuncCall("ccOpenAgentLogs", agent.Name, sessionID))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -59,7 +59,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var3 templ.ComponentScript = templ.JSFuncCall("ccOpenAgent", agent.Name)
+			var templ_7745c5c3_Var3 templ.ComponentScript = templ.JSFuncCall("ccOpenAgentLogs", agent.Name, sessionID)
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3.Call)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
