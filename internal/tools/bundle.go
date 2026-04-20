@@ -431,7 +431,7 @@ function tryFit(attempts){
     scale=clamp(Math.min(vw/fw,vh/fh)*0.8,MIN,MAX);
     tx=(vw-fw*scale)/2;
     ty=(vh-fh*scale)/2;
-    applyTransform();updateZoomDisplay();
+    applyTransform();
     return;
   }
   if(attempts>0)setTimeout(function(){tryFit(attempts-1);},300);
