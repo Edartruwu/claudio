@@ -501,6 +501,11 @@ func runHeadlessAttach(args []string) error {
 		engine.SetMessages(nil)
 	})
 
+	// Wire set messages from ComandCenter → replace engine messages (e.g. after compact)
+	attachClient.OnSetMessages(func(msgs []api.Message) {
+		engine.SetMessages(msgs)
+	})
+
 	sys := buildFullSystemPrompt()
 	if headlessTeamTemplate != nil {
 		sys += "\n\n" + buildHeadlessTeamContextBlock(headlessTeamTemplate)

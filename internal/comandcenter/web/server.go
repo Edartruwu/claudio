@@ -986,6 +986,11 @@ func (ws *WebServer) handleCompact(w http.ResponseWriter, sessionID, instruction
 		if p, err := json.Marshal(map[string]string{"type": "messages.compacted"}); err == nil {
 			ws.pushToSessionClients(sessionID, p)
 		}
+
+		// Notify attached engine of compacted messages so in-memory state stays in sync.
+		if env, err := attach.NewEnvelope(attach.EventSetMessages, attach.SetMessagesPayload{Messages: compacted}); err == nil {
+			_ = ws.hub.Send(sessionID, env)
+		}
 	}()
 }
 
