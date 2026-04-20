@@ -1775,7 +1775,7 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 		filtered.Remove(name)
 	}
 	var capSessID string
-	if m.session != nil {
+	if m.session != nil && m.session.Current() != nil {
 		capSessID = m.session.Current().ID
 	}
 	var agentCfg *config.Settings

@@ -495,7 +495,7 @@ func MessageBubble(msg MessageView) templ.Component {
 	})
 }
 
-func assistantAttachment(att cc.Attachment) templ.Component {
+func SkeletonBubble(side string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -516,46 +516,82 @@ func assistantAttachment(att cc.Attachment) templ.Component {
 			templ_7745c5c3_Var24 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<a href=\"")
+		if side == "left" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<div style=\"display:flex;justify-content:flex-start;padding:4px 16px;\"><div style=\"max-width:70%;display:flex;flex-direction:column;gap:6px;\"><div style=\"height:14px;border-radius:8px;width:200px;\" class=\"skeleton-shimmer\"></div><div style=\"height:14px;border-radius:8px;width:150px;\" class=\"skeleton-shimmer\"></div><div style=\"height:14px;border-radius:8px;width:100px;\" class=\"skeleton-shimmer\"></div></div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<div style=\"display:flex;justify-content:flex-end;padding:4px 16px;\"><div style=\"max-width:70%;display:flex;flex-direction:column;gap:6px;\"><div style=\"height:14px;border-radius:8px;width:200px;\" class=\"skeleton-shimmer\"></div><div style=\"height:14px;border-radius:8px;width:150px;\" class=\"skeleton-shimmer\"></div><div style=\"height:14px;border-radius:8px;width:100px;\" class=\"skeleton-shimmer\"></div></div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		return nil
+	})
+}
+
+func assistantAttachment(att cc.Attachment) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var25 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var25 == nil {
+			templ_7745c5c3_Var25 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var25 templ.SafeURL
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)))
+		var templ_7745c5c3_Var26 templ.SafeURL
+		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 162, Col: 82}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" download=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var26 string
-		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 163, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 182, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" class=\"mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline\" style=\"background:rgba(255,255,255,0.08);color:var(--color-textPrimary);font-size:13px;\"><svg class=\"w-4 h-4 flex-shrink-0\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z\"></path> <polyline points=\"14 2 14 8 20 8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"></polyline></svg> <span class=\"truncate\" style=\"max-width:160px;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\" download=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 171, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 183, Col: 29}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</span></a>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "\" class=\"mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline\" style=\"background:rgba(255,255,255,0.08);color:var(--color-textPrimary);font-size:13px;\"><svg class=\"w-4 h-4 flex-shrink-0\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z\"></path> <polyline points=\"14 2 14 8 20 8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"></polyline></svg> <span class=\"truncate\" style=\"max-width:160px;\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var28 string
+		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(att.OriginalName)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 191, Col: 68}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</span></a>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -581,84 +617,58 @@ func ImageGrid(images []cc.Attachment) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var28 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var28 == nil {
-			templ_7745c5c3_Var28 = templ.NopComponent
+		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var29 == nil {
+			templ_7745c5c3_Var29 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(images) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div class=\"mt-2\" style=\"max-width:280px;border-radius:12px;overflow:hidden;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<div class=\"mt-2\" style=\"max-width:280px;border-radius:12px;overflow:hidden;\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(images) == 1 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<!-- single: full width, 4:3 --> <div style=\"position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;border-radius:4px;\"><img src=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var29 string
-				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 184, Col: 29}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\" alt=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<!-- single: full width, 4:3 --> <div style=\"position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;border-radius:4px;\"><img src=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var30 string
-				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
+				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 185, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 204, Col: 29}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else if len(images) == 2 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<!-- two equal columns, 140px height --> <div style=\"display:flex;gap:2px;height:140px;\"><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\" alt=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var31 string
-				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
+				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 196, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 205, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" alt=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else if len(images) == 2 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "<!-- two equal columns, 140px height --> <div style=\"display:flex;gap:2px;height:140px;\"><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var32 string
-				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
+				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 197, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 216, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var33 string
-				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[1]))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 205, Col: 30}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -666,56 +676,56 @@ func ImageGrid(images []cc.Attachment) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var34 string
-				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(images[1].OriginalName)
+				var templ_7745c5c3_Var33 string
+				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 206, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 217, Col: 35}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var34 string
+				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[1]))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 225, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else if len(images) == 3 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<!-- left 2/3 full height, right 1/3 stacked --> <div style=\"display:flex;gap:2px;height:200px;\"><div style=\"flex:2;overflow:hidden;border-radius:4px;\"><img src=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "\" alt=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var35 string
-				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
+				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(images[1].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 218, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 226, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\" alt=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else if len(images) == 3 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<!-- left 2/3 full height, right 1/3 stacked --> <div style=\"display:flex;gap:2px;height:200px;\"><div style=\"flex:2;overflow:hidden;border-radius:4px;\"><img src=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var36 string
-				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
+				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 219, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 238, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><div style=\"flex:1;display:flex;flex-direction:column;gap:2px;\"><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var37 string
-				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[1]))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 228, Col: 31}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -723,25 +733,25 @@ func ImageGrid(images []cc.Attachment) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var38 string
-				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(images[1].OriginalName)
+				var templ_7745c5c3_Var37 string
+				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 229, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 239, Col: 35}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><div style=\"flex:1;display:flex;flex-direction:column;gap:2px;\"><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var38 string
+				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[1]))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 248, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var39 string
-				templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[2]))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 237, Col: 31}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -749,56 +759,56 @@ func ImageGrid(images []cc.Attachment) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var40 string
-				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(images[2].OriginalName)
+				var templ_7745c5c3_Var39 string
+				templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(images[1].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 238, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 249, Col: 36}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><div style=\"flex:1;overflow:hidden;border-radius:4px;\"><img src=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var40 string
+				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[2]))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 257, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div></div></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "<!-- 4 or 5+: 2×2 grid --> <div style=\"display:grid;grid-template-columns:1fr 1fr;gap:2px;\"><!-- cell 0 --><div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "\" alt=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var41 string
-				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
+				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(images[2].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 252, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 258, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "\" alt=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div></div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<!-- 4 or 5+: 2×2 grid --> <div style=\"display:grid;grid-template-columns:1fr 1fr;gap:2px;\"><!-- cell 0 --><div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var42 string
-				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
+				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[0]))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 253, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 272, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><!-- cell 1 --><div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var43 string
-				templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[1]))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 262, Col: 30}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -806,25 +816,25 @@ func ImageGrid(images []cc.Attachment) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var44 string
-				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(images[1].OriginalName)
+				var templ_7745c5c3_Var43 string
+				templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(images[0].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 263, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 273, Col: 35}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><!-- cell 1 --><div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var44 string
+				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[1]))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 282, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><!-- cell 2 --><div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var45 string
-				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[2]))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 272, Col: 30}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -832,114 +842,140 @@ func ImageGrid(images []cc.Attachment) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var46 string
-				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(images[2].OriginalName)
+				var templ_7745c5c3_Var45 string
+				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(images[1].OriginalName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 273, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 283, Col: 35}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><!-- cell 2 --><div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var46 string
+				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[2]))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 292, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><!-- cell 3: plain for n==4, overlay for n>=5 -->")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "\" alt=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var47 string
+				templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(images[2].OriginalName)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 293, Col: 35}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div><!-- cell 3: plain for n==4, overlay for n>=5 -->")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if len(images) == 4 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var47 string
-					templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[3]))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 283, Col: 31}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "\" alt=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<div style=\"height:140px;overflow:hidden;border-radius:4px;\"><img src=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var48 string
-					templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(images[3].OriginalName)
+					templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[3]))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 284, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 303, Col: 31}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<!-- +N overlay cell --> <div style=\"height:140px;overflow:hidden;border-radius:4px;position:relative;cursor:pointer;\" data-src=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "\" alt=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var49 string
-					templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[3]))
+					templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(images[3].OriginalName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 294, Col: 35}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 304, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "\" onclick=\"ccOpenLightbox(this.dataset.src,event)\"><img src=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "\" style=\"width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;\" loading=\"lazy\" onclick=\"ccOpenLightbox(this.src,event)\"></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<!-- +N overlay cell --> <div style=\"height:140px;overflow:hidden;border-radius:4px;position:relative;cursor:pointer;\" data-src=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var50 string
 					templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[3]))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 298, Col: 31}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 314, Col: 35}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "\" alt=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "\" onclick=\"ccOpenLightbox(this.dataset.src,event)\"><img src=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var51 string
-					templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(images[3].OriginalName)
+					templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(imgURL(images[3]))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 299, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 318, Col: 31}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "\" style=\"width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;\" loading=\"lazy\"><div style=\"position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;pointer-events:none;border-radius:4px;\"><span style=\"color:#fff;font-size:22px;font-weight:700;\">+")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "\" alt=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var52 string
-					templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(len(images) - 4))
+					templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(images[3].OriginalName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 304, Col: 89}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 319, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</span></div></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "\" style=\"width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;\" loading=\"lazy\"><div style=\"position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;pointer-events:none;border-radius:4px;\"><span style=\"color:#fff;font-size:22px;font-weight:700;\">+")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var53 string
+					templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(len(images) - 4))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 324, Col: 89}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</span></div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -969,12 +1005,12 @@ func ccLightboxScript() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var53 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var53 == nil {
-			templ_7745c5c3_Var53 = templ.NopComponent
+		templ_7745c5c3_Var54 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var54 == nil {
+			templ_7745c5c3_Var54 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<script>\n\t(function(){\n\t\tif(window.ccOpenLightbox)return;\n\t\tfunction getLightbox(){\n\t\t\tvar lb=document.getElementById('cc-lightbox');\n\t\t\tif(!lb){\n\t\t\t\tlb=document.createElement('div');\n\t\t\t\tlb.id='cc-lightbox';\n\t\t\t\tlb.style.cssText='display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.92);align-items:center;justify-content:center;cursor:pointer;';\n\t\t\t\tvar img=document.createElement('img');\n\t\t\t\timg.id='cc-lightbox-img';\n\t\t\t\timg.style.cssText='max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;pointer-events:none;';\n\t\t\t\tlb.appendChild(img);\n\t\t\t\tlb.addEventListener('click',function(e){\n\t\t\t\t\tif(e.target===lb||e.target.id==='cc-lightbox'){lb.style.display='none';}\n\t\t\t\t});\n\t\t\t\tdocument.body.appendChild(lb);\n\t\t\t}\n\t\t\treturn lb;\n\t\t}\n\t\twindow.ccOpenLightbox=function(src,event){\n\t\t\tif(event){event.stopPropagation();}\n\t\t\tvar lb=getLightbox();\n\t\t\tdocument.getElementById('cc-lightbox-img').src=src;\n\t\t\tlb.style.display='flex';\n\t\t};\n\t\tdocument.addEventListener('keydown',function(e){\n\t\t\tif(e.key==='Escape'){\n\t\t\t\tvar lb=document.getElementById('cc-lightbox');\n\t\t\t\tif(lb)lb.style.display='none';\n\t\t\t}\n\t\t});\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<script>\n\t(function(){\n\t\tif(window.ccOpenLightbox)return;\n\t\tfunction getLightbox(){\n\t\t\tvar lb=document.getElementById('cc-lightbox');\n\t\t\tif(!lb){\n\t\t\t\tlb=document.createElement('div');\n\t\t\t\tlb.id='cc-lightbox';\n\t\t\t\tlb.style.cssText='display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.92);align-items:center;justify-content:center;cursor:pointer;';\n\t\t\t\tvar img=document.createElement('img');\n\t\t\t\timg.id='cc-lightbox-img';\n\t\t\t\timg.style.cssText='max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;pointer-events:none;';\n\t\t\t\tlb.appendChild(img);\n\t\t\t\tlb.addEventListener('click',function(e){\n\t\t\t\t\tif(e.target===lb||e.target.id==='cc-lightbox'){lb.style.display='none';}\n\t\t\t\t});\n\t\t\t\tdocument.body.appendChild(lb);\n\t\t\t}\n\t\t\treturn lb;\n\t\t}\n\t\twindow.ccOpenLightbox=function(src,event){\n\t\t\tif(event){event.stopPropagation();}\n\t\t\tvar lb=getLightbox();\n\t\t\tdocument.getElementById('cc-lightbox-img').src=src;\n\t\t\tlb.style.display='flex';\n\t\t};\n\t\tdocument.addEventListener('keydown',function(e){\n\t\t\tif(e.key==='Escape'){\n\t\t\t\tvar lb=document.getElementById('cc-lightbox');\n\t\t\t\tif(lb)lb.style.display='none';\n\t\t\t}\n\t\t});\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
