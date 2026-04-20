@@ -13,6 +13,8 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+const pingInterval = 30 * time.Second
+
 // wsConn abstracts a WebSocket connection for testing.
 type wsConn interface {
 	writeEnvelope(env attach.Envelope) error
@@ -341,6 +343,22 @@ func (h *Hub) handleConn(conn wsConn) {
 		}
 	})
 	h.Broadcast(sessionID, env)
+
+	// Ping ticker goroutine — keep connection alive on idle.
+	pingTicker := time.NewTicker(pingInterval)
+	pingDone := make(chan struct{})
+	go func() {
+		defer pingTicker.Stop()
+		for {
+			select {
+			case <-pingTicker.C:
+				_ = conn.writeEnvelope(attach.Envelope{Type: "ping"})
+			case <-pingDone:
+				return
+			}
+		}
+	}()
+	defer close(pingDone)
 
 	// Main read loop.
 	for {
