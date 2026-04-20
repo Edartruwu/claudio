@@ -28,6 +28,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/a-h/templ"
 	"github.com/microcosm-cc/bluemonday"
@@ -1912,6 +1913,22 @@ func (ws *WebServer) handleDesignProject(w http.ResponseWriter, r *http.Request)
 	cleaned := filepath.Clean(designsDir) + string(os.PathSeparator)
 	if !strings.HasPrefix(fp, cleaned) {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	// For HTML files inject the latest canvas shell at serve time so old
+	// bundles on disk always get the current toolbar/JS without re-bundling.
+	if strings.HasSuffix(strings.ToLower(fp), ".html") {
+		raw, err := os.ReadFile(fp)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		injected := tools.InjectInfiniteCanvas(string(raw))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(injected))
 		return
 	}
 

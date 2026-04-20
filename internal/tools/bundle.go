@@ -249,7 +249,7 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	// Inject infinite canvas shell (pan + zoom) around the artboard content.
-	html = injectInfiniteCanvas(html)
+	html = InjectInfiniteCanvas(html)
 
 	if err := os.WriteFile(outPath, []byte(html), 0644); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to write output: %v", err), IsError: true}, nil
@@ -309,7 +309,9 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 
 // injectInfiniteCanvas wraps the HTML body with a pan/zoom infinite canvas shell.
 // It modifies <body> content in-place — no external dependencies, pure vanilla JS/CSS.
-func injectInfiniteCanvas(html string) string {
+// InjectInfiniteCanvas is exported so the web server can inject the canvas
+// at serve time, keeping old bundles on disk up-to-date without re-bundling.
+func InjectInfiniteCanvas(html string) string {
 	canvasCSS := `<style id="cc-canvas-style">
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0B0E0F}
