@@ -152,6 +152,8 @@ templ InfoPanel(data InfoPageData) {
 			if (detail.innerHTML.trim() !== '') {
 				detail.classList.remove('hidden');
 				if (chevron) chevron.style.transform = 'rotate(90deg)';
+			} else {
+				htmx.trigger(rowEl, 'open-detail');
 			}
 		}
 		document.addEventListener('htmx:afterSwap', function(e) {
@@ -219,7 +221,7 @@ templ TaskRows(tasks []cc.Task, sessionID string) {
 				class="flex items-start cursor-pointer select-none task-row"
 				style="gap:16px;"
 				hx-get={ fmt.Sprintf("/chat/%s/tasks/%s", sessionID, task.ID) }
-				hx-trigger="click"
+				hx-trigger="open-detail"
 				hx-swap="innerHTML"
 				hx-target="next .task-detail"
 				onclick="toggleTaskDetail(this)"

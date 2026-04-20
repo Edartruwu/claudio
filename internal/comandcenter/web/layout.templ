@@ -576,9 +576,20 @@ templ filterAndSwipeScript() {
 	<script>
 	window._ccCurrentFilter = '';
 
+	// ccOpenSession — navigate directly to a session by ID.
+	window.ccOpenSession = function(id) {
+		if (!id) { ccShowToast('Session not available'); return; }
+		var main = document.getElementById('main');
+		if (main && window.innerWidth >= 768) {
+			htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true});
+		} else {
+			window.location.href = '/chat/' + id;
+		}
+	};
+
 	// ccOpenAgent — look up agent session by name, then navigate to it.
 	window.ccOpenAgent = function(name) {
-		fetch('/api/sessions/by-name/' + encodeURIComponent(name), {credentials: 'same-origin'})
+		fetch('/api/session-lookup/' + encodeURIComponent(name), {credentials: 'same-origin'})
 			.then(function(res) {
 				if (res.status === 404) {
 					ccShowToast('Session not available');
@@ -592,13 +603,7 @@ templ filterAndSwipeScript() {
 			})
 			.then(function(data) {
 				if (!data) return;
-				var id = data.id;
-				var main = document.getElementById('main');
-				if (main && window.innerWidth >= 768) {
-					htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true});
-				} else {
-					window.location.href = '/chat/' + id;
-				}
+				ccOpenSession(data.id);
 			})
 			.catch(function() {
 				ccShowToast('Error looking up agent session');

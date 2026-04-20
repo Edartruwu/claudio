@@ -278,11 +278,16 @@
           if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
           if (msgs) {
             var agentIcon = data.status === 'complete' ? '✅' : data.status === 'failed' ? '❌' : data.status === 'working' ? '⚙️' : '⏳';
-            var agentNotif = document.createElement('div');
-            agentNotif.className = 'text-xs text-center py-1';
-            agentNotif.style.color = '#8E8E93';
+            var notifId = 'agent-status-' + data.name.replace(/[^a-z0-9]/gi, '-');
+            var agentNotif = document.getElementById(notifId);
+            if (!agentNotif) {
+              agentNotif = document.createElement('div');
+              agentNotif.id = notifId;
+              agentNotif.className = 'text-xs text-center py-1';
+              agentNotif.style.color = '#8E8E93';
+              msgs.appendChild(agentNotif);
+            }
             agentNotif.textContent = agentIcon + ' ' + data.name + ' — ' + data.status;
-            msgs.appendChild(agentNotif);
             if (isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
           }
 
@@ -366,6 +371,24 @@
     if (el && el.dataset.sessionId) startChat(el.dataset.sessionId);
   });
 })();
+
+// --- Task detail toggle ---
+window.toggleTaskDetail = function(el) {
+  var detail = el.parentElement && el.parentElement.querySelector('.task-detail');
+  if (!detail) return;
+  var chevron = el.querySelector('.task-chevron');
+  if (!detail.classList.contains('hidden')) {
+    // Close
+    detail.innerHTML = '';
+    detail.classList.add('hidden');
+    if (chevron) chevron.style.transform = '';
+  } else {
+    // Open — reveal first, then let htmx fire via custom event
+    detail.classList.remove('hidden');
+    if (chevron) chevron.style.transform = 'rotate(90deg)';
+    htmx.trigger(el, 'open-detail');
+  }
+};
 
 // --- DOMContentLoaded: skeleton CSS + push-prompt banner ---
 document.addEventListener('DOMContentLoaded', function() {
