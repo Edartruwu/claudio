@@ -200,10 +200,11 @@ templ layoutCSS() {
 			animation: agentPulse 2s infinite;
 		}
 		@keyframes agentPulse {
-			0%   { box-shadow: 0 0 0 0   rgba(0,196,140,0.4); }
-			70%  { box-shadow: 0 0 0 10px rgba(0,196,140,0);   }
-			100% { box-shadow: 0 0 0 0   rgba(0,196,140,0);    }
+			0%   { box-shadow: 0 0 0 0 rgba(0,196,140,0.4); }
+			70%  { box-shadow: 0 0 0 12px rgba(0,196,140,0); }
+			100% { box-shadow: 0 0 0 0 rgba(0,196,140,0); }
 		}
+		.agent-pulse-ring { animation: agentPulse 2s infinite; }
 	</style>
 }
 
