@@ -3001,6 +3001,11 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 			if m.engine != nil {
 				m.engine.SetMessages(nil)
 			}
+			if m.db != nil {
+				if sid := m.sessionID(); sid != "" {
+					_ = m.db.DeleteAllMessages(sid)
+				}
+			}
 			m.refreshViewport()
 			return m, nil
 		}
