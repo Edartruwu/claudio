@@ -374,6 +374,7 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			AgentName: p.AgentName,
 			CreatedAt: now,
 		})
+		h.broadcastAgentLog(sessionID, p.AgentName)
 
 	case attach.EventMsgToolUse:
 		var p attach.ToolUsePayload
@@ -393,6 +394,7 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			ToolUseID: p.ID,
 			CreatedAt: now,
 		})
+		h.broadcastAgentLog(sessionID, p.AgentName)
 
 	case attach.EventMsgToolResult:
 		var p attach.ToolResultPayload
@@ -400,6 +402,7 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			return
 		}
 		_ = h.storage.UpdateMessageOutput(sessionID, p.ToolUseID, p.Output)
+		h.broadcastAgentLog(sessionID, p.AgentName)
 
 	case attach.EventAgentStatus:
 		var p attach.AgentStatusPayload
@@ -501,4 +504,20 @@ func (h *Hub) Broadcast(sessionID string, env attach.Envelope) {
 			}()
 		}
 	}
+}
+
+// broadcastAgentLog emits an EventAgentLog notification so the UI knows to
+// refresh the agent log drawer. No-op if agentName is empty.
+func (h *Hub) broadcastAgentLog(sessionID, agentName string) {
+	if agentName == "" {
+		return
+	}
+	env, err := attach.NewEnvelope(attach.EventAgentLog, attach.AgentLogPayload{
+		SessionID: sessionID,
+		AgentName: agentName,
+	})
+	if err != nil {
+		return
+	}
+	h.Broadcast(sessionID, env)
 }

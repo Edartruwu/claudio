@@ -171,6 +171,9 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Agent detail screen.
 	mux.Handle("GET /chat/{session_id}/agent/{agent_id}", ws.uiAuth(http.HandlerFunc(ws.handleAgentDetail)))
 
+	// Agent log streaming partial.
+	mux.Handle("GET /chat/{session_id}/agents/{agent_name}/logs", ws.uiAuth(http.HandlerFunc(ws.handleAgentLogs)))
+
 	// Cron endpoints.
 	mux.Handle("GET /chat/{session_id}/crons", ws.uiAuth(http.HandlerFunc(ws.handleCronList)))
 	mux.Handle("DELETE /api/crons/{id}", ws.uiAuth(http.HandlerFunc(ws.handleCronDelete)))
@@ -648,6 +651,17 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
 	MessagesPartial(views).Render(r.Context(), w)
+}
+
+func (ws *WebServer) handleAgentLogs(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	agentName := r.PathValue("agent_name")
+	msgs, err := ws.storage.ListMessagesByAgent(sessionID, agentName, 200)
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	AgentLogs(msgs).Render(r.Context(), w)
 }
 
 func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
@@ -1325,6 +1339,21 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 		payload, err := json.Marshal(map[string]string{
 			"type":       "agent.changed",
 			"agent_type": p.AgentType,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventAgentLog:
+		var p attach.AgentLogPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		payload, err := json.Marshal(map[string]string{
+			"type":       "agent.log",
+			"agent_name": p.AgentName,
+			"session_id": p.SessionID,
 		})
 		if err != nil {
 			return

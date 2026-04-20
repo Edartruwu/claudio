@@ -24,6 +24,7 @@ const (
 	EventAgentChanged       = "agent.changed"
 	EventTeamChanged        = "team.changed"
 	EventTokenUsage         = "session.token_usage"
+	EventAgentLog           = "agent.log"
 )
 
 // Events: ComandCenter → Claudio
@@ -169,6 +170,13 @@ type AgentChangedPayload struct {
 // TokenUsagePayload for EventTokenUsage.
 type TokenUsagePayload struct {
 	ContextTokens int `json:"context_tokens"`
+}
+
+// AgentLogPayload for EventAgentLog.
+// Notification that new messages exist for a specific agent — no content, client re-fetches.
+type AgentLogPayload struct {
+	SessionID string `json:"session_id"`
+	AgentName string `json:"agent_name"`
 }
 
 // TeamChangedPayload for EventTeamChanged.

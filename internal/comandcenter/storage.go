@@ -491,6 +491,36 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
+// ListMessagesByAgent returns messages for a session filtered by agent_name, oldest first, up to limit.
+func (s *Storage) ListMessagesByAgent(sessionID, agentName string, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.Query(`
+		SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
+		       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
+		       COALESCE(tool_use_id,''), COALESCE(output,'')
+		FROM cc_messages WHERE session_id=? AND agent_name=?
+		ORDER BY created_at ASC LIMIT ?
+	`, sessionID, agentName, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list messages by agent: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content,
+			&m.AgentName, &m.CreatedAt, &m.ReplyToSession, &m.QuotedContent,
+			&m.ToolUseID, &m.Output); err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
 // GetNativeMessages reads from the native claudio messages table (written by the TUI)
 // and maps rows to Message for display. Returns newest first (DESC by id), up to limit.
 func (s *Storage) GetNativeMessages(sessionID string, limit int) ([]Message, error) {
