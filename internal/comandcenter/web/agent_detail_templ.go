@@ -308,8 +308,6 @@ func agentDetailHeader(data AgentDetailData) templ.Component {
 }
 
 // agentStatStrip renders the 4-column stat bar: TOOL / FILE / CALLS / ELAPSED.
-// TODO: cc.Agent does not have CurrentTool, CurrentFile, CallCount, ElapsedSecs fields yet.
-// Placeholder "-" values are used until those fields are added to the Agent struct.
 func agentStatStrip(data AgentDetailData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

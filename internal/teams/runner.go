@@ -772,6 +772,8 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		if status == StatusComplete {
 			protocolStatus = "done"
 		}
+		// TODO: populate CurrentTool, CallCount, ElapsedSecs from runtime state
+		// once the engine exposes those metrics on TeammateState.
 		payload, _ := json.Marshal(attach.AgentStatusPayload{
 			Name:          state.Identity.AgentName,
 			Status:        protocolStatus,

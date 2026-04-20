@@ -413,6 +413,9 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			Name:          p.Name,
 			Status:        p.Status,
 			CurrentTaskID: p.CurrentTask,
+			CurrentTool:   p.CurrentTool,
+			CallCount:     p.CallCount,
+			ElapsedSecs:   p.ElapsedSecs,
 			UpdatedAt:     now,
 		})
 
