@@ -413,6 +413,7 @@ func runHeadlessAttach(args []string) error {
 				sessionID = cur.ID
 			}
 			instantiateTeamDirect(tmpl, sessionID)
+			_ = appInstance.DB.UpdateSessionTeamTemplate(sessionID, flagTeam)
 		} else {
 			fmt.Fprintf(os.Stderr, "warning: team template %q not found: %v\n", flagTeam, err)
 		}
