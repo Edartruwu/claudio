@@ -251,12 +251,14 @@
           if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
 
         } else if (type === 'messages.reload') {
+          if (_streaming) return;
           var msgsEl = document.getElementById('messages');
           if (msgsEl && sessionId) {
+            _reloading = true;
             fetch('/partials/messages/' + sessionId, { credentials: 'include' })
               .then(function(r) { return r.text(); })
-              .then(function(html) { var nb = msgsEl.scrollTop >= msgsEl.scrollHeight - msgsEl.clientHeight - 100; msgsEl.innerHTML = html; if (nb) msgsEl.scrollTop = msgsEl.scrollHeight; })
-              .catch(function() {});
+              .then(function(html) { var nb = msgsEl.scrollTop >= msgsEl.scrollHeight - msgsEl.clientHeight - 100; msgsEl.innerHTML = html; _reloading = false; if (nb) msgsEl.scrollTop = msgsEl.scrollHeight; })
+              .catch(function() { _reloading = false; });
           }
 
         } else if (type === 'messages.compacted') {
