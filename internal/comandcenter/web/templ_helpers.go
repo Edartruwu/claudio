@@ -121,6 +121,29 @@ func FormatTokens(n int) string {
 	return fmt.Sprintf("%.1fK", float64(n)/1000)
 }
 
+// formatElapsed formats seconds as "Xm Ys" (e.g. "2m 14s") or just "Xs" when < 60s.
+func formatElapsed(secs int) string {
+	if secs <= 0 {
+		return "0s"
+	}
+	if secs < 60 {
+		return fmt.Sprintf("%ds", secs)
+	}
+	m := secs / 60
+	s := secs % 60
+	return fmt.Sprintf("%dm %ds", m, s)
+}
+
+// agentAvatarClass returns the CSS class list for the agent avatar circle,
+// adding the pulse animation class when the agent is running.
+func agentAvatarClass(status string) string {
+	base := "flex items-center justify-center font-semibold flex-shrink-0"
+	if status == "running" {
+		return base + " agent-pulse"
+	}
+	return base
+}
+
 // sidebarHiddenClass returns CSS classes to hide sidebar on mobile when a session is active.
 func sidebarHiddenClass(sessionID string) string {
 	if sessionID != "" {

@@ -54,6 +54,9 @@ type Agent struct {
 	Name          string
 	Status        string
 	CurrentTaskID string
+	CurrentTool   string // name of the tool currently executing; empty when idle
+	CallCount     int    // total API/tool calls made this session
+	ElapsedSecs   int    // seconds elapsed since agent started
 	UpdatedAt     time.Time
 }
 

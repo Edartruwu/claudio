@@ -1,36 +1,66 @@
 package web
 
-import cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+import (
+	"fmt"
 
-templ TeamMembers(agents []cc.Agent) {
+	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+)
+
+// TeamMembers renders the rich AgentCard list for screen 15.
+// Each card carries id="agent-card-{agentID}" for WS OOB swap targeting.
+templ TeamMembers(agents []cc.Agent, sessionID string) {
 	for _, agent := range agents {
-		<div class="flex items-center gap-3" style="background:var(--color-surface);border-radius:12px;padding:12px 14px;">
+		<div
+			id={ fmt.Sprintf("agent-card-%s", agent.ID) }
+			data-href={ fmt.Sprintf("/chat/%s/agent/%s", sessionID, agent.ID) }
+			style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;"
+			onclick="window.location=this.dataset.href"
+			onmouseover="this.style.background='var(--color-surfaceHigh)'"
+			onmouseout="this.style.background='var(--color-surface)'"
+		>
+			<!-- Avatar with optional pulse ring when running -->
 			<div
-				class="flex items-center justify-center font-bold flex-shrink-0"
-				style={ "width:36px;height:36px;border-radius:9999px;color:#000;font-size:13px;background:" + AvatarColor(agent.Name) }
+				class={ agentAvatarClass(agent.Status) }
+				style="width:40px;height:40px;border-radius:9999px;background:var(--color-surfaceHigh);color:var(--color-brand);font-size:14px;"
 			>
 				{ FirstChar(agent.Name) }
 			</div>
+			<!-- Card body -->
 			<div style="flex:1;min-width:0;">
-				<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ agent.Name }</p>
-				<div class="flex items-center gap-2" style="margin-top:4px;">
-					if agent.Status == "working" {
-						<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-tool);color:#000;">working</span>
-					} else if agent.Status == "active" {
-						<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-brand);color:#000;">active</span>
-					} else {
-						<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;background:var(--color-surfaceHigh);color:var(--color-textMuted);border:1px solid var(--color-border);">{ agent.Status }</span>
-					}
-					if agent.CurrentTaskID != "" {
-						<span style="font-size:11px;color:var(--color-textMuted);">
-							· { Truncate(8, agent.CurrentTaskID) }
-						</span>
+				<!-- Name + tool chip row -->
+				<div style="display:flex;align-items:center;gap:8px;">
+					<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">{ agent.Name }</p>
+					if agent.Status == "running" && agent.CurrentTool != "" {
+						<span style="background:var(--color-toolDim);color:var(--color-tool);font-size:11px;font-weight:600;letter-spacing:0.5px;border-radius:9999px;padding:2px 8px;white-space:nowrap;flex-shrink:0;">{ agent.CurrentTool }</span>
 					}
 				</div>
+				<!-- Status dot + label -->
+				<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+					if agent.Status == "running" {
+						<span style="width:8px;height:8px;border-radius:9999px;background:var(--color-brand);flex-shrink:0;display:inline-block;"></span>
+						<span style="font-size:12px;color:var(--color-brand);">running</span>
+					} else if agent.Status == "done" || agent.Status == "inactive" {
+						<span style="width:8px;height:8px;border-radius:9999px;background:var(--color-textMuted);flex-shrink:0;display:inline-block;"></span>
+						<span style="font-size:12px;color:var(--color-textMuted);">{ agent.Status }</span>
+					} else {
+						<span style="width:8px;height:8px;border-radius:9999px;background:var(--color-tool);flex-shrink:0;display:inline-block;"></span>
+						<span style="font-size:12px;color:var(--color-tool);">{ agent.Status }</span>
+					}
+				</div>
+				<!-- Metrics: call count + elapsed (hidden when callCount == 0) -->
+				if agent.CallCount > 0 {
+					<p style="font-size:13px;color:var(--color-textMuted);margin:4px 0 0;">⚡ { itoa(agent.CallCount) } calls · { formatElapsed(agent.ElapsedSecs) }</p>
+				}
 			</div>
 		</div>
 	}
 	if len(agents) == 0 {
-		<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No agents yet</div>
+		<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 0;gap:8px;">
+			<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--color-textMuted);">
+				<circle cx="12" cy="8" r="4"></circle>
+				<path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path>
+			</svg>
+			<span style="font-size:14px;color:var(--color-textMuted);">No agents running</span>
+		</div>
 	}
 }
