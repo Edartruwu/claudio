@@ -102,6 +102,13 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 	}
 
 	if in.To == "*" {
+		// Block sub-agent broadcast. Only the team lead may broadcast to "*".
+		if tc := TeamContextFromCtx(ctx); tc != nil && agentName != "" {
+			return &Result{
+				Content: "Direct sub-agent communication is not allowed. Route through the team lead instead — use QUESTION: <your question> at the end of your response and wait for the team lead to coordinate.",
+				IsError: true,
+			}, nil
+		}
 		if err := mailbox.Broadcast(from, msg); err != nil {
 			return &Result{Content: fmt.Sprintf("Broadcast failed: %v", err), IsError: true}, nil
 		}
