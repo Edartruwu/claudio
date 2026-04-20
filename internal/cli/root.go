@@ -472,11 +472,6 @@ func runHeadlessAttach(args []string) error {
 	}
 	appInstance.TeamRunner.SetSessionID(currentSessionID)
 
-	// Wire clear history from ComandCenter → wipe engine messages
-	attachClient.OnClearHistory(func() {
-		appInstance.ClearHistory(currentSessionID)
-	})
-
 	engineCfg := query.EngineConfig{
 		Hooks:           appInstance.Hooks,
 		Analytics:       appInstance.Analytics,
@@ -498,6 +493,14 @@ func runHeadlessAttach(args []string) error {
 	}
 
 	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, engineCfg)
+
+	// Wire clear history from ComandCenter → wipe DB + engine in-memory messages.
+	// Must be registered after engine is created so the closure can capture it.
+	attachClient.OnClearHistory(func() {
+		appInstance.ClearHistory(currentSessionID)
+		engine.SetMessages(nil)
+	})
+
 	sys := buildFullSystemPrompt()
 	if headlessTeamTemplate != nil {
 		sys += "\n\n" + buildHeadlessTeamContextBlock(headlessTeamTemplate)
