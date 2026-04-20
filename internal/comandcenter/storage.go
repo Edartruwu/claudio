@@ -540,6 +540,9 @@ func (s *Storage) DeleteMessageByID(id string) error {
 }
 
 func (s *Storage) DeleteMessages(sessionID string) error {
+	if _, err := s.db.Exec(`DELETE FROM cc_attachments WHERE session_id = ?`, sessionID); err != nil {
+		return fmt.Errorf("delete attachments: %w", err)
+	}
 	_, err := s.db.Exec(`DELETE FROM cc_messages WHERE session_id = ?`, sessionID)
 	if err != nil {
 		return fmt.Errorf("delete messages: %w", err)
