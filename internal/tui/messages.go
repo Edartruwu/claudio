@@ -1144,20 +1144,6 @@ func resultBrief(content string) string {
 	return fmt.Sprintf("%d lines | %s", n, sizeStr)
 }
 
-// lastNLines returns the last maxLines lines of text, capped at maxChars total.
-// Prepends "[…]\n" if content was trimmed.
-func lastNLines(text string, maxLines int, maxChars int) string {
-	lines := strings.Split(text, "\n")
-	if len(lines) > maxLines {
-		lines = lines[len(lines)-maxLines:]
-		text = "[…]\n" + strings.Join(lines, "\n")
-	}
-	if len(text) > maxChars {
-		text = "[…]\n" + text[len(text)-maxChars:]
-	}
-	return text
-}
-
 // expandedResult returns the first n lines of content.
 func expandedResult(content string, n int) []string {
 	lines := strings.Split(content, "\n")
