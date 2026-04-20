@@ -11,6 +11,7 @@ import (
 	"html"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -1048,8 +1049,10 @@ func apiMessageText(m api.Message) string {
 
 // pushMsgBubble renders and pushes a user message bubble to a session's WS clients.
 func (ws *WebServer) pushMsgBubble(sessionID string, msg cc.Message) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	var buf bytes.Buffer
-	if err := MessageBubble(MessageView{Message: msg}).Render(context.Background(), &buf); err == nil {
+	if err := MessageBubble(MessageView{Message: msg}).Render(ctx, &buf); err == nil {
 		if p, err := json.Marshal(map[string]string{
 			"type": "message.user",
 			"html": buf.String(),
@@ -1120,193 +1123,209 @@ func (ws *WebServer) pushToSessionClients(sessionID string, payload []byte) {
 }
 
 // fanout reads UIBroadcast events and forwards rendered HTML to interested clients.
+// Wrapped with per-iteration panic recovery so a single bad event cannot kill the goroutine.
 func (ws *WebServer) fanout() {
 	ch := ws.hub.UIBroadcast()
 	for ev := range ch {
-		switch ev.Envelope.Type {
-		case attach.EventMsgAssistant:
-			msg := envelopeToMessage(ev)
-			if msg == nil {
-				continue
-			}
-			var buf bytes.Buffer
-			if err := MessageBubble(MessageView{Message: *msg}).Render(context.Background(), &buf); err != nil {
-				continue
-			}
-			payload, err := json.Marshal(map[string]string{
-				"type": "message.assistant",
-				"html": buf.String(),
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
+		ws.fanoutHandleEvent(ev)
+	}
+}
 
-		case attach.EventMsgToolUse:
-			// 1. Permanent tool-use bubble in chat history.
-			msg := envelopeToMessage(ev)
-			if msg == nil {
-				continue
-			}
-			var buf bytes.Buffer
-			if err := MessageBubble(MessageView{Message: *msg}).Render(context.Background(), &buf); err != nil {
-				continue
-			}
-			bubblePayload, err := json.Marshal(map[string]string{
-				"type": "message.tool_use",
-				"html": buf.String(),
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, bubblePayload)
-
-			// 2. Transient typing indicator with tool + agent name.
-			var p attach.ToolUsePayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			typingPayload, err := json.Marshal(map[string]string{
-				"type":      "typing",
-				"tool":      p.Tool,
-				"agentName": p.AgentName,
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, typingPayload)
-
-		case attach.EventMsgToolResult:
-			var p attach.ToolResultPayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			// Push updated bubble HTML with output filled in.
-			resultPayload, err := json.Marshal(map[string]string{
-				"type":       "message.tool_result",
-				"toolUseID":  p.ToolUseID,
-				"output":     p.Output,
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, resultPayload)
-
-		case attach.EventMsgStreamDelta:
-			var p attach.StreamDeltaPayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			pushMsg, err := json.Marshal(map[string]interface{}{
-				"type":        "message.stream_delta",
-				"delta":       p.Delta,
-				"accumulated": p.Accumulated,
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, pushMsg)
-
-		case attach.EventDesignScreenshot:
-			var p attach.DesignScreenshotPayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			ws.handleScreenshotPush(ev.SessionID, p)
-
-		case attach.EventDesignBundleReady:
-			var p attach.DesignBundlePayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			ws.handleBundleLinkPush(ev.SessionID, p)
-
-		case attach.EventAgentStatus:
-			var p attach.AgentStatusPayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			payload, err := json.Marshal(map[string]string{
-				"type":   "agent_status",
-				"name":   p.Name,
-				"status": p.Status,
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
-
-		case attach.EventClearHistory:
-			payload, err := json.Marshal(map[string]string{
-				"type": "messages.cleared",
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
-
-		case attach.EventTaskCreated:
-			payload, err := json.Marshal(map[string]string{
-				"type": "task.created",
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
-
-		case attach.EventTaskUpdated:
-			payload, err := json.Marshal(map[string]string{
-				"type": "task.updated",
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
-
-		case attach.EventConfigChanged:
-			var p attach.ConfigChangedPayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			payload, err := json.Marshal(map[string]string{
-				"type":            "config.changed",
-				"model":           p.Model,
-				"permission_mode": p.PermissionMode,
-				"output_style":    p.OutputStyle,
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
-
-		case attach.EventAgentChanged:
-			var p attach.AgentChangedPayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			payload, err := json.Marshal(map[string]string{
-				"type":       "agent.changed",
-				"agent_type": p.AgentType,
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
-
-		case attach.EventTeamChanged:
-			var p attach.TeamChangedPayload
-			if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
-				continue
-			}
-			payload, err := json.Marshal(map[string]string{
-				"type":          "team.changed",
-				"team_template": p.TeamTemplate,
-			})
-			if err != nil {
-				continue
-			}
-			ws.pushToSessionClients(ev.SessionID, payload)
+// fanoutHandleEvent processes a single UIEvent with panic recovery and render timeouts.
+func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[fanout] recovered panic: %v", r)
 		}
+	}()
+
+	// renderCtx provides a 10s deadline for template Render calls.
+	renderCtx, renderCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer renderCancel()
+
+	switch ev.Envelope.Type {
+	case attach.EventMsgAssistant:
+		msg := envelopeToMessage(ev)
+		if msg == nil {
+			return
+		}
+		var buf bytes.Buffer
+		if err := MessageBubble(MessageView{Message: *msg}).Render(renderCtx, &buf); err != nil {
+			return
+		}
+		payload, err := json.Marshal(map[string]string{
+			"type": "message.assistant",
+			"html": buf.String(),
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventMsgToolUse:
+		// 1. Permanent tool-use bubble in chat history.
+		msg := envelopeToMessage(ev)
+		if msg == nil {
+			return
+		}
+		var buf bytes.Buffer
+		if err := MessageBubble(MessageView{Message: *msg}).Render(renderCtx, &buf); err != nil {
+			return
+		}
+		bubblePayload, err := json.Marshal(map[string]string{
+			"type": "message.tool_use",
+			"html": buf.String(),
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, bubblePayload)
+
+		// 2. Transient typing indicator with tool + agent name.
+		var p attach.ToolUsePayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		typingPayload, err := json.Marshal(map[string]string{
+			"type":      "typing",
+			"tool":      p.Tool,
+			"agentName": p.AgentName,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, typingPayload)
+
+	case attach.EventMsgToolResult:
+		var p attach.ToolResultPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		// Push updated bubble HTML with output filled in.
+		resultPayload, err := json.Marshal(map[string]string{
+			"type":       "message.tool_result",
+			"toolUseID":  p.ToolUseID,
+			"output":     p.Output,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, resultPayload)
+
+	case attach.EventMsgStreamDelta:
+		var p attach.StreamDeltaPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		pushMsg, err := json.Marshal(map[string]interface{}{
+			"type":        "message.stream_delta",
+			"delta":       p.Delta,
+			"accumulated": p.Accumulated,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, pushMsg)
+
+	case attach.EventDesignScreenshot:
+		var p attach.DesignScreenshotPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		ws.handleScreenshotPush(ev.SessionID, p)
+
+	case attach.EventDesignBundleReady:
+		var p attach.DesignBundlePayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		ws.handleBundleLinkPush(ev.SessionID, p)
+
+	case attach.EventAgentStatus:
+		var p attach.AgentStatusPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		payload, err := json.Marshal(map[string]string{
+			"type":   "agent_status",
+			"name":   p.Name,
+			"status": p.Status,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventClearHistory:
+		payload, err := json.Marshal(map[string]string{
+			"type": "messages.cleared",
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventTaskCreated:
+		payload, err := json.Marshal(map[string]string{
+			"type": "task.created",
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventTaskUpdated:
+		payload, err := json.Marshal(map[string]string{
+			"type": "task.updated",
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventConfigChanged:
+		var p attach.ConfigChangedPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		payload, err := json.Marshal(map[string]string{
+			"type":            "config.changed",
+			"model":           p.Model,
+			"permission_mode": p.PermissionMode,
+			"output_style":    p.OutputStyle,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventAgentChanged:
+		var p attach.AgentChangedPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		payload, err := json.Marshal(map[string]string{
+			"type":       "agent.changed",
+			"agent_type": p.AgentType,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
+
+	case attach.EventTeamChanged:
+		var p attach.TeamChangedPayload
+		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		payload, err := json.Marshal(map[string]string{
+			"type":          "team.changed",
+			"team_template": p.TeamTemplate,
+		})
+		if err != nil {
+			return
+		}
+		ws.pushToSessionClients(ev.SessionID, payload)
 	}
 }
 
@@ -1358,9 +1377,11 @@ func (ws *WebServer) handleScreenshotPush(sessionID string, p attach.DesignScree
 	}
 
 	// 4. Render message-bubble template and push to browser clients.
+	rctx, rcancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer rcancel()
 	var buf bytes.Buffer
 	view := MessageView{Message: msg, Attachments: []cc.Attachment{att}}
-	if err := MessageBubble(view).Render(context.Background(), &buf); err != nil {
+	if err := MessageBubble(view).Render(rctx, &buf); err != nil {
 		return
 	}
 	wsPayload, _ := json.Marshal(map[string]string{"type": "message.assistant", "html": buf.String()})
@@ -1391,8 +1412,10 @@ func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundl
 		return
 	}
 
+	bctx, bcancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer bcancel()
 	var buf bytes.Buffer
-	if err := MessageBubble(MessageView{Message: msg}).Render(context.Background(), &buf); err != nil {
+	if err := MessageBubble(MessageView{Message: msg}).Render(bctx, &buf); err != nil {
 		return
 	}
 	wsPayload, _ := json.Marshal(map[string]string{"type": "message.assistant", "html": buf.String()})
