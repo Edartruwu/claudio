@@ -115,6 +115,19 @@ func (t *SendMessageTool) Execute(ctx context.Context, input json.RawMessage) (*
 		recipient = recipient[:idx]
 	}
 
+	// Block sub-agent → sub-agent direct messaging. All cross-agent coordination
+	// must flow through the team lead. A sub-agent is identified by having a
+	// non-nil TeamContext with a non-empty AgentName. The recipient is a sub-agent
+	// if it exists in the runner's teammate registry (team leads are not stored there).
+	if tc := TeamContextFromCtx(ctx); tc != nil && agentName != "" && t.Runner != nil {
+		if _, ok := t.Runner.GetStateByName(recipient); ok {
+			return &Result{
+				Content: "Direct sub-agent communication is not allowed. Route through the team lead instead — use QUESTION: <your question> at the end of your response and wait for the team lead to coordinate.",
+				IsError: true,
+			}, nil
+		}
+	}
+
 	if err := mailbox.Send(from, recipient, msg); err != nil {
 		return &Result{Content: fmt.Sprintf("Send failed: %v", err), IsError: true}, nil
 	}
