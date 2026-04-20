@@ -38,6 +38,10 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, agent := range agents {
+			templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, templ.JSFuncCall("ccOpenAgent", agent.Name))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -51,20 +55,16 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" data-href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" style=\"background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;\" onclick=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/chat/%s/agent/%s", sessionID, agent.ID))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 15, Col: 68}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+			var templ_7745c5c3_Var3 templ.ComponentScript = templ.JSFuncCall("ccOpenAgent", agent.Name)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3.Call)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" style=\"background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;\" onclick=\"window.location=this.dataset.href\" onmouseover=\"this.style.background='var(--color-surfaceHigh)'\" onmouseout=\"this.style.background='var(--color-surface)'\"><!-- Avatar with optional pulse ring when running -->")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" onmouseover=\"this.style.background='var(--color-surfaceHigh)'\" onmouseout=\"this.style.background='var(--color-surface)'\"><!-- Avatar with optional pulse ring when running -->")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -93,7 +93,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(FirstChar(agent.Name))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 26, Col: 27}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 25, Col: 27}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -106,7 +106,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 32, Col: 149}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 31, Col: 149}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -124,7 +124,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(agent.CurrentTool)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 34, Col: 218}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 33, Col: 218}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -152,7 +152,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 44, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 43, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -170,7 +170,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 47, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 46, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -193,7 +193,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(agent.CallCount))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 52, Col: 103}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 51, Col: 103}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -206,7 +206,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(formatElapsed(agent.ElapsedSecs))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 52, Col: 149}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 51, Col: 149}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {

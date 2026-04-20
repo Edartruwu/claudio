@@ -336,7 +336,7 @@ func agentStatStrip(data AgentDetailData) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(data.Agent.UpdatedAt))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 132, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 130, Col: 113}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
@@ -420,7 +420,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(event.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 157, Col: 179}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 155, Col: 179}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -433,7 +433,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(event.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 158, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 156, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 			if templ_7745c5c3_Err != nil {
@@ -446,7 +446,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(event.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 160, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 158, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -464,7 +464,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(event.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 166, Col: 105}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 164, Col: 105}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -477,7 +477,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(event.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 168, Col: 137}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 166, Col: 137}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -495,7 +495,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(event.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 174, Col: 92}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 172, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -508,7 +508,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(event.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 175, Col: 105}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 173, Col: 105}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -521,7 +521,7 @@ func agentTimelineItem(event AgentEvent) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(event.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 178, Col: 19}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 176, Col: 19}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -565,7 +565,7 @@ func agentMessageInput(data AgentDetailData) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Message %s...", data.Agent.Name))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 196, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 194, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -578,7 +578,7 @@ func agentMessageInput(data AgentDetailData) templ.Component {
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/sessions/%s/agents/%s/message", data.SessionID, data.Agent.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 206, Col: 93}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_detail.templ`, Line: 204, Col: 93}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 		if templ_7745c5c3_Err != nil {
