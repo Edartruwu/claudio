@@ -186,24 +186,48 @@ templ layoutCSS() {
 }
 
 templ annotatorOverlay() {
-	<div id="annotator-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);flex-direction:column;align-items:center;justify-content:center;">
-		<!-- Top toolbar -->
-		<div style="display:flex;align-items:center;gap:8px;padding:10px 16px;flex-shrink:0;">
-			<button id="ann-tool-pen" onclick="annSetTool('pen')" style="padding:6px 14px;border-radius:6px;border:2px solid #25D366;background:#25D366;color:#fff;font-family:inherit;font-size:13px;cursor:pointer;">&#9999;&#65039; Pen</button>
-			<button id="ann-tool-rect" onclick="annSetTool('rect')" style="padding:6px 14px;border-radius:6px;border:2px solid #3A3A3C;background:transparent;color:#fff;font-family:inherit;font-size:13px;cursor:pointer;">&#9645; Rect</button>
-			<span style="width:1px;height:24px;background:#3A3A3C;margin:0 4px;"></span>
-			<button class="ann-color-btn" onclick="annSetColor('#EF4444')" style="width:28px;height:28px;border-radius:50%;border:3px solid #EF4444;background:#EF4444;cursor:pointer;" data-color="#EF4444"></button>
-			<button class="ann-color-btn" onclick="annSetColor('#22C55E')" style="width:28px;height:28px;border-radius:50%;border:3px solid transparent;background:#22C55E;cursor:pointer;" data-color="#22C55E"></button>
-			<button class="ann-color-btn" onclick="annSetColor('#3B82F6')" style="width:28px;height:28px;border-radius:50%;border:3px solid transparent;background:#3B82F6;cursor:pointer;" data-color="#3B82F6"></button>
-			<button class="ann-color-btn" onclick="annSetColor('#000000')" style="width:28px;height:28px;border-radius:50%;border:3px solid transparent;background:#000000;cursor:pointer;box-shadow:inset 0 0 0 1px #666;" data-color="#000000"></button>
-		</div>
-		<!-- Canvas -->
-		<canvas id="annotator-canvas" style="border-radius:8px;cursor:crosshair;max-width:90vw;max-height:70vh;touch-action:none;"></canvas>
-		<!-- Bottom bar -->
-		<div style="display:flex;align-items:center;gap:8px;padding:10px 16px;flex-shrink:0;width:100%;max-width:700px;">
-			<textarea id="ann-caption" placeholder="Describe what to change..." rows="1" style="flex:1;resize:none;padding:8px 12px;border-radius:8px;border:1px solid #3A3A3C;background:#1C1C1E;color:#fff;font-family:inherit;font-size:13px;outline:none;"></textarea>
-			<button id="ann-send-btn" onclick="annSend()" style="padding:8px 18px;border-radius:8px;border:none;background:#25D366;color:#fff;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">Send</button>
-			<button onclick="annCancel()" style="padding:8px 14px;border-radius:8px;border:1px solid #3A3A3C;background:transparent;color:#8E8E93;font-family:inherit;font-size:13px;cursor:pointer;">Cancel</button>
+	<div id="annotation-overlay" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,0.85);flex-direction:column;">
+		<!-- Canvas fills available space -->
+		<canvas id="annotation-canvas" style="flex:1;display:block;touch-action:none;cursor:crosshair;"></canvas>
+		<!-- Text input for text tool (hidden by default) -->
+		<input id="ann-text-input" type="text" style="display:none;position:fixed;z-index:401;background:transparent;color:#FFFFFF;border:1px dashed rgba(255,255,255,0.5);outline:none;font-family:inherit;font-size:16px;padding:2px 4px;min-width:100px;" aria-label="Annotation text"/>
+		<!-- Toolbar — bottom bar -->
+		<div id="annotation-toolbar" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;background:var(--color-surfaceHigh);border-top:1px solid var(--color-border);flex-shrink:0;flex-wrap:wrap;">
+			<!-- Tool buttons -->
+			<button data-tool="pen" id="ann-tool-pen" onclick="annSetTool('pen')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(0,196,140,0.15);color:var(--color-brand);border:1px solid var(--color-brand);" aria-label="Pen tool">
+				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 3l4 4L7 21H3v-4L17 3z"/></svg>
+			</button>
+			<button data-tool="rect" id="ann-tool-rect" onclick="annSetTool('rect')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--color-surfaceFloat);color:var(--color-textSecondary);border:1px solid transparent;" aria-label="Rectangle tool">
+				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+			</button>
+			<button data-tool="arrow" id="ann-tool-arrow" onclick="annSetTool('arrow')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--color-surfaceFloat);color:var(--color-textSecondary);border:1px solid transparent;" aria-label="Arrow tool">
+				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 19L19 5M19 5v10M19 5H9"/></svg>
+			</button>
+			<button data-tool="text" id="ann-tool-text" onclick="annSetTool('text')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--color-surfaceFloat);color:var(--color-textSecondary);border:1px solid transparent;" aria-label="Text tool">
+				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 4h12M12 4v16"/></svg>
+			</button>
+
+			<div style="width:1px;height:24px;background:var(--color-border);margin:0 4px;"></div>
+
+			<!-- Color swatches -->
+			<button class="ann-color-btn" data-color="#FFFFFF" onclick="annSetColor('#FFFFFF')" style="width:24px;height:24px;border-radius:50%;background:#FFFFFF;border:2px solid var(--color-brand);cursor:pointer;padding:0;" aria-label="White"></button>
+			<button class="ann-color-btn" data-color="#E05050" onclick="annSetColor('#E05050')" style="width:24px;height:24px;border-radius:50%;background:#E05050;border:2px solid transparent;cursor:pointer;padding:0;" aria-label="Red"></button>
+			<button class="ann-color-btn" data-color="#00C48C" onclick="annSetColor('#00C48C')" style="width:24px;height:24px;border-radius:50%;background:#00C48C;border:2px solid transparent;cursor:pointer;padding:0;" aria-label="Green"></button>
+			<button class="ann-color-btn" data-color="#F0A500" onclick="annSetColor('#F0A500')" style="width:24px;height:24px;border-radius:50%;background:#F0A500;border:2px solid transparent;cursor:pointer;padding:0;" aria-label="Yellow"></button>
+
+			<div style="width:1px;height:24px;background:var(--color-border);margin:0 4px;"></div>
+
+			<!-- Stroke width slider -->
+			<input type="range" id="ann-stroke" min="2" max="16" value="4" oninput="annSetStroke(this.value)" style="width:80px;accent-color:var(--color-brand);" aria-label="Stroke width"/>
+
+			<div style="flex:1;"></div>
+
+			<!-- Caption (for non-staged mode) -->
+			<textarea id="ann-caption" placeholder="Describe what to change..." rows="1" style="flex:0 1 200px;resize:none;padding:8px 12px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surfaceFloat);color:var(--color-textPrimary);font-family:inherit;font-size:13px;outline:none;"></textarea>
+
+			<!-- Cancel / Done -->
+			<button onclick="annCancel()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--color-border);background:transparent;color:var(--color-textSecondary);font-family:inherit;font-size:14px;cursor:pointer;">Cancel</button>
+			<button id="ann-send-btn" onclick="annSend()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--color-brand);color:#0B0E0F;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-left:4px;">Done</button>
 		</div>
 	</div>
 }
@@ -211,148 +235,285 @@ templ annotatorOverlay() {
 templ annotatorScript() {
 	<script>
 	(function() {
-		var overlay = document.getElementById('annotator-overlay');
-		var canvas  = document.getElementById('annotator-canvas');
-		var ctx     = canvas.getContext('2d');
+		var overlay   = document.getElementById('annotation-overlay');
+		var canvas    = document.getElementById('annotation-canvas');
+		var ctx       = canvas.getContext('2d');
 		var captionEl = document.getElementById('ann-caption');
 		var sendBtn   = document.getElementById('ann-send-btn');
+		var textInput = document.getElementById('ann-text-input');
 
-		var tool  = 'pen';
-		var color = '#EF4444';
-		var lineW = 3;
-		var drawing = false;
-		var startX = 0, startY = 0;
-		var snapshot = null;
-		var srcImg = null;
-		var _stagedMode = false;
+		var _annTool   = 'pen';
+		var _annColor  = '#FFFFFF';
+		var _annStroke = 4;
+		var _annDrawing = false;
+		var _annStartX = 0, _annStartY = 0;
+		var _annSnapshot = null;
+		var _annSrcImg   = null;
+		var _annDpr      = 1;
+		var _annImgEl    = null;
+		var _annStagedIndex = -1;
+		var _stagedMode  = false;
 
+		// --- Open annotator ---
 		window.openAnnotator = function(imgEl, stagedMode) {
 			_stagedMode = !!stagedMode;
-			srcImg = new Image();
-			srcImg.crossOrigin = 'anonymous';
-			srcImg.onload = function() {
-				var maxW = window.innerWidth * 0.9;
-				var maxH = window.innerHeight * 0.7;
-				var scale = Math.min(maxW / srcImg.naturalWidth, maxH / srcImg.naturalHeight, 1);
-				canvas.width  = Math.round(srcImg.naturalWidth * scale);
-				canvas.height = Math.round(srcImg.naturalHeight * scale);
-				ctx.drawImage(srcImg, 0, 0, canvas.width, canvas.height);
-				snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+			_annImgEl = imgEl;
+			_annStagedIndex = -1;
+
+			// Find staged index if in staged mode
+			if (_stagedMode && imgEl && imgEl.closest && window._ccStagedFiles) {
+				var card = imgEl.closest('[data-idx]');
+				if (card) _annStagedIndex = parseInt(card.dataset.idx, 10);
+			}
+
+			_annSrcImg = new Image();
+			_annSrcImg.crossOrigin = 'anonymous';
+			_annSrcImg.onload = function() {
+				_annDpr = window.devicePixelRatio || 1;
+				var natW = _annSrcImg.naturalWidth;
+				var natH = _annSrcImg.naturalHeight;
+
+				// CSS size = fit in viewport minus toolbar
+				var toolbarH = 80;
+				var maxW = window.innerWidth;
+				var maxH = window.innerHeight - toolbarH;
+				var scale = Math.min(maxW / natW, maxH / natH, 1);
+				var cssW = Math.round(natW * scale);
+				var cssH = Math.round(natH * scale);
+
+				canvas.style.width  = cssW + 'px';
+				canvas.style.height = cssH + 'px';
+				canvas.width  = Math.round(cssW * _annDpr);
+				canvas.height = Math.round(cssH * _annDpr);
+
+				ctx.setTransform(_annDpr, 0, 0, _annDpr, 0, 0);
+				ctx.drawImage(_annSrcImg, 0, 0, cssW, cssH);
+				_annSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
 				overlay.style.display = 'flex';
 				captionEl.value = '';
 				captionEl.style.display = _stagedMode ? 'none' : '';
 				sendBtn.textContent = _stagedMode ? 'Done' : 'Send';
+
+				annSetTool('pen');
+				annSetColor('#FFFFFF');
 			};
-			srcImg.src = imgEl.src;
+			_annSrcImg.src = imgEl.src;
 		};
 
+		// --- Close ---
 		function annClose() {
 			overlay.style.display = 'none';
 			ctx.clearRect(0, 0, canvas.width, canvas.height);
-			snapshot = null;
-			srcImg = null;
+			_annSnapshot = null;
+			_annSrcImg = null;
+			_annImgEl = null;
+			_annStagedIndex = -1;
+			_annDrawing = false;
+			// Remove any lingering text input
+			if (textInput) textInput.style.display = 'none';
 		}
 		window.annCancel = annClose;
 
+		// --- Tool selection ---
 		window.annSetTool = function(t) {
-			tool = t;
-			var penBtn  = document.getElementById('ann-tool-pen');
-			var rectBtn = document.getElementById('ann-tool-rect');
-			penBtn.style.background  = t === 'pen'  ? '#25D366' : 'transparent';
-			penBtn.style.borderColor = t === 'pen'  ? '#25D366' : '#3A3A3C';
-			rectBtn.style.background  = t === 'rect' ? '#25D366' : 'transparent';
-			rectBtn.style.borderColor = t === 'rect' ? '#25D366' : '#3A3A3C';
-		};
-
-		window.annSetColor = function(c) {
-			color = c;
-			document.querySelectorAll('.ann-color-btn').forEach(function(btn) {
-				btn.style.borderColor = btn.dataset.color === c ? c : 'transparent';
-				if (btn.dataset.color === '#000000' && c !== '#000000') {
+			_annTool = t;
+			var tools = ['pen', 'rect', 'arrow', 'text'];
+			tools.forEach(function(name) {
+				var btn = document.getElementById('ann-tool-' + name);
+				if (!btn) return;
+				if (name === t) {
+					btn.style.background = 'rgba(0,196,140,0.15)';
+					btn.style.color = 'var(--color-brand)';
+					btn.style.borderColor = 'var(--color-brand)';
+				} else {
+					btn.style.background = 'var(--color-surfaceFloat)';
+					btn.style.color = 'var(--color-textSecondary)';
 					btn.style.borderColor = 'transparent';
 				}
 			});
+			canvas.style.cursor = t === 'text' ? 'text' : 'crosshair';
 		};
 
+		// --- Color selection ---
+		window.annSetColor = function(c) {
+			_annColor = c;
+			document.querySelectorAll('.ann-color-btn').forEach(function(btn) {
+				btn.style.borderColor = btn.dataset.color === c ? 'var(--color-brand)' : 'transparent';
+			});
+		};
+
+		// --- Stroke width ---
+		window.annSetStroke = function(v) {
+			_annStroke = parseInt(v, 10);
+		};
+
+		// --- Coordinate helpers ---
 		function getPos(e) {
 			var r = canvas.getBoundingClientRect();
-			var clientX, clientY;
-			if (e.touches) {
-				clientX = e.touches[0].clientX;
-				clientY = e.touches[0].clientY;
-			} else {
-				clientX = e.clientX;
-				clientY = e.clientY;
-			}
-			return { x: clientX - r.left, y: clientY - r.top };
+			return {
+				x: (e.clientX - r.left),
+				y: (e.clientY - r.top)
+			};
 		}
 
-		function onDown(e) {
-			e.preventDefault();
-			drawing = true;
-			var p = getPos(e);
-			startX = p.x; startY = p.y;
-			if (tool === 'pen') {
-				ctx.beginPath();
-				ctx.moveTo(p.x, p.y);
-				ctx.strokeStyle = color;
-				ctx.lineWidth = lineW;
-				ctx.lineCap = 'round';
-				ctx.lineJoin = 'round';
-			}
-			if (tool === 'rect') {
-				snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-			}
+		function setStrokeStyle() {
+			ctx.strokeStyle = _annColor;
+			ctx.fillStyle   = _annColor;
+			ctx.lineWidth   = _annStroke;
+			ctx.lineCap     = 'round';
+			ctx.lineJoin    = 'round';
 		}
 
-		function onMove(e) {
-			if (!drawing) return;
-			e.preventDefault();
-			var p = getPos(e);
-			if (tool === 'pen') {
-				ctx.lineTo(p.x, p.y);
-				ctx.stroke();
-			} else if (tool === 'rect') {
-				ctx.putImageData(snapshot, 0, 0);
-				ctx.strokeStyle = color;
-				ctx.lineWidth = lineW;
-				ctx.strokeRect(startX, startY, p.x - startX, p.y - startY);
+		// --- Arrow head helper ---
+		function drawArrowhead(fromX, fromY, toX, toY) {
+			var headLen = _annStroke * 3 + 6;
+			var angle = Math.atan2(toY - fromY, toX - fromX);
+			ctx.beginPath();
+			ctx.moveTo(toX, toY);
+			ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
+			ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+			ctx.closePath();
+			ctx.fillStyle = _annColor;
+			ctx.fill();
+		}
+
+		// --- Text tool ---
+		function commitTextInput() {
+			var val = textInput.value.trim();
+			if (val) {
+				ctx.setTransform(_annDpr, 0, 0, _annDpr, 0, 0);
+				ctx.fillStyle = _annColor;
+				ctx.font = 'bold ' + Math.max(_annStroke * 4, 16) + 'px sans-serif';
+				var tx = parseFloat(textInput.dataset.canvasX);
+				var ty = parseFloat(textInput.dataset.canvasY);
+				ctx.fillText(val, tx, ty);
+				_annSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
 			}
+			textInput.value = '';
+			textInput.style.display = 'none';
 		}
 
-		function onUp(e) {
-			if (!drawing) return;
-			drawing = false;
-			if (tool === 'pen') { ctx.closePath(); }
-			snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-		}
-
-		canvas.addEventListener('mousedown', onDown);
-		canvas.addEventListener('mousemove', onMove);
-		canvas.addEventListener('mouseup', onUp);
-		canvas.addEventListener('mouseleave', function() { if (drawing) onUp(); });
-		canvas.addEventListener('touchstart', onDown, { passive: false });
-		canvas.addEventListener('touchmove',  onMove, { passive: false });
-		canvas.addEventListener('touchend',   onUp);
-
-		document.addEventListener('keydown', function(e) {
-			if (e.key === 'Escape' && overlay.style.display === 'flex') annClose();
+		textInput.addEventListener('keydown', function(e) {
+			if (e.key === 'Enter') { e.preventDefault(); commitTextInput(); }
+			if (e.key === 'Escape') { textInput.value = ''; textInput.style.display = 'none'; }
+		});
+		textInput.addEventListener('blur', function() {
+			if (textInput.style.display !== 'none') commitTextInput();
 		});
 
+		// --- Pointer events ---
+		canvas.addEventListener('pointerdown', function(e) {
+			e.preventDefault();
+			canvas.setPointerCapture(e.pointerId);
+
+			// Commit any open text input first
+			if (textInput.style.display !== 'none') commitTextInput();
+
+			var p = getPos(e);
+
+			if (_annTool === 'text') {
+				// Show text input at click pos
+				var r = canvas.getBoundingClientRect();
+				textInput.style.left = (e.clientX) + 'px';
+				textInput.style.top  = (e.clientY - 20) + 'px';
+				textInput.style.color = _annColor;
+				textInput.style.fontSize = Math.max(_annStroke * 4, 16) + 'px';
+				textInput.dataset.canvasX = p.x;
+				textInput.dataset.canvasY = p.y;
+				textInput.style.display = 'block';
+				textInput.value = '';
+				textInput.focus();
+				return;
+			}
+
+			_annDrawing = true;
+			_annStartX = p.x;
+			_annStartY = p.y;
+
+			if (_annTool === 'pen') {
+				ctx.setTransform(_annDpr, 0, 0, _annDpr, 0, 0);
+				setStrokeStyle();
+				ctx.beginPath();
+				ctx.moveTo(p.x, p.y);
+			}
+			if (_annTool === 'rect' || _annTool === 'arrow') {
+				_annSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+			}
+		});
+
+		canvas.addEventListener('pointermove', function(e) {
+			if (!_annDrawing) return;
+			e.preventDefault();
+			var p = getPos(e);
+
+			if (_annTool === 'pen') {
+				ctx.lineTo(p.x, p.y);
+				ctx.stroke();
+			} else if (_annTool === 'rect') {
+				ctx.putImageData(_annSnapshot, 0, 0);
+				ctx.setTransform(_annDpr, 0, 0, _annDpr, 0, 0);
+				setStrokeStyle();
+				ctx.strokeRect(_annStartX, _annStartY, p.x - _annStartX, p.y - _annStartY);
+			} else if (_annTool === 'arrow') {
+				ctx.putImageData(_annSnapshot, 0, 0);
+				ctx.setTransform(_annDpr, 0, 0, _annDpr, 0, 0);
+				setStrokeStyle();
+				ctx.beginPath();
+				ctx.moveTo(_annStartX, _annStartY);
+				ctx.lineTo(p.x, p.y);
+				ctx.stroke();
+				drawArrowhead(_annStartX, _annStartY, p.x, p.y);
+			}
+		});
+
+		canvas.addEventListener('pointerup', function(e) {
+			if (!_annDrawing) return;
+			_annDrawing = false;
+			if (_annTool === 'pen') ctx.closePath();
+			_annSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		});
+
+		// Escape key
+		document.addEventListener('keydown', function(e) {
+			if (e.key === 'Escape' && overlay.style.display === 'flex') {
+				if (textInput.style.display !== 'none') {
+					textInput.value = '';
+					textInput.style.display = 'none';
+					return;
+				}
+				annClose();
+			}
+		});
+
+		// --- Send / Done ---
 		window.annSend = function() {
+			// Commit any open text input
+			if (textInput.style.display !== 'none') commitTextInput();
+
 			sendBtn.disabled = true;
 			sendBtn.textContent = _stagedMode ? 'Saving…' : 'Sending…';
 
 			canvas.toBlob(function(blob) {
-				if (_stagedMode && window._annotatorCallback) {
-					window._annotatorCallback(blob);
-					window._annotatorCallback = null;
+				// Staged mode: replace file in staged array
+				if (_stagedMode) {
+					if (window._ccStagedFiles && _annStagedIndex >= 0) {
+						var file = new File([blob], 'annotated.png', { type: 'image/png' });
+						window._ccStagedFiles[_annStagedIndex] = file;
+					}
+					if (window._annotatorCallback) {
+						window._annotatorCallback(blob);
+						window._annotatorCallback = null;
+					}
+					// Update img src
+					if (_annImgEl) _annImgEl.src = URL.createObjectURL(blob);
 					annClose();
 					sendBtn.disabled = false;
-					sendBtn.textContent = 'Send';
+					sendBtn.textContent = 'Done';
 					return;
 				}
 
+				// Non-staged: upload annotation + caption
 				var sessionID = document.body.dataset.sessionId;
 				if (!sessionID) { alert('No active session'); return; }
 
