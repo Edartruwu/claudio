@@ -299,6 +299,7 @@ templ chatViewScript(sessionID string) {
 
 			if (!fileInput) return;
 			var stagedFiles = [];
+			window._ccStagedFiles = stagedFiles;
 
 			document.addEventListener('click', function(e) {
 				var popover = document.getElementById('plus-popover');
@@ -343,8 +344,12 @@ templ chatViewScript(sessionID string) {
 
 				if (file.type.startsWith('image/')) {
 					var img = document.createElement('img');
-					img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:7px;display:block;';
+					img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:7px;display:block;cursor:pointer;';
 					img.alt = file.name;
+					img.addEventListener('click', function(ev) {
+						ev.stopPropagation();
+						if (window.openAnnotator) openAnnotator(img, true);
+					});
 					var reader = new FileReader();
 					reader.onload = function(ev) { img.src = ev.target.result; };
 					reader.readAsDataURL(file);
@@ -380,7 +385,8 @@ templ chatViewScript(sessionID string) {
 			});
 
 			window.ccClearStagedFile = function() {
-				stagedFiles = [];
+				stagedFiles.length = 0;
+				window._ccStagedFiles = stagedFiles;
 				fileInput.value = '';
 				var thumbs = document.getElementById('staged-thumbs');
 				var preview = document.getElementById('staged-files-preview');
