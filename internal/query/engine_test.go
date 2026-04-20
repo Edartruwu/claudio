@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 
 	"github.com/Abraxas-365/claudio/internal/api"
@@ -1029,4 +1030,21 @@ func TestMergeConsecutiveUserMessages_TaskNotifBeforeToolResults(t *testing.T) {
 	if !hasToolResultBlocks(got[2].Content) {
 		t.Error("got[2] should still contain tool_result blocks")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// SetMessages — concurrent safety
+// ---------------------------------------------------------------------------
+
+func TestEngine_SetMessages_ConcurrentSafe(t *testing.T) {
+	// must pass with go test -race
+	e := NewEngine(nil, nil, nil)
+	var wg sync.WaitGroup
+	msgs := []api.Message{makeUserMsg("hi")}
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); e.SetMessages(msgs) }()
+		go func() { defer wg.Done(); _ = e.Messages() }()
+	}
+	wg.Wait()
 }
