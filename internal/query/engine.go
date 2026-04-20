@@ -405,6 +405,8 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 	}
 
 	// Inject user context (CLAUDE.md) as the very first user message, once per session.
+	// Lock before accessing e.messages to avoid race with SetMessages (e.g. after /clear).
+	e.mu.Lock()
 	if !e.userContextInjected && e.userContextMsg != "" && len(e.messages) == 0 {
 		ctxContent, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(e.userContextMsg)})
 		e.messages = append(e.messages, api.Message{
@@ -443,6 +445,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		Role:    "user",
 		Content: content,
 	})
+	e.mu.Unlock()
 
 	// Fire UserPromptSubmit hook
 	e.fireHook(ctx, hooks.UserPromptSubmit, "", string(content))
