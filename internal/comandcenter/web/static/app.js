@@ -1,6 +1,10 @@
 (function () {
   var _gen = 0; // incremented on every startChat call; stale closures check this
   var _activeWS = null; // single active WS; closed before each new startChat
+  var wsConnected = false;  // hoisted — shared across startChat calls
+  var isConnecting = false; // guard: prevents concurrent initWS calls
+  var reconnectTimer = null; // hoisted — cleared/set from any closure
+  var _initWSFn = null;     // always points to current-session initWS
 
   function startChat(sessionId) {
     if (!sessionId) return;
@@ -12,10 +16,13 @@
       _activeWS.close();
       _activeWS = null;
     }
+    // Reset shared state for new session
+    wsConnected = false;
+    isConnecting = false;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
   var msgs = document.getElementById('messages');
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  var reconnectTimer = null;
   var lastMsgDate = null;
 
   // --- Helpers ---
@@ -139,7 +146,6 @@
 
   // --- WebSocket ---
 
-  var wsConnected = false;
   var wsInstance = null;
   var _hadConnected = false;   // true after first successful onopen in this startChat call
   var _streaming = false;      // true while stream_delta events are arriving
@@ -165,11 +171,15 @@
   }
 
   function initWS() {
+    if (wsConnected || isConnecting) return;
+    isConnecting = true;
     var ws = new WebSocket(proto + '//' + location.host + '/ws/ui?session_id=' + sessionId);
     wsInstance = ws;
     _activeWS = ws;
 
     ws.onopen = function () {
+      isConnecting = false;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       var isReconnect = _hadConnected && !wsConnected;
       _hadConnected = true;
       wsConnected = true;
@@ -342,10 +352,12 @@
     };
 
     ws.onerror = function () {
+      isConnecting = false;
       // Handled by onclose.
     };
 
     ws.onclose = function () {
+      isConnecting = false;
       wsConnected = false;
       showBanner();
       if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -355,25 +367,33 @@
     };
   }
 
+  // Register current-session initWS so once-attached listeners call the right fn.
+  _initWSFn = initWS;
+
   // htmx:wsClose / htmx:wsOpen — for htmx WS extension compatibility
   document.addEventListener('htmx:wsClose', function() { showBanner(); });
   document.addEventListener('htmx:wsOpen',  function() { hideBanner(); });
 
-  // On app resume (phone unlock / tab focus), reconnect immediately.
-  document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible' && !wsConnected) {
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-      initWS();
-    }
-  });
+  // Attach reconnect listeners only once — each startChat() call must not pile up duplicates.
+  if (!window._wsListenersAttached) {
+    window._wsListenersAttached = true;
 
-  // Reconnect immediately when network comes back online.
-  window.addEventListener('online', function() {
-    if (!wsConnected) {
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-      initWS();
-    }
-  });
+    // On app resume (phone unlock / tab focus), reconnect immediately.
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible' && !wsConnected && !isConnecting) {
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        if (_initWSFn) _initWSFn();
+      }
+    });
+
+    // Reconnect immediately when network comes back online.
+    window.addEventListener('online', function() {
+      if (!wsConnected && !isConnecting) {
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        if (_initWSFn) _initWSFn();
+      }
+    });
+  }
 
   initWS();
   } // end startChat
