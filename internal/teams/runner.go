@@ -577,6 +577,35 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 	// Launch goroutine
 	go r.runTeammate(ctx, state, cfg)
 
+	// Launch heartbeat ticker — emits periodic EventAgentStatus so the Team tab
+	// shows live metrics (call_count, elapsed_secs, current_tool) while running.
+	if r.eventBus != nil {
+		go func() {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					payload, _ := json.Marshal(attach.AgentStatusPayload{
+						Name:          cfg.AgentName,
+						Status:        "working",
+						CurrentTool:   state.GetCurrentTool(),
+						CallCount:     state.GetCallCount(),
+						ElapsedSecs:   state.GetElapsedSecs(),
+						ParentAgentID: cfg.ParentAgentID,
+					})
+					r.eventBus.Publish(bus.Event{
+						Type:      attach.EventAgentStatus,
+						SessionID: r.sessionID,
+						Payload:   payload,
+					})
+				case <-state.idleCh:
+					return
+				}
+			}
+		}()
+	}
+
 	return state, nil
 }
 
