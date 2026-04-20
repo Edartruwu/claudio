@@ -10,7 +10,7 @@ templ MessageBubble(msg MessageView) {
 	if msg.Role == "user" {
 		<!-- USER: right-aligned -->
 		<div class="flex justify-end mb-1">
-			<div class="msg-bubble-user shadow-sm" style="padding:10px 14px;max-width:min(520px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+			<div class="msg-bubble-user shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);">
 				if msg.ReplyToSession != "" {
 					<div class="mb-2 rounded" style="border-left:3px solid rgba(255,255,255,0.5);padding:4px 8px;background:rgba(255,255,255,0.15);">
 						<p style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.9);">{ "@" + msg.ReplyToSession }</p>
@@ -41,7 +41,7 @@ templ MessageBubble(msg MessageView) {
 	} else if msg.Role == "tool_use" || msg.Role == "tool_call" {
 		<!-- TOOL CALL: collapsed by default -->
 		<div class="flex justify-start mb-1">
-			<div class="msg-bubble-tool" data-tool-use-id={ msg.ToolUseID } style={ "max-width:min(520px,85%);border-left:2px solid var(--color-tool);cursor:pointer;" }>
+			<div class="msg-bubble-tool" data-tool-use-id={ msg.ToolUseID } style={ "max-width:min(300px,85%);border-left:2px solid var(--color-tool);cursor:pointer;" }>
 				<details ontoggle="this.setAttribute('aria-expanded', this.open)" aria-expanded="false">
 					<summary class="cursor-pointer list-none flex items-center gap-2 justify-between" style="padding:8px 12px;">
 						<div class="flex items-center gap-2">
@@ -132,7 +132,7 @@ templ MessageBubble(msg MessageView) {
 				}
 			}
 			if msg.AgentName != "" && HasPrefix(msg.AgentName, "⏰") {
-				<div class="msg-bubble-cron shadow-sm" style="padding:10px 14px;max-width:min(520px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-cron);">
+				<div class="msg-bubble-cron shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-cron);">
 					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
 						@templ.Raw(string(RenderMD(msg.Content)))
 					</div>
@@ -142,7 +142,7 @@ templ MessageBubble(msg MessageView) {
 					}
 				</div>
 			} else {
-				<div class="msg-bubble-assistant shadow-sm" style="padding:10px 14px;max-width:min(520px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-ai);">
+				<div class="msg-bubble-assistant shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-ai);">
 					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
 						@templ.Raw(string(RenderMD(msg.Content)))
 					</div>
