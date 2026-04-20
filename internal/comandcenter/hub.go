@@ -416,6 +416,45 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			UpdatedAt:     now,
 		})
 
+	case attach.EventTaskCreated:
+		var p attach.TaskCreatedPayload
+		if err := env.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		_ = h.storage.UpsertTask(Task{
+			ID:          p.ID,
+			SessionID:   sessionID,
+			Title:       p.Title,
+			Description: p.Description,
+			Status:      p.Status,
+			AssignedTo:  p.AssignedTo,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+
+	case attach.EventTaskUpdated:
+		var p attach.TaskUpdatedPayload
+		if err := env.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		// Preserve existing CreatedAt by fetching prior record; fall back to now.
+		existing, err := h.storage.GetTask(p.ID)
+		if err != nil {
+			existing = Task{ID: p.ID, SessionID: sessionID, CreatedAt: now}
+		}
+		if p.Title != "" {
+			existing.Title = p.Title
+		}
+		if p.Description != "" {
+			existing.Description = p.Description
+		}
+		if p.AssignedTo != "" {
+			existing.AssignedTo = p.AssignedTo
+		}
+		existing.Status = p.Status
+		existing.UpdatedAt = now
+		_ = h.storage.UpsertTask(existing)
+
 	case attach.EventSessionBye:
 		// handled by caller (defer)
 
