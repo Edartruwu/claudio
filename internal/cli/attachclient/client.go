@@ -230,6 +230,9 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// readDeadline is the maximum time to wait for a message from the server.
+const readDeadline = 60 * time.Second
+
 // readLoop reads inbound Envelopes and fires callbacks.
 // Callbacks are copied under lock then invoked without lock. All registered
 // callbacks (OnUserMessage, OnInterrupt, etc.) must be non-blocking — they
@@ -237,6 +240,9 @@ func (c *Client) Close() error {
 // callback could block, wrap its invocation in a goroutine to avoid stalling
 // the read loop.
 func (c *Client) readLoop() {
+	// Set initial read deadline
+	c.conn.SetReadDeadline(time.Now().Add(readDeadline))
+
 	for {
 		select {
 		case <-c.closedChan:
@@ -249,6 +255,9 @@ func (c *Client) readLoop() {
 			log.Printf("read envelope: %v", err)
 			return
 		}
+
+		// Reset read deadline after each successful receive
+		c.conn.SetReadDeadline(time.Now().Add(readDeadline))
 
 		switch env.Type {
 		case attach.EventMsgUser:
