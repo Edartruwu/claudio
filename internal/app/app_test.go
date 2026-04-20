@@ -113,6 +113,43 @@ func TestApp_ClearHistory_PublishesEvent(t *testing.T) {
 	}
 }
 
+// TestApp_ClearHistory_DeletesMessages verifies that ClearHistory removes all messages for the session from the DB.
+func TestApp_ClearHistory_DeletesMessages(t *testing.T) {
+	db := openTestDB(t)
+
+	sess, err := db.CreateSession("/tmp/test-project", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Seed three messages.
+	for _, content := range []string{"msg-a", "msg-b", "msg-c"} {
+		if err := db.AddMessage(sess.ID, "user", content, "user", "", ""); err != nil {
+			t.Fatalf("AddMessage %q: %v", content, err)
+		}
+	}
+
+	// Confirm messages exist before clearing.
+	before, err := db.GetMessages(sess.ID)
+	if err != nil {
+		t.Fatalf("GetMessages before clear: %v", err)
+	}
+	if len(before) != 3 {
+		t.Fatalf("want 3 messages before clear, got %d", len(before))
+	}
+
+	a := &App{DB: db}
+	a.ClearHistory(sess.ID)
+
+	after, err := db.GetMessages(sess.ID)
+	if err != nil {
+		t.Fatalf("GetMessages after clear: %v", err)
+	}
+	if len(after) != 0 {
+		t.Errorf("want 0 messages after ClearHistory, got %d", len(after))
+	}
+}
+
 // TestApp_InjectMessage_ConcurrentReceives verifies the channel can be read concurrently.
 func TestApp_InjectMessage_ConcurrentReceives(t *testing.T) {
 	app := &App{

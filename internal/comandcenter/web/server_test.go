@@ -980,6 +980,55 @@ func TestHandleSendMessage_Clear_AlsoClearsNativeMessages(t *testing.T) {
 	}
 }
 
+// TestHandleSendMessage_Clear_WipesStorage verifies POST content=/clear removes seeded messages from storage.
+func TestHandleSendMessage_Clear_WipesStorage(t *testing.T) {
+	storage, mux := newTestEnv(t)
+
+	const sid = "wipe-sess-1"
+
+	if err := storage.UpsertSession(cc.Session{
+		ID:           sid,
+		Name:         "WipeAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	for _, m := range []cc.Message{
+		{ID: "wipe-msg-1", SessionID: sid, Role: "user", Content: "alpha", CreatedAt: time.Now()},
+		{ID: "wipe-msg-2", SessionID: sid, Role: "assistant", Content: "beta", CreatedAt: time.Now()},
+	} {
+		if err := storage.InsertMessage(m); err != nil {
+			t.Fatalf("seed message %s: %v", m.ID, err)
+		}
+	}
+
+	form := url.Values{"content": {"/clear"}}
+	r := authedRequest(http.MethodPost, "/api/sessions/"+sid+"/message")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+
+	msgs, err := storage.ListMessages(sid, 100)
+	if err != nil {
+		t.Fatalf("ListMessages after /clear: %v", err)
+	}
+	// Handler inserts one system confirmation bubble; seeded messages must be gone.
+	if len(msgs) != 1 {
+		t.Errorf("expected 1 confirmation message after /clear, got %d", len(msgs))
+	}
+	if len(msgs) == 1 && msgs[0].Content != "Conversation cleared. ✓" {
+		t.Errorf("unexpected confirmation content: %q", msgs[0].Content)
+	}
+}
+
 // TestHandleSendMessage_Compact_ReadsNativeMessages verifies /compact reads from
 // the native messages table. When messages exist there but cc_messages is empty,
 // compact reaches the "no API client" error path (503) rather than "Nothing to compact".
