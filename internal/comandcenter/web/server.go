@@ -1964,11 +1964,14 @@ func (ws *WebServer) handleDesignProject(w http.ResponseWriter, r *http.Request)
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
-		injected := tools.InjectInfiniteCanvas(string(raw))
+		html := string(raw)
+		if !strings.Contains(html, "cc-canvas-root") {
+			html = tools.InjectInfiniteCanvas(html)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(injected))
+		_, _ = w.Write([]byte(html))
 		return
 	}
 
