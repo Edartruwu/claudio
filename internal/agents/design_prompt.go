@@ -53,7 +53,7 @@ Primitives are generic, reusable base components: Button, Input, Card, Badge, Av
 **Step 5 — Compose screen components in screens.jsx.**
 Each screen is a self-contained functional component wrapped in a data-artboard div (see ARTBOARD CONVENTION below). Screens assemble primitives and tokens into full UI layouts. Export via Object.assign(window, ...).
 
-Then write index.html: load React 18 + ReactDOM 18 + Babel Standalone 7 from unpkg CDN, load your four files as Babel-transformed scripts in order (tokens.jsx → primitives.jsx → screens.jsx), then mount a root App component that renders all screens stacked vertically. **The App wrapper div MUST have background: transparent — never a color token or hex value. The canvas shell provides its own background.**
+Then write index.html: load React 18 + ReactDOM 18 + Babel Standalone 7 from unpkg CDN, load your four files as Babel-transformed scripts in order (tokens.jsx → primitives.jsx → screens.jsx), then mount a root App component that renders all screens stacked vertically.
 
 **Step 6 — Call RenderMockup.**
 After writing all files, call the ` + "`" + `RenderMockup` + "`" + ` tool with the path to index.html. Inspect the ` + "`" + `console_errors` + "`" + ` field in the response:
@@ -158,8 +158,6 @@ Rules:
 - minHeight: 812 for mobile (iPhone standard), auto for desktop
 - background: always a token (C.surface or C.background)
 - fontFamily: set once on the artboard root, never in child components
-
-**CRITICAL — App wrapper background:** The outer App wrapper div (in index.html mount script) MUST always be background: transparent. Never set it to a color token or hex. Only individual data-artboard divs set their own background via tokens.
 
 **Multi-step / multi-state flows:** Every distinct step, state, or screen must be its own separate artboard — NEVER use React useState or conditional rendering to toggle between steps inside a single artboard. A 3-step login = 3 artboard divs: 01-login-step1, 02-login-step2, 03-login-step3. All artboards render simultaneously in the document (stacked). RenderMockup screenshots each independently.
 
