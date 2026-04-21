@@ -70,7 +70,10 @@ func renderMarkdown(s string) string {
 	if err := mdParser.Convert([]byte(s), &buf); err != nil {
 		return html.EscapeString(s)
 	}
-	return string(mdPolicy.SanitizeBytes(buf.Bytes()))
+	result := string(mdPolicy.SanitizeBytes(buf.Bytes()))
+	result = strings.ReplaceAll(result, "<table>", `<div class="md-table-wrap"><table>`)
+	result = strings.ReplaceAll(result, "</table>", `</table></div>`)
+	return result
 }
 
 // uiClient is a browser WebSocket connection watching a session.

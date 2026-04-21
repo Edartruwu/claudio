@@ -132,7 +132,7 @@ templ MessageBubble(msg MessageView) {
 				}
 			}
 			if msg.AgentName != "" && HasPrefix(msg.AgentName, "⏰") {
-				<div class="msg-bubble-cron shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-cron);">
+				<div class="msg-bubble-cron shadow-sm" style="padding:10px 14px;max-width:min(480px,90vw);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-cron);">
 					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
 						@templ.Raw(string(RenderMD(msg.Content)))
 					</div>
@@ -142,7 +142,7 @@ templ MessageBubble(msg MessageView) {
 					}
 				</div>
 			} else {
-				<div class="msg-bubble-assistant shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-ai);">
+				<div class="msg-bubble-assistant shadow-sm" style="padding:10px 14px;max-width:min(480px,90vw);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-ai);">
 					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
 						@templ.Raw(string(RenderMD(msg.Content)))
 					</div>
