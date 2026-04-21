@@ -1144,13 +1144,13 @@ func (ws *WebServer) checkWSOrigin(cfg *websocket.Config, req *http.Request) err
 	if h, _, err := net.SplitHostPort(requestHost); err == nil {
 		requestHost = h
 	}
+	// Strip scheme first, then port — order matters (SplitHostPort splits on "https:" otherwise)
 	originHost := origin
-	if h, _, err := net.SplitHostPort(originHost); err == nil {
-		originHost = h
-	}
-	// Strip scheme from origin for host comparison
 	if idx := strings.Index(originHost, "://"); idx >= 0 {
 		originHost = originHost[idx+3:]
+	}
+	if h, _, err := net.SplitHostPort(originHost); err == nil {
+		originHost = h
 	}
 	if strings.EqualFold(originHost, requestHost) {
 		return nil
