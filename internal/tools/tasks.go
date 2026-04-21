@@ -143,10 +143,12 @@ func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
 					Description: t.Description,
 					AssignedTo:  t.AssignedTo,
 					Status:      t.Status,
+					SessionID:   s.currentSession,
 				})
 				s.bus.Publish(bus.Event{
-					Type:    attach.EventTaskUpdated,
-					Payload: payload,
+					Type:      attach.EventTaskUpdated,
+					SessionID: s.currentSession,
+					Payload:   payload,
 				})
 			}
 		}
@@ -175,10 +177,12 @@ func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
 					Description: t.Description,
 					AssignedTo:  t.AssignedTo,
 					Status:      t.Status,
+					SessionID:   s.currentSession,
 				})
 				s.bus.Publish(bus.Event{
-					Type:    attach.EventTaskUpdated,
-					Payload: payload,
+					Type:      attach.EventTaskUpdated,
+					SessionID: s.currentSession,
+					Payload:   payload,
 				})
 			}
 		}

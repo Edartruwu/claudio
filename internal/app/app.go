@@ -623,6 +623,20 @@ func (a *App) InjectAttachClient(client interface{}, url string) {
 	}
 }
 
+// SubscribeTaskEvents subscribes to EventTaskCreated and EventTaskUpdated on the app bus
+// and calls broadcastFn for each, enabling a hub to forward events to web UI clients.
+// Call this after the hub is wired, e.g. app.SubscribeTaskEvents(hub.Broadcast).
+func (a *App) SubscribeTaskEvents(broadcastFn func(sessionID string, env attach.Envelope)) {
+	a.Bus.Subscribe(attach.EventTaskCreated, func(event bus.Event) {
+		env := attach.Envelope{Type: attach.EventTaskCreated, Payload: event.Payload}
+		broadcastFn(event.SessionID, env)
+	})
+	a.Bus.Subscribe(attach.EventTaskUpdated, func(event bus.Event) {
+		env := attach.Envelope{Type: attach.EventTaskUpdated, Payload: event.Payload}
+		broadcastFn(event.SessionID, env)
+	})
+}
+
 // InjectPayload sends a UserMsgPayload to the inject channel for headless mode processing.
 // Non-blocking — if channel full, drops with log (no blocking, no panic).
 func (a *App) InjectPayload(p attach.UserMsgPayload) {
