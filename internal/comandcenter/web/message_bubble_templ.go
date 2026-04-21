@@ -36,7 +36,7 @@ func MessageBubble(msg MessageView) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if msg.Role == "user" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!-- USER: right-aligned --> <div class=\"flex justify-end mb-1\"><div class=\"msg-bubble-user shadow-sm\" style=\"padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!-- USER: right-aligned --> <div class=\"flex justify-end mb-1\"><div class=\"msg-bubble-user shadow-sm\" style=\"padding:10px 14px;max-width:min(480px,90vw);box-shadow:0 2px 8px rgba(0,0,0,0.4);\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -73,14 +73,14 @@ func MessageBubble(msg MessageView) templ.Component {
 				}
 			}
 			if msg.Content != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<p style=\"color:var(--color-textPrimary);font-size:15px;line-height:1.5;margin:0;white-space:pre-wrap;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<p style=\"color:var(--color-textPrimary);font-size:15px;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 21, Col: 122}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 21, Col: 169}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {

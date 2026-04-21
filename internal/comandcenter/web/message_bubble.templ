@@ -10,7 +10,7 @@ templ MessageBubble(msg MessageView) {
 	if msg.Role == "user" {
 		<!-- USER: right-aligned -->
 		<div class="flex justify-end mb-1">
-			<div class="msg-bubble-user shadow-sm" style="padding:10px 14px;max-width:min(300px,85%);box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+			<div class="msg-bubble-user shadow-sm" style="padding:10px 14px;max-width:min(480px,90vw);box-shadow:0 2px 8px rgba(0,0,0,0.4);">
 				if msg.ReplyToSession != "" {
 					<div class="mb-2 rounded" style="border-left:3px solid rgba(255,255,255,0.5);padding:4px 8px;background:rgba(255,255,255,0.15);">
 						<p style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.9);">{ "@" + msg.ReplyToSession }</p>
@@ -18,7 +18,7 @@ templ MessageBubble(msg MessageView) {
 					</div>
 				}
 				if msg.Content != "" {
-					<p style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;margin:0;white-space:pre-wrap;">{ msg.Content }</p>
+					<p style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;">{ msg.Content }</p>
 				}
 				@ImageGrid(FilterImages(msg.Attachments))
 				for _, att := range FilterNonImages(msg.Attachments) {
