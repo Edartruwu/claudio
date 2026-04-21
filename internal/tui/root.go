@@ -252,6 +252,7 @@ type (
 	}
 	timerTickMsg  struct{}
 	logoTickMsg   struct{} // drives the welcome-screen logo color-wave animation
+	taskTickMsg   struct{} // drives live refresh of the TodoDock
 	compactDoneMsg struct {
 		compacted []api.Message
 		summary   string
@@ -650,6 +651,7 @@ func (m Model) Init() tea.Cmd {
 		tea.EnableBracketedPaste,
 		m.waitForEvent(),
 		tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return logoTickMsg{} }),
+		tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return taskTickMsg{} }),
 	)
 }
 
@@ -1535,6 +1537,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Welcome screen is gone — stop ticking; it will be restarted by Init on next launch.
 		return m, nil
+
+	case taskTickMsg:
+		// Refresh TodoDock live so tasks created/updated by sub-agents appear immediately.
+		if m.todoDock != nil {
+			m.refreshViewport()
+		}
+		return m, tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return taskTickMsg{} })
 
 	case taskspanel.RefreshMsg:
 		if m.activePanel != nil {
