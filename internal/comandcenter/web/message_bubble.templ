@@ -58,7 +58,7 @@ templ MessageBubble(msg MessageView) {
 							<details>
 								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;">▾ Input</summary>
 								<div style="background:#0B0E0F;border-radius:6px;padding:8px 12px;">
-									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textSecondary);max-height:200px;margin:0;">{ ToolInput(msg.Content) }</pre>
+									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textSecondary);max-height:200px;margin:0;max-width:100%;box-sizing:border-box;">{ ToolInput(msg.Content) }</pre>
 								</div>
 							</details>
 						}
@@ -66,7 +66,7 @@ templ MessageBubble(msg MessageView) {
 							<details class="tool-output-section">
 								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;">▾ Output</summary>
 								<div style="background:#071a10;border-radius:6px;padding:8px 12px;border-left:2px solid var(--color-brand);">
-									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textPrimary);max-height:200px;margin:0;">{ msg.Output }</pre>
+									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textPrimary);max-height:200px;margin:0;max-width:100%;box-sizing:border-box;">{ msg.Output }</pre>
 								</div>
 							</details>
 						} else {

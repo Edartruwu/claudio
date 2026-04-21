@@ -225,14 +225,14 @@ func MessageBubble(msg MessageView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if ToolInput(msg.Content) != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<details><summary style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;\">▾ Input</summary><div style=\"background:#0B0E0F;border-radius:6px;padding:8px 12px;\"><pre style=\"font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textSecondary);max-height:200px;margin:0;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<details><summary style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;\">▾ Input</summary><div style=\"background:#0B0E0F;border-radius:6px;padding:8px 12px;\"><pre style=\"font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textSecondary);max-height:200px;margin:0;max-width:100%;box-sizing:border-box;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(ToolInput(msg.Content))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 61, Col: 174}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 61, Col: 211}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
@@ -244,14 +244,14 @@ func MessageBubble(msg MessageView) templ.Component {
 				}
 			}
 			if msg.Output != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<details class=\"tool-output-section\"><summary style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;\">▾ Output</summary><div style=\"background:#071a10;border-radius:6px;padding:8px 12px;border-left:2px solid var(--color-brand);\"><pre style=\"font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textPrimary);max-height:200px;margin:0;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<details class=\"tool-output-section\"><summary style=\"font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;\">▾ Output</summary><div style=\"background:#071a10;border-radius:6px;padding:8px 12px;border-left:2px solid var(--color-brand);\"><pre style=\"font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textPrimary);max-height:200px;margin:0;max-width:100%;box-sizing:border-box;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Output)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 69, Col: 160}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/message_bubble.templ`, Line: 69, Col: 197}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
