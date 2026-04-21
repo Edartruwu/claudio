@@ -52,6 +52,13 @@ templ Layout(sessionID string) {
 
 templ layoutCSS() {
 	<style>
+		*, *::before, *::after {
+			box-sizing: border-box;
+		}
+		#app {
+			max-width: 100%;
+			overflow-x: hidden;
+		}
 		:root {
 			/* Surfaces */
 			--color-bg:            #0B0E0F;
@@ -114,7 +121,7 @@ templ layoutCSS() {
 			--radius-xl:   24px;
 			--radius-pill: 9999px;
 		}
-		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', monospace; padding-top: env(safe-area-inset-top); overflow-x: hidden; }
+		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', monospace; padding-top: env(safe-area-inset-top); }
 		pre { max-width: 100%; box-sizing: border-box; }
 		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
 		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
