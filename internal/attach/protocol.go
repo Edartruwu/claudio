@@ -111,6 +111,7 @@ type TaskUpdatedPayload struct {
 	AssignedTo  string `json:"assigned_to,omitempty"`
 	Status      string `json:"status"`
 	Output      string `json:"output,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
 }
 
 // AgentStatusPayload for EventAgentStatus.
