@@ -242,3 +242,69 @@ func TestBundleMockupTool_InvalidJSON_ReturnsError(t *testing.T) {
 		t.Error("expected IsError=true on invalid JSON input")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// InjectInfiniteCanvas — unit tests
+// ---------------------------------------------------------------------------
+
+func TestInjectInfiniteCanvas_TransparentAppWrapper(t *testing.T) {
+	input := `<html><head></head><body><div id="root"><div style="background: #D4E5F3"><p>content</p></div></div></body></html>`
+	output := InjectInfiniteCanvas(input)
+	if !strings.Contains(output, `#root>div{background:transparent!important}`) {
+		t.Errorf("expected transparent bg override rule in output, got:\n%s", output)
+	}
+}
+
+func TestInjectInfiniteCanvas_CanvasRootInjected(t *testing.T) {
+	input := `<html><head></head><body><div id="root"></div></body></html>`
+	output := InjectInfiniteCanvas(input)
+	if !strings.Contains(output, `id="cc-canvas-root"`) {
+		t.Errorf("expected cc-canvas-root in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, `id="cc-canvas-content"`) {
+		t.Errorf("expected cc-canvas-content in output, got:\n%s", output)
+	}
+}
+
+func TestInjectInfiniteCanvas_CanvasCSSInjectedInHead(t *testing.T) {
+	input := `<html><head></head><body><p>hi</p></body></html>`
+	output := InjectInfiniteCanvas(input)
+	cssIdx := strings.Index(output, `id="cc-canvas-style"`)
+	headCloseIdx := strings.Index(output, `</head>`)
+	if cssIdx == -1 {
+		t.Fatal("cc-canvas-style not found in output")
+	}
+	if headCloseIdx == -1 {
+		t.Fatal("</head> not found in output")
+	}
+	if cssIdx > headCloseIdx {
+		t.Errorf("canvas CSS should appear before </head>: css at %d, </head> at %d", cssIdx, headCloseIdx)
+	}
+}
+
+func TestInjectInfiniteCanvas_NoHeadFallback(t *testing.T) {
+	// No </head> — CSS must be prepended to the document, not dropped.
+	input := `<body><p>no head tag</p></body>`
+	output := InjectInfiniteCanvas(input)
+	if !strings.Contains(output, `id="cc-canvas-style"`) {
+		t.Errorf("expected canvas CSS injected even without </head>, got:\n%s", output)
+	}
+	// CSS should appear before the original content
+	cssIdx := strings.Index(output, `id="cc-canvas-style"`)
+	bodyIdx := strings.Index(output, `<body>`)
+	if cssIdx > bodyIdx {
+		t.Errorf("CSS should be prepended before <body>: css at %d, <body> at %d", cssIdx, bodyIdx)
+	}
+}
+
+func TestInjectInfiniteCanvas_NoBodyUnmodified(t *testing.T) {
+	// No <body> tag — canvas shell must not be injected.
+	input := `<p>no body tag here</p>`
+	output := InjectInfiniteCanvas(input)
+	if strings.Contains(output, `id="cc-canvas-root"`) {
+		t.Errorf("expected no canvas-root injection when no <body> tag present, got:\n%s", output)
+	}
+	if strings.Contains(output, `id="cc-canvas-content"`) {
+		t.Errorf("expected no canvas-content injection when no <body> tag present, got:\n%s", output)
+	}
+}
