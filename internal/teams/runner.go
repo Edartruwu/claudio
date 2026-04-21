@@ -287,8 +287,9 @@ type CwdInjector func(ctx context.Context, worktreePath, mainRoot string) contex
 
 // TaskCompleter is called when an agent finishes to update assigned tasks.
 // Set by the app layer to bridge teams → tasks without circular imports.
-// taskIDs are the explicit task IDs to mark; status is "completed" or "failed".
-type TaskCompleter func(taskIDs []string, status string)
+// taskIDs are the explicit task IDs to mark; status is "completed" or "failed";
+// sessionID is the session that owns the tasks.
+type TaskCompleter func(taskIDs []string, status, sessionID string)
 
 // TeammateRunner manages in-process teammate goroutines.
 type TeammateRunner struct {
@@ -884,7 +885,7 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		if state.Status == StatusFailed {
 			taskStatus = "failed"
 		}
-		r.taskCompleter(cfg.TaskIDs, taskStatus)
+		r.taskCompleter(cfg.TaskIDs, taskStatus, r.sessionID)
 	}
 
 	// Kill and remove any child agents spawned by this teammate.

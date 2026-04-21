@@ -436,8 +436,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	tools.GlobalTaskStore.SetDB(db.Conn())
 
 	// Wire task completer for auto-updating tasks when agents finish
-	teamRunner.SetTaskCompleter(func(taskIDs []string, status string) {
-		tools.GlobalTaskStore.CompleteByIDs(taskIDs, status)
+	teamRunner.SetTaskCompleter(func(taskIDs []string, status, sessionID string) {
+		tools.GlobalTaskStore.CompleteByIDs(taskIDs, status, sessionID)
 	})
 
 	// Inject task runtime into tools that support background execution

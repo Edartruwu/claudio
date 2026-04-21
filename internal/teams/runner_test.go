@@ -899,7 +899,7 @@ func TestTeammateRunner_TaskCompleter_Success(t *testing.T) {
 	var mu sync.Mutex
 	var completedIDs []string
 	var completedStatus string
-	runner.SetTaskCompleter(func(taskIDs []string, status string) {
+	runner.SetTaskCompleter(func(taskIDs []string, status, sessionID string) {
 		mu.Lock()
 		completedIDs = taskIDs
 		completedStatus = status
@@ -933,7 +933,7 @@ func TestTeammateRunner_TaskCompleter_Failure(t *testing.T) {
 	var mu sync.Mutex
 	var completedIDs []string
 	var completedStatus string
-	runner.SetTaskCompleter(func(taskIDs []string, status string) {
+	runner.SetTaskCompleter(func(taskIDs []string, status, sessionID string) {
 		mu.Lock()
 		completedIDs = taskIDs
 		completedStatus = status

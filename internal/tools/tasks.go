@@ -124,7 +124,8 @@ func (s *TaskStore) Get(id string) (*Task, bool) {
 }
 
 // CompleteByIDs marks all pending/in_progress tasks with matching IDs as the given status.
-func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
+// sessionID identifies the session that owns the tasks and is used when persisting to DB.
+func (s *TaskStore) CompleteByIDs(ids []string, status, sessionID string) []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var affected []*Task
@@ -136,9 +137,9 @@ func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
 		if idSet[t.ID] && (t.Status == "pending" || t.Status == "in_progress") {
 			t.Status = status
 			t.UpdatedAt = time.Now()
-			s.saveToDB(t)
+			s.saveToDBWithSession(t, sessionID)
 			affected = append(affected, t)
-			
+
 			// Publish EventTaskUpdated
 			if s.bus != nil {
 				payload, _ := json.Marshal(attach.TaskUpdatedPayload{
@@ -147,11 +148,11 @@ func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
 					Description: t.Description,
 					AssignedTo:  t.AssignedTo,
 					Status:      t.Status,
-					SessionID:   s.currentSession,
+					SessionID:   sessionID,
 				})
 				s.bus.Publish(bus.Event{
 					Type:      attach.EventTaskUpdated,
-					SessionID: s.currentSession,
+					SessionID: sessionID,
 					Payload:   payload,
 				})
 			}
@@ -162,7 +163,8 @@ func (s *TaskStore) CompleteByIDs(ids []string, status string) []*Task {
 
 // CompleteByAssignee marks all pending/in_progress tasks assigned to the given agent
 // as the specified status ("completed" or "failed"). Returns the affected tasks.
-func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
+// sessionID identifies the session that owns the tasks and is used when persisting to DB.
+func (s *TaskStore) CompleteByAssignee(agentName, status, sessionID string) []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var affected []*Task
@@ -170,9 +172,9 @@ func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
 		if t.AssignedTo == agentName && (t.Status == "pending" || t.Status == "in_progress") {
 			t.Status = status
 			t.UpdatedAt = time.Now()
-			s.saveToDB(t)
+			s.saveToDBWithSession(t, sessionID)
 			affected = append(affected, t)
-			
+
 			// Publish EventTaskUpdated
 			if s.bus != nil {
 				payload, _ := json.Marshal(attach.TaskUpdatedPayload{
@@ -181,11 +183,11 @@ func (s *TaskStore) CompleteByAssignee(agentName, status string) []*Task {
 					Description: t.Description,
 					AssignedTo:  t.AssignedTo,
 					Status:      t.Status,
-					SessionID:   s.currentSession,
+					SessionID:   sessionID,
 				})
 				s.bus.Publish(bus.Event{
 					Type:      attach.EventTaskUpdated,
-					SessionID: s.currentSession,
+					SessionID: sessionID,
 					Payload:   payload,
 				})
 			}
@@ -330,7 +332,8 @@ func (t *TaskListTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 
 type TaskUpdateTool struct {
 	deferrable
-	bus *bus.Bus
+	bus       *bus.Bus
+	SessionID string
 }
 
 type taskUpdateInput struct {
@@ -401,7 +404,7 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		task.Description = in.Description
 	}
 	task.UpdatedAt = time.Now()
-	store.saveToDB(task)
+	store.saveToDBWithSession(task, t.SessionID)
 
 	// Publish event
 	if t.bus != nil {
@@ -411,10 +414,12 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 			Description: task.Description,
 			AssignedTo:  task.AssignedTo,
 			Status:      task.Status,
+			SessionID:   t.SessionID,
 		})
 		t.bus.Publish(bus.Event{
-			Type:    attach.EventTaskUpdated,
-			Payload: payload,
+			Type:      attach.EventTaskUpdated,
+			SessionID: t.SessionID,
+			Payload:   payload,
 		})
 	}
 

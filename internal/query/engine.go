@@ -235,6 +235,12 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 			tool.SessionID = cfg.SessionID
 		}
 	}
+	// Wire session ID into TaskUpdate tool so updates are stored under the correct session.
+	if tu, err := registry.Get("TaskUpdate"); err == nil {
+		if tool, ok := tu.(*tools.TaskUpdateTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
 	e.model = cfg.Model
 	e.permissionMode = cfg.PermissionMode
 	if e.permissionMode == "" {

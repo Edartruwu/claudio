@@ -28,7 +28,7 @@ func TestTaskStore_CompleteByAssignee(t *testing.T) {
 	store.tasks["2"] = &Task{ID: "2", Title: "task-b", Status: "in_progress", AssignedTo: "agent-x"}
 	store.tasks["3"] = &Task{ID: "3", Title: "task-c", Status: "pending", AssignedTo: "agent-y"}
 
-	affected := store.CompleteByAssignee("agent-x", "completed")
+	affected := store.CompleteByAssignee("agent-x", "completed", "")
 	if len(affected) != 2 {
 		t.Fatalf("expected 2 affected tasks, got %d", len(affected))
 	}
@@ -51,7 +51,7 @@ func TestTaskStore_CompleteByAssignee_SkipsCompleted(t *testing.T) {
 	store.tasks["2"] = &Task{ID: "2", Status: "deleted", AssignedTo: "agent-x"}
 	store.tasks["3"] = &Task{ID: "3", Status: "pending", AssignedTo: "agent-x"}
 
-	affected := store.CompleteByAssignee("agent-x", "failed")
+	affected := store.CompleteByAssignee("agent-x", "failed", "")
 	if len(affected) != 1 {
 		t.Fatalf("expected 1 affected task, got %d", len(affected))
 	}
@@ -295,7 +295,7 @@ func TestTaskFlow_CreateAndCompleteByAssignee(t *testing.T) {
 	create.Execute(context.Background(), json.RawMessage(`{"subject": "Task C", "description": "c", "assigned_to": "worker-2"}`))
 
 	// Simulate worker-1 completing
-	affected := GlobalTaskStore.CompleteByAssignee("worker-1", "completed")
+	affected := GlobalTaskStore.CompleteByAssignee("worker-1", "completed", "")
 	if len(affected) != 2 {
 		t.Fatalf("expected 2 tasks completed, got %d", len(affected))
 	}
@@ -380,7 +380,7 @@ func TestTaskStore_CompleteByIDs_PublishesEvent(t *testing.T) {
 	unsub := b.Subscribe(attach.EventTaskUpdated, func(e bus.Event) { events <- e })
 	defer unsub()
 
-	affected := store.CompleteByIDs([]string{"1", "2"}, "completed")
+	affected := store.CompleteByIDs([]string{"1", "2"}, "completed", "")
 	if len(affected) != 2 {
 		t.Fatalf("expected 2 affected tasks, got %d", len(affected))
 	}
@@ -416,7 +416,7 @@ func TestTaskStore_CompleteByAssignee_PublishesEvent(t *testing.T) {
 	unsub := b.Subscribe(attach.EventTaskUpdated, func(e bus.Event) { events <- e })
 	defer unsub()
 
-	affected := store.CompleteByAssignee("agent-x", "failed")
+	affected := store.CompleteByAssignee("agent-x", "failed", "")
 	if len(affected) != 2 {
 		t.Fatalf("expected 2 affected tasks, got %d", len(affected))
 	}
@@ -541,5 +541,142 @@ func TestTaskUpdateTool_PublishesEvent(t *testing.T) {
 		}
 	case <-make(chan struct{}): // timeout
 		t.Error("event not published")
+	}
+}
+
+// openTestDB creates an in-memory SQLite DB with the team_tasks table for session ID tests.
+func openTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	_, err = db.Exec(`CREATE TABLE team_tasks (
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		assigned_to TEXT,
+		created_at DATETIME,
+		updated_at DATETIME,
+		PRIMARY KEY (id, session_id)
+	)`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	return db
+}
+
+func TestCompleteByIDs_UsesCorrectSessionID(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	store := freshStore()
+	store.db = db
+	store.tasks["1"] = &Task{ID: "1", Title: "task-one", Status: "pending"}
+	store.tasks["2"] = &Task{ID: "2", Title: "task-two", Status: "in_progress"}
+
+	const wantSession = "session-complete-ids-test"
+	affected := store.CompleteByIDs([]string{"1", "2"}, "completed", wantSession)
+	if len(affected) != 2 {
+		t.Fatalf("expected 2 affected tasks, got %d", len(affected))
+	}
+
+	rows, err := db.Query(`SELECT session_id FROM team_tasks`)
+	if err != nil {
+		t.Fatalf("query team_tasks: %v", err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var gotSession string
+		if err := rows.Scan(&gotSession); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if gotSession != wantSession {
+			t.Errorf("session_id in DB = %q, want %q", gotSession, wantSession)
+		}
+		count++
+	}
+	if count != 2 {
+		t.Errorf("expected 2 rows in DB, got %d", count)
+	}
+}
+
+func TestCompleteByAssignee_UsesCorrectSessionID(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	store := freshStore()
+	store.db = db
+	store.tasks["1"] = &Task{ID: "1", Title: "task-a", Status: "pending", AssignedTo: "agent-q"}
+	store.tasks["2"] = &Task{ID: "2", Title: "task-b", Status: "in_progress", AssignedTo: "agent-q"}
+
+	const wantSession = "session-complete-assignee-test"
+	affected := store.CompleteByAssignee("agent-q", "completed", wantSession)
+	if len(affected) != 2 {
+		t.Fatalf("expected 2 affected tasks, got %d", len(affected))
+	}
+
+	rows, err := db.Query(`SELECT session_id FROM team_tasks`)
+	if err != nil {
+		t.Fatalf("query team_tasks: %v", err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var gotSession string
+		if err := rows.Scan(&gotSession); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if gotSession != wantSession {
+			t.Errorf("session_id in DB = %q, want %q", gotSession, wantSession)
+		}
+		count++
+	}
+	if count != 2 {
+		t.Errorf("expected 2 rows in DB, got %d", count)
+	}
+}
+
+func TestTaskUpdateTool_UsesCorrectSessionID(t *testing.T) {
+	orig := GlobalTaskStore
+	defer func() { GlobalTaskStore = orig }()
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	GlobalTaskStore = freshStore()
+	GlobalTaskStore.db = db
+
+	// Pre-populate the DB row so UPDATE OR REPLACE can find it.
+	_, err := db.Exec(`INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
+		VALUES ('10', '', 'original', '', 'pending', NULL, datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatalf("insert seed row: %v", err)
+	}
+	GlobalTaskStore.tasks["10"] = &Task{ID: "10", Title: "original", Status: "pending"}
+
+	const wantSession = "session-update-tool-test"
+	tool := &TaskUpdateTool{SessionID: wantSession}
+	input := json.RawMessage(`{"taskId": "10", "status": "completed"}`)
+
+	result, err := tool.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+
+	// The INSERT OR REPLACE writes a new row with the correct session_id.
+	var gotSession string
+	err = db.QueryRow(`SELECT session_id FROM team_tasks WHERE id = '10' AND session_id = ?`, wantSession).Scan(&gotSession)
+	if err != nil {
+		t.Fatalf("query team_tasks for session %q: %v", wantSession, err)
+	}
+	if gotSession != wantSession {
+		t.Errorf("session_id in DB = %q, want %q", gotSession, wantSession)
 	}
 }
