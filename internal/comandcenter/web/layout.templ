@@ -82,8 +82,8 @@ templ layoutCSS() {
 			--color-success:       #00C48C;
 			--color-warning:       #F0A500;
 			/* Bubble backgrounds */
-			--color-bubbleUser:    #003D2E;
-			--color-bubbleAI:      #151A1B;
+			--color-bubbleUser:    #005C4B;
+			--color-bubbleAI:      #1F2C34;
 			--color-bubbleTool:    #0F1410;
 			--color-bubbleCron:    #130E20;
 			/* Shadows */
@@ -115,14 +115,14 @@ templ layoutCSS() {
 			--radius-pill: 9999px;
 		}
 		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', monospace; padding-top: env(safe-area-inset-top); }
-		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; }
-		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; }
-		.msg-bubble-tool { background: var(--color-bubbleTool); border-left: 2px solid var(--color-tool); border-radius: 4px 12px 12px 12px; }
+		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+		.msg-bubble-tool { background: var(--color-bubbleTool); border-left: 2px solid var(--color-tool); border-radius: 4px 12px 12px 12px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
 		.msg-bubble-tool details summary { user-select: none; }
 		.msg-bubble-tool details .tool-chevron { transition: transform 0.2s ease; }
 		.msg-bubble-tool details[open] .tool-chevron { transform: rotate(90deg); }
-		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 2px solid var(--color-cron); border-radius: 4px 16px 16px 16px; }
-		#messages { scroll-behavior: smooth; }
+		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 2px solid var(--color-cron); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+		#messages { scroll-behavior: smooth; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
 		.chat-header { padding-top: calc(env(safe-area-inset-top) + 12px); }
 		@media (min-width: 768px) {
 			.chat-header { padding: 16px 20px !important; gap: 16px !important; }
