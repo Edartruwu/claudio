@@ -201,8 +201,6 @@ func (s *Storage) detectExistingSchemaVersion() int {
 		return 6
 	case hasTable("cc_agents"):
 		return 4
-	case hasTable("cc_tasks"):
-		return 3
 	case hasTable("cc_messages"):
 		return 2
 	case hasTable("cc_sessions"):
@@ -309,7 +307,6 @@ func (s *Storage) DeleteSession(id string) error {
 
 	for _, q := range []string{
 		`DELETE FROM cc_agents WHERE session_id=?`,
-		`DELETE FROM cc_tasks WHERE session_id=?`,
 		`DELETE FROM cc_attachments WHERE session_id=?`,
 		`DELETE FROM cc_messages WHERE session_id=?`,
 		`DELETE FROM cc_sessions WHERE id=?`,
@@ -602,12 +599,12 @@ func (s *Storage) InsertNativeMessage(sessionID, role, content string, ts time.T
 	return err
 }
 
-// GetTask returns a single task by ID.
+// GetTask returns a single task by ID from team_tasks.
 func (s *Storage) GetTask(id string) (Task, error) {
 	var t Task
 	err := s.db.QueryRow(`
 		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
-		FROM cc_tasks WHERE id=?
+		FROM team_tasks WHERE id=?
 	`, id).Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
 		&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
@@ -616,12 +613,12 @@ func (s *Storage) GetTask(id string) (Task, error) {
 	return t, nil
 }
 
-// UpsertTask inserts or updates a task record.
+// UpsertTask inserts or updates a task record in team_tasks.
 func (s *Storage) UpsertTask(task Task) error {
 	_, err := s.db.Exec(`
-		INSERT INTO cc_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
+		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
+		ON CONFLICT(id, session_id) DO UPDATE SET
 			title=excluded.title,
 			description=excluded.description,
 			status=excluded.status,
@@ -683,11 +680,11 @@ func (s *Storage) MarkRead(sessionID string) error {
 	return nil
 }
 
-// ListTasks returns all tasks for a session.
+// ListTasks returns all tasks for a session from team_tasks.
 func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 	rows, err := s.db.Query(`
 		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
-		FROM cc_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
+		FROM team_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
 	`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)

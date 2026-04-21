@@ -15,7 +15,7 @@ func newTestStorage(t *testing.T) *Storage {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		subject TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
@@ -33,7 +33,7 @@ func newTestStorage(t *testing.T) *Storage {
 func seedTask(t *testing.T, s *Storage, tk Task) {
 	t.Helper()
 	_, err := s.db.Exec(`
-		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
+		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		tk.ID, tk.SessionID, tk.Title, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
 	)

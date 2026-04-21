@@ -22,9 +22,9 @@ func freshStore() *TaskStore {
 
 func TestTaskStore_CompleteByAssignee(t *testing.T) {
 	store := freshStore()
-	store.tasks["1"] = &Task{ID: "1", Subject: "task-a", Status: "pending", AssignedTo: "agent-x"}
-	store.tasks["2"] = &Task{ID: "2", Subject: "task-b", Status: "in_progress", AssignedTo: "agent-x"}
-	store.tasks["3"] = &Task{ID: "3", Subject: "task-c", Status: "pending", AssignedTo: "agent-y"}
+	store.tasks["1"] = &Task{ID: "1", Title: "task-a", Status: "pending", AssignedTo: "agent-x"}
+	store.tasks["2"] = &Task{ID: "2", Title: "task-b", Status: "in_progress", AssignedTo: "agent-x"}
+	store.tasks["3"] = &Task{ID: "3", Title: "task-c", Status: "pending", AssignedTo: "agent-y"}
 
 	affected := store.CompleteByAssignee("agent-x", "completed")
 	if len(affected) != 2 {
@@ -94,7 +94,7 @@ func TestTaskUpdateTool_AcceptsSnakeCaseTaskID(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Subject: "test", Status: "pending"}
+	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Title: "test", Status: "pending"}
 
 	tool := &TaskUpdateTool{}
 	input := json.RawMessage(`{"task_id": "5", "status": "completed"}`)
@@ -116,7 +116,7 @@ func TestTaskUpdateTool_StripsHashPrefix(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["7"] = &Task{ID: "7", Subject: "test", Status: "pending"}
+	GlobalTaskStore.tasks["7"] = &Task{ID: "7", Title: "test", Status: "pending"}
 
 	tool := &TaskUpdateTool{}
 	input := json.RawMessage(`{"taskId": "#7", "status": "in_progress"}`)
@@ -138,8 +138,8 @@ func TestTaskUpdateTool_CamelCaseTakesPriority(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Subject: "a", Status: "pending"}
-	GlobalTaskStore.tasks["2"] = &Task{ID: "2", Subject: "b", Status: "pending"}
+	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Title: "a", Status: "pending"}
+	GlobalTaskStore.tasks["2"] = &Task{ID: "2", Title: "b", Status: "pending"}
 
 	tool := &TaskUpdateTool{}
 	// Both taskId and task_id present — camelCase should win
@@ -205,8 +205,8 @@ func TestTaskCreateTool_CreatesTask(t *testing.T) {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
 	task := tasks[0]
-	if task.Subject != "Write tests" {
-		t.Errorf("subject = %q", task.Subject)
+	if task.Title != "Write tests" {
+		t.Errorf("subject = %q", task.Title)
 	}
 	if task.AssignedTo != "agent-1" {
 		t.Errorf("assigned_to = %q, expected agent-1", task.AssignedTo)
@@ -239,7 +239,7 @@ func TestTaskListTool_ShowsAssignee(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Subject: "do stuff", Status: "pending", AssignedTo: "bot"}
+	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Title: "do stuff", Status: "pending", AssignedTo: "bot"}
 
 	tool := &TaskListTool{}
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{}`))
@@ -258,7 +258,7 @@ func TestTaskGetTool_ReturnsJSON(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["10"] = &Task{ID: "10", Subject: "get test", Status: "completed", AssignedTo: "x"}
+	GlobalTaskStore.tasks["10"] = &Task{ID: "10", Title: "get test", Status: "completed", AssignedTo: "x"}
 
 	tool := &TaskGetTool{}
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"taskId": "10"}`))
@@ -273,8 +273,8 @@ func TestTaskGetTool_ReturnsJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Content), &task); err != nil {
 		t.Fatalf("expected valid JSON, got parse error: %v", err)
 	}
-	if task.Subject != "get test" {
-		t.Errorf("subject = %q", task.Subject)
+	if task.Title != "get test" {
+		t.Errorf("subject = %q", task.Title)
 	}
 }
 
@@ -368,8 +368,8 @@ func TestTaskCreateTool_PublishesEvent(t *testing.T) {
 
 func TestTaskStore_CompleteByIDs_PublishesEvent(t *testing.T) {
 	store := freshStore()
-	store.tasks["1"] = &Task{ID: "1", Subject: "t", Status: "pending"}
-	store.tasks["2"] = &Task{ID: "2", Subject: "t", Status: "in_progress"}
+	store.tasks["1"] = &Task{ID: "1", Title: "t", Status: "pending"}
+	store.tasks["2"] = &Task{ID: "2", Title: "t", Status: "in_progress"}
 
 	b := bus.New()
 	store.bus = b
@@ -404,8 +404,8 @@ func TestTaskStore_CompleteByIDs_PublishesEvent(t *testing.T) {
 
 func TestTaskStore_CompleteByAssignee_PublishesEvent(t *testing.T) {
 	store := freshStore()
-	store.tasks["1"] = &Task{ID: "1", Subject: "t", Status: "pending", AssignedTo: "agent-x"}
-	store.tasks["2"] = &Task{ID: "2", Subject: "t", Status: "in_progress", AssignedTo: "agent-x"}
+	store.tasks["1"] = &Task{ID: "1", Title: "t", Status: "pending", AssignedTo: "agent-x"}
+	store.tasks["2"] = &Task{ID: "2", Title: "t", Status: "in_progress", AssignedTo: "agent-x"}
 
 	b := bus.New()
 	store.bus = b
@@ -446,7 +446,7 @@ func TestTaskUpdateTool_PublishesEvent(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Subject: "test", Status: "pending"}
+	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Title: "test", Status: "pending"}
 
 	// Create event bus and subscribe
 	eventBus := bus.New()

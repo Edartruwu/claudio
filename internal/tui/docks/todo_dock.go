@@ -136,7 +136,7 @@ func (d *TodoDock) expandedView(items []*tools.Task, bg, label, hint lipgloss.St
 		if maxName < 5 {
 			maxName = 5
 		}
-		name := t.Subject
+		name := t.Title
 		if len(name) > maxName {
 			name = name[:maxName-1] + "…"
 		}
@@ -152,7 +152,7 @@ func (d *TodoDock) expandedView(items []*tools.Task, bg, label, hint lipgloss.St
 		lines[len(lines)-1] = bg.Render(
 			fmt.Sprintf("  %s  %s  %s",
 				taskStatusIcon(items[limit-1]),
-				lipgloss.NewStyle().Foreground(styles.Text).Render(items[limit-1].Subject),
+				lipgloss.NewStyle().Foreground(styles.Text).Render(items[limit-1].Title),
 				hint.Render("<space>t collapse"),
 			),
 		)
@@ -164,7 +164,7 @@ func (d *TodoDock) expandedView(items []*tools.Task, bg, label, hint lipgloss.St
 // taskBadge renders a small [icon name] badge for a task.
 func taskBadge(t *tools.Task) string {
 	icon := taskStatusIcon(t)
-	name := t.Subject
+	name := t.Title
 	if len(name) > 12 {
 		name = name[:11] + "…"
 	}

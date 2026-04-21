@@ -29,7 +29,7 @@ func newTestEnv(t *testing.T) (*cc.Storage, *http.ServeMux) {
 	if err := storage.ExecRaw(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		subject TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
@@ -51,7 +51,7 @@ func newTestEnv(t *testing.T) (*cc.Storage, *http.ServeMux) {
 func seedTask(t *testing.T, s *cc.Storage, tk cc.Task) {
 	t.Helper()
 	if err := s.ExecRaw(`
-		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
+		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		tk.ID, tk.SessionID, tk.Title, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
 	); err != nil {

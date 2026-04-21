@@ -61,7 +61,7 @@ func TestMigration_FreshDB(t *testing.T) {
 	s := newTestStorage(t)
 
 	tables := []string{
-		"cc_sessions", "cc_messages", "cc_tasks", "cc_agents",
+		"cc_sessions", "cc_messages", "cc_agents",
 		"cc_attachments", "cc_push_subscriptions", "cc_vapid_keys",
 		"cc_schema_version",
 	}
@@ -122,7 +122,7 @@ func TestMigration_VersionTableNoCollision(t *testing.T) {
 	s := openStorageOnDB(t, raw)
 
 	// All cc_ tables must exist despite claudio's schema_version being 22.
-	tables := []string{"cc_sessions", "cc_messages", "cc_tasks", "cc_agents", "cc_schema_version"}
+	tables := []string{"cc_sessions", "cc_messages", "cc_agents", "cc_schema_version"}
 	for _, table := range tables {
 		var n int
 		if err := raw.QueryRow(
@@ -172,7 +172,7 @@ func TestMigration_VersionTableNoCollision(t *testing.T) {
 
 // TestMigration_SharedDB_TasksFromNativeTable verifies the production scenario:
 // CC opens claudio.db → ListTasks reads from team_tasks (claudio's native table)
-// → no cc_tasks sync required, zero lag, full description round-trip.
+// → single source of truth, zero lag, full description round-trip.
 func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 	raw := openRawSQLite(t)
 	simulateClaudioDB(t, raw, 22)
@@ -181,7 +181,7 @@ func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		subject TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
@@ -194,7 +194,7 @@ func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 
 	now := time.Now()
 	_, err := raw.Exec(`
-		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
+		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"tt-1", "sess-native", "Implement auth middleware",
 		"**Details:**\n- JWT\n- 24h expiry", "in_progress", "prab", now, now)
@@ -214,7 +214,7 @@ func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 		t.Fatalf("UpsertSession: %v", err)
 	}
 
-	// ListTasks must read from team_tasks, not cc_tasks.
+	// ListTasks must read from team_tasks (single source of truth).
 	tasks, err := s.ListTasks("sess-native")
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
@@ -251,7 +251,7 @@ func TestMigration_SharedDB_DeletedTasksFiltered(t *testing.T) {
 	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		subject TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
@@ -269,7 +269,7 @@ func TestMigration_SharedDB_DeletedTasksFiltered(t *testing.T) {
 		{"t3", "done"},
 	} {
 		if _, err := raw.Exec(
-			`INSERT INTO team_tasks (id, session_id, subject, status, created_at, updated_at)
+			`INSERT INTO team_tasks (id, session_id, title, status, created_at, updated_at)
 			 VALUES (?, 'sess-del', ?, ?, ?, ?)`,
 			row.id, "task "+row.id, row.status, now, now,
 		); err != nil {

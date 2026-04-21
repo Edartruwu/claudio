@@ -189,6 +189,10 @@ func (db *DB) migrate() error {
     file_mtime INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (name, scope)
 )`,
+		// 23 — rename subject→title in team_tasks (aligns with protocol payload field name)
+		`ALTER TABLE team_tasks RENAME COLUMN subject TO title`,
+		// 24 — drop cc_tasks; team_tasks is now the single source of truth
+		`DROP TABLE IF EXISTS cc_tasks`,
 	}
 
 	for i, m := range migrations {

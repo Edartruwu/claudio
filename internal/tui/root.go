@@ -2660,7 +2660,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 				if agentTasks := tools.GlobalTaskStore.ByAssignee(ev.AgentName); len(agentTasks) > 0 {
 					taskInfo = "\nAssigned tasks:\n"
 					for _, t := range agentTasks {
-						taskInfo += fmt.Sprintf("  #%s [%s] %s\n", t.ID, t.Status, t.Subject)
+						taskInfo += fmt.Sprintf("  #%s [%s] %s\n", t.ID, t.Status, t.Title)
 					}
 				}
 
@@ -4669,7 +4669,7 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 				if agentTasks := tools.GlobalTaskStore.ByAssignee(ev.teammateEvent.AgentName); len(agentTasks) > 0 {
 					taskInfo = "\nAssigned tasks:\n"
 					for _, t := range agentTasks {
-						taskInfo += fmt.Sprintf("  #%s [%s] %s\n", t.ID, t.Status, t.Subject)
+						taskInfo += fmt.Sprintf("  #%s [%s] %s\n", t.ID, t.Status, t.Title)
 					}
 				}
 				worktreeInfo := ""
