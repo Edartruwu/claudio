@@ -88,11 +88,15 @@ func (s *TaskStore) LoadForSession(sessionID string) {
 }
 
 func (s *TaskStore) saveToDB(t *Task) {
+	s.saveToDBWithSession(t, s.currentSession)
+}
+
+func (s *TaskStore) saveToDBWithSession(t *Task, sessionID string) {
 	if s.db == nil {
 		return
 	}
 	s.db.Exec(`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, s.currentSession, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt)
+		t.ID, sessionID, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt)
 }
 
 // List returns all non-deleted tasks sorted by numeric ID.
@@ -207,7 +211,8 @@ func (s *TaskStore) ByAssignee(agentName string) []*Task {
 
 type TaskCreateTool struct {
 	deferrable
-	bus *bus.Bus
+	bus       *bus.Bus
+	SessionID string
 }
 
 type taskCreateInput struct {
@@ -254,7 +259,7 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		UpdatedAt:   time.Now(),
 	}
 	store.tasks[id] = task
-	store.saveToDB(task)
+	store.saveToDBWithSession(task, t.SessionID)
 	store.mu.Unlock()
 
 	// Publish event

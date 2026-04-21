@@ -229,6 +229,12 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 			tool.SessionID = cfg.SessionID
 		}
 	}
+	// Wire session ID into TaskCreate tool so tasks are visible in the web UI.
+	if tc, err := registry.Get("TaskCreate"); err == nil {
+		if tool, ok := tc.(*tools.TaskCreateTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
 	e.model = cfg.Model
 	e.permissionMode = cfg.PermissionMode
 	if e.permissionMode == "" {

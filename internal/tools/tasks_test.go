@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/bus"
+	_ "modernc.org/sqlite"
 )
 
 // freshStore returns a clean TaskStore for testing.
@@ -438,6 +440,58 @@ func TestTaskStore_CompleteByAssignee_PublishesEvent(t *testing.T) {
 		case <-time.After(100 * time.Millisecond):
 			t.Fatalf("timeout waiting for event %d", i)
 		}
+	}
+}
+
+func TestTaskCreateTool_UsesCorrectSessionID(t *testing.T) {
+	orig := GlobalTaskStore
+	defer func() { GlobalTaskStore = orig }()
+
+	// Open in-memory SQLite and create the team_tasks table.
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE team_tasks (
+		id TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		assigned_to TEXT,
+		created_at DATETIME,
+		updated_at DATETIME,
+		PRIMARY KEY (id, session_id)
+	)`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	GlobalTaskStore = freshStore()
+	GlobalTaskStore.db = db
+
+	const wantSession = "session-abc-123"
+	tool := &TaskCreateTool{SessionID: wantSession}
+	input := json.RawMessage(`{"subject": "Wire test", "description": "Check session_id"}`)
+
+	result, err := tool.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+
+	// Query the DB and verify session_id matches what was wired in.
+	var gotSession string
+	err = db.QueryRow(`SELECT session_id FROM team_tasks LIMIT 1`).Scan(&gotSession)
+	if err != nil {
+		t.Fatalf("query team_tasks: %v", err)
+	}
+	if gotSession != wantSession {
+		t.Errorf("session_id in DB = %q, want %q", gotSession, wantSession)
 	}
 }
 
