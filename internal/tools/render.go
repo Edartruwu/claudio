@@ -278,35 +278,6 @@ func (t *RenderMockupTool) checkPrerequisites() error {
 // responsible for removing it.
 var scriptSrcRe = regexp.MustCompile(`(?i)<script([^>]*?)\ssrc="([^"]+)"([^>]*)>\s*</script>`)
 
-// latestSessionDir returns the most recently modified session directory under
-// designsDir that contains an index.html file (i.e. a real design session).
-// Returns "" if no qualifying session is found.
-func latestSessionDir(designsDir string) string {
-	entries, err := os.ReadDir(designsDir)
-	if err != nil {
-		return ""
-	}
-	var best string
-	var bestTime time.Time
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		candidate := filepath.Join(designsDir, e.Name())
-		if _, err := os.Stat(filepath.Join(candidate, "index.html")); err != nil {
-			continue // not a design session
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if info.ModTime().After(bestTime) {
-			bestTime = info.ModTime()
-			best = candidate
-		}
-	}
-	return best
-}
 
 func inlineLocalScripts(htmlPath string) (string, error) {
 	htmlBytes, err := os.ReadFile(htmlPath)
@@ -404,15 +375,10 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	// 3. Resolve session directory.
-	// Priority: explicit session_dir > auto-detect existing > create new timestamped.
+	// Priority: explicit session_dir > canonical "session" dir (single per project).
 	sessionDir := in.SessionDir
 	if sessionDir == "" {
-		if !in.ForceNew {
-			sessionDir = latestSessionDir(t.designsDir)
-		}
-		if sessionDir == "" {
-			sessionDir = filepath.Join(t.designsDir, time.Now().Format("20060102-150405"))
-		}
+		sessionDir = filepath.Join(t.designsDir, "session")
 	}
 	outDir := filepath.Join(sessionDir, "screenshots")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
