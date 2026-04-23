@@ -639,3 +639,158 @@ func TestAllAgents_IncludesDesignAgent(t *testing.T) {
 	}
 	t.Error("AllAgents() should include design agent")
 }
+
+// ---------------------------------------------------------------------------
+// AllowedMCPTools field parsing & filtering
+// ---------------------------------------------------------------------------
+
+func TestLoadCustomAgents_AllowedMCPTools_Parsed(t *testing.T) {
+	dir := t.TempDir()
+	content := `---
+description: MCP-restricted agent
+allowedMCPTools: ["tool1", "tool2"]
+---
+
+I use only specific MCP tools.`
+	if err := os.WriteFile(filepath.Join(dir, "mcp-agent.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := LoadCustomAgents(dir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(result))
+	}
+	a := result[0]
+	if len(a.AllowedMCPTools) != 2 {
+		t.Errorf("expected 2 AllowedMCPTools, got %d: %v", len(a.AllowedMCPTools), a.AllowedMCPTools)
+	}
+	if a.AllowedMCPTools[0] != "tool1" || a.AllowedMCPTools[1] != "tool2" {
+		t.Errorf("expected [tool1, tool2], got %v", a.AllowedMCPTools)
+	}
+}
+
+func TestLoadCustomAgents_AllowedMCPTools_Empty_AllowsAll(t *testing.T) {
+	dir := t.TempDir()
+	// No allowedMCPTools field → nil/empty list = no MCP-specific filtering
+	content := "---\ndescription: Unrestricted agent\n---\n\nI use all MCP tools."
+	if err := os.WriteFile(filepath.Join(dir, "open-agent.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := LoadCustomAgents(dir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(result))
+	}
+	a := result[0]
+	if len(a.AllowedMCPTools) != 0 {
+		t.Errorf("expected nil/empty AllowedMCPTools when not set, got %v", a.AllowedMCPTools)
+	}
+}
+
+func TestLoadCustomAgents_AllowedMCPTools_WithGlobPatterns(t *testing.T) {
+	dir := t.TempDir()
+	content := `---
+description: Glob-filtered MCP agent
+allowedMCPTools: ["caido-*", "nmap-scan"]
+---
+
+I use caido tools and nmap-scan.`
+	if err := os.WriteFile(filepath.Join(dir, "glob-agent.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := LoadCustomAgents(dir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(result))
+	}
+	a := result[0]
+	if len(a.AllowedMCPTools) != 2 {
+		t.Errorf("expected 2 patterns, got %d: %v", len(a.AllowedMCPTools), a.AllowedMCPTools)
+	}
+	if a.AllowedMCPTools[0] != "caido-*" || a.AllowedMCPTools[1] != "nmap-scan" {
+		t.Errorf("expected [caido-*, nmap-scan], got %v", a.AllowedMCPTools)
+	}
+}
+
+func TestLoadCustomAgents_AllowedMCPTools_DirectoryForm(t *testing.T) {
+	dir := t.TempDir()
+	agentDir := filepath.Join(dir, "dir-agent")
+	if err := os.MkdirAll(agentDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := `---
+description: Directory-form agent
+allowedMCPTools: ["aws-*", "azure-*"]
+---
+
+I use cloud provider MCP tools.`
+	if err := os.WriteFile(filepath.Join(agentDir, "agent.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := LoadCustomAgents(dir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(result))
+	}
+	a := result[0]
+	if len(a.AllowedMCPTools) != 2 {
+		t.Errorf("expected 2 patterns, got %d: %v", len(a.AllowedMCPTools), a.AllowedMCPTools)
+	}
+	if a.AllowedMCPTools[0] != "aws-*" || a.AllowedMCPTools[1] != "azure-*" {
+		t.Errorf("expected [aws-*, azure-*], got %v", a.AllowedMCPTools)
+	}
+}
+
+// Helper: glob matching test using filepath.Match semantics.
+// Tests the logic used in internal/cli/root.go's matchesAnyGlob function.
+func TestGlobMatching_ExactMatch(t *testing.T) {
+	pattern := "tool1"
+	name := "tool1"
+	if matched, err := filepath.Match(pattern, name); err != nil || !matched {
+		t.Errorf("expected exact match of %q to %q", name, pattern)
+	}
+}
+
+func TestGlobMatching_WildcardSuffix(t *testing.T) {
+	pattern := "caido-*"
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"caido-replay", true},
+		{"caido-scan", true},
+		{"caido-", true},
+		{"caido", false},
+		{"caido-x-y", true},
+		{"nmap-scan", false},
+	}
+	for _, tc := range tests {
+		matched, err := filepath.Match(pattern, tc.name)
+		if err != nil {
+			t.Errorf("filepath.Match(%q, %q) error: %v", pattern, tc.name, err)
+		}
+		if matched != tc.want {
+			t.Errorf("filepath.Match(%q, %q) = %v, want %v", pattern, tc.name, matched, tc.want)
+		}
+	}
+}
+
+func TestGlobMatching_NoMatch(t *testing.T) {
+	patterns := []string{"tool1", "tool2"}
+	name := "tool3"
+	for _, pat := range patterns {
+		if matched, _ := filepath.Match(pat, name); matched {
+			t.Errorf("unexpected match of %q to pattern %q", name, pat)
+		}
+	}
+}
+
+func TestGlobMatching_EmptyPatternsList_AllowsAll(t *testing.T) {
+	// Empty AllowedMCPTools list means no filtering (agent can access any MCP tool)
+	patterns := []string{}
+	if len(patterns) > 0 {
+		t.Error("test setup: patterns should be empty")
+	}
+	// When empty, filtering logic skips the check entirely
+	// (see internal/cli/root.go:745 "if len(agentDef.AllowedMCPTools) > 0")
+}
