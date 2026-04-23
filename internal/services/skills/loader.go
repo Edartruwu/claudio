@@ -341,7 +341,7 @@ func bundledSkills() []*Skill {
 		},
 		{
 			Name:        "harness",
-			Description: "Design and build a domain-specific agent team harness for this project. Use when asked to 'build a harness', 'design an agent team', 'set up a harness', or 'create specialist agents'. Generates .claudio/agents/ definitions, .claudio/skills/ orchestrators, and registers the harness in CLAUDIO.md. Also handles harness audits, extensions, and maintenance.",
+			Description: "Design and build a domain-specific agent team harness for this project. Use when asked to 'build a harness', 'design an agent team', 'set up a harness', or 'create specialist agents'. Generates .claudio/agents/ definitions, .claudio/skills/ orchestrators, .claudio/team-templates/ roster, and .claudio/harness.json manifest. Also handles harness audits, extensions, and maintenance.",
 			Content:     harnessSkillContent,
 			Source:      "bundled",
 		},
@@ -1181,6 +1181,8 @@ var harnessSkillContent = `You are building a domain-specific agent team harness
 A harness is a reusable multi-agent architecture that decomposes complex, recurring tasks into coordinated specialist agents. It produces:
 - ` + "`.claudio/agents/<name>.md`" + ` — one file per specialist role
 - ` + "`.claudio/skills/<harness-name>/skill.md`" + ` — an orchestrator skill that assembles and runs the team
+- ` + "`.claudio/team-templates/<harness-name>.json`" + ` — team roster for InstantiateTeam
+- ` + "`.claudio/harness.json`" + ` — manifest for ` + "`claudio harness install`" + `
 - An entry in CLAUDIO.md documenting when and how to invoke it
 
 ---
@@ -1191,12 +1193,11 @@ Before designing anything, check for prior work:
 
 1. Read CLAUDIO.md — look for an "## Agent Harnesses" section
 2. List ` + "`.claudio/agents/`" + ` and ` + "`.claudio/skills/`" + ` directories (project-local)
-3. List ` + "`~/.claudio/agents/`" + ` (global) — crystallized agents available across projects
-4. For each existing agent file, read its frontmatter ` + "`description`" + ` and note:
+3. For each existing agent file, read its frontmatter ` + "`description`" + ` and note:
    - Agent name
    - Domain / specialization
    - Whether it has accumulated memory (presence of a memory dir alongside its definition)
-5. If a harness already exists for this domain or a closely related one, decide:
+4. If a harness already exists for this domain or a closely related one, decide:
    - **Extend** — add agents/phases to the existing harness
    - **Repair** — fix broken references, stale agent files, placeholder text
    - **Replace** — start fresh (only if the old harness is fundamentally wrong)
@@ -1323,8 +1324,8 @@ Present your pattern choice, execution mode, and rationale to the user using Ask
 For each agent in the chosen pattern:
 
 1. **Define the role** — one clear specialization per agent. If two roles can be combined without loss of focus, combine them.
-2. **Reuse-vs-create check (REQUIRED)** — before assigning a type, scan the inventory you built in Phase 0:
-   - **REUSE** an existing crystallized agent if its description clearly matches this role's domain and responsibilities. Reusing brings the agent's accumulated memory into the team — that memory IS preserved when teammates spawn (memory dirs are plumbed through the runner).
+2. **Reuse-vs-create check (REQUIRED)** — before assigning a type, scan the project-local inventory you built in Phase 0:
+   - **REUSE** an existing project agent if its description clearly matches this role's domain and responsibilities. Reusing brings the agent's accumulated memory into the team — memory IS preserved when teammates spawn.
    - **CREATE NEW** if no existing agent matches, OR if the closest match is too generic for a specialist role, OR if reusing would dilute an existing agent's persona.
    - **Decision rule**: prefer reuse when in doubt. Memory is valuable; duplicating personas fragments learnings.
    - Tell the user explicitly: "Role X → reusing existing agent ` + "`<name>`" + `" or "Role X → creating new agent ` + "`<name>`" + ` (no suitable existing agent)".
@@ -1424,6 +1425,59 @@ Include the key nouns and verbs a user would naturally say when requesting this 
 
 ---
 
+## Phase 5b: Generate team template
+
+Create ` + "`.claudio/team-templates/<harness-name>.json`" + ` with the roster from Phase 4:
+
+` + "```json" + `
+{
+  "name": "<harness-name>-team",
+  "description": "<one-line summary of what this team does>",
+  "members": [
+    {
+      "name": "<agent-display-name>",
+      "subagent_type": "<agent-type>",
+      "model": "<model-id>"
+    }
+  ]
+}
+` + "```" + `
+
+Model selection guidance:
+- **haiku** — simple/boilerplate agents, junior-level tasks, fast turnaround
+- **sonnet** — standard work, mid-level reasoning, most agents default here
+- **opus** — architecture decisions, complex reasoning, senior-level judgment
+
+This template enables ` + "`InstantiateTeam`" + ` to spin up the full team without the orchestrator manually creating each member. The orchestrator skill can reference this template instead of hardcoding the roster.
+
+---
+
+## Phase 5c: Generate harness manifest
+
+Create ` + "`.claudio/harness.json`" + `:
+
+` + "```json" + `
+{
+  "name": "<harness-name>",
+  "version": "1.0.0",
+  "description": "<one-line summary>",
+  "agents": "agents/",
+  "skills": "skills/",
+  "templates": "team-templates/",
+  "plugins": "plugins/",
+  "rules": "rules.md",
+  "mcp_servers": {},
+  "agent_tool_filters": {}
+}
+` + "```" + `
+
+Notes:
+- ` + "`plugins/`" + `, ` + "`rules.md`" + `, ` + "`mcp_servers`" + `, and ` + "`agent_tool_filters`" + ` are optional — only include if the harness needs them
+- The manifest makes the harness compatible with ` + "`claudio harness install`" + ` for portable installation into other projects
+- All paths are relative to ` + "`.claudio/`" + ` — never use absolute or home-dir paths
+
+---
+
 ## Phase 6: Write the orchestrator skill
 
 Write ` + "`.claudio/skills/<harness-name>/skill.md`" + `. Choose the appropriate template based on the execution mode decided in Phase 3.
@@ -1467,7 +1521,7 @@ Typical invocations:
 TeamCreate({
   name: "<harness-name>-team",
   members: [
-    // For roles backed by an existing crystallized agent, use that agent's
+    // For roles backed by an existing project agent, use that agent's
     // exact name in the "agent" field — its persona AND accumulated memory
     // will be loaded into the teammate session.
     { name: "<display-name>", agent: "<existing-or-new-agent>", task: "<initial instruction with FULL context — agent has no prior knowledge of THIS conversation, even if it has memory from prior sessions>" },
@@ -1585,13 +1639,18 @@ Before finishing, run these checks:
 - Check that every agent referenced in the orchestrator has a corresponding file (if it needed one per Phase 5)
 - Verify ` + "`.claudio/agents/`" + ` and ` + "`.claudio/skills/`" + ` directories exist
 
-### 2. Trigger verification
+### 2. Team template and manifest integrity
+- Verify ` + "`.claudio/team-templates/<harness-name>.json`" + ` exists and contains valid JSON
+- Verify ` + "`.claudio/harness.json`" + ` exists and references correct directories
+- Confirm no ` + "`~/.claudio/`" + ` paths appear anywhere in generated files — all output must be project-scoped
+
+### 3. Trigger verification
 Test that the skill description triggers correctly. Mentally evaluate these queries:
 - Write 3 queries that SHOULD trigger this harness (natural phrasings a user would say)
 - Write 3 queries that should NOT trigger it (related but different tasks)
 - If any should-trigger query wouldn't match the description, revise the description
 
-### 3. Dry-run check
+### 4. Dry-run check
 Mentally walk through a realistic invocation:
 - Does Phase 1 (setup) create the right workspace structure?
 - Does Phase 2 (launch) give each agent enough context to start working immediately?
@@ -1629,12 +1688,16 @@ Summarize everything created:
 - Files created (with full paths)
 - Agent roster with one-line role summaries
 - Architecture pattern and execution mode
+- Team template path: ` + "`.claudio/team-templates/<harness-name>.json`" + `
+- Harness manifest path: ` + "`.claudio/harness.json`" + `
 - How to invoke: ` + "`/<harness-name> <example input>`" + `
+- How to install in another project: ` + "`claudio harness install <path-to-this-project/.claudio>`" + `
 - 3 example invocations showing different use cases
 - Suggested next steps:
   - Run the harness on a real task to validate
   - Extend with additional specialists if gaps emerge
   - Run ` + "`/harness`" + ` again in extend mode to add agents later
+  - Share the harness: copy ` + "`.claudio/`" + ` dir or use ` + "`claudio harness install`" + `
 
 ---
 
