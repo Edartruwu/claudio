@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/tools"
 )
@@ -23,7 +25,8 @@ type Config struct {
 	Host     string
 	APIClient *api.Client
 	Registry  *tools.Registry
-	System    string // system prompt
+	System    string    // system prompt
+	Bus       *bus.Bus  // event bus for background task notifications
 }
 
 // Server is the headless HTTP API server.
@@ -43,8 +46,21 @@ func New(cfg Config) *Server {
 
 	handler := &query.StdoutHandler{Verbose: false}
 	s.engine = query.NewEngine(cfg.APIClient, cfg.Registry, handler)
+	if cfg.Bus != nil {
+		s.engine.SetEventBus(cfg.Bus)
+	}
 	if cfg.System != "" {
 		s.engine.SetSystem(cfg.System)
+	}
+
+	// Subscribe to background task completion events and log them.
+	// Per-request streaming engines push these via SSE in handleStreamingMessage.
+	if cfg.Bus != nil {
+		cfg.Bus.Subscribe(bus.EventBgTaskComplete, func(payload interface{}) {
+			if p, ok := payload.(bus.BgTaskCompletePayload); ok {
+				log.Printf("[server] bg task complete: id=%s exit=%d err=%q", p.TaskID, p.ExitCode, p.Err)
+			}
+		})
 	}
 
 	return s
@@ -110,6 +126,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	collector := &responseCollector{}
 	engine := query.NewEngine(s.config.APIClient, s.config.Registry, collector)
+	if s.config.Bus != nil {
+		engine.SetEventBus(s.config.Bus)
+	}
 	engine.SetSystem(s.config.System)
 	engine.SetMessages(s.engine.Messages()) // share context
 	s.mu.Unlock()
@@ -150,6 +169,18 @@ func (s *Server) handleStreamingMessage(w http.ResponseWriter, r *http.Request, 
 
 	s.mu.Lock()
 	engine := query.NewEngine(s.config.APIClient, s.config.Registry, streamer)
+	if s.config.Bus != nil {
+		engine.SetEventBus(s.config.Bus)
+		// Push bg task completion events to the SSE stream for this request.
+		unsub := s.config.Bus.Subscribe(bus.EventBgTaskComplete, func(payload interface{}) {
+			if p, ok := payload.(bus.BgTaskCompletePayload); ok {
+				data, _ := json.Marshal(p)
+				fmt.Fprintf(w, "event: bg_task_complete\ndata: %s\n\n", data)
+				flusher.Flush()
+			}
+		})
+		defer unsub()
+	}
 	engine.SetSystem(s.config.System)
 	engine.SetMessages(s.engine.Messages())
 	s.mu.Unlock()

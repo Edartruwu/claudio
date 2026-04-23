@@ -379,7 +379,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 
 	// Team runner (uses the same runSubAgent callback)
 	teamRunner := teams.NewTeammateRunner(teamMgr, func(ctx context.Context, system, prompt string) (string, error) {
-		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, "", subAgentCfg)
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, "", subAgentCfg, eventBus)
 	})
 	teamRunner.Settings = settings
 	teamRunner.SetBus(eventBus)
@@ -400,7 +400,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// agent with its own memory directory. Lets reusable agents carry their
 	// accumulated memory into team work.
 	teamRunner.SetRunAgentWithMemory(func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
-		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir, subAgentCfg)
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir, subAgentCfg, eventBus)
 	})
 
 	// Revive callback: continues an existing agent conversation by restoring
@@ -408,7 +408,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// turn. Memory dir is honored if the state was backed by a crystallized agent.
 	teamRunner.SetRunAgentResume(func(ctx context.Context, system, memoryDir string, history []api.Message, newMessage string) (string, error) {
 		ctx = teams.WithResumeHistory(ctx, history)
-		return runSubAgentWithMemory(ctx, apiClient, registry, system, newMessage, memoryDir, subAgentCfg)
+		return runSubAgentWithMemory(ctx, apiClient, registry, system, newMessage, memoryDir, subAgentCfg, eventBus)
 	})
 
 	// Wire per-teammate context decorator: injects a SubAgentObserver that
@@ -497,10 +497,10 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			at.AvailableModels = buildAvailableModels(apiClient)
 			// Wire real sub-agent execution
 			at.RunAgent = func(ctx context.Context, system, prompt string) (string, error) {
-				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, "", subAgentCfg)
+				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, "", subAgentCfg, eventBus)
 			}
 			at.RunAgentWithMemory = func(ctx context.Context, system, prompt, memoryDir string) (string, error) {
-				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir, subAgentCfg)
+				return runSubAgentWithMemory(ctx, apiClient, registry, system, prompt, memoryDir, subAgentCfg, eventBus)
 			}
 		}
 	}
@@ -781,7 +781,7 @@ func resolveModelAlias(alias string) string {
 }
 
 // runSubAgentWithMemory is like runSubAgent but also injects agent-scoped memories into the system prompt.
-func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string, cfg query.EngineConfig) (string, error) {
+func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string, cfg query.EngineConfig, eventBus *bus.Bus) (string, error) {
 	// Clone the registry so sub-agent has its own copy
 	subRegistry := parentRegistry.Clone()
 
@@ -925,6 +925,9 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		sessionID: subSessionID,
 	}
 	engine := query.NewEngineWithConfig(apiClient, subRegistry, forwarder, cfg)
+	if eventBus != nil {
+		engine.SetEventBus(eventBus)
+	}
 	engine.SetSystem(system)
 	if maxTurns := tools.MaxTurnsFromContext(ctx); maxTurns > 0 {
 		engine.SetMaxTurns(maxTurns)
