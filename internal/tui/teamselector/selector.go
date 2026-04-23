@@ -41,10 +41,10 @@ type Model struct {
 	width   int
 }
 
-// New creates a new team selector loaded from templatesDir.
-// Pass the path to ~/.claudio/team-templates/.
-func New(templatesDir string) Model {
-	mgr := teams.NewManager("", templatesDir)
+// New creates a new team selector loaded from the given dirs.
+// Pass one or more template directory paths (e.g. ~/.claudio/team-templates/ plus harness dirs).
+func New(dirs ...string) Model {
+	mgr := teams.NewManager("", dirs...)
 	tmpls := mgr.ListTemplates()
 
 	var entries []entry

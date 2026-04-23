@@ -83,7 +83,8 @@ type Model struct {
 	modelSelector  modelselector.Model
 	agentSelector  agentselector.Model
 	teamSelector   teamselector.Model
-	teamTemplatesDir string // path to ~/.claudio/team-templates
+	teamTemplatesDir    string   // path to ~/.claudio/team-templates
+	harnessTemplateDirs []string // additional dirs from installed harnesses
 	currentAgent     string // type of the active persona ("" = default Claudio)
 	baseSystemPrompt string // system prompt before any agent persona is applied
 	baseModel        string // model before any agent override
@@ -297,6 +298,11 @@ func WithDB(db *storage.DB) ModelOption {
 // WithTeamTemplatesDir sets the directory where team templates are stored.
 func WithTeamTemplatesDir(dir string) ModelOption {
 	return func(m *Model) { m.teamTemplatesDir = dir }
+}
+
+// WithHarnessTemplateDirs sets additional template dirs discovered from installed harnesses.
+func WithHarnessTemplateDirs(dirs []string) ModelOption {
+	return func(m *Model) { m.harnessTemplateDirs = dirs }
 }
 
 // WithEngineRef provides an external **query.Engine pointer that will be updated
@@ -2749,7 +2755,8 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 
 	// /team → team template picker
 	if name == "team" {
-		m.teamSelector = teamselector.New(m.teamTemplatesDir)
+		allTemplateDirs := append([]string{m.teamTemplatesDir}, m.harnessTemplateDirs...)
+		m.teamSelector = teamselector.New(allTemplateDirs...)
 		m.teamSelector.SetWidth(m.width)
 		m.focus = FocusTeamSelector
 		m.prompt.Blur()

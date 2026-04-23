@@ -1152,6 +1152,7 @@ func runInteractive() error {
 		tui.WithSystemContext(buildSystemContext()),
 		tui.WithDB(appInstance.DB),
 		tui.WithTeamTemplatesDir(config.GetPaths().TeamTemplates),
+		tui.WithHarnessTemplateDirs(appInstance.HarnessTemplateDirs),
 	}
 	if appInstance.Config.Advisor != nil {
 		tuiOpts = append(tuiOpts, tui.WithEngineRef(&currentEngine))

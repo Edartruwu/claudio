@@ -60,9 +60,10 @@ type App struct {
 	Cron         *tasks.CronStore
 	CronRunner   *tasks.CronRunner
 	LSP          *lsp.ServerManager
-	MCPManager   *mcp.Manager
-	InjectCh     chan attach.UserMsgPayload
-	InterruptCh  chan struct{}
+	MCPManager          *mcp.Manager
+	HarnessTemplateDirs []string
+	InjectCh            chan attach.UserMsgPayload
+	InterruptCh         chan struct{}
 }
 
 // SecurityContext wraps config-based security settings for tool injection.
@@ -635,9 +636,10 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		Cron:        cronStore,
 		CronRunner:  cronRunner,
 		LSP:         lspManager,
-		MCPManager:  globalMCPMgr,
-		InjectCh:    injectCh,
-		InterruptCh: interruptCh,
+		MCPManager:          globalMCPMgr,
+		HarnessTemplateDirs: harness.CollectTemplateDirs(harnesses),
+		InjectCh:            injectCh,
+		InterruptCh:         interruptCh,
 	}, nil
 }
 
