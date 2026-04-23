@@ -46,6 +46,7 @@ type TaskState struct {
 	Type        TaskType   `json:"type"`
 	Status      TaskStatus `json:"status"`
 	Description string     `json:"description"`
+	SessionID   string     `json:"session_id,omitempty"` // owning session for access control
 	StartTime   time.Time  `json:"start_time"`
 	EndTime     *time.Time `json:"end_time,omitempty"`
 	Error       string     `json:"error,omitempty"`
@@ -218,6 +219,21 @@ func (r *Runtime) Get(id string) (*TaskState, bool) {
 	return t, ok
 }
 
+// GetForSession returns a task by ID, validating session ownership.
+// If sessionID is non-empty and doesn't match the task's SessionID, returns not-found.
+func (r *Runtime) GetForSession(id, sessionID string) (*TaskState, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	t, ok := r.tasks[id]
+	if !ok {
+		return nil, false
+	}
+	if sessionID != "" && t.SessionID != "" && t.SessionID != sessionID {
+		return nil, false
+	}
+	return t, true
+}
+
 // List returns all tasks, optionally filtered by status.
 func (r *Runtime) List(onlyRunning bool) []*TaskState {
 	r.mu.RLock()
@@ -255,11 +271,21 @@ func (r *Runtime) SetStatus(id string, status TaskStatus, errMsg string) {
 
 // Kill stops a running task.
 func (r *Runtime) Kill(id string) error {
+	return r.KillForSession(id, "")
+}
+
+// KillForSession stops a running task, validating session ownership.
+// If sessionID is non-empty and doesn't match the task's SessionID,
+// returns a "not found" error to avoid leaking task existence.
+func (r *Runtime) KillForSession(id, sessionID string) error {
 	r.mu.RLock()
 	t, ok := r.tasks[id]
 	r.mu.RUnlock()
 
 	if !ok {
+		return fmt.Errorf("task %s not found", id)
+	}
+	if sessionID != "" && t.SessionID != "" && t.SessionID != sessionID {
 		return fmt.Errorf("task %s not found", id)
 	}
 	if t.Status.IsTerminal() {

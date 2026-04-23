@@ -15,6 +15,7 @@ type ShellTaskInput struct {
 	Command     string
 	Description string
 	Timeout     time.Duration // 0 = no timeout
+	SessionID   string        // owning session for access control
 }
 
 // SpawnShellTask starts a shell command in the background and returns immediately.
@@ -42,6 +43,7 @@ func SpawnShellTask(rt *Runtime, input ShellTaskInput) (*TaskState, error) {
 		Type:        TypeShell,
 		Status:      StatusRunning,
 		Description: desc,
+		SessionID:   input.SessionID,
 		Command:     input.Command,
 		OutputFile:  output.Path(),
 		StartTime:   time.Now(),

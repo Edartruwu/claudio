@@ -240,6 +240,8 @@ type AgentTool struct {
 	RunAgentWithMemory func(ctx context.Context, system, prompt, memoryDir string) (string, error)
 	// TaskRuntime for background agent execution.
 	TaskRuntime *tasks.Runtime
+	// SessionID is the owning session — passed to background tasks for access control.
+	SessionID string
 	// TeamRunner for spawning agents visible in the team panel.
 	TeamRunner *teams.TeammateRunner
 	// AvailableModels lists extra model names from configured providers (e.g., Groq, OpenAI-compatible).
@@ -428,6 +430,7 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 			AgentType:   agentDef.Type,
 			Model:       in.Model,
 			System:      agentDef.SystemPrompt,
+			SessionID:   t.SessionID,
 			EventBus:    t.EventBus,
 			RunAgent: func(ctx context.Context, system, prompt string) (string, error) {
 				if runFn != nil {

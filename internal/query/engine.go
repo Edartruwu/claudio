@@ -241,6 +241,28 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 			tool.SessionID = cfg.SessionID
 		}
 	}
+	// Wire session ID into TaskStop/TaskOutput for session-scoped access control.
+	if ts, err := registry.Get("TaskStop"); err == nil {
+		if tool, ok := ts.(*tools.TaskStopTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
+	if to, err := registry.Get("TaskOutput"); err == nil {
+		if tool, ok := to.(*tools.TaskOutputTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
+	// Wire session ID into Bash/Agent so background tasks are tagged with the owning session.
+	if b, err := registry.Get("Bash"); err == nil {
+		if tool, ok := b.(*tools.BashTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
+	if a, err := registry.Get("Agent"); err == nil {
+		if tool, ok := a.(*tools.AgentTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
 	e.model = cfg.Model
 	e.permissionMode = cfg.PermissionMode
 	if e.permissionMode == "" {

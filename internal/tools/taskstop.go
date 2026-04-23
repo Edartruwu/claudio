@@ -11,7 +11,8 @@ import (
 // TaskStopTool stops a running background task.
 type TaskStopTool struct {
 	deferrable
-	Runtime *tasks.Runtime
+	Runtime   *tasks.Runtime
+	SessionID string // owning session — only tasks from this session can be stopped
 }
 
 type taskStopInput struct {
@@ -54,7 +55,7 @@ func (t *TaskStopTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		return &Result{Content: "Task runtime not available", IsError: true}, nil
 	}
 
-	if err := t.Runtime.Kill(in.TaskID); err != nil {
+	if err := t.Runtime.KillForSession(in.TaskID, t.SessionID); err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to stop task: %v", err), IsError: true}, nil
 	}
 

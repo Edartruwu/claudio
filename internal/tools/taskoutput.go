@@ -12,7 +12,8 @@ import (
 // TaskOutputTool retrieves output from a background task.
 type TaskOutputTool struct {
 	deferrable
-	Runtime *tasks.Runtime
+	Runtime   *tasks.Runtime
+	SessionID string // owning session — only tasks from this session can be read
 }
 
 type taskOutputInput struct {
@@ -62,7 +63,7 @@ func (t *TaskOutputTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		return &Result{Content: "Task runtime not available", IsError: true}, nil
 	}
 
-	state, ok := t.Runtime.Get(in.TaskID)
+	state, ok := t.Runtime.GetForSession(in.TaskID, t.SessionID)
 	if !ok {
 		return &Result{Content: fmt.Sprintf("Task %s not found", in.TaskID), IsError: true}, nil
 	}
@@ -86,7 +87,7 @@ func (t *TaskOutputTool) Execute(ctx context.Context, input json.RawMessage) (*R
 				return &Result{Content: "Interrupted", IsError: true}, nil
 			case <-time.After(100 * time.Millisecond):
 				// Re-fetch state
-				state, _ = t.Runtime.Get(in.TaskID)
+				state, _ = t.Runtime.GetForSession(in.TaskID, t.SessionID)
 			}
 		}
 	}

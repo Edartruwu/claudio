@@ -19,6 +19,7 @@ type AgentTaskInput struct {
 	AgentType   string
 	Model       string // model override
 	System      string // system prompt for the agent
+	SessionID   string   // owning session for access control
 	EventBus    *bus.Bus // optional; used to publish agent status events
 
 	// RunAgent is the callback that actually executes the agent.
@@ -52,6 +53,7 @@ func SpawnAgentTask(rt *Runtime, input AgentTaskInput) (*TaskState, error) {
 		Type:        TypeAgent,
 		Status:      StatusRunning,
 		Description: desc,
+		SessionID:   input.SessionID,
 		AgentType:   input.AgentType,
 		Prompt:      input.Prompt,
 		OutputFile:  output.Path(),
