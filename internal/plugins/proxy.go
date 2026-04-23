@@ -141,9 +141,8 @@ func (t *PluginProxyTool) Execute(ctx context.Context, input json.RawMessage) (*
 	}
 
 	cmd := exec.CommandContext(ctx, t.PluginPath, args...)
-	if in.Input != "" {
-		cmd.Stdin = strings.NewReader(in.Input)
-	}
+	// Always forward raw input JSON as stdin so plugins can parse their schema fields.
+	cmd.Stdin = bytes.NewReader(input)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
