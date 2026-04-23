@@ -130,6 +130,47 @@ nmap --script ssl-enum-ciphers -p 443 target.com
 
 # CORS check
 curl -s -H "Origin: https://evil.com" -I https://target.com/api/data | grep -i "access-control"
+
+# ffuf — directory brute-force
+ffuf -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+     -u https://target.com/FUZZ \
+     -mc 200,301,302,403 \
+     -o ffuf-dirs.json -of json
+
+# ffuf — vhost discovery
+ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+     -u https://target.com \
+     -H "Host: FUZZ.target.com" \
+     -mc 200,301,302 \
+     -fs <baseline_size> \
+     -o ffuf-vhosts.json -of json
+
+# ffuf — parameter fuzzing (GET)
+ffuf -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt \
+     -u "https://target.com/search?FUZZ=test" \
+     -mc 200 -fw <baseline_words> \
+     -o ffuf-params.json -of json
+
+# ffuf — POST parameter fuzzing
+ffuf -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt \
+     -u https://target.com/api/endpoint \
+     -X POST -d "FUZZ=test" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -mc 200 -fw <baseline_words>
+
+# feroxbuster — recursive directory brute-force (depth 3)
+feroxbuster -u https://target.com \
+            -w /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt \
+            --depth 3 \
+            -o feroxbuster-output.txt
+
+# feroxbuster — with extensions and status filter
+feroxbuster -u https://target.com \
+            -w /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt \
+            --depth 3 \
+            -x php,txt,bak,conf,xml \
+            --filter-status 404 \
+            -o feroxbuster-output.txt
 ```
 
 ---
