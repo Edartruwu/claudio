@@ -101,6 +101,7 @@ type TaskCreatedPayload struct {
 	Description string `json:"description,omitempty"`
 	AssignedTo  string `json:"assigned_to,omitempty"`
 	Status      string `json:"status"`
+	SessionID   string `json:"session_id,omitempty"`
 }
 
 // TaskUpdatedPayload for EventTaskUpdated.
