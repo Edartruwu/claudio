@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+case "${1:-}" in
+  --describe)
+    cat <<'EOF'
+{"name": "nuclei-scan", "description": "Template-based vulnerability scanner (Nuclei)", "version": "1.0.0"}
+EOF
+    exit 0
+    ;;
+  --schema)
+    cat <<'EOF'
+{
+  "type": "object",
+  "properties": {
+    "target": {"type": "string", "description": "Target URL or IP"},
+    "templates": {"type": "array", "items": {"type": "string"}, "description": "Template names/paths to use"},
+    "severity": {"type": "string", "enum": ["info", "low", "medium", "high", "critical"], "description": "Minimum severity to report"},
+    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tag filter"},
+    "rate_limit": {"type": "integer", "description": "Requests per second"},
+    "extra_args": {"type": "string", "description": "Additional nuclei arguments"}
+  },
+  "required": ["target"]
+}
+EOF
+    exit 0
+    ;;
+esac
+
+# Check nuclei in PATH
+if ! command -v nuclei &>/dev/null; then
+  echo '{"error": "nuclei not found in PATH"}' >&2
+  exit 1
+fi
+
+# Parse JSON input
+INPUT=$(cat)
+TARGET=$(echo "$INPUT" | jq -r '.target')
+TEMPLATES=$(echo "$INPUT" | jq -r '.templates[]?' 2>/dev/null)
+SEVERITY=$(echo "$INPUT" | jq -r '.severity // empty' 2>/dev/null)
+TAGS=$(echo "$INPUT" | jq -r '.tags[]?' 2>/dev/null)
+RATE_LIMIT=$(echo "$INPUT" | jq -r '.rate_limit // empty' 2>/dev/null)
+EXTRA=$(echo "$INPUT" | jq -r '.extra_args // empty' 2>/dev/null)
+
+# Build nuclei command
+CMD="nuclei -u $TARGET"
+
+if [[ -n "$TEMPLATES" ]]; then
+  while IFS= read -r tmpl; do
+    CMD="$CMD -t $tmpl"
+  done <<< "$TEMPLATES"
+fi
+
+if [[ -n "$SEVERITY" ]]; then
+  CMD="$CMD -severity $SEVERITY"
+fi
+
+if [[ -n "$TAGS" ]]; then
+  while IFS= read -r tag; do
+    CMD="$CMD -tags $tag"
+  done <<< "$TAGS"
+fi
+
+if [[ -n "$RATE_LIMIT" ]]; then
+  CMD="$CMD -rl $RATE_LIMIT"
+fi
+
+[[ -n "$EXTRA" ]] && CMD="$CMD $EXTRA"
+
+# Run
+eval "$CMD"
