@@ -108,6 +108,24 @@ whatweb -a 3 --log-json=whatweb.json <url>
 
 # Shodan (via API or web search)
 # Query: hostname:example.com port:443 ssl:example.com
+
+# Metadata extraction
+exiftool -a -u <file>
+
+# Email/subdomain OSINT
+theHarvester -d <domain> -b all -l 500
+
+# DNS enumeration and brute-force
+dnsrecon -d <domain> -t axfr
+dnsrecon -d <domain> -t brt
+
+# Automated OSINT
+spiderfoot -s <domain> -m all
+
+# Email policy chain (SPF, DMARC, DKIM)
+dig TXT <domain> | grep spf
+dig TXT _dmarc.<domain>
+dig TXT <selector>._domainkey.<domain>
 ```
 
 ---
