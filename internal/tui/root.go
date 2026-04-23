@@ -374,6 +374,30 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	}
 	m.filesPanel = filespanel.New()
 
+	// Subscribe to background task complete events
+	if m.appCtx != nil && m.appCtx.Bus != nil {
+		m.appCtx.Bus.Subscribe(bus.EventBgTaskComplete, func(event bus.Event) {
+			var payload bus.BgTaskCompletePayload
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				return
+			}
+			// Create notification message using existing pattern
+			truncatedOutput := truncateStr(payload.Output, 500)
+			var notification string
+			if payload.Err != "" {
+				notification = fmt.Sprintf("<task-notification>\nBackground task %q failed.\nError: %s\n</task-notification>", payload.TaskID, payload.Err)
+			} else {
+				notification = fmt.Sprintf("<task-notification>\nBackground task %q completed.\nExit code: %d\nOutput: %s\n</task-notification>", payload.TaskID, payload.ExitCode, truncatedOutput)
+			}
+			// Send to eventCh to be processed like other notifications
+			select {
+			case m.eventCh <- tuiEvent{typ: "bg_task_notification", text: notification}:
+			default:
+				// Channel full, drop (buffer is 64, should be sufficient)
+			}
+		})
+	}
+
 	// Wire keymap into which-key for dynamic binding display
 	m.whichKey.SetKeymap(m.km)
 
@@ -545,6 +569,9 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 					engine := query.NewEngineWithConfig(m.apiClient, m.registry, handler, query.EngineConfig{
 						Model: smallModel,
 					})
+					if m.appCtx != nil && m.appCtx.Bus != nil {
+						engine.SetEventBus(m.appCtx.Bus)
+					}
 					engine.SetSystem("You are a memory consolidation agent for the claudio project at " + cwd + ". " +
 						"You have access to the Memory tool (save/append/replace-fact/delete-fact/delete/read/list/search) " +
 						"and the Recall tool for semantic search. " +
@@ -2254,6 +2281,9 @@ func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (t
 	} else {
 		m.engine = query.NewEngine(m.apiClient, m.registry, handler)
 	}
+	if m.appCtx != nil && m.appCtx.Bus != nil {
+		m.engine.SetEventBus(m.appCtx.Bus)
+	}
 	if m.engineRef != nil {
 		*m.engineRef = m.engine
 	}
@@ -2359,6 +2389,15 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 	case "thinking_delta":
 		m.spinText = "Thinking deeply..."
 		m.spinner.SetText("Thinking deeply...")
+
+	case "bg_task_notification":
+		if m.streaming {
+			// Engine is running — queue for next turn
+			m.messageQueue = append(m.messageQueue, event.text)
+		} else {
+			// Engine is idle — deliver notification immediately
+			return m.handleSubmit(event.text)
+		}
 
 	case "approval_needed":
 		m.finalizeStreamingMessage()
@@ -4271,6 +4310,9 @@ func (m *Model) doSwitchSession(id string) {
 				m.engine = query.NewEngineWithConfig(m.apiClient, m.registry, handler, *m.engineConfig)
 			} else {
 				m.engine = query.NewEngine(m.apiClient, m.registry, handler)
+			}
+			if m.appCtx != nil && m.appCtx.Bus != nil {
+				m.engine.SetEventBus(m.appCtx.Bus)
 			}
 			if m.engineRef != nil {
 				*m.engineRef = m.engine
