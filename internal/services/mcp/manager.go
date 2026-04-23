@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -183,6 +184,25 @@ func (m *Manager) MCPToolNames() []string {
 		}
 	}
 	return names
+}
+
+// FilterTools returns the subset of allTools that match any pattern in allowedTools.
+// Patterns follow filepath.Match glob semantics (e.g. "caido-*").
+// If allowedTools is empty, all tools are returned unfiltered.
+func FilterTools(allowedTools []string, allTools []string) []string {
+	if len(allowedTools) == 0 {
+		return allTools
+	}
+	var result []string
+	for _, tool := range allTools {
+		for _, pattern := range allowedTools {
+			if matched, err := filepath.Match(pattern, tool); err == nil && matched {
+				result = append(result, tool)
+				break
+			}
+		}
+	}
+	return result
 }
 
 func mustJSON(v any) []byte {
