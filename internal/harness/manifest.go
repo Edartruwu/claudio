@@ -93,9 +93,9 @@ func (m *Manifest) PluginDirs(base string) []string {
 }
 
 // TemplateDirs resolves team-template directories relative to base.
-// Defaults to ["templates/"] when the Templates field is empty.
+// Defaults to ["team-templates/"] when the Templates field is empty.
 func (m *Manifest) TemplateDirs(base string) []string {
-	return resolveDirs(base, m.Templates, "templates")
+	return resolveDirs(base, m.Templates, "team-templates")
 }
 
 // RulePaths resolves rule file paths relative to base.
