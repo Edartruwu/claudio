@@ -103,8 +103,7 @@ func TestIsCatFileCommand_SedInPipeline(t *testing.T) {
 }
 
 // TestBashTool_RunInBackground_NilRuntime verifies that RunInBackground=true
-// with a nil TaskRuntime silently falls through to synchronous execution
-// (no panic, no "Task ID" in result).
+// with a nil TaskRuntime returns an error.
 func TestBashTool_RunInBackground_NilRuntime(t *testing.T) {
 	tool := &BashTool{TaskRuntime: nil}
 
@@ -117,14 +116,11 @@ func TestBashTool_RunInBackground_NilRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.IsError {
-		t.Fatalf("unexpected error result: %s", result.Content)
+	if !result.IsError {
+		t.Fatalf("expected error result for nil runtime with RunInBackground, got: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, "nilruntime") {
-		t.Errorf("expected sync output 'nilruntime', got: %q", result.Content)
-	}
-	if strings.Contains(result.Content, "Task ID:") {
-		t.Errorf("nil runtime should not spawn bg task, got: %q", result.Content)
+	if !strings.Contains(result.Content, "Cannot run in background: no task runtime available") {
+		t.Errorf("expected error message about no runtime, got: %q", result.Content)
 	}
 }
 

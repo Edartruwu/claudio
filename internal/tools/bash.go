@@ -109,7 +109,10 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 	}
 
 	// Background execution
-	if in.RunInBackground && t.TaskRuntime != nil {
+	if in.RunInBackground {
+		if t.TaskRuntime == nil {
+			return &Result{Content: "Cannot run in background: no task runtime available", IsError: true}, nil
+		}
 		taskTimeout := time.Duration(0)
 		if in.Timeout > 0 {
 			taskTimeout = time.Duration(in.Timeout) * time.Millisecond
