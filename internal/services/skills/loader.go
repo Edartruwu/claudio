@@ -119,8 +119,9 @@ func (r *Registry) FilterByCapabilities(agentCaps []string) *Registry {
 	return out
 }
 
-// LoadAll loads skills from all sources: bundled, user, project.
-func LoadAll(userSkillsDir, projectSkillsDir string) *Registry {
+// LoadAll loads skills from all sources: bundled, user, project, and any extra dirs.
+// Extra dirs (e.g. from installed harnesses) are loaded after project skills with source="harness".
+func LoadAll(userSkillsDir, projectSkillsDir string, extraDirs ...string) *Registry {
 	r := NewRegistry()
 
 	// 1. Bundled skills
@@ -136,6 +137,13 @@ func LoadAll(userSkillsDir, projectSkillsDir string) *Registry {
 	// 3. Project skills (.claudio/skills/)
 	if projectSkillsDir != "" {
 		loadFromDir(r, projectSkillsDir, "project")
+	}
+
+	// 4. Harness skill dirs (installed harnesses)
+	for _, dir := range extraDirs {
+		if dir != "" {
+			loadFromDir(r, dir, "harness")
+		}
 	}
 
 	return r

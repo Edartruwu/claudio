@@ -33,45 +33,65 @@ type TeamTemplate struct {
 	Members              []TeamTemplateMember `json:"members"`
 }
 
-// LoadTemplates reads all *.json files from dir and returns the parsed templates.
-func LoadTemplates(dir string) []TeamTemplate {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
+// LoadTemplates reads all *.json files from the given dirs and returns parsed templates.
+// First occurrence of a template name wins (user templates override harness ones).
+// Accepts zero or more dirs; missing dirs are silently skipped.
+func LoadTemplates(dirs ...string) []TeamTemplate {
+	seen := make(map[string]struct{})
 	var out []TeamTemplate
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+	for _, dir := range dirs {
+		if dir == "" {
 			continue
 		}
-		name := strings.TrimSuffix(e.Name(), ".json")
-		t, err := GetTemplate(dir, name)
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			continue
 		}
-		out = append(out, *t)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			name := strings.TrimSuffix(e.Name(), ".json")
+			if _, exists := seen[name]; exists {
+				continue // first wins
+			}
+			t, err := GetTemplate(dir, name)
+			if err != nil {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, *t)
+		}
 	}
 	return out
 }
 
-// GetTemplate loads a single template by name from dir.
-func GetTemplate(dir, name string) (*TeamTemplate, error) {
-	path := filepath.Join(dir, name+".json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("template %q not found", name)
+// GetTemplate loads a single template by name, searching dirs in order (first match wins).
+// Callers that previously passed a single dir can still call GetTemplate(dir, name).
+func GetTemplate(dir, name string, extraDirs ...string) (*TeamTemplate, error) {
+	allDirs := append([]string{dir}, extraDirs...)
+	for _, d := range allDirs {
+		if d == "" {
+			continue
 		}
-		return nil, err
+		path := filepath.Join(d, name+".json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		var t TeamTemplate
+		if err := json.Unmarshal(data, &t); err != nil {
+			return nil, fmt.Errorf("invalid template %q: %w", name, err)
+		}
+		if t.Name == "" {
+			t.Name = name
+		}
+		return &t, nil
 	}
-	var t TeamTemplate
-	if err := json.Unmarshal(data, &t); err != nil {
-		return nil, fmt.Errorf("invalid template %q: %w", name, err)
-	}
-	if t.Name == "" {
-		t.Name = name
-	}
-	return &t, nil
+	return nil, fmt.Errorf("template %q not found", name)
 }
 
 // SaveTemplate writes t to {dir}/{t.Name}.json.

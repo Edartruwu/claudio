@@ -17,6 +17,7 @@ import (
 	authstorage "github.com/Abraxas-365/claudio/internal/auth/storage"
 	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/config"
+	"github.com/Abraxas-365/claudio/internal/harness"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/learning"
 	"github.com/Abraxas-365/claudio/internal/models"
@@ -220,6 +221,30 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	paths := config.GetPaths()
 	cwd, _ := os.Getwd()
 
+	// Discover installed harnesses (.claudio/harnesses/<name>/harness.json)
+	harnessesDir := filepath.Join(cwd, ".claudio", "harnesses")
+	harnesses, _ := harness.DiscoverHarnesses(harnessesDir)
+
+	// Merge harness MCP servers into settings (project settings take priority on name collision)
+	if harnessMCP, err := harness.CollectMCPServers(harnesses); err == nil {
+		for name, hcfg := range harnessMCP {
+			if _, exists := settings.MCPServers[name]; !exists {
+				if settings.MCPServers == nil {
+					settings.MCPServers = make(map[string]config.MCPServerConfig)
+				}
+				settings.MCPServers[name] = config.MCPServerConfig{
+					Command: hcfg.Command,
+					Args:    hcfg.Args,
+					Env:     hcfg.Env,
+					Type:    hcfg.Type,
+					URL:     hcfg.URL,
+				}
+			}
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Warning: harness MCP server conflict: %v\n", err)
+	}
+
 	// Initialize LSP server manager from settings + plugin configs
 	lspCfgs := make(map[string]config.LspServerConfig)
 	for k, v := range settings.LspServers {
@@ -242,8 +267,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	learningStore := learning.NewStore(paths.Instincts)
 	learningStore.Decay() // prune stale instincts
 
-	// Load skills
-	skillsRegistry := skills.LoadAll(paths.Skills, cwd+"/.claudio/skills")
+	// Load skills (bundled → user → project → harness)
+	skillsRegistry := skills.LoadAll(paths.Skills, cwd+"/.claudio/skills", harness.CollectSkillDirs(harnesses)...)
 
 	// Inject skills registry into SkillTool so all agents (main + teammates) can
 	// auto-detect and invoke skills. Clone() propagates the pointer to sub-agents.
@@ -258,8 +283,11 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		}
 	}
 
-	// Register custom agent directories so GetAgent() can discover them
-	agents.SetCustomDirs(paths.Agents, cwd+"/.claudio/agents")
+	// Register custom agent directories so GetAgent() can discover them (user, project, harnesses)
+	{
+		agentDirs := append([]string{paths.Agents, cwd + "/.claudio/agents"}, harness.CollectAgentDirs(harnesses)...)
+		agents.SetCustomDirs(agentDirs...)
+	}
 
 	// Load memory (project-scoped + global fallback)
 	projectMemDir := ""
@@ -285,10 +313,13 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Task runtime for background execution
 	taskRuntime := tasks.NewRuntime(paths.Home + "/task-output")
 
-	// Plugins — discover and register as tools
+	// Plugins — discover and register as tools (user, project, harnesses)
 	pluginReg := plugins.NewRegistry()
 	pluginReg.LoadDir(paths.Plugins)
 	pluginReg.LoadDir(cwd + "/.claudio/plugins")
+	for _, pdir := range harness.CollectPluginDirs(harnesses) {
+		pluginReg.LoadDir(pdir)
+	}
 	for _, p := range pluginReg.All() {
 		pt := plugins.NewProxyTool(p)
 		pt.OutputFilterEnabled = settings.OutputFilter
@@ -321,8 +352,16 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		return model, agentDef.SystemPrompt
 	}
 
-	// Team manager
-	teamMgr := teams.NewManager(paths.Home+"/teams", paths.TeamTemplates)
+	// Team manager (primary templates dir = user, then project-scoped, then harness dirs)
+	var teamMgr *teams.Manager
+	{
+		templatesDirs := []string{
+			paths.TeamTemplates,
+			filepath.Join(cwd, ".claudio", "team-templates"),
+		}
+		templatesDirs = append(templatesDirs, harness.CollectTemplateDirs(harnesses)...)
+		teamMgr = teams.NewManager(paths.Home+"/teams", templatesDirs...)
+	}
 
 	// Message injection channel for headless mode
 	injectCh := make(chan attach.UserMsgPayload, 8)

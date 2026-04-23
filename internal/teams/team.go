@@ -80,22 +80,27 @@ func FormatAgentID(name, teamName string) string {
 
 // Manager handles team lifecycle and coordination.
 type Manager struct {
-	mu           sync.RWMutex
-	teamsDir     string
-	templatesDir string
-	active       map[string]*TeamConfig // keyed by team name
+	mu            sync.RWMutex
+	teamsDir      string
+	templatesDirs []string // first dir is primary (writes go here); rest are read-only extras
+	active        map[string]*TeamConfig // keyed by team name
 }
 
 // NewManager creates a team manager.
-func NewManager(teamsDir, templatesDir string) *Manager {
+// templatesDirs: first entry is the primary (writable) templates dir; additional entries
+// (e.g. harness template dirs) are read-only sources searched in order.
+// Backward-compatible: NewManager(teamsDir, primaryTemplatesDir) still works.
+func NewManager(teamsDir string, templatesDirs ...string) *Manager {
 	os.MkdirAll(teamsDir, 0700)
-	if templatesDir != "" {
-		os.MkdirAll(templatesDir, 0700)
+	for _, td := range templatesDirs {
+		if td != "" {
+			os.MkdirAll(td, 0700)
+		}
 	}
 	m := &Manager{
-		teamsDir:     teamsDir,
-		templatesDir: templatesDir,
-		active:       make(map[string]*TeamConfig),
+		teamsDir:      teamsDir,
+		templatesDirs: templatesDirs,
+		active:        make(map[string]*TeamConfig),
 	}
 	m.loadActive()
 	return m
@@ -128,20 +133,35 @@ func (m *Manager) SaveAsTemplate(teamName, templateName string) (*TeamTemplate, 
 		Model:       team.Model,
 		Members:     members,
 	}
-	if err := SaveTemplate(m.templatesDir, t); err != nil {
+	primaryDir := m.primaryTemplatesDir()
+	if err := SaveTemplate(primaryDir, t); err != nil {
 		return nil, err
 	}
 	return &t, nil
 }
 
-// ListTemplates returns all saved team templates.
+// ListTemplates returns all saved team templates across all template dirs.
+// First occurrence of a name wins (primary dir takes priority).
 func (m *Manager) ListTemplates() []TeamTemplate {
-	return LoadTemplates(m.templatesDir)
+	return LoadTemplates(m.templatesDirs...)
 }
 
-// GetTemplate returns a single template by name.
+// GetTemplate returns a single template by name, searching all template dirs.
 func (m *Manager) GetTemplate(name string) (*TeamTemplate, error) {
-	return GetTemplate(m.templatesDir, name)
+	primaryDir := m.primaryTemplatesDir()
+	var extras []string
+	if len(m.templatesDirs) > 1 {
+		extras = m.templatesDirs[1:]
+	}
+	return GetTemplate(primaryDir, name, extras...)
+}
+
+// primaryTemplatesDir returns the first (writable) templates dir, or "" if none configured.
+func (m *Manager) primaryTemplatesDir() string {
+	if len(m.templatesDirs) > 0 {
+		return m.templatesDirs[0]
+	}
+	return ""
 }
 
 // CreateTeam initializes a new team with the calling agent as lead.
