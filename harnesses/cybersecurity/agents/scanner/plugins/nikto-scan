@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+case "${1:-}" in
+  --describe)
+    cat <<'EOF'
+{"name": "nikto-scan", "description": "Web server scanner (Nikto)", "version": "1.0.0"}
+EOF
+    exit 0
+    ;;
+  --schema)
+    cat <<'EOF'
+{
+  "type": "object",
+  "properties": {
+    "target": {"type": "string", "description": "Target host or IP"},
+    "port": {"type": "integer", "description": "Port (default 80)"},
+    "tuning": {"type": "string", "description": "Tuning options (e.g. '1 2 3')"},
+    "plugins": {"type": "string", "description": "Specific plugins to run"},
+    "extra_args": {"type": "string", "description": "Additional nikto arguments"}
+  },
+  "required": ["target"]
+}
+EOF
+    exit 0
+    ;;
+esac
+
+# Check nikto
+if ! command -v nikto &>/dev/null; then
+  echo '{"error": "nikto not found in PATH"}' >&2
+  exit 1
+fi
+
+# Parse JSON
+INPUT=$(cat)
+TARGET=$(echo "$INPUT" | jq -r '.target')
+PORT=$(echo "$INPUT" | jq -r '.port // empty')
+TUNING=$(echo "$INPUT" | jq -r '.tuning // empty')
+PLUGINS=$(echo "$INPUT" | jq -r '.plugins // empty')
+EXTRA=$(echo "$INPUT" | jq -r '.extra_args // empty')
+
+# Build command
+CMD="nikto -h $TARGET"
+[[ -n "$PORT" ]] && CMD="$CMD -p $PORT"
+[[ -n "$TUNING" ]] && CMD="$CMD -Tuning $TUNING"
+[[ -n "$PLUGINS" ]] && CMD="$CMD -Plugins $PLUGINS"
+[[ -n "$EXTRA" ]] && CMD="$CMD $EXTRA"
+
+eval "$CMD"

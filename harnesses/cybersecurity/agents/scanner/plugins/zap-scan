@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+case "${1:-}" in
+  --describe)
+    cat <<'EOF'
+{"name": "zap-scan", "description": "OWASP ZAP security scanner", "version": "1.0.0"}
+EOF
+    exit 0
+    ;;
+  --schema)
+    cat <<'EOF'
+{
+  "type": "object",
+  "properties": {
+    "target": {"type": "string", "description": "Target URL"},
+    "scan_type": {"type": "string", "enum": ["baseline", "full", "api"], "description": "Scan type"},
+    "context": {"type": "string", "description": "Context file path"},
+    "extra_args": {"type": "string", "description": "Additional ZAP arguments"}
+  },
+  "required": ["target"]
+}
+EOF
+    exit 0
+    ;;
+esac
+
+# Check for zap-cli or zap.sh
+ZAP_CMD=""
+if command -v zap-cli &>/dev/null; then
+  ZAP_CMD="zap-cli"
+elif command -v zap.sh &>/dev/null; then
+  ZAP_CMD="zap.sh"
+else
+  echo '{"error": "zap-cli or zap.sh not found in PATH"}' >&2
+  exit 1
+fi
+
+# Parse JSON
+INPUT=$(cat)
+TARGET=$(echo "$INPUT" | jq -r '.target')
+SCAN_TYPE=$(echo "$INPUT" | jq -r '.scan_type // "baseline"')
+CONTEXT=$(echo "$INPUT" | jq -r '.context // empty')
+EXTRA=$(echo "$INPUT" | jq -r '.extra_args // empty')
+
+# Build command
+if [[ "$ZAP_CMD" == "zap-cli" ]]; then
+  CMD="zap-cli quick-scan --self-contained --start-options '-config api.disablekey=true' $TARGET"
+  [[ "$SCAN_TYPE" == "full" ]] && CMD="zap-cli open-url --start-options '-config api.disablekey=true' $TARGET && zap-cli spider $TARGET && zap-cli active-scan $TARGET"
+  [[ -n "$CONTEXT" ]] && CMD="$CMD --context $CONTEXT"
+else
+  # zap.sh
+  CMD="zap.sh -cmd -quickurl $TARGET"
+  [[ "$SCAN_TYPE" == "full" ]] && CMD="zap.sh -cmd -url $TARGET"
+fi
+
+[[ -n "$EXTRA" ]] && CMD="$CMD $EXTRA"
+
+eval "$CMD" 2>&1 || true
