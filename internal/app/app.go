@@ -782,8 +782,22 @@ func resolveModelAlias(alias string) string {
 
 // runSubAgentWithMemory is like runSubAgent but also injects agent-scoped memories into the system prompt.
 func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentRegistry *tools.Registry, system, prompt, memoryDir string, cfg query.EngineConfig, eventBus *bus.Bus) (string, error) {
+	// Each sub-agent gets its own task runtime so background task completions
+	// route to the sub-agent's engine (not the parent's). Use a temp dir for
+	// output since sub-agent tasks are ephemeral.
+	subOutputDir, err := os.MkdirTemp("", "claudio-sub-tasks-*")
+	if err != nil {
+		return "", fmt.Errorf("create sub-agent task output dir: %w", err)
+	}
+	subRuntime := tasks.NewRuntime(subOutputDir)
+	cfg.TaskRuntime = subRuntime
+
 	// Clone the registry so sub-agent has its own copy
 	subRegistry := parentRegistry.Clone()
+
+	// Inject the sub-agent's own runtime into its BashTool so auto-promoted
+	// background tasks land on the sub-agent's CompletionCh.
+	subRegistry.SetTaskRuntime(subRuntime)
 
 	// Wire agent-scoped memory store if this agent has its own memory dir
 	if memoryDir != "" {

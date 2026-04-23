@@ -9,6 +9,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/snippets"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/tools/grepcache"
 	"github.com/Abraxas-365/claudio/internal/tools/readcache"
 )
@@ -265,7 +266,28 @@ func (r *Registry) Clone() *Registry {
 		}
 	}
 
+	// Shallow-copy BashTool so sub-agent gets its own instance.
+	// Without this, sub-agent shares parent's BashTool by reference
+	// and background task completions land on the wrong runtime.
+	if t, err := clone.Get("Bash"); err == nil {
+		if bt, ok := t.(*BashTool); ok {
+			cloned := *bt
+			clone.tools["Bash"] = &cloned
+		}
+	}
+
 	return clone
+}
+
+// SetTaskRuntime injects a task runtime into the registry's BashTool.
+// Used to give sub-agents their own runtime so background task completions
+// are routed to the correct engine.
+func (r *Registry) SetTaskRuntime(rt *tasks.Runtime) {
+	if t, err := r.Get("Bash"); err == nil {
+		if bt, ok := t.(*BashTool); ok {
+			bt.TaskRuntime = rt
+		}
+	}
 }
 
 // SetLSPManager injects the LSP server manager into the LSP tool.
