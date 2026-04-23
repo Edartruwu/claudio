@@ -19,6 +19,7 @@ import (
 type BashTool struct {
 	Security            SecurityChecker
 	TaskRuntime         *tasks.Runtime
+	SessionID           string // owning session — passed to background tasks for access control
 	OutputFilterEnabled bool
 	// FilterRecorder is an optional callback invoked after output filtering
 	// with the normalized command key and byte counts (in, out).
@@ -112,6 +113,7 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 			Command:     in.Command,
 			Description: in.Description,
 			Timeout:     taskTimeout,
+			SessionID:   t.SessionID,
 		})
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Failed to start background task: %v", err), IsError: true}, nil
