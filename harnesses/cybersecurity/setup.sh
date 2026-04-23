@@ -249,10 +249,20 @@ install_macos() {
   install_brew  sqlmap
   install_brew  jq
 
-  # whatweb — no official brew formula; try gem
+  # whatweb — try brew tap first, then pip, then gem with sudo
   if ! is_installed whatweb; then
-    info "whatweb not in brew — trying gem..."
-    install_gem whatweb
+    info "Installing whatweb..."
+    if try_install whatweb brew install whatweb 2>/dev/null; then
+      : # success via brew
+    elif is_installed pip3 && try_install whatweb pip3 install whatweb 2>/dev/null; then
+      : # success via pip
+    elif is_installed gem; then
+      info "Trying gem install (may need sudo)..."
+      try_install whatweb sudo gem install whatweb
+    else
+      warn "Could not install whatweb — install manually: https://github.com/urbanadventurer/WhatWeb"
+      FAILED+=(whatweb)
+    fi
   else
     ok "Already present: whatweb"
     ALREADY_PRESENT+=(whatweb)
