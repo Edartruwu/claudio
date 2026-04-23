@@ -31,6 +31,7 @@ func BuildSystemPrompt(model string, additionalContext string) string {
 		toneAndStyleSection(),
 		outputEfficiencySection(),
 		sessionGuidanceSection(),
+		memoryPolicySection(),
 	}
 
 	dynamicSections := []string{
@@ -158,6 +159,20 @@ func sessionGuidanceSection() string {
  - Before spawning agents for codebase work, seed Memory with architecture knowledge if not already cached (e.g. Memory(action="save", name="architecture", facts=[...])). Agents inherit the store and will skip redundant exploration automatically.
  - After teams finish, call Memory(action="invalidate") for any packages that were significantly changed — stale cache entries mislead future agents.
  - Standard Memory key names: "architecture" for whole-codebase maps, "pkg-<name>" for per-package summaries, "decision-<topic>" for architectural decisions.`
+}
+
+func memoryPolicySection() string {
+	return `## Memory Tool Policy
+
+Memory is for durable architectural facts only — not session state, task progress, or transient findings.
+
+Staleness test: "Would this fact still be true after a git clone tomorrow?" If no → do NOT save.
+
+Save: package structure, architectural decisions + rationale, non-obvious constraints, hard-won gotchas per-package.
+
+Never save: task/phase completion ("Phase X done"), merged commit lists, worktree branch names, active bugs, anything prefixed "currently"/"right now"/"in progress", session state of any kind.
+
+Context window filling up → do NOT dump state to Memory. Use TaskCreate/TaskUpdate for progress tracking instead.`
 }
 
 func environmentSection(model string) string {
