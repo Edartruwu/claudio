@@ -1,9 +1,12 @@
 {
   "name": "cybersecurity",
-  "version": "1.0.0",
-  "description": "Comprehensive penetration testing and security assessment harness. Covers recon, enumeration, vulnerability scanning, exploitation, static analysis, post-exploitation, and reporting.",
+  "version": "2.0.0",
+  "description": "Full-spectrum offensive security harness. 12 specialized agents covering recon, OSINT, web exploitation, Active Directory, cloud identity (Entra ID/Azure/AWS), privilege escalation (Windows+Linux), RCE hunting, post-exploitation, vulnerability research, and reporting.",
   "agents": ["agents"],
   "skills": ["skills"],
   "plugins": ["plugins"],
-  "templates": ["team-templates"]
+  "templates": ["team-templates"],
+  "rules": ["rules"],
+  "mcp_servers": {},
+  "agent_tool_filters": {}
 }

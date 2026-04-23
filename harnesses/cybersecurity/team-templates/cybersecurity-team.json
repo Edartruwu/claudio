@@ -1,43 +1,20 @@
 {
   "name": "cybersecurity-team",
-  "description": "Full-spectrum penetration testing team. Covers recon through reporting. Exploiter uses Opus for high-stakes decisions; enumerator uses Haiku for repetitive brute-force tasks; all others use Sonnet.",
+  "description": "Full-spectrum offensive security team. 12 specialized agents covering recon, OSINT/dorking, automated scanning, web exploitation, Active Directory attack chains, cloud identity attacks (Entra ID/Azure/AWS), privilege escalation (Windows + Linux), RCE hunting, post-exploitation, vulnerability research, and professional reporting. High-stakes agents use Opus; pattern-based/documentation agents use Haiku or Sonnet.",
   "model": "sonnet",
   "autoCompactThreshold": 80,
   "members": [
-    {
-      "name": "recon",
-      "subagent_type": "backend-mid",
-      "model": "sonnet"
-    },
-    {
-      "name": "enumerator",
-      "subagent_type": "backend-jr",
-      "model": "haiku"
-    },
-    {
-      "name": "scanner",
-      "subagent_type": "backend-mid",
-      "model": "sonnet"
-    },
-    {
-      "name": "exploiter",
-      "subagent_type": "backend-senior",
-      "model": "opus"
-    },
-    {
-      "name": "code-auditor",
-      "subagent_type": "backend-mid",
-      "model": "sonnet"
-    },
-    {
-      "name": "post-exploit",
-      "subagent_type": "backend-mid",
-      "model": "sonnet"
-    },
-    {
-      "name": "reporter",
-      "subagent_type": "backend-mid",
-      "model": "sonnet"
-    }
+    {"name": "recon", "subagent_type": "backend-mid", "model": "sonnet"},
+    {"name": "dorker", "subagent_type": "backend-jr", "model": "haiku"},
+    {"name": "scanner", "subagent_type": "backend-mid", "model": "sonnet"},
+    {"name": "web-exploiter", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "ad-operator", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "cloud-identity", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "privesc-windows", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "privesc-linux", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "rce-hunter", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "post-exploit", "subagent_type": "backend-mid", "model": "sonnet"},
+    {"name": "vuln-researcher", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "report-writer", "subagent_type": "backend-mid", "model": "sonnet"}
   ]
 }
