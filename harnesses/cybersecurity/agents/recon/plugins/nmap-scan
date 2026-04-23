@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+if [ "$1" = "--describe" ]; then
+  cat <<EOF
+{
+  "name": "nmap-scan",
+  "description": "Network port scanner using nmap. Discovers open ports and services.",
+  "version": "1.0.0"
+}
+EOF
+  exit 0
+fi
+
+if [ "$1" = "--schema" ]; then
+  cat <<EOF
+{
+  "type": "object",
+  "required": ["target"],
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Target host or network (IP, hostname, or CIDR)"
+    },
+    "ports": {
+      "type": "string",
+      "description": "Port specification (e.g. '22,80,443' or '1-1000' or '-' for all)",
+      "default": "-"
+    },
+    "scan_type": {
+      "type": "string",
+      "enum": ["syn", "connect", "udp", "version"],
+      "description": "Type of scan to perform"
+    },
+    "timing": {
+      "type": "string",
+      "enum": ["T0", "T1", "T2", "T3", "T4", "T5"],
+      "description": "Timing template (T0 paranoid, T5 insane)"
+    },
+    "extra_args": {
+      "type": "string",
+      "description": "Additional nmap arguments"
+    }
+  }
+}
+EOF
+  exit 0
+fi
+
+# Check nmap exists
+if ! command -v nmap &> /dev/null; then
+  echo "Error: nmap not found in PATH" >&2
+  exit 1
+fi
+
+# Parse JSON input from stdin
+input=$(cat)
+target=$(echo "$input" | jq -r '.target')
+ports=$(echo "$input" | jq -r '.ports // "-"')
+scan_type=$(echo "$input" | jq -r '.scan_type // empty')
+timing=$(echo "$input" | jq -r '.timing // empty')
+extra_args=$(echo "$input" | jq -r '.extra_args // empty')
+
+if [ -z "$target" ]; then
+  echo "Error: target required" >&2
+  exit 1
+fi
+
+args=("$target")
+
+if [ "$ports" != "-" ]; then
+  args+=("-p" "$ports")
+fi
+
+case "$scan_type" in
+  syn)
+    args+=("-sS")
+    ;;
+  connect)
+    args+=("-sT")
+    ;;
+  udp)
+    args+=("-sU")
+    ;;
+  version)
+    args+=("-sV")
+    ;;
+esac
+
+if [ -n "$timing" ]; then
+  args+=("-$timing")
+fi
+
+if [ -n "$extra_args" ]; then
+  args+=("$extra_args")
+fi
+
+nmap "${args[@]}"

@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+
+if [ "$1" = "--describe" ]; then
+  cat <<EOF
+{
+  "name": "httpx-probe",
+  "description": "HTTP probe tool. Detects live hosts and their response details.",
+  "version": "1.0.0"
+}
+EOF
+  exit 0
+fi
+
+if [ "$1" = "--schema" ]; then
+  cat <<EOF
+{
+  "type": "object",
+  "required": ["targets"],
+  "properties": {
+    "targets": {
+      "oneOf": [
+        {"type": "string"},
+        {"type": "array", "items": {"type": "string"}}
+      ],
+      "description": "Single target or list of targets (hosts, URLs, or IPs)"
+    },
+    "ports": {
+      "type": "string",
+      "description": "Ports to probe (e.g. '80,443,8080')"
+    },
+    "paths": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "URL paths to probe"
+    },
+    "status_code": {
+      "type": "boolean",
+      "description": "Display HTTP status codes",
+      "default": false
+    },
+    "tech_detect": {
+      "type": "boolean",
+      "description": "Detect technologies used",
+      "default": false
+    }
+  }
+}
+EOF
+  exit 0
+fi
+
+# Check httpx exists
+if ! command -v httpx &> /dev/null; then
+  echo "Error: httpx not found in PATH" >&2
+  exit 1
+fi
+
+# Parse JSON input from stdin
+input=$(cat)
+targets=$(echo "$input" | jq -r '.targets')
+ports=$(echo "$input" | jq -r '.ports // empty')
+paths=$(echo "$input" | jq -r '.paths // [] | join(",")')
+status_code=$(echo "$input" | jq -r '.status_code // false')
+tech_detect=$(echo "$input" | jq -r '.tech_detect // false')
+
+if [ -z "$targets" ]; then
+  echo "Error: targets required" >&2
+  exit 1
+fi
+
+# Handle targets as string or array
+target_input=""
+if [ "$(echo "$targets" | head -c 1)" = "[" ]; then
+  # Array
+  target_input=$(echo "$targets" | jq -r '.[]')
+else
+  # String
+  target_input="$targets"
+fi
+
+args=()
+
+if [ "$status_code" = "true" ]; then
+  args+=("-status-code")
+fi
+
+if [ "$tech_detect" = "true" ]; then
+  args+=("-tech-detect")
+fi
+
+if [ -n "$ports" ]; then
+  args+=("-ports" "$ports")
+fi
+
+if [ -n "$paths" ] && [ "$paths" != "" ]; then
+  args+=("-path" "$paths")
+fi
+
+echo "$target_input" | httpx "${args[@]}"

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+if [ "$1" = "--describe" ]; then
+  cat <<EOF
+{
+  "name": "ffuf-fuzz",
+  "description": "Fast web fuzzer using ffuf. Discovers hidden endpoints and parameters.",
+  "version": "1.0.0"
+}
+EOF
+  exit 0
+fi
+
+if [ "$1" = "--schema" ]; then
+  cat <<EOF
+{
+  "type": "object",
+  "required": ["url", "wordlist"],
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "Target URL with FUZZ keyword placeholder"
+    },
+    "wordlist": {
+      "type": "string",
+      "description": "Path to wordlist file"
+    },
+    "method": {
+      "type": "string",
+      "description": "HTTP method to use (GET, POST, etc)",
+      "default": "GET"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {"type": "string"},
+      "description": "HTTP headers to send"
+    },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "fc": {
+          "type": "string",
+          "description": "Filter by status code (comma-separated)"
+        },
+        "fs": {
+          "type": "integer",
+          "description": "Filter by response size"
+        },
+        "fw": {
+          "type": "integer",
+          "description": "Filter by word count"
+        },
+        "fl": {
+          "type": "integer",
+          "description": "Filter by line count"
+        }
+      }
+    },
+    "rate": {
+      "type": "integer",
+      "description": "Requests per second rate limit"
+    }
+  }
+}
+EOF
+  exit 0
+fi
+
+# Check ffuf exists
+if ! command -v ffuf &> /dev/null; then
+  echo "Error: ffuf not found in PATH" >&2
+  exit 1
+fi
+
+# Parse JSON input from stdin
+input=$(cat)
+url=$(echo "$input" | jq -r '.url')
+wordlist=$(echo "$input" | jq -r '.wordlist')
+method=$(echo "$input" | jq -r '.method // "GET"')
+headers=$(echo "$input" | jq -r '.headers // {}')
+fc=$(echo "$input" | jq -r '.filters.fc // empty')
+fs=$(echo "$input" | jq -r '.filters.fs // empty')
+fw=$(echo "$input" | jq -r '.filters.fw // empty')
+fl=$(echo "$input" | jq -r '.filters.fl // empty')
+rate=$(echo "$input" | jq -r '.rate // empty')
+
+if [ -z "$url" ] || [ -z "$wordlist" ]; then
+  echo "Error: url and wordlist required" >&2
+  exit 1
+fi
+
+if [[ ! "$url" =~ FUZZ ]]; then
+  echo "Error: url must contain FUZZ keyword" >&2
+  exit 1
+fi
+
+args=("-u" "$url" "-w" "$wordlist" "-X" "$method")
+
+# Add headers
+if [ "$(echo "$headers" | jq 'length')" -gt 0 ]; then
+  echo "$headers" | jq -r 'to_entries[] | "-H \(.key): \(.value)"' | while read -r header_arg; do
+    args+=($header_arg)
+  done
+fi
+
+# Add filters
+if [ -n "$fc" ]; then
+  args+=("-fc" "$fc")
+fi
+if [ -n "$fs" ]; then
+  args+=("-fs" "$fs")
+fi
+if [ -n "$fw" ]; then
+  args+=("-fw" "$fw")
+fi
+if [ -n "$fl" ]; then
+  args+=("-fl" "$fl")
+fi
+
+if [ -n "$rate" ]; then
+  args+=("-rate" "$rate")
+fi
+
+ffuf "${args[@]}"

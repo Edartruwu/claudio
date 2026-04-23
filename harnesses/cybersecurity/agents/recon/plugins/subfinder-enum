@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+if [ "$1" = "--describe" ]; then
+  cat <<EOF
+{
+  "name": "subfinder-enum",
+  "description": "Subdomain enumeration using subfinder. Discovers subdomains from passive sources.",
+  "version": "1.0.0"
+}
+EOF
+  exit 0
+fi
+
+if [ "$1" = "--schema" ]; then
+  cat <<EOF
+{
+  "type": "object",
+  "required": ["domain"],
+  "properties": {
+    "domain": {
+      "type": "string",
+      "description": "Target domain to enumerate"
+    },
+    "silent": {
+      "type": "boolean",
+      "description": "Suppress stdout, only output subdomains",
+      "default": false
+    },
+    "sources": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Specific sources to use (e.g. crtsh, dnsdumpster)"
+    }
+  }
+}
+EOF
+  exit 0
+fi
+
+# Check subfinder exists
+if ! command -v subfinder &> /dev/null; then
+  echo "Error: subfinder not found in PATH" >&2
+  exit 1
+fi
+
+# Parse JSON input from stdin
+input=$(cat)
+domain=$(echo "$input" | jq -r '.domain')
+silent=$(echo "$input" | jq -r '.silent // false')
+sources=$(echo "$input" | jq -r '.sources // [] | join(",")')
+
+if [ -z "$domain" ]; then
+  echo "Error: domain required" >&2
+  exit 1
+fi
+
+args=("-d" "$domain")
+
+if [ "$silent" = "true" ]; then
+  args+=("-silent")
+fi
+
+if [ -n "$sources" ] && [ "$sources" != "" ]; then
+  args+=("-sources" "$sources")
+fi
+
+subfinder "${args[@]}"

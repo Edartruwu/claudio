@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+
+if [ "$1" = "--describe" ]; then
+  cat <<EOF
+{
+  "name": "whatweb-fingerprint",
+  "description": "Web technology fingerprinting using WhatWeb. Identifies technologies on target.",
+  "version": "1.0.0"
+}
+EOF
+  exit 0
+fi
+
+if [ "$1" = "--schema" ]; then
+  cat <<EOF
+{
+  "type": "object",
+  "required": ["target"],
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Target URL or IP address"
+    },
+    "aggression": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "description": "Aggression level (1=passive, 4=aggressive)",
+      "default": 1
+    },
+    "extra_args": {
+      "type": "string",
+      "description": "Additional whatweb arguments"
+    }
+  }
+}
+EOF
+  exit 0
+fi
+
+# Check whatweb exists
+if ! command -v whatweb &> /dev/null; then
+  echo "Error: whatweb not found in PATH" >&2
+  exit 1
+fi
+
+# Parse JSON input from stdin
+input=$(cat)
+target=$(echo "$input" | jq -r '.target')
+aggression=$(echo "$input" | jq -r '.aggression // 1')
+extra_args=$(echo "$input" | jq -r '.extra_args // empty')
+
+if [ -z "$target" ]; then
+  echo "Error: target required" >&2
+  exit 1
+fi
+
+args=()
+
+case "$aggression" in
+  1)
+    args+=("-a")
+    ;;
+  2)
+    args+=("-a" "2")
+    ;;
+  3)
+    args+=("-a" "3")
+    ;;
+  4)
+    args+=("-a" "4")
+    ;;
+  *)
+    args+=("-a" "1")
+    ;;
+esac
+
+if [ -n "$extra_args" ]; then
+  args+=("$extra_args")
+fi
+
+args+=("$target")
+
+whatweb "${args[@]}"
