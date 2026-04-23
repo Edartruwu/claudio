@@ -1,6 +1,6 @@
 {
   "name": "cybersecurity-team",
-  "description": "Full-spectrum offensive security team. 12 specialized agents covering recon, OSINT/dorking, automated scanning, web exploitation, Active Directory attack chains, cloud identity attacks (Entra ID/Azure/AWS), privilege escalation (Windows + Linux), RCE hunting, post-exploitation, vulnerability research, and professional reporting. High-stakes agents use Opus; pattern-based/documentation agents use Haiku or Sonnet.",
+  "description": "Full-spectrum offensive security team. 14 specialized agents covering recon, OSINT/dorking, automated scanning, web exploitation, Active Directory attack chains, AD CS certificate abuse, cloud identity attacks (Entra ID/Azure/AWS), privilege escalation (Windows + Linux), RCE hunting, email security testing, post-exploitation, vulnerability research, and professional reporting. High-stakes agents use Opus; pattern-based/documentation agents use Haiku or Sonnet.",
   "model": "sonnet",
   "autoCompactThreshold": 80,
   "members": [
@@ -15,6 +15,8 @@
     {"name": "rce-hunter", "subagent_type": "backend-senior", "model": "opus"},
     {"name": "post-exploit", "subagent_type": "backend-mid", "model": "sonnet"},
     {"name": "vuln-researcher", "subagent_type": "backend-senior", "model": "opus"},
-    {"name": "report-writer", "subagent_type": "backend-mid", "model": "sonnet"}
+    {"name": "report-writer", "subagent_type": "backend-mid", "model": "sonnet"},
+    {"name": "adcs-attacker", "subagent_type": "backend-senior", "model": "opus"},
+    {"name": "email-spoofer", "subagent_type": "backend-mid", "model": "sonnet"}
   ]
 }
