@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
 
 if [ "$1" = "--describe" ]; then
-  cat <<EOF
-{
-  "name": "nmap-scan",
-  "description": "Network port scanner using nmap. Discovers open ports and services.",
-  "version": "1.0.0"
-}
+  echo "Network port scanner using nmap. Discovers open ports and services."
+  exit 0
+fi
+
+if [ "$1" = "--instructions" ]; then
+  cat <<'EOF'
+## nmap-scan
+
+Runs nmap port scans to discover open ports and service versions.
+
+**Input JSON fields:**
+- `target` (required): host, IP, or CIDR network
+- `ports` (optional): port range (e.g. "22,80,443" or "1-1000", default all)
+- `scan_type` (optional): syn, connect, udp, or version
+- `timing` (optional): T0-T5 (paranoid to insane)
+- `extra_args` (optional): additional nmap flags
+
+**Example:**
+```json
+{"target": "10.0.0.1", "ports": "22,80,443", "scan_type": "version", "timing": "T4"}
+```
 EOF
   exit 0
 fi

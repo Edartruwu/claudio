@@ -4,8 +4,27 @@ set -euo pipefail
 
 case "${1:-}" in
   --describe)
+    echo "Template-based vulnerability scanner using Nuclei. Runs community templates for detection."
+    exit 0
+    ;;
+  --instructions)
     cat <<'EOF'
-{"name": "nuclei-scan", "description": "Template-based vulnerability scanner (Nuclei)", "version": "1.0.0"}
+## nuclei-scan
+
+Fast, template-driven vulnerability scanner for web applications and infrastructure.
+
+**Input JSON fields:**
+- `target` (required): URL or IP address
+- `templates` (optional): template names or paths to use
+- `severity` (optional): filter by severity (info, low, medium, high, critical)
+- `tags` (optional): tag-based filtering
+- `rate_limit` (optional): requests per second
+- `extra_args` (optional): additional nuclei flags
+
+**Example:**
+```json
+{"target": "https://example.com", "severity": "high", "rate_limit": 50}
+```
 EOF
     exit 0
     ;;

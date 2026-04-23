@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
 
 if [ "$1" = "--describe" ]; then
-  cat <<EOF
-{
-  "name": "httpx-probe",
-  "description": "HTTP probe tool. Detects live hosts and their response details.",
-  "version": "1.0.0"
-}
+  echo "HTTP probe tool for detecting live hosts and response details."
+  exit 0
+fi
+
+if [ "$1" = "--instructions" ]; then
+  cat <<'EOF'
+## httpx-probe
+
+Fast HTTP/HTTPS probe tool. Detects live hosts, response codes, and web technologies.
+
+**Input JSON fields:**
+- `targets` (required): host, URL, or array of targets
+- `ports` (optional): ports to probe (e.g. "80,443,8080")
+- `paths` (optional): URL paths to probe
+- `status_code` (optional): include HTTP status codes in output
+- `tech_detect` (optional): detect web technologies
+
+**Example:**
+```json
+{"targets": "example.com", "ports": "80,443", "status_code": true, "tech_detect": true}
+```
 EOF
   exit 0
 fi
