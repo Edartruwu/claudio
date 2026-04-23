@@ -325,6 +325,7 @@ func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 		}
 	}
 	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, singleTurnCfg)
+	engine.SetEventBus(appInstance.Bus)
 	principalEngine = engine // allow GetMessages closure to resolve
 
 	sys := buildFullSystemPrompt()
@@ -498,6 +499,7 @@ func runHeadlessAttach(args []string) error {
 	}
 
 	engine := query.NewEngineWithConfig(appInstance.API, reg, handler, engineCfg)
+	engine.SetEventBus(appInstance.Bus)
 
 	// Wire clear history from ComandCenter → wipe DB + engine in-memory messages.
 	// Must be registered after engine is created so the closure can capture it.
