@@ -28,10 +28,11 @@ type BashTool struct {
 }
 
 type bashInput struct {
-	Command          string `json:"command"`
-	Description      string `json:"description,omitempty"`
-	Timeout          int    `json:"timeout,omitempty"` // milliseconds, default 120000
-	RunInBackground  bool   `json:"run_in_background,omitempty"`
+	Command              string `json:"command"`
+	Description          string `json:"description,omitempty"`
+	Timeout              int    `json:"timeout,omitempty"`               // milliseconds, default 120000
+	RunInBackground      bool   `json:"run_in_background,omitempty"`
+	ForegroundTimeoutMs  int    `json:"foreground_timeout_ms,omitempty"` // milliseconds, default 30000; exceeded → auto-promote to bg
 }
 
 func (t *BashTool) Name() string { return "Bash" }
@@ -59,6 +60,10 @@ func (t *BashTool) InputSchema() json.RawMessage {
 			"run_in_background": {
 				"type": "boolean",
 				"description": "Set to true to run this command in the background"
+			},
+			"foreground_timeout_ms": {
+				"type": "number",
+				"description": "Optional foreground budget in milliseconds (default 30000). If the command has not finished within this budget it is automatically promoted to a background task and the tool returns immediately with the task ID."
 			}
 		},
 		"required": ["command"]
@@ -121,15 +126,41 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 		return &Result{Content: fmt.Sprintf("Background task started: %s\nTask ID: %s\nUse TaskOutput to check results.", state.Description, state.ID)}, nil
 	}
 
-	timeout := 120 * time.Second
+	// Overall command timeout (caps the total run time).
+	overallTimeout := 120 * time.Second
 	if in.Timeout > 0 {
-		timeout = time.Duration(in.Timeout) * time.Millisecond
+		overallTimeout = time.Duration(in.Timeout) * time.Millisecond
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	// Foreground budget: how long we block the current turn before auto-promoting
+	// the command to a background task.  Defaults to 30 s.
+	const defaultFgBudgetMs = 30_000
+	fgBudgetMs := in.ForegroundTimeoutMs
+	if fgBudgetMs <= 0 {
+		fgBudgetMs = defaultFgBudgetMs
+	}
+	fgBudget := time.Duration(fgBudgetMs) * time.Millisecond
+
+	// Auto-promote only makes sense when:
+	//   (a) a task runtime is available, and
+	//   (b) the fg budget is shorter than the overall timeout (otherwise the
+	//       command would time-out before we could promote it anyway).
+	autoPromote := t.TaskRuntime != nil && fgBudget < overallTimeout
+
+	// Pick the timeout that governs the foreground run.
+	runTimeout := overallTimeout
+	if autoPromote {
+		runTimeout = fgBudget
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", in.Command)
+	// Capture CWD before the context is used in exec.CommandContext so the
+	// helper reads from the *parent* ctx (still valid after runCtx is done).
+	cwd := CwdFromContext(ctx)
+
+	cmd := exec.CommandContext(runCtx, "bash", "-c", in.Command)
 
 	// Kill the entire process group on timeout, not just bash.
 	// Without this, child processes keep stdout/stderr pipes open
@@ -143,7 +174,7 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 	cmd.WaitDelay = 5 * time.Second
 
 	// Use context CWD override for worktree-isolated agents
-	if cwd := CwdFromContext(ctx); cwd != "" {
+	if cwd != "" {
 		cmd.Dir = cwd
 	}
 
@@ -166,9 +197,32 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*Result,
 	}
 
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		// Foreground budget expired → auto-promote to background.
+		if runCtx.Err() == context.DeadlineExceeded && autoPromote {
+			bgTimeout := time.Duration(0)
+			if in.Timeout > 0 {
+				bgTimeout = time.Duration(in.Timeout) * time.Millisecond
+			}
+			state, spawnErr := tasks.SpawnShellTask(t.TaskRuntime, tasks.ShellTaskInput{
+				Command:     in.Command,
+				Description: in.Description,
+				Timeout:     bgTimeout,
+				SessionID:   t.SessionID,
+			})
+			if spawnErr != nil {
+				return &Result{
+					Content: fmt.Sprintf("Command exceeded foreground budget and failed to promote to background: %v", spawnErr),
+					IsError: true,
+				}, nil
+			}
 			return &Result{
-				Content: fmt.Sprintf("Command timed out after %v\n%s", timeout, output.String()),
+				Content: fmt.Sprintf("Command is running in background. Task ID: %s. Result will be injected when complete.", state.ID),
+			}, nil
+		}
+
+		if runCtx.Err() == context.DeadlineExceeded {
+			return &Result{
+				Content: fmt.Sprintf("Command timed out after %v\n%s", overallTimeout, output.String()),
 				IsError: true,
 			}, nil
 		}
