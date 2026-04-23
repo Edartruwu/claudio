@@ -169,21 +169,32 @@ func ReadDelta(path string, offset int64, maxBytes int64) (string, int64, error)
 	return string(buf[:n]), offset + int64(n), nil
 }
 
+// TaskResult is a lightweight snapshot sent on the completion channel
+// when a background task reaches a terminal state.
+type TaskResult struct {
+	ID       string
+	Output   string
+	ExitCode int
+	Err      string
+}
+
 // Runtime manages all background tasks.
 type Runtime struct {
-	mu        sync.RWMutex
-	tasks     map[string]*TaskState
-	outputDir string
-	nextID    int
-	idPrefix  map[TaskType]string
+	mu           sync.RWMutex
+	tasks        map[string]*TaskState
+	outputDir    string
+	nextID       int
+	idPrefix     map[TaskType]string
+	completionCh chan TaskResult
 }
 
 // NewRuntime creates a new task runtime.
 func NewRuntime(outputDir string) *Runtime {
 	os.MkdirAll(outputDir, 0700)
 	return &Runtime{
-		tasks:     make(map[string]*TaskState),
-		outputDir: outputDir,
+		tasks:        make(map[string]*TaskState),
+		outputDir:    outputDir,
+		completionCh: make(chan TaskResult, 64),
 		idPrefix: map[TaskType]string{
 			TypeShell: "b",
 			TypeAgent: "a",
@@ -252,10 +263,10 @@ func (r *Runtime) List(onlyRunning bool) []*TaskState {
 // SetStatus updates a task's status.
 func (r *Runtime) SetStatus(id string, status TaskStatus, errMsg string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	t, ok := r.tasks[id]
 	if !ok {
+		r.mu.Unlock()
 		return
 	}
 
@@ -263,9 +274,39 @@ func (r *Runtime) SetStatus(id string, status TaskStatus, errMsg string) {
 	if errMsg != "" {
 		t.Error = errMsg
 	}
-	if status.IsTerminal() {
-		now := time.Now()
-		t.EndTime = &now
+	if !status.IsTerminal() {
+		r.mu.Unlock()
+		return
+	}
+
+	now := time.Now()
+	t.EndTime = &now
+
+	// Snapshot fields needed for the completion notification.
+	result := TaskResult{
+		ID:  t.ID,
+		Err: t.Error,
+	}
+	if t.ExitCode != nil {
+		result.ExitCode = *t.ExitCode
+	}
+	outputFile := t.OutputFile
+
+	// Release lock before I/O.
+	r.mu.Unlock()
+
+	if outputFile != "" {
+		content, _, _ := ReadDelta(outputFile, 0, 4096)
+		if len(content) > 2000 {
+			content = content[len(content)-2000:]
+		}
+		result.Output = content
+	}
+
+	// Non-blocking send — drop if nobody is reading.
+	select {
+	case r.completionCh <- result:
+	default:
 	}
 }
 
@@ -375,6 +416,13 @@ func (r *Runtime) PollResults() []*TaskState {
 		}
 	}
 	return completed
+}
+
+// CompletionCh returns a read-only channel that receives a TaskResult
+// each time a background task reaches a terminal state (completed/failed/killed).
+// The channel is buffered (cap=64); if nobody reads, sends are dropped silently.
+func (r *Runtime) CompletionCh() <-chan TaskResult {
+	return r.completionCh
 }
 
 // RunningCount returns the number of currently running tasks.

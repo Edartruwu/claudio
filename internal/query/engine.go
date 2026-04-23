@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/permissions"
@@ -153,6 +154,14 @@ type Engine struct {
 
 	// mu guards fields accessed from multiple goroutines (e.g. messages).
 	mu sync.RWMutex
+
+	// eventBus is the system-wide pub/sub bus. When set, the engine publishes
+	// EventBgTaskComplete when a background task reaches terminal state and
+	// the idle watcher picks it up.
+	eventBus *bus.Bus
+
+	// bgWatcherCancel stops the background task idle watcher goroutine.
+	bgWatcherCancel context.CancelFunc
 }
 
 // defaultContextWindow is the context window size for all current Claude models.
@@ -411,6 +420,12 @@ func (e *Engine) SetMailboxNotifyChan(ch <-chan struct{}) {
 	e.mailboxNotifyChan = ch
 }
 
+// SetEventBus wires the system event bus to the engine. When set, the engine
+// publishes EventBgTaskComplete events when background tasks finish.
+func (e *Engine) SetEventBus(b *bus.Bus) {
+	e.eventBus = b
+}
+
 // SetPermissionRules replaces the engine's permission rules at runtime.
 func (e *Engine) SetPermissionRules(rules []config.PermissionRule) {
 	e.permissionRules = rules
@@ -437,6 +452,12 @@ func (e *Engine) RunWithImages(ctx context.Context, userMessage string, images [
 
 // RunWithBlocks executes a user turn with pre-built content blocks.
 func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBlock) error {
+	// Stop any idle background-task watcher — we are entering an active turn.
+	e.stopBgWatcher()
+
+	// Start the idle watcher when we return (engine becomes idle).
+	defer e.startBgWatcher(ctx)
+
 	// Fire SessionStart on the first turn of the session.
 	if !e.sessionStartFired {
 		e.sessionStartFired = true
@@ -1250,6 +1271,96 @@ func (e *Engine) pollBackgroundTasks() {
 
 	// Evict old terminal tasks (older than 5 minutes)
 	e.taskRuntime.Evict(5 * time.Minute)
+}
+
+// stopBgWatcher cancels any running background-task idle watcher goroutine.
+func (e *Engine) stopBgWatcher() {
+	if e.bgWatcherCancel != nil {
+		e.bgWatcherCancel()
+		e.bgWatcherCancel = nil
+	}
+}
+
+// startBgWatcher launches a goroutine that watches for background task completions
+// while the engine is idle (no active turn). On completion it publishes a bus event,
+// injects a system-reminder message, and re-triggers a turn.
+//
+// The goroutine exits when:
+//   - parentCtx is canceled (session shutdown)
+//   - stopBgWatcher() is called (user starts a new turn)
+func (e *Engine) startBgWatcher(parentCtx context.Context) {
+	if e.taskRuntime == nil {
+		return
+	}
+
+	watchCtx, cancel := context.WithCancel(parentCtx)
+	e.bgWatcherCancel = cancel
+
+	completionCh := e.taskRuntime.CompletionCh()
+
+	go func() {
+		defer cancel()
+
+		for {
+			select {
+			case <-watchCtx.Done():
+				return
+
+			case result, ok := <-completionCh:
+				if !ok {
+					return
+				}
+
+				// Publish bus event if bus is wired.
+				if e.eventBus != nil {
+					payload, _ := json.Marshal(bus.BgTaskCompletePayload{
+						TaskID:   result.ID,
+						Output:   result.Output,
+						ExitCode: result.ExitCode,
+						Err:      result.Err,
+					})
+					e.eventBus.Publish(bus.Event{
+						Type:      bus.EventBgTaskComplete,
+						Payload:   payload,
+						SessionID: e.sessionID,
+					})
+				}
+
+				// Build system-reminder matching pollBackgroundTasks format.
+				status := fmt.Sprintf("[Background task %s completed]", result.ID)
+				if result.Err != "" {
+					status += fmt.Sprintf(" Error: %s", result.Err)
+				}
+				if result.Output != "" {
+					status += "\nOutput (tail):\n" + result.Output
+				}
+
+				reminderText := fmt.Sprintf("<system-reminder>\n%s\n</system-reminder>", status)
+
+				// Inject into conversation.
+				e.mu.Lock()
+				content, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(reminderText)})
+				e.messages = append(e.messages, api.Message{
+					Role:    "user",
+					Content: content,
+				})
+				e.mu.Unlock()
+
+				// Re-trigger a turn. RunWithBlocks will call stopBgWatcher
+				// (canceling watchCtx), then startBgWatcher on exit.
+				// After it returns, this goroutine checks watchCtx and exits
+				// since the new watcher is already running.
+				_ = e.RunWithBlocks(parentCtx, []api.UserContentBlock{
+					api.NewTextBlock("A background task just completed. Review the output above and respond."),
+				})
+
+				// Check if we should exit (stopBgWatcher was called inside RunWithBlocks).
+				if watchCtx.Err() != nil {
+					return
+				}
+			}
+		}
+	}()
 }
 
 // pollMailbox checks for incoming team messages and injects them into the conversation.

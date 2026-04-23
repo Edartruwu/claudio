@@ -42,4 +42,15 @@ const (
 
 	// Audit
 	EventAuditEntry = "audit.entry"
+
+	// Background tasks
+	EventBgTaskComplete = "task.bg_complete"
 )
+
+// BgTaskCompletePayload is published when a background task reaches a terminal state.
+type BgTaskCompletePayload struct {
+	TaskID   string `json:"task_id"`
+	Output   string `json:"output"`
+	ExitCode int    `json:"exit_code"`
+	Err      string `json:"error,omitempty"`
+}
