@@ -49,8 +49,9 @@ const (
 
 // BgTaskCompletePayload is published when a background task reaches a terminal state.
 type BgTaskCompletePayload struct {
-	TaskID   string `json:"task_id"`
-	Output   string `json:"output"`
-	ExitCode int    `json:"exit_code"`
-	Err      string `json:"error,omitempty"`
+	TaskID     string `json:"task_id"`
+	Output     string `json:"output"`
+	ExitCode   int    `json:"exit_code"`
+	Err        string `json:"error,omitempty"`
+	IsSubAgent bool   `json:"is_sub_agent,omitempty"`
 }

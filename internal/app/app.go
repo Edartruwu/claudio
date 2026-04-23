@@ -939,6 +939,7 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		sessionID: subSessionID,
 	}
 	engine := query.NewEngineWithConfig(apiClient, subRegistry, forwarder, cfg)
+	engine.SetSubAgent(true)
 	if eventBus != nil {
 		engine.SetEventBus(eventBus)
 	}

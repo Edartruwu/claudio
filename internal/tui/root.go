@@ -381,6 +381,11 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			if err := json.Unmarshal(event.Payload, &payload); err != nil {
 				return
 			}
+			// Skip sub-agent bg task completions — they are handled by the
+			// sub-agent's own CompletionCh and should not pollute the main UI.
+			if payload.IsSubAgent {
+				return
+			}
 			// Create notification message using existing pattern
 			truncatedOutput := truncateStr(payload.Output, 500)
 			var notification string

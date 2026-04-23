@@ -56,10 +56,12 @@ func New(cfg Config) *Server {
 	// Subscribe to background task completion events and log them.
 	// Per-request streaming engines push these via SSE in handleStreamingMessage.
 	if cfg.Bus != nil {
-		cfg.Bus.Subscribe(bus.EventBgTaskComplete, func(payload interface{}) {
-			if p, ok := payload.(bus.BgTaskCompletePayload); ok {
-				log.Printf("[server] bg task complete: id=%s exit=%d err=%q", p.TaskID, p.ExitCode, p.Err)
+		cfg.Bus.Subscribe(bus.EventBgTaskComplete, func(event bus.Event) {
+			var p bus.BgTaskCompletePayload
+			if err := json.Unmarshal(event.Payload, &p); err != nil {
+				return
 			}
+			log.Printf("[server] bg task complete: id=%s exit=%d err=%q", p.TaskID, p.ExitCode, p.Err)
 		})
 	}
 
@@ -172,12 +174,18 @@ func (s *Server) handleStreamingMessage(w http.ResponseWriter, r *http.Request, 
 	if s.config.Bus != nil {
 		engine.SetEventBus(s.config.Bus)
 		// Push bg task completion events to the SSE stream for this request.
-		unsub := s.config.Bus.Subscribe(bus.EventBgTaskComplete, func(payload interface{}) {
-			if p, ok := payload.(bus.BgTaskCompletePayload); ok {
-				data, _ := json.Marshal(p)
-				fmt.Fprintf(w, "event: bg_task_complete\ndata: %s\n\n", data)
-				flusher.Flush()
+		unsub := s.config.Bus.Subscribe(bus.EventBgTaskComplete, func(event bus.Event) {
+			var p bus.BgTaskCompletePayload
+			if err := json.Unmarshal(event.Payload, &p); err != nil {
+				return
 			}
+			// Skip sub-agent bg task completions — handled by sub-agent's own engine.
+			if p.IsSubAgent {
+				return
+			}
+			data, _ := json.Marshal(p)
+			fmt.Fprintf(w, "event: bg_task_complete\ndata: %s\n\n", data)
+			flusher.Flush()
 		})
 		defer unsub()
 	}

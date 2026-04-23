@@ -411,3 +411,117 @@ func TestEngine_startBgWatcher_NilRuntime(t *testing.T) {
 		t.Error("bgWatcherCancel should stay nil when taskRuntime is nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// IsSubAgent flag tests
+// ---------------------------------------------------------------------------
+
+func TestEngine_SetSubAgent_PayloadCarriesFlag(t *testing.T) {
+	dir := t.TempDir()
+	rt := tasks.NewRuntime(dir)
+	eventBus := bus.New()
+
+	e := newTestEngine()
+	e.taskRuntime = rt
+	e.eventBus = eventBus
+	e.sessionID = "sub-agent-session"
+	e.SetSubAgent(true)
+
+	received := make(chan bus.Event, 1)
+	eventBus.Subscribe(bus.EventBgTaskComplete, func(ev bus.Event) {
+		received <- ev
+	})
+
+	rt.Register(&tasks.TaskState{
+		ID:     "sa1",
+		Type:   tasks.TypeShell,
+		Status: tasks.StatusRunning,
+	})
+	rt.SetStatus("sa1", tasks.StatusCompleted, "")
+
+	select {
+	case result := <-rt.CompletionCh():
+		payload, _ := json.Marshal(bus.BgTaskCompletePayload{
+			TaskID:     result.ID,
+			Output:     result.Output,
+			ExitCode:   result.ExitCode,
+			Err:        result.Err,
+			IsSubAgent: e.isSubAgent,
+		})
+		eventBus.Publish(bus.Event{
+			Type:      bus.EventBgTaskComplete,
+			Payload:   payload,
+			SessionID: e.sessionID,
+		})
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for CompletionCh")
+	}
+
+	select {
+	case ev := <-received:
+		var p bus.BgTaskCompletePayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if !p.IsSubAgent {
+			t.Error("expected IsSubAgent=true for sub-agent engine")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for bus event")
+	}
+}
+
+func TestEngine_DefaultEngine_PayloadIsSubAgentFalse(t *testing.T) {
+	dir := t.TempDir()
+	rt := tasks.NewRuntime(dir)
+	eventBus := bus.New()
+
+	e := newTestEngine()
+	e.taskRuntime = rt
+	e.eventBus = eventBus
+	e.sessionID = "main-session"
+	// No SetSubAgent call — default is false.
+
+	received := make(chan bus.Event, 1)
+	eventBus.Subscribe(bus.EventBgTaskComplete, func(ev bus.Event) {
+		received <- ev
+	})
+
+	rt.Register(&tasks.TaskState{
+		ID:     "m1",
+		Type:   tasks.TypeShell,
+		Status: tasks.StatusRunning,
+	})
+	rt.SetStatus("m1", tasks.StatusCompleted, "")
+
+	select {
+	case result := <-rt.CompletionCh():
+		payload, _ := json.Marshal(bus.BgTaskCompletePayload{
+			TaskID:     result.ID,
+			Output:     result.Output,
+			ExitCode:   result.ExitCode,
+			Err:        result.Err,
+			IsSubAgent: e.isSubAgent,
+		})
+		eventBus.Publish(bus.Event{
+			Type:      bus.EventBgTaskComplete,
+			Payload:   payload,
+			SessionID: e.sessionID,
+		})
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for CompletionCh")
+	}
+
+	select {
+	case ev := <-received:
+		var p bus.BgTaskCompletePayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if p.IsSubAgent {
+			t.Error("expected IsSubAgent=false for default engine")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for bus event")
+	}
+}

@@ -162,6 +162,11 @@ type Engine struct {
 
 	// bgWatcherCancel stops the background task idle watcher goroutine.
 	bgWatcherCancel context.CancelFunc
+
+	// isSubAgent marks this engine as belonging to a sub-agent. When true,
+	// published BgTaskCompletePayload events carry IsSubAgent=true so UI
+	// subscribers can filter them out.
+	isSubAgent bool
 }
 
 // defaultContextWindow is the context window size for all current Claude models.
@@ -424,6 +429,12 @@ func (e *Engine) SetMailboxNotifyChan(ch <-chan struct{}) {
 // publishes EventBgTaskComplete events when background tasks finish.
 func (e *Engine) SetEventBus(b *bus.Bus) {
 	e.eventBus = b
+}
+
+// SetSubAgent marks this engine as a sub-agent engine. Published
+// BgTaskCompletePayload events will carry IsSubAgent=true.
+func (e *Engine) SetSubAgent(v bool) {
+	e.isSubAgent = v
 }
 
 // SetPermissionRules replaces the engine's permission rules at runtime.
@@ -1314,10 +1325,11 @@ func (e *Engine) startBgWatcher(parentCtx context.Context) {
 				// Publish bus event if bus is wired.
 				if e.eventBus != nil {
 					payload, _ := json.Marshal(bus.BgTaskCompletePayload{
-						TaskID:   result.ID,
-						Output:   result.Output,
-						ExitCode: result.ExitCode,
-						Err:      result.Err,
+						TaskID:     result.ID,
+						Output:     result.Output,
+						ExitCode:   result.ExitCode,
+						Err:        result.Err,
+						IsSubAgent: e.isSubAgent,
 					})
 					e.eventBus.Publish(bus.Event{
 						Type:      bus.EventBgTaskComplete,
