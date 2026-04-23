@@ -4,8 +4,25 @@ set -euo pipefail
 
 case "${1:-}" in
   --describe)
+    echo "OWASP ZAP security scanner for web application vulnerability testing."
+    exit 0
+    ;;
+  --instructions)
     cat <<'EOF'
-{"name": "zap-scan", "description": "OWASP ZAP security scanner", "version": "1.0.0"}
+## zap-scan
+
+Web application security scanner using OWASP ZAP. Performs baseline, full, and API scans.
+
+**Input JSON fields:**
+- `target` (required): target URL
+- `scan_type` (optional): baseline, full, or api (default baseline)
+- `context` (optional): context file path
+- `extra_args` (optional): additional ZAP arguments
+
+**Example:**
+```json
+{"target": "https://example.com", "scan_type": "full"}
+```
 EOF
     exit 0
     ;;

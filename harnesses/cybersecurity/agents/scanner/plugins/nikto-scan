@@ -4,8 +4,26 @@ set -euo pipefail
 
 case "${1:-}" in
   --describe)
+    echo "Web server vulnerability scanner using Nikto. Detects dangerous files, outdated software, config issues."
+    exit 0
+    ;;
+  --instructions)
     cat <<'EOF'
-{"name": "nikto-scan", "description": "Web server scanner (Nikto)", "version": "1.0.0"}
+## nikto-scan
+
+Fast web server scanner for common vulnerabilities and misconfigurations.
+
+**Input JSON fields:**
+- `target` (required): host or IP address
+- `port` (optional): port number (default 80)
+- `tuning` (optional): tuning options (e.g. "1 2 3" for specific tests)
+- `plugins` (optional): specific plugins to run
+- `extra_args` (optional): additional nikto arguments
+
+**Example:**
+```json
+{"target": "example.com", "port": 80, "tuning": "1 2 3"}
+```
 EOF
     exit 0
     ;;

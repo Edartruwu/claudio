@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
 
 if [ "$1" = "--describe" ]; then
-  cat <<EOF
-{
-  "name": "whatweb-fingerprint",
-  "description": "Web technology fingerprinting using WhatWeb. Identifies technologies on target.",
-  "version": "1.0.0"
-}
+  echo "Web technology fingerprinting using WhatWeb. Identifies technologies on target."
+  exit 0
+fi
+
+if [ "$1" = "--instructions" ]; then
+  cat <<'EOF'
+## whatweb-fingerprint
+
+Web server technology fingerprinting tool. Identifies web frameworks, CMS, plugins, and server info.
+
+**Input JSON fields:**
+- `target` (required): URL or IP address
+- `aggression` (optional): 1-4 (passive to aggressive, default 1)
+- `extra_args` (optional): additional whatweb flags
+
+**Example:**
+```json
+{"target": "https://example.com", "aggression": 2}
+```
 EOF
   exit 0
 fi

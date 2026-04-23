@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
 
 if [ "$1" = "--describe" ]; then
-  cat <<EOF
-{
-  "name": "subfinder-enum",
-  "description": "Subdomain enumeration using subfinder. Discovers subdomains from passive sources.",
-  "version": "1.0.0"
-}
+  echo "Subdomain enumeration using subfinder. Discovers subdomains from passive sources."
+  exit 0
+fi
+
+if [ "$1" = "--instructions" ]; then
+  cat <<'EOF'
+## subfinder-enum
+
+Passive subdomain enumeration tool using multiple public sources (DNS, WHOIS, SSL certs).
+
+**Input JSON fields:**
+- `domain` (required): target domain to enumerate
+- `silent` (optional): suppress verbose output
+- `sources` (optional): array of sources (crtsh, dnsdumpster, etc.)
+
+**Example:**
+```json
+{"domain": "example.com", "silent": true, "sources": ["crtsh", "dnsdumpster"]}
+```
 EOF
   exit 0
 fi
