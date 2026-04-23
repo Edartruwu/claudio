@@ -230,7 +230,7 @@ func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 	}
 
 	// GetTask must also read from team_tasks.
-	got, err := s.GetTask("tt-1")
+	got, err := s.GetTask("tt-1", "sess-native")
 	if err != nil {
 		t.Fatalf("GetTask: %v", err)
 	}

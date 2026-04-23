@@ -500,7 +500,7 @@ func TestStorage_GetTask(t *testing.T) {
 	}
 	seedTask(t, s, task)
 
-	got, err := s.GetTask("task-get-1")
+	got, err := s.GetTask("task-get-1", sess.ID)
 	if err != nil {
 		t.Fatalf("GetTask: %v", err)
 	}
@@ -523,7 +523,7 @@ func TestStorage_GetTask(t *testing.T) {
 
 func TestStorage_GetTask_NotFound(t *testing.T) {
 	s := newTestStorage(t)
-	_, err := s.GetTask("does-not-exist")
+	_, err := s.GetTask("does-not-exist", "session-1")
 	if err == nil {
 		t.Error("expected error for non-existent task, got nil")
 	}

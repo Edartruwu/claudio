@@ -573,8 +573,9 @@ func (ws *WebServer) handleTaskList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ws *WebServer) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
 	taskID := r.PathValue("task_id")
-	task, err := ws.storage.GetTask(taskID)
+	task, err := ws.storage.GetTask(taskID, sessionID)
 	if err != nil {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return

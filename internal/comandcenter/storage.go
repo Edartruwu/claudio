@@ -599,13 +599,13 @@ func (s *Storage) InsertNativeMessage(sessionID, role, content string, ts time.T
 	return err
 }
 
-// GetTask returns a single task by ID from team_tasks.
-func (s *Storage) GetTask(id string) (Task, error) {
+// GetTask returns a single task by ID from team_tasks, filtered by sessionID.
+func (s *Storage) GetTask(id, sessionID string) (Task, error) {
 	var t Task
 	err := s.db.QueryRow(`
 		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
-		FROM team_tasks WHERE id=?
-	`, id).Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
+		FROM team_tasks WHERE id=? AND session_id=?
+	`, id, sessionID).Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
 		&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return Task{}, fmt.Errorf("get task %q: %w", id, err)
