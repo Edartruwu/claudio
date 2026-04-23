@@ -1,0 +1,9 @@
+{
+  "name": "cybersecurity",
+  "version": "1.0.0",
+  "description": "Comprehensive penetration testing and security assessment harness. Covers recon, enumeration, vulnerability scanning, exploitation, static analysis, post-exploitation, and reporting.",
+  "agents_dir": "agents",
+  "skills_dir": "skills",
+  "plugins_dir": "plugins",
+  "templates_dir": "team-templates"
+}

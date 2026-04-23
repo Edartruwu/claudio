@@ -1,0 +1,43 @@
+{
+  "name": "cybersecurity-team",
+  "description": "Full-spectrum penetration testing team. Covers recon through reporting. Exploiter uses Opus for high-stakes decisions; enumerator uses Haiku for repetitive brute-force tasks; all others use Sonnet.",
+  "model": "sonnet",
+  "autoCompactThreshold": 80,
+  "members": [
+    {
+      "name": "recon",
+      "subagent_type": "backend-mid",
+      "model": "sonnet"
+    },
+    {
+      "name": "enumerator",
+      "subagent_type": "backend-jr",
+      "model": "haiku"
+    },
+    {
+      "name": "scanner",
+      "subagent_type": "backend-mid",
+      "model": "sonnet"
+    },
+    {
+      "name": "exploiter",
+      "subagent_type": "backend-senior",
+      "model": "opus"
+    },
+    {
+      "name": "code-auditor",
+      "subagent_type": "backend-mid",
+      "model": "sonnet"
+    },
+    {
+      "name": "post-exploit",
+      "subagent_type": "backend-mid",
+      "model": "sonnet"
+    },
+    {
+      "name": "reporter",
+      "subagent_type": "backend-mid",
+      "model": "sonnet"
+    }
+  ]
+}
