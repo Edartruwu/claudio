@@ -249,16 +249,32 @@ install_macos() {
   install_brew  sqlmap
   install_brew  jq
 
-  # whatweb — try brew tap first, then pip, then gem with sudo
+  # whatweb — no brew formula, no pip package. Install from GitHub source.
   if ! is_installed whatweb; then
-    info "Installing whatweb..."
-    if try_install whatweb brew install whatweb 2>/dev/null; then
-      : # success via brew
-    elif is_installed pip3 && try_install whatweb pip3 install whatweb 2>/dev/null; then
-      : # success via pip
-    elif is_installed gem; then
-      info "Trying gem install (may need sudo)..."
-      try_install whatweb sudo gem install whatweb
+    info "Installing whatweb from source..."
+    local whatweb_dir="${HOME}/.local/share/whatweb"
+    if [ -d "$whatweb_dir" ]; then
+      info "Updating existing whatweb clone..."
+      git -C "$whatweb_dir" pull --quiet 2>/dev/null || true
+    else
+      git clone --quiet https://github.com/urbanadventurer/WhatWeb.git "$whatweb_dir" 2>/dev/null
+    fi
+    if [ -f "$whatweb_dir/whatweb" ]; then
+      # Ensure Ruby deps are installed
+      if is_installed bundle; then
+        (cd "$whatweb_dir" && bundle install --quiet 2>/dev/null) || true
+      elif is_installed gem; then
+        (cd "$whatweb_dir" && gem install bundler --quiet 2>/dev/null && bundle install --quiet 2>/dev/null) || true
+      fi
+      # Symlink to a location in PATH
+      local bin_dir="${HOME}/.local/bin"
+      mkdir -p "$bin_dir"
+      ln -sf "$whatweb_dir/whatweb" "$bin_dir/whatweb"
+      if [[ ":$PATH:" != *":$bin_dir:"* ]]; then
+        warn "Add ${bin_dir} to your PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
+      fi
+      ok "Installed: whatweb (source → ${whatweb_dir})"
+      INSTALLED+=(whatweb)
     else
       warn "Could not install whatweb — install manually: https://github.com/urbanadventurer/WhatWeb"
       FAILED+=(whatweb)
