@@ -56,6 +56,11 @@ var (
 	flagMaster              bool
 )
 
+// mcpManager is a minimal interface for querying MCP tool names.
+type mcpManager interface {
+	MCPToolNames() []string
+}
+
 // appInstance is initialized before command execution.
 var appInstance *app.App
 
@@ -272,7 +277,7 @@ func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 	// In headless+attach mode runSinglePrompt is called in a loop — the WS
 	// connection must stay open across turns. runHeadlessAttach owns the close.
 
-	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
+	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
@@ -441,7 +446,7 @@ func runHeadlessAttach(args []string) error {
 	}
 
 	// --- Build ONE persistent engine for the session lifetime ---
-	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
+	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 
 	// Wire capability-gated tools (e.g. design tools) for headless+attach mode.
 	// In TUI mode this happens in applyAgentPersona; here we do it once at startup.
@@ -712,10 +717,21 @@ func loadContextProfile(name string) (string, error) {
 	return string(data), nil
 }
 
+// matchesAnyGlob reports whether name matches any of the given glob patterns.
+// Uses filepath.Match semantics.
+func matchesAnyGlob(name string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if matched, err := filepath.Match(pattern, name); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
 // applyAgentOverrides clones the registry filtered by the --agent flag's DisallowedTools,
 // and returns the model override string ("" if no agent or no model override) plus any
 // extra plugin infos that should be appended to the system prompt.
-func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string, []prompts.PluginInfo) {
+func applyAgentOverrides(registry *tools.Registry, mcpMgr mcpManager) (*tools.Registry, string, []prompts.PluginInfo) {
 	if flagAgent == "" {
 		return registry, "", nil
 	}
@@ -723,6 +739,16 @@ func applyAgentOverrides(registry *tools.Registry) (*tools.Registry, string, []p
 	filtered := registry.Clone()
 	for _, name := range agentDef.DisallowedTools {
 		filtered.Remove(name)
+	}
+
+	// Filter MCP tools by agent allowlist (empty = no filtering; "*" = allow all)
+	if len(agentDef.AllowedMCPTools) > 0 && mcpMgr != nil {
+		mcpToolNames := mcpMgr.MCPToolNames()
+		for _, name := range mcpToolNames {
+			if !matchesAnyGlob(name, agentDef.AllowedMCPTools) {
+				filtered.Remove(name)
+			}
+		}
 	}
 
 	// Merge per-agent extra skills (additive — global skills remain available)
@@ -1050,7 +1076,7 @@ func runInteractive() error {
 		// This avoids polluting the session list with empty sessions.
 	}
 
-	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools)
+	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)

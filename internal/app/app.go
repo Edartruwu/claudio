@@ -60,6 +60,7 @@ type App struct {
 	Cron         *tasks.CronStore
 	CronRunner   *tasks.CronRunner
 	LSP          *lsp.ServerManager
+	MCPManager   *mcp.Manager
 	InjectCh     chan attach.UserMsgPayload
 	InterruptCh  chan struct{}
 }
@@ -514,17 +515,18 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	}
 
 	// Start configured MCP servers and register their tools
+	var globalMCPMgr *mcp.Manager
 	if len(settings.MCPServers) > 0 {
-		mcpMgr := mcp.NewManager(settings.MCPServers, registry, eventBus)
+		globalMCPMgr = mcp.NewManager(settings.MCPServers, registry, eventBus)
 		ctx := context.Background()
 		for name := range settings.MCPServers {
-			if err := mcpMgr.StartServer(ctx, name); err != nil {
+			if err := globalMCPMgr.StartServer(ctx, name); err != nil {
 				// Log but don't fail startup
 				fmt.Fprintf(os.Stderr, "Warning: MCP server %q failed to start: %v\n", name, err)
 				continue
 			}
 			// Register MCP tools into main registry
-			for _, state := range mcpMgr.Status() {
+			for _, state := range globalMCPMgr.Status() {
 				if state.Name == name && state.Status == "running" && state.Client != nil {
 					for _, mcpToolDef := range state.Client.Tools() {
 						proxy := tools.NewMCPProxyTool(state.Client, name, mcpToolDef)
@@ -633,6 +635,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		Cron:        cronStore,
 		CronRunner:  cronRunner,
 		LSP:         lspManager,
+		MCPManager:  globalMCPMgr,
 		InjectCh:    injectCh,
 		InterruptCh: interruptCh,
 	}, nil

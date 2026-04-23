@@ -84,6 +84,11 @@ type AgentDefinition struct {
 	// MaxTurns limits the number of agentic turns (API calls) for this agent.
 	// 0 means unlimited. Prevents runaway agents from consuming excessive tokens.
 	MaxTurns int
+
+	// AllowedMCPTools lists glob patterns for MCP tool names this agent may use.
+	// Empty/nil means no MCP-specific filtering (all MCP tools allowed).
+	// Use "*" to explicitly allow all MCP tools.
+	AllowedMCPTools []string `yaml:"allowedMCPTools,omitempty"`
 }
 
 // BuiltInAgents returns all built-in agent definitions.
@@ -391,6 +396,7 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 					SystemPrompt:    body,
 					Tools:           fm.GetList("tools"),
 					DisallowedTools: fm.GetList("disallowedTools"),
+					AllowedMCPTools: fm.GetList("allowedMCPTools"),
 					Model:           fm.Get("model"),
 					SourceSession:   fm.Get("sourceSession"),
 					SourceProject:   fm.Get("sourceProject"),
@@ -459,6 +465,7 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 				SystemPrompt:    body,
 				Tools:           fm.GetList("tools"),
 				DisallowedTools: fm.GetList("disallowedTools"),
+				AllowedMCPTools: fm.GetList("allowedMCPTools"),
 				Model:           fm.Get("model"),
 				SourceSession:   fm.Get("sourceSession"),
 				SourceProject:   fm.Get("sourceProject"),

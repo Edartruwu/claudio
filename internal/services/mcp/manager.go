@@ -169,6 +169,22 @@ func (m *Manager) StopAll() {
 	}
 }
 
+// MCPToolNames returns the names of all tools discovered from running MCP servers.
+func (m *Manager) MCPToolNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var names []string
+	for _, state := range m.servers {
+		if state.Status == "running" && state.Client != nil {
+			for _, def := range state.Client.Tools() {
+				names = append(names, def.Name)
+			}
+		}
+	}
+	return names
+}
+
 func mustJSON(v any) []byte {
 	data, _ := json.Marshal(v)
 	return data
