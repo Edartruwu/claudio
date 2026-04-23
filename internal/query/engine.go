@@ -241,6 +241,18 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 			tool.SessionID = cfg.SessionID
 		}
 	}
+	// Wire session ID into TaskList tool so it filters by session.
+	if tl, err := registry.Get("TaskList"); err == nil {
+		if tool, ok := tl.(*tools.TaskListTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
+	// Wire session ID into TaskGet tool so it filters by session.
+	if tg, err := registry.Get("TaskGet"); err == nil {
+		if tool, ok := tg.(*tools.TaskGetTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
 	e.model = cfg.Model
 	e.permissionMode = cfg.PermissionMode
 	if e.permissionMode == "" {

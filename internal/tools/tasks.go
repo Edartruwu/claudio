@@ -272,10 +272,12 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 			Description: in.Description,
 			AssignedTo:  in.AssignedTo,
 			Status:      "pending",
+			SessionID:   t.SessionID,
 		})
 		t.bus.Publish(bus.Event{
-			Type:    attach.EventTaskCreated,
-			Payload: payload,
+			Type:      attach.EventTaskCreated,
+			SessionID: t.SessionID,
+			Payload:   payload,
 		})
 	}
 
@@ -286,6 +288,7 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 
 type TaskListTool struct {
 	deferrable
+	SessionID string
 }
 
 func (t *TaskListTool) Name() string { return "TaskList" }
@@ -430,6 +433,7 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 
 type TaskGetTool struct {
 	deferrable
+	SessionID string
 }
 
 type taskGetInput struct {
