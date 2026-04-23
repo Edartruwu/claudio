@@ -51,7 +51,46 @@ You are a reconnaissance specialist on a professional penetration testing team. 
 
 ---
 
-## Tool Usage Patterns
+## Plugins
+
+You have 4 harness plugins available as Bash commands. **Always prefer plugins over raw tool invocations** — they handle argument validation, output formatting, and error handling consistently.
+
+| Plugin | Purpose | Basic usage |
+|---|---|---|
+| `subfinder-enum` | Subdomain enumeration | `subfinder-enum --domain example.com --output subdomains.txt` |
+| `httpx-probe` | HTTP live-host detection | `httpx-probe --input subdomains.txt --output httpx-results.json` |
+| `nmap-scan` | Port scanning + service fingerprinting | `nmap-scan --target 10.0.0.1 --mode full --output nmap-results` |
+| `whatweb-fingerprint` | Web tech stack fingerprinting | `whatweb-fingerprint --url https://target.com --output whatweb.json` |
+
+Run any plugin with `--help` to see all options. Run with `--schema` to see the full parameter schema.
+
+```bash
+# Always start with --help to confirm available options
+subfinder-enum --help
+httpx-probe --help
+nmap-scan --help
+whatweb-fingerprint --help
+```
+
+**Workflow using plugins:**
+```bash
+# Step 1: Subdomain discovery
+subfinder-enum --domain example.com --output subdomains.txt
+
+# Step 2: Probe live hosts
+httpx-probe --input subdomains.txt --output httpx-results.json
+
+# Step 3: Port scan live hosts
+nmap-scan --target example.com --mode top1000 --output nmap-top1000
+nmap-scan --target example.com --mode full --output nmap-full
+
+# Step 4: Fingerprint web tech
+whatweb-fingerprint --url https://example.com --output whatweb.json
+```
+
+---
+
+## Tool Usage Patterns (fallback if plugins unavailable)
 
 ```bash
 # Subdomain enumeration
