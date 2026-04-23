@@ -1052,44 +1052,130 @@ If the user chose personal CLAUDIO.local.md or both: ask about them, not the cod
 
 ## Phase 4: Write CLAUDIO.md (if user chose project or both)
 
-Write a minimal CLAUDIO.md at the project root. Every line must pass this test: "Would removing this cause Claudio to make mistakes?" If no, cut it.
+Write a **lean index** CLAUDIO.md at the project root — 20-30 lines max. CLAUDIO.md is a quick-reference index, not a documentation dump. Detailed guidance lives in ` + "`.claudio/rules/`" + ` files (written in Phase 4b).
+
+**Decision rule — what belongs in CLAUDIO.md directly vs. a rules file:**
+- **In CLAUDIO.md directly**: hard constraints ("no CGO"), daily-use non-standard commands, critical env var notes, commit/PR conventions. Things agents must never forget.
+- **In a rules file (` + "`@`" + `-referenced)**: code style patterns, architecture map, testing conventions, anything detailed or explanatory.
 
 **Consume ` + "`note`" + ` entries from the Phase 3 preference queue whose target is CLAUDIO.md** — add each as a concise line in the most relevant section.
 
-Include:
-- Build/test/lint commands Claudio can't guess (non-standard scripts, flags, or sequences)
-- Code style rules that DIFFER from language defaults (e.g., "prefer type over interface")
-- Testing instructions and quirks (e.g., "run single test with: pytest -k 'test_name'")
-- Repo etiquette (branch naming, PR conventions, commit style)
-- Required env vars or setup steps
-- Non-obvious gotchas or architectural decisions
-- Important parts from existing AI coding tool configs (.cursor/rules, .cursorrules, .github/copilot-instructions.md, .windsurfrules, .clinerules)
-
-Exclude:
-- File-by-file structure or component lists (Claudio can discover these)
-- Standard language conventions Claudio already knows
-- Generic advice ("write clean code", "handle errors")
-- Detailed API docs or long references — use ` + "`@path/to/import`" + ` syntax instead
-- Information that changes frequently — reference the source with ` + "`@path/to/import`" + `
-- Commands obvious from manifest files (e.g., standard "npm test", "cargo test", "pytest")
-
-Be specific: "Use 2-space indentation in TypeScript" is better than "Format code properly."
-
-Do not repeat yourself. Do not make up sections like "Common Development Tasks" or "Tips for Development".
-
-Prefix the file with:
+**Structure for CLAUDIO.md:**
 
 ` + "```" + `
 # CLAUDIO.md
 
 This file provides guidance to Claudio (github.com/Abraxas-365/claudio) when working with code in this repository.
+
+[One-line project description — only if not obvious from repo name]
+
+## Build & Test
+[Only non-standard commands, flags, or sequences. Skip commands obvious from manifest files.]
+
+## Key Constraints
+[Hard rules agents must never violate — e.g., "No CGO", "Never edit existing migrations"]
+
+## Conventions
+[Commit style, branch naming, PR rules — one line each]
+
+## Rules
+@.claudio/rules/code-style.md
+@.claudio/rules/testing.md
+@.claudio/rules/architecture.md
+[Only @-reference files you actually create in Phase 4b]
 ` + "```" + `
 
-If CLAUDIO.md already exists: read it carefully, then ALWAYS regenerate a complete improved version. Show the user what changed and why. Never skip or say "looks fine" — the user ran /init specifically because they want an update.
+Every line must pass this test: "Would removing this cause Claudio to make mistakes on daily tasks?" If no, cut it or move it to a rules file.
 
-For projects with multiple concerns, suggest organizing instructions into ` + "`.claudio/rules/`" + ` as separate focused files (e.g., ` + "`code-style.md`" + `, ` + "`testing.md`" + `, ` + "`security.md`" + `). These are loaded automatically alongside CLAUDIO.md.
+Exclude from CLAUDIO.md:
+- File-by-file structure or component lists (Claudio discovers these; put summary in architecture.md)
+- Standard language conventions Claudio already knows
+- Generic advice ("write clean code", "handle errors")
+- Detailed explanations — those go in rules files
+
+Prefix the file with the standard header shown above.
+
+If CLAUDIO.md already exists: read it carefully, then ALWAYS regenerate a complete improved version (leaner index + @references). Show the user what changed and why. Never skip or say "looks fine" — the user ran /init specifically because they want an update.
 
 For monorepos or multi-module projects: mention that subdirectory CLAUDIO.md files can be added for module-specific instructions. Offer to create them if the user wants.
+
+## Phase 4b: Generate .claudio/rules/ files
+
+Create focused rules files under ` + "`.claudio/rules/`" + ` based on the Phase 2 codebase survey. These files hold the detailed guidance that would bloat CLAUDIO.md.
+
+**Create only files for which you found real content in Phase 2.** Do not create empty or generic files.
+
+### Candidate files (create only if relevant content exists):
+
+**` + "`.claudio/rules/code-style.md`" + `** — create if you found style conventions beyond language defaults:
+- Naming conventions (variables, types, files, packages)
+- Formatting rules that differ from defaults
+- Import ordering or grouping rules
+- Patterns to follow (e.g., "use functional options pattern for config structs")
+- Patterns to avoid (e.g., "never use init() for side effects")
+
+**` + "`.claudio/rules/testing.md`" + `** — create if you found testing conventions or a non-trivial test setup:
+- Test naming convention (e.g., ` + "`TestFeature_Case`" + `)
+- Test file location rules (co-located vs. separate ` + "`testdata/`" + ` dir)
+- Mocking patterns and which libraries are used
+- What to test (unit vs. integration boundaries)
+- How to run a single test or a subset
+
+**` + "`.claudio/rules/architecture.md`" + `** — create if the project has non-obvious structure:
+- Package/module map (one line per package: name → role)
+- Key architectural patterns (event bus, service layer, repository pattern, etc.)
+- Dependency rules (what can import what)
+- Key interfaces or entry points agents should know
+
+**Additional rules files** — create if you found substantive content:
+- ` + "`.claudio/rules/security.md`" + ` — auth patterns, secrets handling, never-do rules
+- ` + "`.claudio/rules/api.md`" + ` — API conventions, error format, versioning
+- ` + "`.claudio/rules/database.md`" + ` — migration rules, ORM patterns, query conventions
+
+**Rules for each file:**
+- Concise and specific — not exhaustive documentation
+- Use bullet points; one rule per bullet
+- No generic advice that applies to all codebases
+- Do not duplicate what's already in CLAUDIO.md
+- Add an ` + "`@`" + ` reference in CLAUDIO.md for every file you create (under the `+ "`## Rules`" + ` section)
+
+## Phase 4c: Seed Memory with architectural facts
+
+After generating rules files, seed Memory with durable architectural knowledge that agents would otherwise need to investigate from scratch.
+
+Call ` + "`Memory(action=\"save\")`" + ` for each entry below. **Only save facts that survive a ` + "`git clone`" + `** — durable, not session-specific.
+
+### Required entries (if content exists):
+
+**Entry 1: architecture** — package map and key entry points
+` + "```" + `
+Memory(action="save", name="architecture", description="Package map and key architectural facts for this repo", facts=[
+  "<package-name>: <one-sentence role>",
+  "<package-name>: <one-sentence role>",
+  ... (one fact per major package/module, max 8)
+], tags=["codebase-map", "architecture"])
+` + "```" + `
+
+**Entry 2+: decision-* entries** — one per hard constraint or architectural decision discovered in Phase 2:
+` + "```" + `
+Memory(action="save", name="decision-<slug>", description="<decision title>", facts=[
+  "<specific, actionable statement about the constraint or decision>"
+], tags=["constraint", "<relevant-tag>"])
+` + "```" + `
+
+Examples of decision entries worth saving:
+- ` + "`decision-no-cgo`" + `: "Project must remain pure Go — no CGO. SQLite via modernc.org/sqlite."
+- ` + "`decision-db-migrations`" + `: "Never alter existing migration SQL — append-only. Existing migrations are immutable."
+- ` + "`decision-auth`" + `: "Auth uses JWT with RS256. Signing key loaded from AUTH_PRIVATE_KEY env var."
+- ` + "`decision-monorepo`" + `: "Monorepo with independent Go modules per service. Each has its own go.mod."
+
+**Rules for Memory seeding:**
+- Max 5-8 facts per entry
+- Each fact = one sentence, specific and actionable (not "the project uses Go")
+- Skip facts already obvious from CLAUDIO.md — Memory is for deeper knowledge agents need without reading files
+- Skip generic facts any Go/JS/Python project would have
+- If no architectural decisions worth saving, skip the decision-* entries entirely
+- After saving, confirm which entries were created (you'll list them in Phase 8)
 
 ## Phase 5: Write CLAUDIO.local.md (if user chose personal or both)
 
@@ -1168,7 +1254,23 @@ Act on each "yes" before moving on.
 
 ## Phase 8: Summary and next steps
 
-Recap what was set up — which files were written and the key points in each. Remind the user these files are a starting point: they should review and tweak them, and can run ` + "`/init`" + ` again anytime to re-scan.
+Recap what was set up. Use this structure:
+
+**Files written:**
+- ` + "`CLAUDIO.md`" + ` — lean index (list the sections)
+- ` + "`.claudio/rules/<name>.md`" + ` — for each rules file created (list them with one-line description of what's in each)
+- Any skills, hooks, or CLAUDIO.local.md created in Phases 5-7
+
+**Memory seeded:**
+- List each Memory entry by name and what it captures (e.g., ` + "`architecture`" + ` — package map with N packages, ` + "`decision-no-cgo`" + ` — CGO constraint)
+- If no Memory entries were created, say so and briefly explain why (e.g., "no durable architectural decisions found beyond what's in CLAUDIO.md")
+
+**How to extend:**
+- Add rules: create ` + "`.claudio/rules/<topic>.md`" + ` and add ` + "`@.claudio/rules/<topic>.md`" + ` to the ` + "`## Rules`" + ` section of CLAUDIO.md
+- Update Memory: use ` + "`Memory(action=\"append\")`" + ` to add facts to existing entries, or ` + "`Memory(action=\"save\")`" + ` for new entries
+- Re-run ` + "`/init`" + ` anytime to re-scan the codebase and refresh all files
+
+Remind the user these files are a starting point — review and tweak as the project evolves.
 
 Then present a well-formatted to-do list of additional suggestions relevant to this repo. Most impactful first:
 - If frontend code was detected (React, Vue, Svelte, etc.): mention that browser/screenshot testing tools help Claudio verify UI changes visually.
