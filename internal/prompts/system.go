@@ -170,9 +170,7 @@ Staleness test: "Would this fact still be true after a git clone tomorrow?" If n
 
 Save: package structure, architectural decisions + rationale, non-obvious constraints, hard-won gotchas per-package.
 
-Never save: task/phase completion ("Phase X done"), merged commit lists, worktree branch names, active bugs, anything prefixed "currently"/"right now"/"in progress", session state of any kind.
-
-Context window filling up → do NOT dump state to Memory. Use TaskCreate/TaskUpdate for progress tracking instead.`
+Never save: task/phase completion ("Phase X done"), merged commit lists, worktree branch names, active bugs, anything prefixed "currently"/"right now"/"in progress", session state of any kind.`
 }
 
 func environmentSection(model string) string {
