@@ -1,7 +1,7 @@
 {
   "name": "cybersecurity",
   "version": "2.0.0",
-  "description": "Full-spectrum offensive security harness. 12 specialized agents covering recon, OSINT, web exploitation, Active Directory, cloud identity (Entra ID/Azure/AWS), privilege escalation (Windows+Linux), RCE hunting, post-exploitation, vulnerability research, and reporting.",
+  "description": "Full-spectrum offensive security harness. 14 specialized agents covering recon, OSINT, web exploitation, Active Directory, AD CS certificate abuse, cloud identity (Entra ID/Azure/AWS), privilege escalation (Windows+Linux), RCE hunting, email security testing, post-exploitation, vulnerability research, and reporting.",
   "agents": ["agents"],
   "skills": ["skills"],
   "plugins": ["plugins"],
