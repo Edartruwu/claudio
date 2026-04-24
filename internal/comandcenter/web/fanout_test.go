@@ -105,3 +105,97 @@ func TestFanout_EventAgentStatus_PushesJSON_Working(t *testing.T) {
 	broadcastAgentStatus(t, hub, "sess-working", "alex", "working")
 	assertAgentStatusJSON(t, client, "alex", "working")
 }
+
+// TestHub_SessionIsolation verifies that a Broadcast for session A does not deliver
+// any payload to a UI client registered for session B.
+func TestHub_SessionIsolation(t *testing.T) {
+	ws, hub := newFanoutServer(t)
+
+	clientA := registerFanoutClient(ws, "sess-iso-A")
+	clientB := registerFanoutClient(ws, "sess-iso-B")
+
+	// Broadcast only to session A.
+	broadcastAgentStatus(t, hub, "sess-iso-A", "agent-alpha", "done")
+
+	// Session A client should receive the event.
+	assertAgentStatusJSON(t, clientA, "agent-alpha", "done")
+
+	// Session B client must receive nothing.
+	select {
+	case raw := <-clientB.send:
+		t.Errorf("session B received unexpected payload: %s", raw)
+	case <-time.After(300 * time.Millisecond):
+		// correct — nothing delivered to B
+	}
+}
+
+// TestHub_ReconnectReplaysAgentEvents verifies that a persisted terminal agent event
+// is replayed to a newly connecting UI client.
+// This exercises the GetLatestAgentEvents → Envelope serialization pipeline used in
+// handleWSUI (server.go) when a browser reconnects.
+func TestHub_ReconnectReplaysAgentEvents(t *testing.T) {
+	storage, err := cc.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	t.Cleanup(func() { storage.Close() })
+
+	const sessionID = "sess-replay"
+	const agentName = "replay-agent"
+	const agentStatus = "done"
+
+	// Persist a terminal agent event (as hub.processEvent does on EventAgentStatus).
+	payloadJSON, _ := json.Marshal(attach.AgentStatusPayload{
+		Name:   agentName,
+		Status: agentStatus,
+	})
+	if err := storage.InsertAgentEvent(sessionID, agentName, agentStatus, string(payloadJSON)); err != nil {
+		t.Fatalf("InsertAgentEvent: %v", err)
+	}
+
+	// Simulate the replay logic from handleWSUI (server.go lines 1200-1213).
+	client := &uiClient{
+		sessionID: sessionID,
+		send:      make(chan []byte, 8),
+	}
+	events, err := storage.GetLatestAgentEvents(sessionID)
+	if err != nil {
+		t.Fatalf("GetLatestAgentEvents: %v", err)
+	}
+	for _, evt := range events {
+		env := attach.Envelope{
+			Type:    attach.EventAgentStatus,
+			Payload: json.RawMessage(evt.Payload),
+		}
+		data, _ := json.Marshal(env)
+		select {
+		case client.send <- data:
+		default:
+		}
+	}
+
+	// The client's send channel must have one entry — the replayed event.
+	select {
+	case raw := <-client.send:
+		var env attach.Envelope
+		if err := json.Unmarshal(raw, &env); err != nil {
+			t.Fatalf("unmarshal replayed envelope: %v", err)
+		}
+		if env.Type != attach.EventAgentStatus {
+			t.Errorf("replayed env.Type = %q, want %q", env.Type, attach.EventAgentStatus)
+		}
+		// Verify the payload round-trips the agent name + status.
+		var p map[string]string
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			t.Fatalf("unmarshal replayed payload: %v", err)
+		}
+		if p["name"] != agentName {
+			t.Errorf("replayed name = %q, want %q", p["name"], agentName)
+		}
+		if p["status"] != agentStatus {
+			t.Errorf("replayed status = %q, want %q", p["status"], agentStatus)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout: no replayed event delivered to new client")
+	}
+}

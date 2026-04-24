@@ -1594,3 +1594,66 @@ func TestTeammateRunner_PublishesParentAgentID(t *testing.T) {
 		t.Errorf("Status = %q, want %q", cap.payload.Status, "done")
 	}
 }
+
+// TestTeammateRunner_CompletionNoDoubleEmit verifies that a terminal EventAgentStatus
+// (status "done" or "failed") is emitted exactly once per agent run.
+// The stopHeartbeat channel is closed before the terminal event fires, so the
+// heartbeat goroutine cannot race and emit an extra "working" status that confuses
+// UI clients into showing an incorrect state after completion.
+func TestTeammateRunner_CompletionNoDoubleEmit(t *testing.T) {
+	b := bus.New()
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "finished", nil
+	})
+	runner.SetBus(b)
+	runner.SetSessionID("sess-dedup")
+
+	var mu sync.Mutex
+	terminalCount := 0
+	done := make(chan struct{})
+
+	b.Subscribe(attach.EventAgentStatus, func(event bus.Event) {
+		var p attach.AgentStatusPayload
+		if err := json.Unmarshal(event.Payload, &p); err != nil {
+			return
+		}
+		if p.Status == "done" || p.Status == "failed" || p.Status == "waiting" {
+			mu.Lock()
+			terminalCount++
+			if terminalCount == 1 {
+				close(done)
+			}
+			mu.Unlock()
+		}
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "dedup-worker",
+		Prompt:    "finish quickly",
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if !runner.WaitForOne(state.Identity.AgentID, 5*time.Second) {
+		t.Fatal("timeout waiting for teammate")
+	}
+
+	// Wait for the terminal event to arrive.
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no terminal EventAgentStatus received")
+	}
+
+	// Give a brief window for any phantom second event to arrive.
+	time.Sleep(150 * time.Millisecond)
+
+	mu.Lock()
+	got := terminalCount
+	mu.Unlock()
+
+	if got != 1 {
+		t.Errorf("terminal EventAgentStatus count = %d, want exactly 1 (double-emit detected)", got)
+	}
+}

@@ -1074,3 +1074,136 @@ func TestMigration_Idempotent(t *testing.T) {
 		t.Errorf("QuotedContent: got %q, want %q", got.QuotedContent, "some quoted text")
 	}
 }
+
+// TestStorage_InsertAndGetAgentEvents verifies that InsertAgentEvent persists an event
+// and GetLatestAgentEvents retrieves it with all fields intact.
+func TestStorage_InsertAndGetAgentEvents(t *testing.T) {
+	s := newTestStorage(t)
+
+	const sessionID = "sess-agent-evt"
+	const agentName = "test-agent"
+	const status = "done"
+	const payload = `{"name":"test-agent","status":"done","result":"task complete"}`
+
+	if err := s.InsertAgentEvent(sessionID, agentName, status, payload); err != nil {
+		t.Fatalf("InsertAgentEvent: %v", err)
+	}
+
+	events, err := s.GetLatestAgentEvents(sessionID)
+	if err != nil {
+		t.Fatalf("GetLatestAgentEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+
+	e := events[0]
+	if e.SessionID != sessionID {
+		t.Errorf("SessionID = %q, want %q", e.SessionID, sessionID)
+	}
+	if e.AgentName != agentName {
+		t.Errorf("AgentName = %q, want %q", e.AgentName, agentName)
+	}
+	if e.Status != status {
+		t.Errorf("Status = %q, want %q", e.Status, status)
+	}
+	if e.Payload != payload {
+		t.Errorf("Payload = %q, want %q", e.Payload, payload)
+	}
+}
+
+// TestStorage_InsertAndGetAgentEvents_CrossSession verifies that GetLatestAgentEvents
+// only returns events belonging to the queried session, not events from other sessions.
+func TestStorage_InsertAndGetAgentEvents_CrossSession(t *testing.T) {
+	s := newTestStorage(t)
+
+	_ = s.InsertAgentEvent("sess-X", "agent-x", "done", `{"name":"agent-x","status":"done"}`)
+	_ = s.InsertAgentEvent("sess-Y", "agent-y", "done", `{"name":"agent-y","status":"done"}`)
+
+	events, err := s.GetLatestAgentEvents("sess-X")
+	if err != nil {
+		t.Fatalf("GetLatestAgentEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event for sess-X, got %d", len(events))
+	}
+	if events[0].AgentName != "agent-x" {
+		t.Errorf("AgentName = %q, want %q", events[0].AgentName, "agent-x")
+	}
+}
+
+// TestStorage_GetLatestAgentEvents_LatestPerAgent verifies that when multiple events
+// exist for the same agent in a session, only the most recent is returned.
+func TestStorage_GetLatestAgentEvents_LatestPerAgent(t *testing.T) {
+	s := newTestStorage(t)
+
+	const sess = "sess-multi-evt"
+	_ = s.InsertAgentEvent(sess, "worker", "working", `{"name":"worker","status":"working"}`)
+	_ = s.InsertAgentEvent(sess, "worker", "done", `{"name":"worker","status":"done","result":"ok"}`)
+
+	events, err := s.GetLatestAgentEvents(sess)
+	if err != nil {
+		t.Fatalf("GetLatestAgentEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (latest per agent), got %d", len(events))
+	}
+	if events[0].Status != "done" {
+		t.Errorf("Status = %q, want %q", events[0].Status, "done")
+	}
+}
+
+// TestStorage_PruneAgentEvents verifies that PruneAgentEvents removes events older
+// than 15 minutes and leaves recent events intact.
+func TestStorage_PruneAgentEvents(t *testing.T) {
+	s := newTestStorage(t)
+
+	const sess = "sess-prune"
+
+	// Insert a recent event (within 15 min window — default CURRENT_TIMESTAMP).
+	if err := s.InsertAgentEvent(sess, "fresh-agent", "done", `{"name":"fresh-agent","status":"done"}`); err != nil {
+		t.Fatalf("InsertAgentEvent recent: %v", err)
+	}
+
+	// Insert a stale event by directly writing an old timestamp.
+	_, err := s.db.Exec(`
+		INSERT INTO cc_agent_events (session_id, agent_name, status, payload, created_at)
+		VALUES (?, ?, ?, ?, datetime('now', '-20 minutes'))
+	`, sess, "stale-agent", "done", `{"name":"stale-agent","status":"done"}`)
+	if err != nil {
+		t.Fatalf("insert stale event: %v", err)
+	}
+
+	// Confirm 2 events exist before pruning.
+	before, err := s.GetLatestAgentEvents(sess)
+	if err != nil {
+		t.Fatalf("GetLatestAgentEvents before prune: %v", err)
+	}
+	// Only the recent one appears in GetLatestAgentEvents (15-min filter).
+	if len(before) != 1 {
+		t.Fatalf("expected 1 recent event before prune, got %d", len(before))
+	}
+
+	// Prune stale events.
+	if err := s.PruneAgentEvents(); err != nil {
+		t.Fatalf("PruneAgentEvents: %v", err)
+	}
+
+	// Verify stale row is deleted from the raw table.
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM cc_agent_events WHERE session_id = ?`, sess).Scan(&count); err != nil {
+		t.Fatalf("count after prune: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 row after prune (stale deleted), got %d", count)
+	}
+
+	// Verify the remaining row is the fresh one.
+	var name string
+	if err := s.db.QueryRow(`SELECT agent_name FROM cc_agent_events WHERE session_id = ?`, sess).Scan(&name); err != nil {
+		t.Fatalf("query remaining row: %v", err)
+	}
+	if name != "fresh-agent" {
+		t.Errorf("remaining agent_name = %q, want %q", name, "fresh-agent")
+	}
+}

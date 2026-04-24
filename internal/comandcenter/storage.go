@@ -29,6 +29,12 @@ func Open(path string) (*Storage, error) {
 		return nil, fmt.Errorf("comandcenter: open db: %w", err)
 	}
 
+	// In-memory SQLite DBs are per-connection; with a pool each connection
+	// sees an empty DB. Force single-connection so migrations apply globally.
+	if path == ":memory:" {
+		conn.SetMaxOpenConns(1)
+	}
+
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("comandcenter: WAL pragma: %w", err)

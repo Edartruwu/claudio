@@ -183,9 +183,22 @@ func TestHub_HandleConn_ProcessesAssistantMsg(t *testing.T) {
 	}
 	sessionID := sessions[0].ID
 
-	msgs, err := s.ListMessages(sessionID, 10)
-	if err != nil {
-		t.Fatalf("ListMessages: %v", err)
+	// processEvent runs asynchronously — poll until the message appears or deadline.
+	var msgs []Message
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case <-deadline:
+			t.Fatalf("timeout: expected 1 message, got 0")
+		case <-time.After(10 * time.Millisecond):
+		}
+		msgs, err = s.ListMessages(sessionID, 10)
+		if err != nil {
+			t.Fatalf("ListMessages: %v", err)
+		}
+		if len(msgs) >= 1 {
+			break
+		}
 	}
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
