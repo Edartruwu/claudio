@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
@@ -37,6 +38,41 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tools"
 )
 
+// ccSendRef is a thread-safe holder for a tools.AttachClient used to forward
+// sub-agent messages to ComandCenter (cc_messages) via the attach WebSocket.
+// It is created during App.New() and set later when InjectAttachClient is called.
+type ccSendRef struct {
+	mu  sync.RWMutex
+	cli tools.AttachClient
+}
+
+func (r *ccSendRef) set(c tools.AttachClient) {
+	r.mu.Lock()
+	r.cli = c
+	r.mu.Unlock()
+}
+
+func (r *ccSendRef) get() tools.AttachClient {
+	r.mu.RLock()
+	c := r.cli
+	r.mu.RUnlock()
+	return c
+}
+
+// Private context keys for cc sender injection into sub-agent context.
+type ctxKeyCCSend struct{}
+
+func withCCSend(ctx context.Context, ref *ccSendRef) context.Context {
+	return context.WithValue(ctx, ctxKeyCCSend{}, ref)
+}
+
+func ccSendFromCtx(ctx context.Context) *ccSendRef {
+	if v, ok := ctx.Value(ctxKeyCCSend{}).(*ccSendRef); ok {
+		return v
+	}
+	return nil
+}
+
 // App holds all shared application dependencies.
 type App struct {
 	Config    *config.Settings
@@ -64,6 +100,10 @@ type App struct {
 	HarnessTemplateDirs []string
 	InjectCh            chan attach.UserMsgPayload
 	InterruptCh         chan struct{}
+
+	// ccSend forwards sub-agent messages to ComandCenter cc_messages via attach WS.
+	// Nil until InjectAttachClient is called (i.e. only in --attach mode).
+	ccSend *ccSendRef
 }
 
 // SecurityContext wraps config-based security settings for tool injection.
@@ -354,6 +394,10 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		return model, agentDef.SystemPrompt
 	}
 
+	// ccSend is a shared mutable reference for forwarding sub-agent messages to cc_messages.
+	// Created here so the teamRunner closures can capture it; set later by InjectAttachClient.
+	ccSend := &ccSendRef{}
+
 	// Team manager (primary templates dir = user, then project-scoped, then harness dirs)
 	var teamMgr *teams.Manager
 	{
@@ -420,6 +464,9 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			TeamName:  state.TeamName,
 			AgentName: state.Identity.AgentName,
 		})
+		// Inject cc sender so runSubAgentWithMemory can forward sub-agent messages
+		// to cc_messages via the attach WebSocket (only effective in --attach mode).
+		ctx = withCCSend(ctx, ccSend)
 		// Propagate model override so runSubAgentWithMemory picks it up
 		if state.Model != "" {
 			ctx = tools.WithSubAgentModel(ctx, state.Model)
@@ -640,6 +687,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		HarnessTemplateDirs: harness.CollectTemplateDirs(harnesses),
 		InjectCh:            injectCh,
 		InterruptCh:         interruptCh,
+		ccSend:              ccSend,
 	}, nil
 }
 
@@ -655,6 +703,10 @@ func (a *App) InjectAttachClient(client interface{}, url string) {
 					tool.AttachURL = url
 				}
 			}
+		}
+		// Wire cc sender so sub-agent messages get forwarded to cc_messages.
+		if ac, ok := client.(tools.AttachClient); ok {
+			a.ccSend.set(ac)
 		}
 	}
 	
@@ -945,12 +997,22 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		}
 	}
 
+	// Extract cc sender and agent name from context (set by teamRunner context decorator).
+	// Both are nil/empty for non-team sub-agents, which is fine — forwarder no-ops.
+	ccRef := ccSendFromCtx(ctx)
+	ccAgentName := ""
+	if tc := tools.TeamContextFromCtx(ctx); tc != nil {
+		ccAgentName = tc.AgentName
+	}
+
 	// Create a forwarder that captures text AND forwards tool events to parent
 	forwarder := &subAgentForwarder{
-		desc:      desc,
-		observer:  observer,
-		db:        subDB,
-		sessionID: subSessionID,
+		desc:        desc,
+		observer:    observer,
+		db:          subDB,
+		sessionID:   subSessionID,
+		ccSend:      ccRef,
+		ccAgentName: ccAgentName,
 	}
 	engine := query.NewEngineWithConfig(apiClient, subRegistry, forwarder, cfg)
 	engine.SetSubAgent(true)
@@ -1029,6 +1091,11 @@ type subAgentForwarder struct {
 	observer  tools.SubAgentObserver // may be nil
 	db        *storage.DB            // nil = no persistence
 	sessionID string
+
+	// ccSend forwards messages to ComandCenter cc_messages via attach WS.
+	// nil when not in --attach mode or for non-team sub-agents.
+	ccSend      *ccSendRef
+	ccAgentName string // display name used as agent_name in cc_messages
 
 	// lastTurn holds only the current/last assistant turn text.
 	// Reset at the start of each new turn so the sync return path
@@ -1112,35 +1179,65 @@ func (f *subAgentForwarder) OnTurnComplete(usage api.Usage) {
 	// Signal that the next OnTextDelta begins a new assistant turn.
 	f.newTurnPending = true
 
-	if f.db == nil || f.sessionID == "" {
-		return
-	}
+	// Capture pending state before early return so cc forwarding still works.
+	txt := f.pendingText.String()
+	f.pendingText.Reset()
 
-	// 1. Assistant text
-	if txt := f.pendingText.String(); txt != "" {
-		_ = f.db.AddMessage(f.sessionID, "assistant", txt, "text", "", "")
-		f.pendingText.Reset()
-	}
-
-	// Filter to only completed pairs (drop orphaned tool_uses)
 	var completed []subAgentToolCall
 	for _, tc := range f.pendingTools {
 		if tc.done {
 			completed = append(completed, tc)
 		}
 	}
-
-	// 2. tool_use rows (all before any tool_result)
-	for _, tc := range completed {
-		_ = f.db.AddMessage(f.sessionID, "assistant", tc.input, "tool_use", tc.id, tc.name)
-	}
-
-	// 3. tool_result rows
-	for _, tc := range completed {
-		_ = f.db.AddMessage(f.sessionID, "user", tc.result, "tool_result", tc.id, tc.name)
-	}
-
 	f.pendingTools = nil
+
+	// --- Native DB writes (sub-agent local SQLite) ---
+	if f.db != nil && f.sessionID != "" {
+		// 1. Assistant text
+		if txt != "" {
+			_ = f.db.AddMessage(f.sessionID, "assistant", txt, "text", "", "")
+		}
+		// 2. tool_use rows (all before any tool_result)
+		for _, tc := range completed {
+			_ = f.db.AddMessage(f.sessionID, "assistant", tc.input, "tool_use", tc.id, tc.name)
+		}
+		// 3. tool_result rows
+		for _, tc := range completed {
+			_ = f.db.AddMessage(f.sessionID, "user", tc.result, "tool_result", tc.id, tc.name)
+		}
+	}
+
+	// --- cc_messages writes via attach WebSocket (--attach mode, team members only) ---
+	// The hub on the ComandCenter side receives these events and writes to cc_messages,
+	// making messages visible in the agent logs drawer (handleAgentLogs queries by agentName).
+	if f.ccSend != nil && f.ccAgentName != "" {
+		if cli := f.ccSend.get(); cli != nil {
+			// 1. Assistant text
+			if txt != "" {
+				_ = cli.SendEvent(attach.EventMsgAssistant, attach.AssistantMsgPayload{
+					Content:   txt,
+					AgentName: f.ccAgentName,
+				})
+			}
+			// 2. tool_use events (must arrive before tool_result so hub can UPDATE the row)
+			for _, tc := range completed {
+				_ = cli.SendEvent(attach.EventMsgToolUse, attach.ToolUsePayload{
+					ID:        tc.id,
+					Tool:      tc.name,
+					Input:     json.RawMessage(tc.input),
+					AgentName: f.ccAgentName,
+				})
+			}
+			// 3. tool_result events
+			for _, tc := range completed {
+				_ = cli.SendEvent(attach.EventMsgToolResult, attach.ToolResultPayload{
+					ToolUseID: tc.id,
+					Output:    tc.result,
+					AgentName: f.ccAgentName,
+				})
+			}
+		}
+	}
 }
 
 func (f *subAgentForwarder) OnToolApprovalNeeded(tu tools.ToolUse) bool             { return true }
