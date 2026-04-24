@@ -91,6 +91,55 @@
     }
   }
 
+  // updateAgentCard — targeted in-place update for a single agent card.
+  // Finds the card by data-agent-name and patches status dot, label, avatar pulse,
+  // and tool chip without a server round-trip.
+  function updateAgentCard(name, status, currentTool) {
+    var card = document.querySelector('[data-agent-name="' + name + '"]');
+    if (!card) return;
+
+    // Avatar pulse ring (running → add class, else remove)
+    var avatar = card.querySelector('.flex.items-center.justify-center');
+    if (avatar) {
+      if (status === 'running') {
+        avatar.classList.add('agent-pulse');
+      } else {
+        avatar.classList.remove('agent-pulse');
+      }
+    }
+
+    // Body is second child of card
+    var bodyDiv = card.children[1];
+    if (!bodyDiv) return;
+
+    // Tool chip lives in name+chip row (first child of body)
+    var nameRow = bodyDiv.children[0];
+    if (nameRow) {
+      var chipSpan = nameRow.querySelector('span');
+      if (status === 'running' && currentTool) {
+        if (!chipSpan) {
+          chipSpan = document.createElement('span');
+          chipSpan.style.cssText = 'background:var(--color-toolDim);color:var(--color-tool);font-size:11px;font-weight:600;letter-spacing:0.5px;border-radius:9999px;padding:2px 8px;white-space:nowrap;flex-shrink:0;';
+          nameRow.appendChild(chipSpan);
+        }
+        chipSpan.textContent = currentTool;
+      } else if (chipSpan) {
+        chipSpan.remove();
+      }
+    }
+
+    // Status dot + label row (second child of body)
+    var statusRow = bodyDiv.children[1];
+    if (!statusRow) return;
+    var dot = statusRow.children[0];
+    var label = statusRow.children[1];
+    var color = (status === 'running') ? 'var(--color-brand)'
+              : (status === 'done' || status === 'inactive') ? 'var(--color-textMuted)'
+              : 'var(--color-tool)';
+    if (dot) dot.style.background = color;
+    if (label) { label.textContent = status; label.style.color = color; }
+  }
+
   function showAgentToast(name, status) {
     var icons = { done: '✅', failed: '❌', working: '⚙️', waiting: '⏳' };
     var icon = icons[status] || '🤖';
@@ -189,6 +238,13 @@
       if (isReconnect) {
         if (_reloadTimer) clearTimeout(_reloadTimer);
         _reloadTimer = setTimeout(reloadMessages, 600);
+        // Refresh team list to catch any agent-status events missed while disconnected.
+        if (window.htmx) {
+          htmx.ajax('GET', '/api/sessions/' + sessionId + '/team', {
+            target: '#team-members-list',
+            swap: 'innerHTML'
+          });
+        }
       }
     };
 
@@ -290,7 +346,8 @@
 
         } else if (type === 'agent_status') {
           showAgentToast(data.name, data.status);
-          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
+          // Targeted card update — no full-list refresh needed for each event.
+          updateAgentCard(data.name, data.status, data.current_tool || '');
           if (msgs) {
             var agentIcon = data.status === 'complete' ? '✅' : data.status === 'failed' ? '❌' : data.status === 'working' ? '⚙️' : '⏳';
             var notifId = 'agent-status-' + data.name.replace(/[^a-z0-9]/gi, '-');
