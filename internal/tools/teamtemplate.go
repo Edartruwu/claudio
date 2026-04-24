@@ -9,80 +9,12 @@ import (
 	"github.com/Abraxas-365/claudio/internal/teams"
 )
 
-// ─── SaveTeamTemplate ────────────────────────────────────────────────────────
-
-// SaveTeamTemplateTool saves the current active team's member composition as a
-// reusable template stored at ~/.claudio/team-templates/{name}.json.
-type SaveTeamTemplateTool struct {
-	deferrable
-	Runner  *teams.TeammateRunner
-	Manager *teams.Manager
-}
-
-func (t *SaveTeamTemplateTool) Name() string { return "SaveTeamTemplate" }
-
-func (t *SaveTeamTemplateTool) Description() string {
-	return `Save the current team's member composition as a reusable template.
-
-The template captures each member's name and subagent_type so the same team
-structure can be recreated later with InstantiateTeam.`
-}
-
-func (t *SaveTeamTemplateTool) InputSchema() json.RawMessage {
-	return json.RawMessage(`{
-		"type": "object",
-		"properties": {
-			"name": {
-				"type": "string",
-				"description": "Template name (e.g. 'coding-team', 'research-team'). Used as the filename."
-			}
-		},
-		"required": ["name"]
-	}`)
-}
-
-func (t *SaveTeamTemplateTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
-	var in struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(input, &in); err != nil || in.Name == "" {
-		return &Result{Content: "name is required", IsError: true}, nil
-	}
-
-	teamName := t.Runner.ActiveTeamName()
-	if teamName == "" {
-		return &Result{Content: "no active team — create or join a team first", IsError: true}, nil
-	}
-
-	tmpl, err := t.Manager.SaveAsTemplate(teamName, in.Name)
-	if err != nil {
-		return &Result{Content: fmt.Sprintf("failed to save template: %v", err), IsError: true}, nil
-	}
-
-	var lines []string
-	for _, m := range tmpl.Members {
-		line := fmt.Sprintf("  - %s (%s)", m.Name, m.SubagentType)
-		if m.Model != "" {
-			line += " model=" + m.Model
-		}
-		lines = append(lines, line)
-	}
-	return &Result{Content: fmt.Sprintf("Template %q saved with %d members:\n%s", in.Name, len(tmpl.Members), strings.Join(lines, "\n"))}, nil
-}
-
-func (t *SaveTeamTemplateTool) IsReadOnly() bool                        { return false }
-func (t *SaveTeamTemplateTool) RequiresApproval(_ json.RawMessage) bool { return false }
-
-// ─── InstantiateTeam ─────────────────────────────────────────────────────────
-
-// InstantiateTeamTool creates a team from a saved template, pre-registering all
-// members so the lead can assign work via SpawnTeammate.
 type InstantiateTeamTool struct {
 	deferrable
-	Runner         *teams.TeammateRunner
-	Manager        *teams.Manager
-	GetSessionID   func() string // returns current session ID at execution time
-	InstantiatedTeam string      // name of the team created by this tool (for cleanup on Close)
+	Runner           *teams.TeammateRunner
+	Manager          *teams.Manager
+	GetSessionID     func() string // returns current session ID at execution time
+	InstantiatedTeam string        // name of the team created by this tool (for cleanup on Close)
 }
 
 func (t *InstantiateTeamTool) Name() string { return "InstantiateTeam" }
@@ -132,7 +64,6 @@ func (t *InstantiateTeamTool) Execute(ctx context.Context, input json.RawMessage
 		return &Result{Content: fmt.Sprintf("template not found: %v", err), IsError: true}, nil
 	}
 
-	// Resolve session ID via closure if available.
 	sessionID := ""
 	if t.GetSessionID != nil {
 		sessionID = t.GetSessionID()
@@ -148,7 +79,6 @@ func (t *InstantiateTeamTool) Execute(ctx context.Context, input json.RawMessage
 	}
 
 	if _, err := t.Manager.CreateTeam(teamName, tmpl.Description, sessionID, tmpl.Model); err != nil {
-		// Team may already exist; proceed anyway
 		_ = err
 	}
 	t.InstantiatedTeam = teamName
@@ -157,7 +87,6 @@ func (t *InstantiateTeamTool) Execute(ctx context.Context, input json.RawMessage
 		t.Manager.SetAutoCompactThreshold(teamName, tmpl.AutoCompactThreshold)
 	}
 
-	// Pre-register members so their subagent_type is persisted before work is assigned
 	var roster []string
 	for _, m := range tmpl.Members {
 		model := m.Model

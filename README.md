@@ -1025,7 +1025,7 @@ Core tools are always loaded; deferred tools load on-demand via `ToolSearch` to 
 | **EnterPlanMode** / **ExitPlanMode** | Planning workflow |
 | **EnterWorktree** / **ExitWorktree** | Git worktree isolation |
 | **TaskStop** / **TaskOutput** | Background task control |
-| **TeamCreate** / **TeamDelete** / **SendMessage** | Multi-agent teams |
+| **TeamCreate** / **SendMessage** | Multi-agent teams |
 | **CronCreate** / **CronDelete** / **CronList** | Scheduled recurring tasks |
 | **AskUser** | Ask user structured questions with options |
 
@@ -1302,10 +1302,8 @@ Claudio supports spawning parallel worker agents ("teammates") coordinated by a 
 | Tool | Description |
 |------|-------------|
 | `TeamCreate` | Create a new team (caller becomes lead) |
-| `TeamDelete` | Delete a team — cancels running members, drains, cleans up |
 | `SpawnTeammate` | Spawn a named teammate from a crystallized agent persona |
 | `SendMessage` | Send direct or broadcast messages between agents |
-| `SaveTeamTemplate` | Save the current team's roster as a reusable template |
 | `InstantiateTeam` | Re-create a team from a saved template |
 | `TaskCreate` | Create a tracked task, optionally assigned to an agent |
 | `TaskUpdate` | Update task status / description |
@@ -1316,10 +1314,6 @@ Claudio supports spawning parallel worker agents ("teammates") coordinated by a 
 Save a team once, reuse it forever:
 
 ```bash
-# After building a team manually, save its composition
-SaveTeamTemplate("backend-team")
-# → writes ~/.claudio/team-templates/backend-team.json
-
 # In any future session, restore the full team in one call
 InstantiateTeam("backend-team")
 # → creates the team + pre-registers all members with their subagent_type
@@ -1552,14 +1546,7 @@ Teams are **ephemeral by design** — created for a task, deleted when done. The
 | Team config + inboxes | `~/.claudio/teams/<team>/` | ❌ Deleted |
 | In-memory runner state | Process memory | ❌ Cleared |
 
-`TeamDelete` handles the full cleanup sequence automatically:
-
-1. **Cancels** any still-running members (`KillTeam`)
-2. **Drains** them — waits up to 5 seconds for goroutines to exit (`WaitForTeam`)
-3. **Deletes** the team config and inboxes from disk (`Manager.DeleteTeam`)
-4. **Clears** all in-memory state from the runner — teammate states, mailbox map entries, active team pointer (`CleanupTeam`)
-
-This means you can invoke the same harness repeatedly without state accumulating across runs. Each invocation gets a fresh team with clean inboxes.
+Team cleanup is handled automatically when a harness finishes — cancels running members, drains goroutines, deletes config/inboxes from disk, and clears in-memory state. This means you can invoke the same harness repeatedly without state accumulating across runs. Each invocation gets a fresh team with clean inboxes.
 
 ### Using crystallized agents as teammates
 
