@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -60,6 +61,7 @@ type Hub struct {
 	setAgentFns     map[string]func(agentType string)
 	setTeamFns      map[string]func(teamName string)
 	storage         *Storage
+	eventQueues     map[string]chan attach.Envelope
 	uiBroadcast     chan UIEvent
 	vapidPublicKey  string
 	vapidPrivateKey string
@@ -73,6 +75,7 @@ func NewHub(storage *Storage) *Hub {
 		setAgentFns:  make(map[string]func(agentType string)),
 		setTeamFns:   make(map[string]func(teamName string)),
 		storage:      storage,
+		eventQueues:  make(map[string]chan attach.Envelope),
 		uiBroadcast:  make(chan UIEvent, 256),
 	}
 }
@@ -268,6 +271,33 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 	}
 }
 
+// startSessionWorker spawns a goroutine that drains the per-session event
+// queue, calling processEvent sequentially for each envelope. The goroutine
+// exits when the channel is closed (session disconnect).
+func (h *Hub) startSessionWorker(sessionID string) {
+	h.mu.Lock()
+	ch := make(chan attach.Envelope, 64)
+	h.eventQueues[sessionID] = ch
+	h.mu.Unlock()
+
+	go func() {
+		for ev := range ch {
+			h.processEvent(sessionID, ev)
+		}
+	}()
+}
+
+// stopSessionWorker closes and removes the per-session event queue.
+// Must be called when the session disconnects.
+func (h *Hub) stopSessionWorker(sessionID string) {
+	h.mu.Lock()
+	if ch, ok := h.eventQueues[sessionID]; ok {
+		close(ch)
+		delete(h.eventQueues, sessionID)
+	}
+	h.mu.Unlock()
+}
+
 // HandleSession runs the read loop for a raw *websocket.Conn.
 // It wraps the connection, processes events, and cleans up on close.
 func (h *Hub) HandleSession(rawConn *websocket.Conn) {
@@ -281,6 +311,7 @@ func (h *Hub) handleConn(conn wsConn) {
 	defer func() {
 		conn.close()
 		if sessionID != "" {
+			h.stopSessionWorker(sessionID)
 			h.UnregisterInterrupt(sessionID)
 			h.mu.Lock()
 			delete(h.setAgentFns, sessionID)
@@ -332,6 +363,7 @@ func (h *Hub) handleConn(conn wsConn) {
 	}
 
 	h.Register(sessionID, conn)
+	h.startSessionWorker(sessionID)
 	// Register interrupt fn: sends EventInterrupt envelope to the attached Claudio process.
 	h.RegisterInterrupt(sessionID, func() {
 		_ = conn.writeEnvelope(attach.Envelope{Type: attach.EventInterrupt})
@@ -379,9 +411,13 @@ func (h *Hub) handleConn(conn wsConn) {
 			break
 		}
 
-		// processEvent does DB writes (SQLite) — run async to avoid blocking
-		// the read loop under write pressure. Broadcast is already non-blocking.
-		go h.processEvent(sessionID, ev)
+		// Send to per-session queue for sequential processing.
+		// Worker goroutine drains the queue, ensuring ordered DB writes
+		// (e.g. INSERT before UPDATE for tool_use → tool_result pairs).
+		h.mu.RLock()
+		ch := h.eventQueues[sessionID]
+		h.mu.RUnlock()
+		ch <- ev
 		h.Broadcast(sessionID, ev)
 	}
 }
@@ -395,14 +431,16 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 		if err := env.UnmarshalPayload(&p); err != nil {
 			return
 		}
-		_ = h.storage.InsertMessage(Message{
+		if err := h.storage.InsertMessage(Message{
 			ID:        newID(),
 			SessionID: sessionID,
 			Role:      "assistant",
 			Content:   p.Content,
 			AgentName: p.AgentName,
 			CreatedAt: now,
-		})
+		}); err != nil {
+			log.Printf("hub: InsertMessage (assistant) session=%s: %v", sessionID, err)
+		}
 		h.broadcastAgentLog(sessionID, p.AgentName)
 
 	case attach.EventMsgToolUse:
@@ -414,7 +452,7 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 		if len(p.Input) > 0 && string(p.Input) != "null" {
 			content = p.Tool + ": " + string(p.Input)
 		}
-		_ = h.storage.InsertMessage(Message{
+		if err := h.storage.InsertMessage(Message{
 			ID:        newID(),
 			SessionID: sessionID,
 			Role:      "tool_use",
@@ -422,7 +460,9 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			AgentName: p.AgentName,
 			ToolUseID: p.ID,
 			CreatedAt: now,
-		})
+		}); err != nil {
+			log.Printf("hub: InsertMessage (tool_use) session=%s: %v", sessionID, err)
+		}
 		h.broadcastAgentLog(sessionID, p.AgentName)
 
 	case attach.EventMsgToolResult:
@@ -430,7 +470,9 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 		if err := env.UnmarshalPayload(&p); err != nil {
 			return
 		}
-		_ = h.storage.UpdateMessageOutput(sessionID, p.ToolUseID, p.Output)
+		if err := h.storage.UpdateMessageOutput(sessionID, p.ToolUseID, p.Output); err != nil {
+			log.Printf("hub: UpdateMessageOutput session=%s tool_use_id=%s: %v", sessionID, p.ToolUseID, err)
+		}
 		h.broadcastAgentLog(sessionID, p.AgentName)
 
 	case attach.EventAgentStatus:
@@ -439,7 +481,7 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			return
 		}
 		agentID := fmt.Sprintf("%s:%s", sessionID, p.Name)
-		_ = h.storage.UpsertAgent(Agent{
+		if err := h.storage.UpsertAgent(Agent{
 			ID:            agentID,
 			SessionID:     sessionID,
 			Name:          p.Name,
@@ -449,14 +491,18 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			CallCount:     p.CallCount,
 			ElapsedSecs:   p.ElapsedSecs,
 			UpdatedAt:     now,
-		})
+		}); err != nil {
+			log.Printf("hub: UpsertAgent session=%s agent=%s: %v", sessionID, p.Name, err)
+		}
 		// Persist event for reconnect replay.
 		// Only store status transitions (not periodic heartbeats) to avoid DB bloat.
 		// Heartbeats always have status "working" with no result — terminal events have
 		// status done/failed/waiting or carry a non-empty result/summary.
 		if p.Status != "working" || p.Result != "" || p.Summary != "" {
 			payloadJSON, _ := json.Marshal(p)
-			_ = h.storage.InsertAgentEvent(sessionID, p.Name, p.Status, string(payloadJSON))
+			if err := h.storage.InsertAgentEvent(sessionID, p.Name, p.Status, string(payloadJSON)); err != nil {
+				log.Printf("hub: InsertAgentEvent session=%s agent=%s: %v", sessionID, p.Name, err)
+			}
 		}
 		if p.Status == "done" {
 			go func() {
@@ -490,7 +536,9 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 		if err := env.UnmarshalPayload(&p); err != nil {
 			return
 		}
-		_ = h.storage.UpdateContextTokens(sessionID, p.ContextTokens)
+		if err := h.storage.UpdateContextTokens(sessionID, p.ContextTokens); err != nil {
+			log.Printf("hub: UpdateContextTokens session=%s: %v", sessionID, err)
+		}
 
 	case attach.EventMsgStreamDelta:
 		// transient streaming delta — never persisted
