@@ -103,7 +103,7 @@ func (m *mockHandler) OnCostConfirmNeeded(currentCost, threshold float64) bool {
 // TestEventProxy_TextDelta_AccumulatesAndFlushes: multiple OnTextDelta → single AssistantMsg.
 func TestEventProxy_TextDelta_AccumulatesAndFlushes(t *testing.T) {
 	capture := &capturingClient{Client: nil}
-	proxy := NewEventProxy(nil, capture)
+	proxy := NewEventProxy(nil, capture, "")
 
 	proxy.OnTextDelta("hello ")
 	proxy.OnTextDelta("world")
@@ -137,7 +137,7 @@ func TestEventProxy_TextDelta_AccumulatesAndFlushes(t *testing.T) {
 // TestEventProxy_OnToolUseStart_Forwards: OnToolUseStart → EventMsgToolUse.
 func TestEventProxy_OnToolUseStart_Forwards(t *testing.T) {
 	capture := &capturingClient{Client: nil}
-	proxy := NewEventProxy(nil, capture)
+	proxy := NewEventProxy(nil, capture, "")
 
 	input := json.RawMessage(`{"param":"value"}`)
 	tu := tools.ToolUse{
@@ -172,7 +172,7 @@ func TestEventProxy_OnToolUseStart_Forwards(t *testing.T) {
 
 // TestEventProxy_NilClient_NoOp: nil client + nil inner → no panic.
 func TestEventProxy_NilClient_NoOp(t *testing.T) {
-	proxy := NewEventProxy(nil, nil)
+	proxy := NewEventProxy(nil, nil, "")
 
 	// Should not panic
 	proxy.OnTextDelta("test")
@@ -189,7 +189,7 @@ func TestEventProxy_NilClient_NoOp(t *testing.T) {
 // TestEventProxy_DelegatesTo_Inner: verify inner handler called.
 func TestEventProxy_DelegatesTo_Inner(t *testing.T) {
 	inner := &mockHandler{}
-	proxy := NewEventProxy(inner, nil)
+	proxy := NewEventProxy(inner, nil, "")
 
 	proxy.OnTextDelta("text")
 	if inner.textDeltaCalls != 1 {
@@ -243,7 +243,7 @@ func TestEventProxy_DelegatesTo_Inner(t *testing.T) {
 // TestEventProxy_TextDelta_FlushedOnError: text flushed when OnError called.
 func TestEventProxy_TextDelta_FlushedOnError(t *testing.T) {
 	capture := &capturingClient{Client: nil}
-	proxy := NewEventProxy(nil, capture)
+	proxy := NewEventProxy(nil, capture, "")
 
 	proxy.OnTextDelta("error text")
 	proxy.OnError(nil)
