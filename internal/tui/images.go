@@ -168,6 +168,14 @@ end try`, tmpPath, tmpPath, tmpPath)
 	return base64.StdEncoding.EncodeToString(compressed), mediaType, nil
 }
 
+// imageReadDoneMsg is sent when a background image file read completes.
+type imageReadDoneMsg struct {
+	fileName  string
+	data      string
+	mediaType string
+	err       error
+}
+
 func readClipboardImageLinux() (string, string, error) {
 	// Try xclip first (X11), then wl-paste (Wayland)
 	for _, tool := range []struct {

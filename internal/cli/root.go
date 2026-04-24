@@ -24,7 +24,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/cli/attachclient"
 	"github.com/Abraxas-365/claudio/internal/config"
-	"github.com/Abraxas-365/claudio/internal/plugins"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/query"
 	"github.com/Abraxas-365/claudio/internal/rules"
@@ -277,7 +276,7 @@ func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 	// In headless+attach mode runSinglePrompt is called in a loop — the WS
 	// connection must stay open across turns. runHeadlessAttach owns the close.
 
-	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
+	reg, modelOverride, agentPluginSection := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
@@ -329,8 +328,8 @@ func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 	principalEngine = engine // allow GetMessages closure to resolve
 
 	sys := buildFullSystemPrompt()
-	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
-		sys += "\n\n" + section
+	if agentPluginSection != "" {
+		sys += "\n\n" + agentPluginSection
 	}
 	engine.SetSystem(sys)
 	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
@@ -434,7 +433,7 @@ func runHeadlessAttach(args []string) error {
 	}
 
 	// --- Build ONE persistent engine for the session lifetime ---
-	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
+	reg, modelOverride, agentPluginSection2 := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 
 	// Wire capability-gated tools (e.g. design tools) for headless+attach mode.
 	// In TUI mode this happens in applyAgentPersona; here we do it once at startup.
@@ -515,8 +514,8 @@ func runHeadlessAttach(args []string) error {
 		sys += "\n\n" + buildHeadlessTeamContextBlock(headlessTeamTemplate)
 		sys += "\n\nWhen all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents."
 	}
-	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
-		sys += "\n\n" + section
+	if agentPluginSection2 != "" {
+		sys += "\n\n" + agentPluginSection2
 	}
 	engine.SetSystem(sys)
 	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
@@ -551,8 +550,8 @@ func runHeadlessAttach(args []string) error {
 		updatedSys := buildFullSystemPrompt()
 		updatedSys += "\n\n" + buildHeadlessTeamContextBlock(tmpl)
 		updatedSys += "\n\nWhen all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents."
-		if section := prompts.PluginsSection(extraPluginInfos); section != "" {
-			updatedSys += "\n\n" + section
+		if agentPluginSection2 != "" {
+			updatedSys += "\n\n" + agentPluginSection2
 		}
 		engine.SetSystem(updatedSys)
 	})
@@ -766,9 +765,9 @@ func matchesAnyGlob(name string, patterns []string) bool {
 // applyAgentOverrides clones the registry filtered by the --agent flag's DisallowedTools,
 // and returns the model override string ("" if no agent or no model override) plus any
 // extra plugin infos that should be appended to the system prompt.
-func applyAgentOverrides(registry *tools.Registry, mcpMgr mcpManager) (*tools.Registry, string, []prompts.PluginInfo) {
+func applyAgentOverrides(registry *tools.Registry, mcpMgr mcpManager) (*tools.Registry, string, string) {
 	if flagAgent == "" {
-		return registry, "", nil
+		return registry, "", ""
 	}
 	agentDef := agents.GetAgent(flagAgent)
 	filtered := registry.Clone()
@@ -786,70 +785,14 @@ func applyAgentOverrides(registry *tools.Registry, mcpMgr mcpManager) (*tools.Re
 		}
 	}
 
-	// Merge per-agent extra skills (additive — global skills remain available)
-	if agentDef.ExtraSkillsDir != "" {
-		if skillToolRaw, err := filtered.Get("Skill"); err == nil {
-			if st, ok := skillToolRaw.(*tools.SkillTool); ok {
-				// Clone the existing skills registry so we don't mutate the global one
-				mergedReg := skills.NewRegistry()
-				for _, s := range st.SkillsRegistry.All() {
-					mergedReg.Register(s)
-				}
-				// Load extra skills from the agent's skills dir and merge in
-				extraReg := skills.LoadAll("", agentDef.ExtraSkillsDir)
-				for _, s := range extraReg.All() {
-					mergedReg.Register(s)
-				}
-				// Replace the SkillTool with a fresh instance using the merged registry
-				filtered.Remove("Skill")
-				filtered.Register(&tools.SkillTool{
-						SkillsRegistry: mergedReg,
-						HooksManager:   st.HooksManager,
-						ProjectRoot:    st.ProjectRoot,
-						ExcludedNames:  st.ExcludedNames,
-					})
-			}
-		}
-	}
-
-	// Register per-agent extra plugins (additive)
-	var extraPluginInfos []prompts.PluginInfo
-	if agentDef.ExtraPluginsDir != "" {
-		extraPluginReg := plugins.NewRegistry()
-		extraPluginReg.LoadDir(agentDef.ExtraPluginsDir)
-		// Mirror OutputFilterEnabled from existing proxy tools in the registry
-		outputFilterEnabled := false
-		for _, t := range filtered.All() {
-			if pt, ok := t.(*plugins.PluginProxyTool); ok {
-				outputFilterEnabled = pt.OutputFilterEnabled
-				break
-			}
-		}
-		for _, p := range extraPluginReg.All() {
-			pt := plugins.NewProxyTool(p)
-			pt.OutputFilterEnabled = outputFilterEnabled
-			filtered.Register(pt)
-			extraPluginInfos = append(extraPluginInfos, prompts.PluginInfo{
-				Name:         p.Name,
-				Description:  p.Description,
-				Instructions: p.Instructions,
-			})
-		}
-	}
-
-	// Re-wire ToolSearch so it sees the cloned registry (including any newly
-	// registered agent-specific plugins), not the original pre-clone registry.
-	if ts, err := filtered.Get("ToolSearch"); err == nil {
-		if tst, ok := ts.(*tools.ToolSearchTool); ok {
-			tst.SetRegistry(filtered)
-		}
-	}
+	// Merge extra skills, plugins, and re-wire ToolSearch via core helper.
+	pluginSection := app.ApplyAgentExtras(filtered, agentDef.Type)
 
 	model := agentDef.Model
 	if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
 		model = resolved
 	}
-	return filtered, model, extraPluginInfos
+	return filtered, model, pluginSection
 }
 
 // buildFullSystemPrompt gathers all context (rules, context profiles, memory, output style)
@@ -1111,13 +1054,13 @@ func runInteractive() error {
 		// This avoids polluting the session list with empty sessions.
 	}
 
-	reg, modelOverride, extraPluginInfos := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
+	reg, modelOverride, agentPluginSection3 := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
 	}
-	if section := prompts.PluginsSection(extraPluginInfos); section != "" {
-		systemPrompt += "\n\n" + section
+	if agentPluginSection3 != "" {
+		systemPrompt += "\n\n" + agentPluginSection3
 	}
 
 	// Inject advisor tool for the principal agent when configured.

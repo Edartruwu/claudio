@@ -867,67 +867,11 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		subRegistry.Register(t)
 	}
 
-	// Load per-agent extra skills and plugins when the agent type resolves to a
-	// definition that has ExtraSkillsDir or ExtraPluginsDir set.
+	// Load per-agent extra skills and plugins — delegated to app.ApplyAgentExtras
+	// so the logic lives in one place and all frontends benefit automatically.
 	if agentType := agents.AgentTypeFromContext(ctx); agentType != "" {
-		agentDef := agents.GetAgent(agentType)
-
-		// Merge extra skills (additive — global skills remain available)
-		if agentDef.ExtraSkillsDir != "" {
-			if skillToolRaw, err := subRegistry.Get("Skill"); err == nil {
-				if st, ok := skillToolRaw.(*tools.SkillTool); ok {
-					// Clone the existing skills registry so we don't mutate the global one
-					mergedReg := skills.NewRegistry()
-					for _, s := range st.SkillsRegistry.All() {
-						mergedReg.Register(s)
-					}
-					// Load extra skills from the agent's skills dir and merge in
-					extraReg := skills.LoadAll("", agentDef.ExtraSkillsDir)
-					for _, s := range extraReg.All() {
-						mergedReg.Register(s)
-					}
-					// Replace the SkillTool with a fresh instance using the merged registry
-					subRegistry.Remove("Skill")
-					subRegistry.Register(&tools.SkillTool{
-						SkillsRegistry: mergedReg,
-						HooksManager:   st.HooksManager,
-						ProjectRoot:    st.ProjectRoot,
-						ExcludedNames:  st.ExcludedNames,
-					})
-				}
-			}
-		}
-
-		// Register extra plugins (additive)
-		if agentDef.ExtraPluginsDir != "" {
-			extraPluginReg := plugins.NewRegistry()
-			extraPluginReg.LoadDir(agentDef.ExtraPluginsDir)
-			// Mirror OutputFilterEnabled from existing proxy tools in the registry
-			outputFilterEnabled := false
-			for _, t := range subRegistry.All() {
-				if pt, ok := t.(*plugins.PluginProxyTool); ok {
-					outputFilterEnabled = pt.OutputFilterEnabled
-					break
-				}
-			}
-			for _, p := range extraPluginReg.All() {
-				pt := plugins.NewProxyTool(p)
-				pt.OutputFilterEnabled = outputFilterEnabled
-				subRegistry.Register(pt)
-			}
-			// Inject extra plugin instructions into the system prompt so the
-			// model knows the plugin commands and subcommands.
-			var pluginInfos []prompts.PluginInfo
-			for _, p := range extraPluginReg.All() {
-				pluginInfos = append(pluginInfos, prompts.PluginInfo{
-					Name:         p.Name,
-					Description:  p.Description,
-					Instructions: p.Instructions,
-				})
-			}
-			if section := prompts.PluginsSection(pluginInfos); section != "" {
-				system += "\n\n" + section
-			}
+		if section := ApplyAgentExtras(subRegistry, agentType); section != "" {
+			system += "\n\n" + section
 		}
 	}
 

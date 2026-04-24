@@ -8,6 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
 // Priority levels for notifications.
@@ -146,18 +148,12 @@ func (q *Queue) View(width int) string {
 	}
 
 	if len(q.items) > 5 {
-		lines = append(lines, lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6B7280")).
-			Render(fmt.Sprintf("  +%d more", len(q.items)-5)))
+		lines = append(lines, notifMoreStyle.Render(fmt.Sprintf("  +%d more", len(q.items)-5)))
 	}
 
 	content := strings.Join(lines, "\n")
 
-	// Align to the right side of the screen
-	return lipgloss.NewStyle().
-		Width(width).
-		Align(lipgloss.Right).
-		Render(content)
+	return notifContainerStyle.Width(width).Render(content)
 }
 
 // Count returns the number of notifications in the queue.
@@ -210,37 +206,51 @@ func timeoutForPriority(p Priority) time.Duration {
 	}
 }
 
-func styleForPriority(p Priority) lipgloss.Style {
-	base := lipgloss.NewStyle().
-		Padding(0, 1).
-		MarginBottom(0)
+// Pre-allocated notification styles using theme tokens.
+var (
+	notifMoreStyle      = lipgloss.NewStyle().Foreground(styles.Muted)
+	notifContainerStyle = lipgloss.NewStyle().Align(lipgloss.Right)
 
+	notifStyleLow = lipgloss.NewStyle().
+			Padding(0, 1).
+			Foreground(styles.Muted).
+			Background(styles.Surface)
+
+	notifStyleMedium = lipgloss.NewStyle().
+				Padding(0, 1).
+				Foreground(styles.Text).
+				Background(styles.Surface).
+				Border(lipgloss.NormalBorder(), false, false, false, true).
+				BorderForeground(styles.Secondary)
+
+	notifStyleHigh = lipgloss.NewStyle().
+			Padding(0, 1).
+			Foreground(styles.Warning).
+			Background(styles.Surface).
+			Border(lipgloss.NormalBorder(), false, false, false, true).
+			BorderForeground(styles.Orange).
+			Bold(true)
+
+	notifStyleImmediate = lipgloss.NewStyle().
+				Padding(0, 1).
+				Foreground(styles.Error).
+				Background(styles.Surface).
+				Border(lipgloss.NormalBorder(), false, false, false, true).
+				BorderForeground(styles.Error).
+				Bold(true)
+)
+
+func styleForPriority(p Priority) lipgloss.Style {
 	switch p {
 	case Low:
-		return base.
-			Foreground(lipgloss.Color("#9CA3AF")).
-			Background(lipgloss.Color("#1F2937"))
+		return notifStyleLow
 	case Medium:
-		return base.
-			Foreground(lipgloss.Color("#E5E7EB")).
-			Background(lipgloss.Color("#1F2937")).
-			Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(lipgloss.Color("#3B82F6"))
+		return notifStyleMedium
 	case High:
-		return base.
-			Foreground(lipgloss.Color("#FBBF24")).
-			Background(lipgloss.Color("#1F2937")).
-			Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(lipgloss.Color("#F59E0B")).
-			Bold(true)
+		return notifStyleHigh
 	case Immediate:
-		return base.
-			Foreground(lipgloss.Color("#F87171")).
-			Background(lipgloss.Color("#1F2937")).
-			Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(lipgloss.Color("#EF4444")).
-			Bold(true)
+		return notifStyleImmediate
 	default:
-		return base
+		return notifStyleLow
 	}
 }

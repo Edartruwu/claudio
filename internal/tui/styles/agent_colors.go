@@ -2,6 +2,7 @@ package styles
 
 import (
 	"hash/fnv"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -21,9 +22,25 @@ func AgentColor(name string) lipgloss.Color {
 	return agentPalette[idx]
 }
 
-// AgentStyle returns a lipgloss style for rendering an agent name badge.
+var (
+	agentStyleCache   = make(map[string]lipgloss.Style)
+	agentStyleCacheMu sync.RWMutex
+)
+
+// AgentStyle returns a cached lipgloss style for rendering an agent name badge.
 func AgentStyle(name string) lipgloss.Style {
-	return lipgloss.NewStyle().
+	agentStyleCacheMu.RLock()
+	s, ok := agentStyleCache[name]
+	agentStyleCacheMu.RUnlock()
+	if ok {
+		return s
+	}
+
+	s = lipgloss.NewStyle().
 		Foreground(AgentColor(name)).
 		Bold(true)
+	agentStyleCacheMu.Lock()
+	agentStyleCache[name] = s
+	agentStyleCacheMu.Unlock()
+	return s
 }

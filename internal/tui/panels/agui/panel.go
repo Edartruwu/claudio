@@ -22,6 +22,24 @@ import (
 // spinner frames for running agents.
 var spinFrames = []string{"◐", "◓", "●", "◑"}
 
+// Pre-allocated styles to avoid per-frame allocations in View()/render helpers.
+var (
+	aguiPrimaryBold  = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	aguiDimStyle     = lipgloss.NewStyle().Foreground(styles.Dim)
+	aguiDimItalic    = lipgloss.NewStyle().Foreground(styles.Dim).Italic(true)
+	aguiMutedStyle   = lipgloss.NewStyle().Foreground(styles.Muted)
+	aguiMutedItalic  = lipgloss.NewStyle().Foreground(styles.Muted).Italic(true)
+	aguiSubtlePL2    = lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(2)
+	aguiTextStyle    = lipgloss.NewStyle().Foreground(styles.Text)
+	aguiWarningStyle = lipgloss.NewStyle().Foreground(styles.Warning)
+	aguiWarningBold  = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	aguiSuccessStyle = lipgloss.NewStyle().Foreground(styles.Success)
+	aguiErrorStyle   = lipgloss.NewStyle().Foreground(styles.Error)
+	aguiAquaStyle    = lipgloss.NewStyle().Foreground(styles.Aqua)
+	aguiOrangeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e78a1f"))
+	aguiSubtleBg     = lipgloss.NewStyle().Background(styles.Subtle)
+)
+
 // RefreshMsg triggers a panel refresh (auto-refresh for running agents).
 type RefreshMsg struct{}
 
@@ -530,7 +548,7 @@ func (p *Panel) buildConversationDetail(state *teams.TeammateState) string {
 	// Streaming indicator for running agents.
 	if state.Status == teams.StatusWorking {
 		spinner := spinFrames[p.tick%len(spinFrames)]
-		b.WriteString("\n" + lipgloss.NewStyle().Foreground(styles.Warning).Render("  "+spinner+" streaming") + "\n")
+		b.WriteString("\n" + aguiWarningStyle.Render("  "+spinner+" streaming") + "\n")
 	}
 
 	return b.String()
@@ -541,7 +559,7 @@ func (p *Panel) buildDetailHeader(state *teams.TeammateState, width int) string 
 	var b strings.Builder
 
 	// Line 1: Agent name, status icon, elapsed time
-	nameStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	nameStyle := aguiPrimaryBold
 	if state.Identity.Color != "" {
 		nameStyle = nameStyle.Foreground(lipgloss.Color(state.Identity.Color))
 	}
@@ -557,7 +575,7 @@ func (p *Panel) buildDetailHeader(state *teams.TeammateState, width int) string 
 		} else {
 			d = time.Since(state.StartedAt).Truncate(time.Second)
 		}
-		elapsed = "  " + lipgloss.NewStyle().Foreground(styles.Dim).Render(smartDuration(d))
+		elapsed = "  " + aguiDimStyle.Render(smartDuration(d))
 	}
 
 	statusLabel := agentStatusLabel(state.Status)
@@ -586,14 +604,14 @@ func (p *Panel) buildDetailHeader(state *teams.TeammateState, width int) string 
 		if len(task) > 120 {
 			task = task[:117] + "…"
 		}
-		taskLine := "  " + lipgloss.NewStyle().Foreground(styles.Dim).Italic(true).Render("Task: "+task)
+		taskLine := "  " + aguiDimItalic.Render("Task: "+task)
 		b.WriteString(taskLine)
 		b.WriteString("\n")
 	}
 
 	// Line 4: Error message if failed
 	if state.Status == teams.StatusFailed && state.Error != "" {
-		errorLine := "  " + lipgloss.NewStyle().Foreground(styles.Error).Render("✗ "+state.Error)
+		errorLine := "  " + aguiErrorStyle.Render("✗ "+state.Error)
 		b.WriteString(errorLine)
 		b.WriteString("\n")
 	}
@@ -604,7 +622,7 @@ func (p *Panel) buildDetailHeader(state *teams.TeammateState, width int) string 
 		if len(result) > 200 {
 			result = result[:197] + "…"
 		}
-		resultLine := "  " + lipgloss.NewStyle().Foreground(styles.Success).Render("✓ "+result)
+		resultLine := "  " + aguiSuccessStyle.Render("✓ "+result)
 		b.WriteString(resultLine)
 		b.WriteString("\n")
 	}
@@ -636,7 +654,7 @@ func (p *Panel) buildToolsSection(state *teams.TeammateState, width int) string 
 	}
 
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Foreground(styles.Muted).Render("─── TOOLS ───"))
+	b.WriteString(aguiMutedStyle.Render("─── TOOLS ───"))
 	b.WriteString("\n")
 
 	// Group tool_start and tool_end entries
@@ -678,9 +696,9 @@ func (p *Panel) buildToolsSection(state *teams.TeammateState, width int) string 
 		switch group.status {
 		case "running":
 			spinner := spinFrames[p.tick%len(spinFrames)]
-			statusBadge = lipgloss.NewStyle().Foreground(styles.Warning).Render(spinner)
+			statusBadge = aguiWarningStyle.Render(spinner)
 		case "done":
-			statusBadge = lipgloss.NewStyle().Foreground(styles.Success).Render("✓")
+			statusBadge = aguiSuccessStyle.Render("✓")
 		default:
 			statusBadge = " "
 		}
@@ -688,8 +706,8 @@ func (p *Panel) buildToolsSection(state *teams.TeammateState, width int) string 
 		// Tool name with skill indicator
 		toolNameStyle := lipgloss.NewStyle()
 		if group.name == "Skill" {
-			toolNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e78a1f")) // orange
-			statusBadge = lipgloss.NewStyle().Foreground(lipgloss.Color("#e78a1f")).Render("★")
+			toolNameStyle = aguiOrangeStyle
+			statusBadge = aguiOrangeStyle.Render("★")
 		}
 		toolName := toolNameStyle.Render(group.name)
 
@@ -723,7 +741,7 @@ func (p *Panel) formatConversation(state *teams.TeammateState, rw int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Foreground(styles.Muted).Render("─── CONVERSATION ───"))
+	b.WriteString(aguiMutedStyle.Render("─── CONVERSATION ───"))
 	b.WriteString("\n")
 
 	for _, e := range entries {
@@ -742,7 +760,7 @@ func (p *Panel) formatConversation(state *teams.TeammateState, rw int) string {
 
 		case "message_out":
 			// Message sent out to another agent or back to lead.
-			prefix := lipgloss.NewStyle().Foreground(styles.Aqua).Render("↗ ")
+			prefix := aguiAquaStyle.Render("↗ ")
 			content := wrapContent(e.Content, rw)
 			b.WriteString(prefix + content + "\n\n")
 
@@ -757,7 +775,7 @@ func (p *Panel) formatConversation(state *teams.TeammateState, rw int) string {
 		case "tool_end":
 			if e.Content != "" {
 				b.WriteString(
-					lipgloss.NewStyle().Foreground(styles.Success).Render("  ← ") +
+					aguiSuccessStyle.Render("  ← ") +
 						styles.ToolSummary.Render(e.Content) + "\n\n")
 			}
 
@@ -766,7 +784,7 @@ func (p *Panel) formatConversation(state *teams.TeammateState, rw int) string {
 			if result == "" {
 				result = "done"
 			}
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Success).Render("  ✓ complete") + "\n")
+			b.WriteString(aguiSuccessStyle.Render("  ✓ complete") + "\n")
 			b.WriteString(styles.ToolSummary.Render("  "+result) + "\n\n")
 
 		case "error":
@@ -1160,7 +1178,7 @@ func (p *Panel) renderLeftPane() string {
 
 		// Scroll up indicator.
 		if hiddenAbove > 0 {
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(2).
+			b.WriteString(aguiSubtlePL2.
 				Render(fmt.Sprintf("↑ %d more", hiddenAbove)))
 			b.WriteString("\n")
 		}
@@ -1177,15 +1195,14 @@ func (p *Panel) renderLeftPane() string {
 
 		// Scroll down indicator.
 		if hiddenBelow > 0 {
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(2).
+			b.WriteString(aguiSubtlePL2.
 				Render(fmt.Sprintf("↓ %d more", hiddenBelow)))
 			b.WriteString("\n")
 		}
 	}
 
 	if p.confirming {
-		confirmLine := "\n" + lipgloss.NewStyle().
-			Foreground(styles.Error).Bold(true).
+		confirmLine := "\n" + aguiErrorStyle.Copy().Bold(true).
 			Render(fmt.Sprintf(`  Delete %q? [y/N] `, p.confirmName))
 		b.WriteString(confirmLine)
 	}
@@ -1213,16 +1230,13 @@ func (p *Panel) renderStatusSummary() string {
 
 	var parts []string
 	if working > 0 {
-		parts = append(parts, lipgloss.NewStyle().Foreground(styles.Warning).
-			Render(fmt.Sprintf("%d◐", working)))
+		parts = append(parts, aguiWarningStyle.Render(fmt.Sprintf("%d◐", working)))
 	}
 	if done > 0 {
-		parts = append(parts, lipgloss.NewStyle().Foreground(styles.Success).
-			Render(fmt.Sprintf("%d●", done)))
+		parts = append(parts, aguiSuccessStyle.Render(fmt.Sprintf("%d●", done)))
 	}
 	if failed > 0 {
-		parts = append(parts, lipgloss.NewStyle().Foreground(styles.Error).
-			Render(fmt.Sprintf("%d✗", failed)))
+		parts = append(parts, aguiErrorStyle.Render(fmt.Sprintf("%d✗", failed)))
 	}
 
 	return strings.Join(parts, " ")
@@ -1230,7 +1244,7 @@ func (p *Panel) renderStatusSummary() string {
 
 // renderFilterBar renders the active filter input line.
 func (p *Panel) renderFilterBar(width int) string {
-	prefix := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).Render("/")
+	prefix := aguiWarningBold.Render("/")
 	input := p.filterInput.View()
 	line := " " + prefix + " " + input
 	if lipgloss.Width(line) > width {
@@ -1256,17 +1270,11 @@ func (p *Panel) renderGroupHeader(name string, collapsed bool, width int) string
 			}
 		}
 		arrow = fmt.Sprintf("▸ %s (%d)", name, count)
-		return lipgloss.NewStyle().
-			Foreground(styles.Muted).
-			Bold(true).
-			PaddingLeft(1).
+		return aguiMutedStyle.Copy().Bold(true).PaddingLeft(1).
 			Render(arrow) + "\n"
 	}
 	label := arrow + " " + name
-	return lipgloss.NewStyle().
-		Foreground(styles.Muted).
-		Bold(true).
-		PaddingLeft(1).
+	return aguiMutedStyle.Copy().Bold(true).PaddingLeft(1).
 		Render(label) + "\n"
 }
 
@@ -1288,7 +1296,7 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 	if len(name) > maxNameWidth {
 		name = name[:maxNameWidth-1] + "…"
 	}
-	nameStyle := lipgloss.NewStyle().Foreground(styles.Text)
+	nameStyle := aguiTextStyle
 	if selected {
 		nameStyle = nameStyle.Bold(true)
 	}
@@ -1308,7 +1316,7 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 			d = time.Since(e.state.StartedAt).Truncate(time.Second)
 		}
 		if d > 0 {
-			dur = lipgloss.NewStyle().Foreground(styles.Dim).Render(" " + smartDuration(d))
+			dur = aguiDimStyle.Render(" " + smartDuration(d))
 		}
 	}
 
@@ -1317,13 +1325,13 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 	if e.state != nil {
 		progress := e.state.GetProgress()
 		if progress.ToolCalls > 0 {
-			toolCount = lipgloss.NewStyle().Foreground(styles.Dim).Render(fmt.Sprintf(" %dt", progress.ToolCalls))
+			toolCount = aguiDimStyle.Render(fmt.Sprintf(" %dt", progress.ToolCalls))
 		}
 	}
 
 	line1content := prefix + icon + " " + nameStyle.Render(name) + " " + statusLabel + dur + toolCount
 	if selected {
-		line1content = lipgloss.NewStyle().Background(styles.Subtle).Width(width).Render(line1content)
+		line1content = aguiSubtleBg.Copy().Width(width).Render(line1content)
 	}
 	line1 := line1content + "\n"
 
@@ -1349,9 +1357,9 @@ func (p *Panel) renderAgentLine(e *agentEntry, selected bool, width int) string 
 	if activity == "" {
 		activity = " "
 	}
-	line2content := "  " + lipgloss.NewStyle().Foreground(styles.Muted).Italic(true).Render(activity)
+	line2content := "  " + aguiMutedItalic.Render(activity)
 	if selected {
-		line2content = lipgloss.NewStyle().Background(styles.Subtle).Width(width).Render(line2content)
+		line2content = aguiSubtleBg.Copy().Width(width).Render(line2content)
 	}
 	line2 := line2content + "\n"
 
@@ -1370,14 +1378,14 @@ func (p *Panel) renderRightPane() string {
 	// Title line
 	if p.selectedID != "" && p.runner != nil {
 		if state, ok := p.runner.GetState(p.selectedID); ok {
-			nameStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+			nameStyle := aguiPrimaryBold
 			if state.Identity.Color != "" {
 				nameStyle = nameStyle.Foreground(lipgloss.Color(state.Identity.Color))
 			}
 			agentName := nameStyle.Render(state.Identity.AgentName)
 			teamName := ""
 			if state.TeamName != "" {
-				teamName = "  " + lipgloss.NewStyle().Foreground(styles.Dim).Render(state.TeamName)
+				teamName = "  " + aguiDimStyle.Render(state.TeamName)
 			}
 
 			var statusColor lipgloss.Color
@@ -1413,17 +1421,17 @@ func agentStatusIcon(s teams.MemberStatus, tick int) string {
 	switch s {
 	case teams.StatusWorking:
 		frame := spinFrames[tick%len(spinFrames)]
-		return lipgloss.NewStyle().Foreground(styles.Warning).Render(frame)
+		return aguiWarningStyle.Render(frame)
 	case teams.StatusComplete:
-		return lipgloss.NewStyle().Foreground(styles.Success).Render("✓")
+		return aguiSuccessStyle.Render("✓")
 	case teams.StatusFailed:
-		return lipgloss.NewStyle().Foreground(styles.Error).Render("✗")
+		return aguiErrorStyle.Render("✗")
 	case teams.StatusShutdown:
-		return lipgloss.NewStyle().Foreground(styles.Muted).Render("⊘")
+		return aguiMutedStyle.Render("⊘")
 	case teams.StatusWaitingForInput:
-		return lipgloss.NewStyle().Foreground(styles.Warning).Render("?")
+		return aguiWarningStyle.Render("?")
 	default:
-		return lipgloss.NewStyle().Foreground(styles.Dim).Render("○")
+		return aguiDimStyle.Render("○")
 	}
 }
 
@@ -1441,7 +1449,7 @@ func agentStatusLabel(s teams.MemberStatus) string {
 	default:
 		color = styles.Dim
 	}
-	return lipgloss.NewStyle().Foreground(color).Render(string(s))
+	return lipgloss.NewStyle().Foreground(color).Render(string(s)) // dynamic color, can't hoist
 }
 
 // smartDuration formats a duration concisely.

@@ -581,11 +581,12 @@ var (
 
 // ── Utilities ────────────────────────────────────────────
 
+// separatorLineStyle is pre-allocated for SeparatorLine to avoid per-call allocation.
+var separatorLineStyle = lipgloss.NewStyle().Foreground(SurfaceAlt)
+
 // SeparatorLine returns a horizontal line of the given width.
 func SeparatorLine(width int) string {
-	return lipgloss.NewStyle().
-		Foreground(SurfaceAlt).
-		Render(strings.Repeat("─", width))
+	return separatorLineStyle.Render(strings.Repeat("─", width))
 }
 
 // Sep returns a styled │ separator for the status bar.

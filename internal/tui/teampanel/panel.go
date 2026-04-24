@@ -21,6 +21,22 @@ type RefreshMsg struct{}
 // spinner frames for working agents.
 var spinFrames = []string{"◐", "◓", "●", "◑"}
 
+// Pre-allocated styles to avoid per-frame allocations in View()/renderAgent().
+var (
+	teamDimStyle       = lipgloss.NewStyle().Foreground(styles.Dim)
+	teamDimPL2Style    = lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(2)
+	teamDimItalicStyle = lipgloss.NewStyle().Foreground(styles.Dim).Italic(true)
+	teamMutedStyle     = lipgloss.NewStyle().Foreground(styles.Muted)
+	teamSubtlePL4Style = lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4)
+	teamSuccessStyle   = lipgloss.NewStyle().Foreground(styles.Success)
+	teamErrorStyle     = lipgloss.NewStyle().Foreground(styles.Error)
+	teamMutedIconStyle = lipgloss.NewStyle().Foreground(styles.Muted)
+	teamWarningStyle   = lipgloss.NewStyle().Foreground(styles.Warning)
+	teamDimIconStyle   = lipgloss.NewStyle().Foreground(styles.Dim)
+	teamSubtleStyle    = lipgloss.NewStyle().Foreground(styles.Subtle)
+	teamMailStyle      = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).PaddingLeft(2)
+)
+
 // Panel is the agent team side panel implementing panels.Panel.
 type Panel struct {
 	manager *teams.Manager
@@ -295,7 +311,7 @@ func (p *Panel) View() string {
 	if waiting > 0 {
 		summaryText += fmt.Sprintf(", %d waiting", waiting)
 	}
-	summary := lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(2).Render(summaryText)
+	summary := teamDimPL2Style.Render(summaryText)
 	b.WriteString(summary)
 	b.WriteString("\n\n")
 
@@ -335,12 +351,12 @@ func (p *Panel) View() string {
 
 	// Scroll indicators
 	if startIdx > 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+		b.WriteString(teamSubtlePL4Style.
 			Render(fmt.Sprintf("↑ %d more", startIdx)))
 		b.WriteString("\n")
 	}
 	if endIdx < len(p.agents) {
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+		b.WriteString(teamSubtlePL4Style.
 			Render(fmt.Sprintf("↓ %d more", len(p.agents)-endIdx)))
 		b.WriteString("\n")
 	}
@@ -361,8 +377,7 @@ func (p *Panel) View() string {
 				b.WriteString(styles.SeparatorLine(p.width))
 				b.WriteString("\n")
 				label := fmt.Sprintf("✉ Mailbox (%d)", len(pendingMsgs))
-				mailLabel := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).PaddingLeft(2).
-					Render(label)
+				mailLabel := teamMailStyle.Render(label)
 				b.WriteString(mailLabel)
 				b.WriteString("\n")
 
@@ -376,7 +391,7 @@ func (p *Panel) View() string {
 					p.renderMailMessage(&b, msg)
 				}
 				if start > 0 {
-					b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtle).PaddingLeft(4).
+					b.WriteString(teamSubtlePL4Style.
 						Render(fmt.Sprintf("… %d older pending", start)))
 					b.WriteString("\n")
 				}
@@ -437,24 +452,24 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 		} else {
 			d = time.Since(a.state.StartedAt).Truncate(time.Second)
 		}
-		dur = lipgloss.NewStyle().Foreground(styles.Dim).Render(fmt.Sprintf(" %s", smartDuration(d)))
+		dur = teamDimStyle.Render(fmt.Sprintf(" %s", smartDuration(d)))
 	}
 
 	statusLabel := ""
 	switch a.status {
 	case teams.StatusComplete:
-		statusLabel = lipgloss.NewStyle().Foreground(styles.Success).Render(" ✓")
+		statusLabel = teamSuccessStyle.Render(" ✓")
 	case teams.StatusFailed:
-		statusLabel = lipgloss.NewStyle().Foreground(styles.Error).Render(" ✗")
+		statusLabel = teamErrorStyle.Render(" ✗")
 	case teams.StatusShutdown:
-		statusLabel = lipgloss.NewStyle().Foreground(styles.Muted).Render(" ⊘")
+		statusLabel = teamMutedIconStyle.Render(" ⊘")
 	case teams.StatusWaitingForInput:
-		statusLabel = lipgloss.NewStyle().Foreground(styles.Warning).Render(" ?")
+		statusLabel = teamWarningStyle.Render(" ?")
 	}
 
 	modelTag := ""
 	if a.model != "" {
-		modelTag = lipgloss.NewStyle().Foreground(styles.Dim).Render(" (" + a.model + ")")
+		modelTag = teamDimStyle.Render(" (" + a.model + ")")
 	}
 
 	lines.WriteString(prefix + icon + " " + nameStyle.Render(a.name) + modelTag + statusLabel + dur + "\n")
@@ -469,12 +484,12 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 		if len(preview) > maxW {
 			preview = preview[:maxW-1] + "…"
 		}
-		lines.WriteString("    " + lipgloss.NewStyle().Foreground(styles.Dim).Italic(true).Render(preview) + "\n")
+		lines.WriteString("    " + teamDimItalicStyle.Render(preview) + "\n")
 	}
 
 	// Worktree path
 	if a.worktree != "" {
-		wtLabel := lipgloss.NewStyle().Foreground(styles.Dim).Render("    ⎇ " + a.worktree)
+		wtLabel := teamDimStyle.Render("    ⎇ " + a.worktree)
 		lines.WriteString(wtLabel + "\n")
 	}
 
@@ -493,11 +508,11 @@ func (p *Panel) renderAgent(a *agentItem, selected bool) string {
 			if len(activity) > maxW {
 				activity = activity[:maxW-1] + "…"
 			}
-			lines.WriteString("    " + lipgloss.NewStyle().Foreground(styles.Muted).Render(activity) + "\n")
+			lines.WriteString("    " + teamMutedStyle.Render(activity) + "\n")
 		}
 
 		// Third line: stats
-		stats := lipgloss.NewStyle().Foreground(styles.Subtle).
+		stats := teamSubtleStyle.
 			Render(fmt.Sprintf("    %dt", toolCalls))
 		lines.WriteString(stats + "\n")
 	}
@@ -511,14 +526,14 @@ func (p *Panel) renderMailMessage(b *strings.Builder, msg teams.Message) {
 		fromColor = styles.Dim
 	}
 	fromStyle := lipgloss.NewStyle().Foreground(fromColor).Bold(true)
-	arrow := lipgloss.NewStyle().Foreground(styles.Dim).Render(" → ")
-	toStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
+	arrow := teamDimStyle.Render(" → ")
+	toStyle := teamSubtleStyle
 
 	header := "    " + fromStyle.Render(msg.From) + arrow + toStyle.Render(msg.To)
 
 	// Timestamp
 	ago := time.Since(msg.Timestamp).Truncate(time.Second)
-	ts := lipgloss.NewStyle().Foreground(styles.Dim).Render(" " + smartDuration(ago))
+	ts := teamDimStyle.Render(" " + smartDuration(ago))
 	header += ts
 
 	b.WriteString(header + "\n")
@@ -535,7 +550,7 @@ func (p *Panel) renderMailMessage(b *strings.Builder, msg teams.Message) {
 	if len(preview) > maxW {
 		preview = preview[:maxW-1] + "…"
 	}
-	b.WriteString("      " + lipgloss.NewStyle().Foreground(styles.Muted).Render(preview) + "\n")
+	b.WriteString("      " + teamMutedStyle.Render(preview) + "\n")
 }
 
 // TeamSummary returns a one-line summary for the status bar.
@@ -580,17 +595,17 @@ func statusIcon(s teams.MemberStatus, tick int) string {
 	switch s {
 	case teams.StatusWorking:
 		frame := spinFrames[tick%len(spinFrames)]
-		return lipgloss.NewStyle().Foreground(styles.Warning).Render(frame)
+		return teamWarningStyle.Render(frame)
 	case teams.StatusComplete:
-		return lipgloss.NewStyle().Foreground(styles.Success).Render("●")
+		return teamSuccessStyle.Render("●")
 	case teams.StatusFailed:
-		return lipgloss.NewStyle().Foreground(styles.Error).Render("✗")
+		return teamErrorStyle.Render("✗")
 	case teams.StatusShutdown:
-		return lipgloss.NewStyle().Foreground(styles.Muted).Render("⊘")
+		return teamMutedStyle.Render("⊘")
 	case teams.StatusWaitingForInput:
-		return lipgloss.NewStyle().Foreground(styles.Warning).Render("?")
+		return teamWarningStyle.Render("?")
 	default:
-		return lipgloss.NewStyle().Foreground(styles.Dim).Render("○")
+		return teamDimStyle.Render("○")
 	}
 }
 
