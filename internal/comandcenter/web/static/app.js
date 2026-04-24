@@ -5,6 +5,7 @@
   var isConnecting = false; // guard: prevents concurrent initWS calls
   var reconnectTimer = null; // hoisted — cleared/set from any closure
   var _initWSFn = null;     // always points to current-session initWS
+  var reconnectAttempt = 0; // exponential backoff counter; reset on successful connect
 
   function startChat(sessionId) {
     if (!sessionId) return;
@@ -229,6 +230,7 @@
     ws.onopen = function () {
       isConnecting = false;
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      reconnectAttempt = 0;
       var isReconnect = _hadConnected && !wsConnected;
       _hadConnected = true;
       wsConnected = true;
@@ -420,7 +422,9 @@
       if (reconnectTimer) clearTimeout(reconnectTimer);
       // Don't reconnect if a newer startChat call has taken over.
       if (_myGen !== _gen) return;
-      reconnectTimer = setTimeout(initWS, 3000);
+      var delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 60000);
+      reconnectAttempt++;
+      reconnectTimer = setTimeout(initWS, delay);
     };
   }
 
@@ -439,6 +443,7 @@
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible' && !wsConnected && !isConnecting) {
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        reconnectAttempt = 0;
         if (_initWSFn) _initWSFn();
       }
     });
@@ -447,6 +452,7 @@
     window.addEventListener('online', function() {
       if (!wsConnected && !isConnecting) {
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        reconnectAttempt = 0;
         if (_initWSFn) _initWSFn();
       }
     });
