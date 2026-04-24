@@ -425,20 +425,7 @@ func runHeadlessAttach(args []string) error {
 		}
 	}
 
-	// --- Gap 1: Wire OnSetTeam for dynamic team selection in headless mode ---
-	attachClient.OnSetTeam(func(payload attach.SetTeamPayload) {
-		templatesDir := config.GetPaths().TeamTemplates
-		tmpl, err := teams.GetTemplate(templatesDir, payload.TeamName)
-		if err != nil {
-			log.Printf("set_team: team template %q not found", payload.TeamName)
-			return
-		}
-		sessionID := ""
-		if cur := sess.Current(); cur != nil {
-			sessionID = cur.ID
-		}
-		instantiateTeamDirect(tmpl, sessionID)
-	})
+	// OnSetTeam is wired after engine creation so the closure can capture engine.
 
 	// --- Load history from DB into engine ---
 	var initialMsgs []api.Message
@@ -461,6 +448,16 @@ func runHeadlessAttach(args []string) error {
 		pusher := attachclient.NewAttachScreenshotPusher(attachClient)
 		tools.RegisterCapabilityTools(reg, caps, appInstance.API, pusher, sess.Current().ID, appInstance.Config)
 	}
+
+	// Keep a pristine base registry (includes team tools). Active registry starts
+	// without team tools — they are injected back only when a team is activated.
+	baseReg := reg.Clone()
+	if headlessTeamTemplate == nil {
+		for _, name := range tools.TeamToolNames {
+			reg.Remove(name)
+		}
+	}
+
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
@@ -524,6 +521,42 @@ func runHeadlessAttach(args []string) error {
 	engine.SetSystem(sys)
 	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
 	engine.SetSystemContext(buildSystemContext())
+
+	// --- Wire OnSetTeam for dynamic team selection in headless mode ---
+	// Placed after engine creation so the closure can capture engine + baseReg.
+	attachClient.OnSetTeam(func(payload attach.SetTeamPayload) {
+		templatesDir := config.GetPaths().TeamTemplates
+		tmpl, err := teams.GetTemplate(templatesDir, payload.TeamName)
+		if err != nil {
+			log.Printf("set_team: team template %q not found", payload.TeamName)
+			return
+		}
+		sessionID := ""
+		if cur := sess.Current(); cur != nil {
+			sessionID = cur.ID
+		}
+		instantiateTeamDirect(tmpl, sessionID)
+
+		// Restore team tools into the active registry now that a team is active.
+		for _, name := range tools.TeamToolNames {
+			if _, err := reg.Get(name); err != nil { // skip if already present
+				if t, err2 := baseReg.Get(name); err2 == nil {
+					reg.Register(t)
+				}
+			}
+		}
+		engine.SetRegistry(reg)
+
+		// Rebuild system prompt to include team context block.
+		updatedSys := buildFullSystemPrompt()
+		updatedSys += "\n\n" + buildHeadlessTeamContextBlock(tmpl)
+		updatedSys += "\n\nWhen all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents."
+		if section := prompts.PluginsSection(extraPluginInfos); section != "" {
+			updatedSys += "\n\n" + section
+		}
+		engine.SetSystem(updatedSys)
+	})
+
 	if len(initialMsgs) > 0 {
 		engine.SetMessages(initialMsgs)
 	}
