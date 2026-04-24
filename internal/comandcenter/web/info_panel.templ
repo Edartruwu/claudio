@@ -259,7 +259,7 @@ templ TabTeam(data InfoPageData) {
 		id="team-members-list"
 		class="flex flex-col gap-2"
 		hx-get={ fmt.Sprintf("/api/sessions/%s/team", data.Session.ID) }
-		hx-trigger="refresh from:body"
+		hx-trigger="refresh from:body, every 30s"
 		hx-target="#team-members-list"
 		hx-swap="innerHTML"
 	>

@@ -55,175 +55,188 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" style=\"background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;\" onclick=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" data-agent-name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var3 templ.ComponentScript = templ.JSFuncCall("ccOpenAgentLogs", agent.Name, sessionID)
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3.Call)
+			var templ_7745c5c3_Var3 string
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 15, Col: 31}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" onmouseover=\"this.style.background='var(--color-surfaceHigh)'\" onmouseout=\"this.style.background='var(--color-surface)'\"><!-- Avatar with optional pulse ring when running -->")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" style=\"background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;\" onclick=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var4 = []any{agentAvatarClass(agent.Status)}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var4...)
+			var templ_7745c5c3_Var4 templ.ComponentScript = templ.JSFuncCall("ccOpenAgentLogs", agent.Name, sessionID)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4.Call)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" onmouseover=\"this.style.background='var(--color-surfaceHigh)'\" onmouseout=\"this.style.background='var(--color-surface)'\"><!-- Avatar with optional pulse ring when running -->")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var5 string
-			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var4).String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 1, Col: 0}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+			var templ_7745c5c3_Var5 = []any{agentAvatarClass(agent.Status)}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var5...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" style=\"width:40px;height:40px;border-radius:9999px;background:var(--color-surfaceHigh);color:var(--color-brand);font-size:14px;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var6 string
-			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(FirstChar(agent.Name))
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var5).String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 25, Col: 27}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 1, Col: 0}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><!-- Card body --><div style=\"flex:1;min-width:0;\"><!-- Name + tool chip row --><div style=\"display:flex;align-items:center;gap:8px;\"><p style=\"color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" style=\"width:40px;height:40px;border-radius:9999px;background:var(--color-surfaceHigh);color:var(--color-brand);font-size:14px;\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
-			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Name)
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(FirstChar(agent.Name))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 31, Col: 149}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 26, Col: 27}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><!-- Card body --><div style=\"flex:1;min-width:0;\"><!-- Name + tool chip row --><div style=\"display:flex;align-items:center;gap:8px;\"><p style=\"color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var8 string
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 32, Col: 149}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if agent.Status == "running" && agent.CurrentTool != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<span style=\"background:var(--color-toolDim);color:var(--color-tool);font-size:11px;font-weight:600;letter-spacing:0.5px;border-radius:9999px;padding:2px 8px;white-space:nowrap;flex-shrink:0;\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var8 string
-				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(agent.CurrentTool)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 33, Col: 218}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</span>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div><!-- Status dot + label --><div style=\"display:flex;align-items:center;gap:6px;margin-top:4px;\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if agent.Status == "running" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-brand);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-brand);\">running</span>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else if agent.Status == "done" || agent.Status == "inactive" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-textMuted);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-textMuted);\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span style=\"background:var(--color-toolDim);color:var(--color-tool);font-size:11px;font-weight:600;letter-spacing:0.5px;border-radius:9999px;padding:2px 8px;white-space:nowrap;flex-shrink:0;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
-				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Status)
+				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(agent.CurrentTool)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 43, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 34, Col: 218}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-tool);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-tool);\">")
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div><!-- Status dot + label --><div style=\"display:flex;align-items:center;gap:6px;margin-top:4px;\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if agent.Status == "running" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-brand);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-brand);\">running</span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else if agent.Status == "done" || agent.Status == "inactive" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-textMuted);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-textMuted);\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 46, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 44, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div><!-- Metrics: call count + elapsed (hidden when callCount == 0) -->")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if agent.CallCount > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<p style=\"font-size:13px;color:var(--color-textMuted);margin:4px 0 0;\">⚡ ")
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-tool);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-tool);\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var11 string
-				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(agent.CallCount))
+				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 51, Col: 103}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 47, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " calls · ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div><!-- Metrics: call count + elapsed (hidden when callCount == 0) -->")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if agent.CallCount > 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<p style=\"font-size:13px;color:var(--color-textMuted);margin:4px 0 0;\">⚡ ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
-				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(formatElapsed(agent.ElapsedSecs))
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(agent.CallCount))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 51, Col: 149}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 52, Col: 103}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " calls · ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var13 string
+				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(formatElapsed(agent.ElapsedSecs))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 52, Col: 149}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(agents) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 0;gap:8px;\"><svg width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" style=\"color:var(--color-textMuted);\"><circle cx=\"12\" cy=\"8\" r=\"4\"></circle> <path d=\"M4 20c0-4 3.6-7 8-7s8 3 8 7\"></path></svg> <span style=\"font-size:14px;color:var(--color-textMuted);\">No agents running</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 0;gap:8px;\"><svg width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" style=\"color:var(--color-textMuted);\"><circle cx=\"12\" cy=\"8\" r=\"4\"></circle> <path d=\"M4 20c0-4 3.6-7 8-7s8 3 8 7\"></path></svg> <span style=\"font-size:14px;color:var(--color-textMuted);\">No agents running</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
