@@ -150,6 +150,76 @@ func TestApp_ClearHistory_DeletesMessages(t *testing.T) {
 	}
 }
 
+// TestFanout_AgentStatusEventReachesHub verifies that SubscribeAgentEvents routes
+// EventAgentStatus from the bus to broadcastFn with the correct sessionID and envelope type.
+func TestFanout_AgentStatusEventReachesHub(t *testing.T) {
+	b := bus.New()
+	a := &App{Bus: b}
+
+	type received struct {
+		sessionID string
+		env       attach.Envelope
+	}
+	ch := make(chan received, 4)
+	a.SubscribeAgentEvents(func(sessionID string, env attach.Envelope) {
+		ch <- received{sessionID: sessionID, env: env}
+	})
+
+	payload, _ := json.Marshal(attach.AgentStatusPayload{Name: "worker", Status: "done"})
+	b.Publish(bus.Event{
+		Type:      attach.EventAgentStatus,
+		SessionID: "sess-fanout-a",
+		Payload:   payload,
+	})
+
+	select {
+	case got := <-ch:
+		if got.sessionID != "sess-fanout-a" {
+			t.Errorf("sessionID = %q, want %q", got.sessionID, "sess-fanout-a")
+		}
+		if got.env.Type != attach.EventAgentStatus {
+			t.Errorf("env.Type = %q, want %q", got.env.Type, attach.EventAgentStatus)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: EventAgentStatus not delivered to broadcastFn")
+	}
+}
+
+// TestFanout_TeamChangedEventReachesHub verifies that SubscribeAgentEvents routes
+// EventTeamChanged from the bus to broadcastFn with the correct sessionID and envelope type.
+func TestFanout_TeamChangedEventReachesHub(t *testing.T) {
+	b := bus.New()
+	a := &App{Bus: b}
+
+	type received struct {
+		sessionID string
+		env       attach.Envelope
+	}
+	ch := make(chan received, 4)
+	a.SubscribeAgentEvents(func(sessionID string, env attach.Envelope) {
+		ch <- received{sessionID: sessionID, env: env}
+	})
+
+	payload, _ := json.Marshal(attach.TeamChangedPayload{SessionID: "sess-fanout-b", TeamTemplate: "go-team"})
+	b.Publish(bus.Event{
+		Type:      attach.EventTeamChanged,
+		SessionID: "sess-fanout-b",
+		Payload:   payload,
+	})
+
+	select {
+	case got := <-ch:
+		if got.sessionID != "sess-fanout-b" {
+			t.Errorf("sessionID = %q, want %q", got.sessionID, "sess-fanout-b")
+		}
+		if got.env.Type != attach.EventTeamChanged {
+			t.Errorf("env.Type = %q, want %q", got.env.Type, attach.EventTeamChanged)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: EventTeamChanged not delivered to broadcastFn")
+	}
+}
+
 // TestApp_InjectMessage_ConcurrentReceives verifies the channel can be read concurrently.
 func TestApp_InjectMessage_ConcurrentReceives(t *testing.T) {
 	app := &App{

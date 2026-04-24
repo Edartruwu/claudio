@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1050,13 +1051,17 @@ func TestHandleSendMessage_Compact_ReadsNativeMessages(t *testing.T) {
 
 	seedNativeTables(t, storage, sid)
 
-	// Insert 2 native messages — do NOT insert any cc_messages.
-	for _, content := range []string{"native-msg-a", "native-msg-b"} {
-		if err := storage.ExecRaw(
-			`INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)`,
-			sid, "user", content,
-		); err != nil {
-			t.Fatalf("insert native message: %v", err)
+	// Insert 2 cc_messages so handleCompact (which reads from cc_messages) finds data
+	// and reaches the "no API client" 503 path rather than "Nothing to compact" 202.
+	for i, content := range []string{"cc-msg-a", "cc-msg-b"} {
+		if err := storage.InsertMessage(cc.Message{
+			ID:        fmt.Sprintf("msg-%d", i),
+			SessionID: sid,
+			Role:      "user",
+			Content:   content,
+			CreatedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("insert cc message: %v", err)
 		}
 	}
 
