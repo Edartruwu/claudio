@@ -17,6 +17,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/plugins"
 	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/api"
@@ -1847,7 +1848,9 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID, agentCfg)
 	applySkillFiltering(filtered, msg.Capabilities, agentCfg, m.skills)
-	mergeAgentExtraSkills(filtered, msg.AgentType)
+	if pluginSection := mergeAgentExtras(filtered, msg.AgentType); pluginSection != "" {
+		base += "\n\n" + pluginSection
+	}
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -2036,7 +2039,9 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID2, startupCfg)
 	applySkillFiltering(filtered, msg.Capabilities, startupCfg, m.skills)
-	mergeAgentExtraSkills(filtered, msg.AgentType)
+	if pluginSection := mergeAgentExtras(filtered, msg.AgentType); pluginSection != "" {
+		base += "\n\n" + pluginSection
+	}
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -2059,6 +2064,14 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 // registerCapabilityTools delegates to the shared tools.RegisterCapabilityTools.
 func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client, pusher tools.ScreenshotPusher, sessionID string, cfg *config.Settings) {
 	tools.RegisterCapabilityTools(registry, capabilities, client, pusher, sessionID, cfg)
+}
+
+// mergeAgentExtras loads ExtraSkillsDir and ExtraPluginsDir for the given agent
+// type into registry. Returns any plugin system-prompt section to append to base.
+// Must be called AFTER applySkillFiltering so extra skills stack on top.
+func mergeAgentExtras(registry *tools.Registry, agentType string) string {
+	mergeAgentExtraSkills(registry, agentType)
+	return mergeAgentExtraPlugins(registry, agentType)
 }
 
 // mergeAgentExtraSkills loads extra skills from the agent's ExtraSkillsDir (if any)
@@ -2095,6 +2108,45 @@ func mergeAgentExtraSkills(registry *tools.Registry, agentType string) {
 		ProjectRoot:    st.ProjectRoot,
 		ExcludedNames:  st.ExcludedNames,
 	})
+}
+
+// mergeAgentExtraPlugins loads extra plugins from the agent's ExtraPluginsDir
+// into registry and returns any plugin system-prompt section to append.
+func mergeAgentExtraPlugins(registry *tools.Registry, agentType string) string {
+	if agentType == "" {
+		return ""
+	}
+	agentDef := agents.GetAgent(agentType)
+	if agentDef.ExtraPluginsDir == "" {
+		return ""
+	}
+	extraPluginReg := plugins.NewRegistry()
+	extraPluginReg.LoadDir(agentDef.ExtraPluginsDir)
+	outputFilterEnabled := false
+	for _, t := range registry.All() {
+		if pt, ok := t.(*plugins.PluginProxyTool); ok {
+			outputFilterEnabled = pt.OutputFilterEnabled
+			break
+		}
+	}
+	var pluginInfos []prompts.PluginInfo
+	for _, p := range extraPluginReg.All() {
+		pt := plugins.NewProxyTool(p)
+		pt.OutputFilterEnabled = outputFilterEnabled
+		registry.Register(pt)
+		pluginInfos = append(pluginInfos, prompts.PluginInfo{
+			Name:         p.Name,
+			Description:  p.Description,
+			Instructions: p.Instructions,
+		})
+	}
+	// Re-wire ToolSearch so it sees the newly registered plugin tools.
+	if ts, err := registry.Get("ToolSearch"); err == nil {
+		if tst, ok := ts.(*tools.ToolSearchTool); ok {
+			tst.SetRegistry(registry)
+		}
+	}
+	return prompts.PluginsSection(pluginInfos)
 }
 
 // applySkillFiltering updates the SkillTool inside toolRegistry with a filtered
