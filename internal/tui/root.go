@@ -176,6 +176,7 @@ type Model struct {
 	planModeActive      bool   // true while the AI is in plan mode (EnterPlanMode called)
 	planFilePath        string // path of the current plan file (set by EnterPlanMode)
 	planApprovalCursor  int    // selected option in the plan approval dialog (0-3)
+	planContentCache    string // cached plan file content (loaded once in Update, used by View)
 	tooSmall            bool   // true if terminal is too small (< 60×20)
 
 	// Rate limit state
@@ -1338,21 +1339,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cwd, _ := os.Getwd()
 				absPath = filepath.Join(cwd, absPath)
 			}
-			data, mediaType, err := ReadImageFile(absPath)
-			if err != nil {
-				m.addMessage(ChatMessage{Type: MsgError, Content: "Image: " + err.Error()})
-				m.refreshViewport()
-			} else {
-				val := m.prompt.Value()
-				atIdx := strings.LastIndex(val, "@")
-				if atIdx >= 0 {
-					m.prompt.SetValue(val[:atIdx])
-				}
-				m.prompt.AddImage(filepath.Base(msg.Path), mediaType, data)
-				m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("📎 Attached %s", filepath.Base(msg.Path))})
-				m.refreshViewport()
+			fileName := filepath.Base(msg.Path)
+			return m, func() tea.Msg {
+				data, mediaType, err := ReadImageFile(absPath)
+				return imageReadDoneMsg{fileName: fileName, data: data, mediaType: mediaType, err: err}
 			}
-			return m, nil
 		}
 		// Regular file: insert path as @mention
 		val := m.prompt.Value()
@@ -1537,6 +1528,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case planEditorFinishedMsg:
 		// Restore the plan approval dialog after the editor exits.
 		m.focus = FocusPlanApproval
+		// Re-cache plan content (user may have edited it).
+		if m.planFilePath != "" {
+			if raw, err := os.ReadFile(m.planFilePath); err == nil {
+				m.planContentCache = string(raw)
+			}
+		}
 		if msg.err != nil {
 			m.addMessage(ChatMessage{Type: MsgError, Content: "Editor: " + msg.err.Error()})
 			m.refreshViewport()
@@ -1558,6 +1555,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = FocusPrompt
 			}
 		}
+		return m, nil
+
+	case imageReadDoneMsg:
+		if msg.err != nil {
+			m.addMessage(ChatMessage{Type: MsgError, Content: "Image: " + msg.err.Error()})
+		} else {
+			val := m.prompt.Value()
+			atIdx := strings.LastIndex(val, "@")
+			if atIdx >= 0 {
+				m.prompt.SetValue(val[:atIdx])
+			}
+			m.prompt.AddImage(msg.fileName, msg.mediaType, msg.data)
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("📎 Attached %s", msg.fileName)})
+		}
+		m.refreshViewport()
+		return m, nil
+
+	case permissionRuleSavedMsg:
+		// Disk persistence completed — nothing to do.
 		return m, nil
 
 	case timerTickMsg:
@@ -1831,6 +1847,7 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID, agentCfg)
 	applySkillFiltering(filtered, msg.Capabilities, agentCfg, m.skills)
+	mergeAgentExtraSkills(filtered, msg.AgentType)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -2019,6 +2036,7 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID2, startupCfg)
 	applySkillFiltering(filtered, msg.Capabilities, startupCfg, m.skills)
+	mergeAgentExtraSkills(filtered, msg.AgentType)
 
 	// Apply model override (resolve shortcuts like "sonnet" → full model ID)
 	if msg.Model != "" {
@@ -2041,6 +2059,42 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 // registerCapabilityTools delegates to the shared tools.RegisterCapabilityTools.
 func registerCapabilityTools(registry *tools.Registry, capabilities []string, client *api.Client, pusher tools.ScreenshotPusher, sessionID string, cfg *config.Settings) {
 	tools.RegisterCapabilityTools(registry, capabilities, client, pusher, sessionID, cfg)
+}
+
+// mergeAgentExtraSkills loads extra skills from the agent's ExtraSkillsDir (if any)
+// and merges them into the SkillTool inside registry. Must be called AFTER
+// applySkillFiltering so the extra skills are added on top of the filtered set.
+func mergeAgentExtraSkills(registry *tools.Registry, agentType string) {
+	if agentType == "" {
+		return
+	}
+	agentDef := agents.GetAgent(agentType)
+	if agentDef.ExtraSkillsDir == "" {
+		return
+	}
+	skillToolRaw, err := registry.Get("Skill")
+	if err != nil {
+		return
+	}
+	st, ok := skillToolRaw.(*tools.SkillTool)
+	if !ok {
+		return
+	}
+	mergedReg := skills.NewRegistry()
+	for _, s := range st.SkillsRegistry.All() {
+		mergedReg.Register(s)
+	}
+	extraReg := skills.LoadAll("", agentDef.ExtraSkillsDir)
+	for _, s := range extraReg.All() {
+		mergedReg.Register(s)
+	}
+	registry.Remove("Skill")
+	registry.Register(&tools.SkillTool{
+		SkillsRegistry: mergedReg,
+		HooksManager:   st.HooksManager,
+		ProjectRoot:    st.ProjectRoot,
+		ExcludedNames:  st.ExcludedNames,
+	})
 }
 
 // applySkillFiltering updates the SkillTool inside toolRegistry with a filtered
@@ -2578,6 +2632,12 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			}
 			m.focus = FocusPlanApproval
 			m.planApprovalCursor = 0
+			// Cache plan content once so View() never does disk I/O.
+			if m.planFilePath != "" {
+				if raw, err := os.ReadFile(m.planFilePath); err == nil {
+					m.planContentCache = string(raw)
+				}
+			}
 
 			m.refreshViewport()
 			return m, m.waitForEvent()
@@ -3608,24 +3668,22 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 	var rows []string
 	rows = append(rows, title, "")
 
-	// Show a truncated preview of the plan file content (max 10 lines).
-	if m.planFilePath != "" {
-		if raw, err := os.ReadFile(m.planFilePath); err == nil && len(raw) > 0 {
-			lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
-			const maxPreviewLines = 10
-			truncated := false
-			if len(lines) > maxPreviewLines {
-				lines = lines[:maxPreviewLines]
-				truncated = true
-			}
-			for _, l := range lines {
-				rows = append(rows, styles.PlanPreviewStyle.Render(l))
-			}
-			if truncated {
-				rows = append(rows, styles.PlanPreviewStyle.Render("…"))
-			}
-			rows = append(rows, "")
+	// Show a truncated preview of the cached plan content (max 10 lines).
+	if m.planContentCache != "" {
+		lines := strings.Split(strings.ReplaceAll(m.planContentCache, "\r\n", "\n"), "\n")
+		const maxPreviewLines = 10
+		truncated := false
+		if len(lines) > maxPreviewLines {
+			lines = lines[:maxPreviewLines]
+			truncated = true
 		}
+		for _, l := range lines {
+			rows = append(rows, styles.PlanPreviewStyle.Render(l))
+		}
+		if truncated {
+			rows = append(rows, styles.PlanPreviewStyle.Render("…"))
+		}
+		rows = append(rows, "")
 	}
 	for i, opt := range options {
 		cursor := "  "
@@ -3663,21 +3721,25 @@ func (m Model) handlePermissionResponse(resp permissions.ResponseMsg) (tea.Model
 	case permissions.DecisionAllow:
 		m.approvalCh <- true
 	case permissions.DecisionAllowAlways:
-		// Persist rule BEFORE unblocking the engine so the next tool check sees it.
+		// Apply in-memory immediately so the engine sees it before unblocking.
 		rule := buildPermissionRule(resp.ToolUse)
-		m.persistPermissionRule(rule)
+		m.applyPermissionRule(rule)
 		m.approvalCh <- true
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Saved rule: allow %s(%s)", rule.Tool, rule.Pattern)})
+		m.refreshViewport()
+		return m, tea.Batch(m.spinner.Tick(), m.waitForEvent(), persistPermissionRuleCmd(rule))
 	case permissions.DecisionAllowAllTool:
-		// Persist rule BEFORE unblocking the engine so the next tool check sees it.
+		// Apply in-memory immediately so the engine sees it before unblocking.
 		rule := config.PermissionRule{
 			Tool:     resp.ToolUse.Name,
 			Pattern:  "*",
 			Behavior: "allow",
 		}
-		m.persistPermissionRule(rule)
+		m.applyPermissionRule(rule)
 		m.approvalCh <- true
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Saved rule: allow %s(*)", rule.Tool)})
+		m.refreshViewport()
+		return m, tea.Batch(m.spinner.Tick(), m.waitForEvent(), persistPermissionRuleCmd(rule))
 	case permissions.DecisionDeny:
 		m.approvalCh <- false
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("Denied %s", resp.ToolUse.Name)})
@@ -3742,14 +3804,13 @@ func extractDomainPattern(rawURL string) string {
 	return "*"
 }
 
-// persistPermissionRule saves a permission rule to the project config (or global).
-// It deduplicates: if an identical rule already exists, it is not added again.
-func (m *Model) persistPermissionRule(rule config.PermissionRule) {
+// applyPermissionRule updates the in-memory config and engine with a new rule.
+// Disk persistence is handled separately via persistPermissionRuleCmd.
+func (m *Model) applyPermissionRule(rule config.PermissionRule) {
 	if m.appCtx == nil || m.appCtx.Config == nil {
 		return
 	}
 
-	// Helper: check if rule already exists in a slice.
 	hasDuplicate := func(rules []config.PermissionRule) bool {
 		for _, r := range rules {
 			if r.Tool == rule.Tool && r.Pattern == rule.Pattern && r.Behavior == rule.Behavior {
@@ -3759,52 +3820,64 @@ func (m *Model) persistPermissionRule(rule config.PermissionRule) {
 		return false
 	}
 
-
-
-	// Add to live config (skip if already present).
 	if !hasDuplicate(m.appCtx.Config.PermissionRules) {
 		m.appCtx.Config.PermissionRules = append(m.appCtx.Config.PermissionRules, rule)
 	}
 
-	// Also add to engine config so it takes effect immediately.
 	if m.engineConfig != nil && !hasDuplicate(m.engineConfig.PermissionRules) {
 		m.engineConfig.PermissionRules = append(m.engineConfig.PermissionRules, rule)
 	}
 
-	// Propagate to the running engine so it applies without restart.
 	if m.engine != nil {
 		m.engine.SetPermissionRules(m.appCtx.Config.PermissionRules)
 	}
+}
 
-	// Save to project config if available, else global
-	cwd, _ := os.Getwd()
-	projectRoot := config.FindGitRoot(cwd)
-	projectSettings := filepath.Join(projectRoot, ".claudio", "settings.json")
+// permissionRuleSavedMsg is a no-op message indicating disk persistence completed.
+type permissionRuleSavedMsg struct{}
 
-	savePath := config.GetPaths().Settings // default: global
-	if _, err := os.Stat(filepath.Join(projectRoot, ".claudio")); err == nil {
-		savePath = projectSettings // prefer project if .claudio/ exists
+// persistPermissionRuleCmd returns a tea.Cmd that persists a permission rule to disk
+// without blocking the BubbleTea event loop.
+func persistPermissionRuleCmd(rule config.PermissionRule) tea.Cmd {
+	return func() tea.Msg {
+		hasDuplicate := func(rules []config.PermissionRule) bool {
+			for _, r := range rules {
+				if r.Tool == rule.Tool && r.Pattern == rule.Pattern && r.Behavior == rule.Behavior {
+					return true
+				}
+			}
+			return false
+		}
+
+		cwd, _ := os.Getwd()
+		projectRoot := config.FindGitRoot(cwd)
+		projectSettings := filepath.Join(projectRoot, ".claudio", "settings.json")
+
+		savePath := config.GetPaths().Settings
+		if _, err := os.Stat(filepath.Join(projectRoot, ".claudio")); err == nil {
+			savePath = projectSettings
+		}
+
+		data, _ := os.ReadFile(savePath)
+		var existing map[string]json.RawMessage
+		if json.Unmarshal(data, &existing) != nil {
+			existing = make(map[string]json.RawMessage)
+		}
+
+		var rules []config.PermissionRule
+		if raw, ok := existing["permissionRules"]; ok {
+			json.Unmarshal(raw, &rules)
+		}
+		if !hasDuplicate(rules) {
+			rules = append(rules, rule)
+		}
+		rulesJSON, _ := json.Marshal(rules)
+		existing["permissionRules"] = rulesJSON
+
+		out, _ := json.MarshalIndent(existing, "", "  ")
+		os.WriteFile(savePath, out, 0644)
+		return permissionRuleSavedMsg{}
 	}
-
-	// Load existing, append rule (if not duplicate), save back.
-	data, _ := os.ReadFile(savePath)
-	var existing map[string]json.RawMessage
-	if json.Unmarshal(data, &existing) != nil {
-		existing = make(map[string]json.RawMessage)
-	}
-
-	var rules []config.PermissionRule
-	if raw, ok := existing["permissionRules"]; ok {
-		json.Unmarshal(raw, &rules)
-	}
-	if !hasDuplicate(rules) {
-		rules = append(rules, rule)
-	}
-	rulesJSON, _ := json.Marshal(rules)
-	existing["permissionRules"] = rulesJSON
-
-	out, _ := json.MarshalIndent(existing, "", "  ")
-	os.WriteFile(savePath, out, 0644)
 }
 
 // ── Leader Key State Machine ────────────────────────────
