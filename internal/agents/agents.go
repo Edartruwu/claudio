@@ -115,9 +115,15 @@ func GetAgent(agentType string) AgentDefinition {
 
 // AgentTypesList returns a formatted string of all agent types for use in the Agent tool prompt.
 func AgentTypesList() string {
-	agents := AllAgents(getCustomDirs()...)
+	return FormatAgentTypes(AllAgents(getCustomDirs()...))
+}
+
+// FormatAgentTypes converts a slice of AgentDefinition to the bullet-list string
+// expected by prompts.AgentDescription. Callers that control which dirs are
+// included (e.g. AgentTool.Description) use this directly instead of AgentTypesList.
+func FormatAgentTypes(agentDefs []AgentDefinition) string {
 	var lines string
-	for _, a := range agents {
+	for _, a := range agentDefs {
 		toolsStr := "all tools"
 		if len(a.Tools) > 0 && a.Tools[0] != "*" {
 			toolsStr = joinStrings(a.Tools)
