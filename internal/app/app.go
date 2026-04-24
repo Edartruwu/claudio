@@ -586,13 +586,6 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	}
 
 	// Inject team manager into team tools
-	if tc, err := registry.Get("TeamCreate"); err == nil {
-		if tool, ok := tc.(*tools.TeamCreateTool); ok {
-			tool.Manager = teamMgr
-			tool.Runner = teamRunner
-			tool.AvailableModels = buildAvailableModels(apiClient)
-		}
-	}
 	if td, err := registry.Get("TeamDelete"); err == nil {
 		if tool, ok := td.(*tools.TeamDeleteTool); ok {
 			tool.Manager = teamMgr

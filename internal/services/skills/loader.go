@@ -1620,16 +1620,7 @@ Typical invocations:
 
 ## Phase 2: Launch the team
 
-TeamCreate({
-  name: "<harness-name>-team",
-  members: [
-    // For roles backed by an existing project agent, use that agent's
-    // exact name in the "agent" field — its persona AND accumulated memory
-    // will be loaded into the teammate session.
-    { name: "<display-name>", agent: "<existing-or-new-agent>", task: "<initial instruction with FULL context — agent has no prior knowledge of THIS conversation, even if it has memory from prior sessions>" },
-    { name: "<agent-b>", agent: "<agent-b>", task: "<initial instruction>" }
-  ]
-})
+Use SpawnTeammate to add members to the active team:
 
 Then send each member specific context:
 SendMessage({to: "<agent-a>", message: "<detailed context: what files to read, what to produce, where to write output>"})
@@ -1827,7 +1818,7 @@ These condensed examples show how patterns map to real harnesses. Use them as in
 
 ### Example 3: Feature Implementation (Pipeline + Fan-out, Agent Team)
 ` + "```" + `
-[planner] → [architect] → TeamCreate:
+[planner] → [architect] → SpawnTeammate (×3):
               ┌→ [backend-dev]  ─┐
               ├→ [frontend-dev] ─┼→ [qa-reviewer] → [orchestrator]
               └→ [test-writer]  ─┘
