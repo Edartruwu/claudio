@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,20 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
+
+type ctxKeyAgentType struct{}
+
+// WithAgentType stores the agent type in context so sub-agent runners can load
+// per-agent extra skills/plugins.
+func WithAgentType(ctx context.Context, agentType string) context.Context {
+	return context.WithValue(ctx, ctxKeyAgentType{}, agentType)
+}
+
+// AgentTypeFromContext retrieves the agent type (empty string if not set).
+func AgentTypeFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyAgentType{}).(string)
+	return v
+}
 
 // knownCapabilities is the set of valid capability tokens agents may declare.
 var knownCapabilities = map[string]bool{

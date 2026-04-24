@@ -888,7 +888,7 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 
 	// Load per-agent extra skills and plugins when the agent type resolves to a
 	// definition that has ExtraSkillsDir or ExtraPluginsDir set.
-	if agentType := tools.AgentTypeFromContext(ctx); agentType != "" {
+	if agentType := agents.AgentTypeFromContext(ctx); agentType != "" {
 		agentDef := agents.GetAgent(agentType)
 
 		// Merge extra skills (additive — global skills remain available)
@@ -986,7 +986,7 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		subDB = dbCtx.DB
 		cwd, _ := os.Getwd()
 		// Extract agent type from context (best-effort; falls back to "agent")
-		agentType := tools.AgentTypeFromContext(ctx)
+		agentType := agents.AgentTypeFromContext(ctx)
 		if agentType == "" {
 			agentType = "agent"
 		}

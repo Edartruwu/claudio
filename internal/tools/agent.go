@@ -129,17 +129,14 @@ func TeamContextFromCtx(ctx context.Context) *TeamContext {
 	return v
 }
 
-type ctxKeyAgentType struct{}
-
 // WithAgentType stores the agent type in context so the sub-agent runner can label its sub-session.
 func WithAgentType(ctx context.Context, agentType string) context.Context {
-	return context.WithValue(ctx, ctxKeyAgentType{}, agentType)
+	return agents.WithAgentType(ctx, agentType)
 }
 
 // AgentTypeFromContext retrieves the agent type (empty string if not set).
 func AgentTypeFromContext(ctx context.Context) string {
-	v, _ := ctx.Value(ctxKeyAgentType{}).(string)
-	return v
+	return agents.AgentTypeFromContext(ctx)
 }
 
 type ctxKeyMaxTurns struct{}
@@ -394,6 +391,7 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
 			TeamName:      teamName,
 			AgentName:     shortName,
+			SubagentType:  agentDef.Type,
 			Prompt:        in.Prompt,
 			System:        agentDef.SystemPrompt,
 			Model:         modelOverride,

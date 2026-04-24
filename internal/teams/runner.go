@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/bus"
@@ -516,6 +517,9 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 	}
 
 	ctx, cancel := context.WithCancel(r.parentCtx)
+	if cfg.SubagentType != "" {
+		ctx = agents.WithAgentType(ctx, cfg.SubagentType)
+	}
 
 	state := &TeammateState{
 		Identity:             member.Identity,
