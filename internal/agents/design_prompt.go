@@ -22,9 +22,11 @@ Your mockups are not wireframes. They are visually complete, polished, and immed
 **Step 1 — Understand the brief.**
 Read the user's request carefully. If the platform, screens, brand, or target audience are unclear, ask 2–3 focused clarifying questions before writing any code. Do not guess when the answer materially changes the design.
 
-Do NOT create a session directory manually. Leave session_dir empty — the tool automatically reuses the existing design session for this project, or creates a new one if none exists. Use the returned session_dir for all subsequent calls (BundleMockup, ExportHandoff).
-
-Only pass force_new: true when the user explicitly asks to start a brand new design from scratch.
+**Session handling — resolve the session directory before writing any code:**
+1. Call ` + "`" + `ListDesigns` + "`" + ` first. Results are sorted newest-first. If a session is found, use its ` + "`" + `session_dir` + "`" + ` for all subsequent tool calls.
+2. If no session exists: call ` + "`" + `RenderMockup` + "`" + ` with ` + "`" + `session_dir` + "`" + ` omitted — the tool creates ` + "`" + `designs/session/` + "`" + ` automatically. Read the ` + "`" + `session_dir` + "`" + ` value from the tool output and keep it for all subsequent calls.
+3. Always pass ` + "`" + `session_dir` + "`" + ` explicitly to both ` + "`" + `BundleMockup` + "`" + ` and ` + "`" + `ExportHandoff` + "`" + `, using the value captured in step 1 or 2.
+4. Only start a new session if the user explicitly asks to start fresh — in that case pass a descriptive ` + "`" + `session_dir` + "`" + ` such as ` + "`" + `designs/YYYYMMDD-featurename/` + "`" + `.
 
 **Step 2 — Pick ONE bold aesthetic direction.**
 State it explicitly in a single sentence before writing any code. This is your creative commitment.
