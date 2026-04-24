@@ -174,6 +174,7 @@ type RenderMockupOutput struct {
 	Screenshots     []ScreenshotInfo `json:"screenshots"`
 	RenderTimeMs    int64            `json:"render_time_ms"`
 	OutputDir       string           `json:"output_dir"`
+	SessionDir      string           `json:"session_dir"`
 }
 
 // nodeScriptOutput matches the JSON the Node.js script writes to stdout.
@@ -453,6 +454,7 @@ func (t *RenderMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 		Screenshots:     nodeOut.Screenshots,
 		RenderTimeMs:    elapsed,
 		OutputDir:       outDir,
+		SessionDir:      sessionDir,
 	}
 	if out.ConsoleErrors == nil {
 		out.ConsoleErrors = []string{}
