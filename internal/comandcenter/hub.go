@@ -441,6 +441,14 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			ElapsedSecs:   p.ElapsedSecs,
 			UpdatedAt:     now,
 		})
+		// Persist event for reconnect replay.
+		// Only store status transitions (not periodic heartbeats) to avoid DB bloat.
+		// Heartbeats always have status "working" with no result — terminal events have
+		// status done/failed/waiting or carry a non-empty result/summary.
+		if p.Status != "working" || p.Result != "" || p.Summary != "" {
+			payloadJSON, _ := json.Marshal(p)
+			_ = h.storage.InsertAgentEvent(sessionID, p.Name, p.Status, string(payloadJSON))
+		}
 		if p.Status == "done" {
 			go func() {
 				sess, err := h.storage.GetSession(sessionID)

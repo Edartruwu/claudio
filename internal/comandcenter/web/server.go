@@ -1179,6 +1179,40 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 			ws.addClient(client)
 			defer ws.removeClient(client)
 
+			// Replay last known agent statuses so reconnecting clients see current state.
+			// First replay from cc_agents (live status), then from cc_agent_events
+			// (recent terminal events with richer payloads like summaries).
+			if sessionID != "" {
+				// Replay current agent states
+				if agents, err := ws.storage.ListAgents(sessionID); err == nil {
+					for _, a := range agents {
+						payload, _ := json.Marshal(map[string]string{
+							"type":    "agent_status",
+							"name":    a.Name,
+							"status":  a.Status,
+						})
+						select {
+						case client.send <- payload:
+						default:
+						}
+					}
+				}
+				// Replay recent terminal events with full payload (summary, report, etc.)
+				if events, err := ws.storage.GetLatestAgentEvents(sessionID); err == nil {
+					for _, evt := range events {
+						env := attach.Envelope{
+							Type:    attach.EventAgentStatus,
+							Payload: json.RawMessage(evt.Payload),
+						}
+						data, _ := json.Marshal(env)
+						select {
+						case client.send <- data:
+						default:
+						}
+					}
+				}
+			}
+
 			// Set initial read deadline
 			conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
 

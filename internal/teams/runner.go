@@ -109,9 +109,10 @@ type TeammateState struct {
 	// the result directly and a task-notification would be redundant noise.
 	Foreground bool
 
-	cancel context.CancelFunc
-	mu     sync.Mutex
-	idleCh chan struct{} // closed when teammate becomes idle
+	cancel        context.CancelFunc
+	mu            sync.Mutex
+	idleCh        chan struct{} // closed when teammate becomes idle
+	stopHeartbeat chan struct{} // closed before terminal event to prevent heartbeat race
 }
 
 // GetEngineMessages returns the current engine message history, thread-safe.
@@ -528,9 +529,10 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		AdvisorConfig:        cfg.AdvisorConfig,
 		Status:       StatusWorking,
 		StartedAt:    time.Now(),
-		cancel:       cancel,
-		idleCh:       make(chan struct{}),
-		Conversation: make([]ConversationEntry, 0, 32),
+		cancel:        cancel,
+		idleCh:        make(chan struct{}),
+		stopHeartbeat: make(chan struct{}),
+		Conversation:  make([]ConversationEntry, 0, 32),
 	}
 
 	if cfg.ParentAgentID != "" {
@@ -602,7 +604,7 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 						SessionID: r.sessionID,
 						Payload:   payload,
 					})
-				case <-state.idleCh:
+				case <-state.stopHeartbeat:
 					return
 				}
 			}
@@ -849,6 +851,15 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	}
 	status := state.Status
 	state.mu.Unlock()
+
+	// Stop heartbeat goroutine before emitting terminal event to prevent
+	// a stale "working" heartbeat racing after the "done"/"failed" status.
+	select {
+	case <-state.stopHeartbeat:
+		// already closed
+	default:
+		close(state.stopHeartbeat)
+	}
 
 	// Extract summary + report path from result (used by both bus event and teammate event).
 	resultSummary, reportPath := extractSummary(state.Result)
@@ -1311,6 +1322,7 @@ func (r *TeammateRunner) Revive(agentName, newMessage string) error {
 	state.Status = StatusWorking
 	state.Error = ""
 	state.idleCh = make(chan struct{})
+	state.stopHeartbeat = make(chan struct{})
 	ctx, cancel := context.WithCancel(r.parentCtx)
 	state.cancel = cancel
 	state.mu.Unlock()
@@ -1438,10 +1450,12 @@ func (r *TeammateRunner) reconstructStateFromConfig(agentName string) (*Teammate
 				IsIdle:               true,
 				SystemPrompt:         systemPrompt,
 				AdvisorConfig:        mem.AdvisorConfig,
-				idleCh:               make(chan struct{}),
+				idleCh:        make(chan struct{}),
+				stopHeartbeat: make(chan struct{}),
 			}
 			// The idleCh should be closed since the agent is idle.
 			close(state.idleCh)
+			close(state.stopHeartbeat)
 
 			r.mu.Lock()
 			r.teammates[mem.Identity.AgentID] = state

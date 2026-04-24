@@ -60,6 +60,15 @@ type Agent struct {
 	UpdatedAt     time.Time
 }
 
+// AgentEvent is a persisted agent status event used for reconnect replay.
+type AgentEvent struct {
+	SessionID string
+	AgentName string
+	Status    string
+	Payload   string // JSON-encoded AgentStatusPayload
+	CreatedAt time.Time
+}
+
 // Attachment is a file uploaded by the user and linked to a session (optionally a message).
 type Attachment struct {
 	ID           string
