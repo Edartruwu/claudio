@@ -62,6 +62,7 @@ type Hub struct {
 	setTeamFns      map[string]func(teamName string)
 	storage         *Storage
 	eventQueues     map[string]chan attach.Envelope
+	workerDone      map[string]chan struct{}
 	uiBroadcast     chan UIEvent
 	vapidPublicKey  string
 	vapidPrivateKey string
@@ -76,6 +77,7 @@ func NewHub(storage *Storage) *Hub {
 		setTeamFns:   make(map[string]func(teamName string)),
 		storage:      storage,
 		eventQueues:  make(map[string]chan attach.Envelope),
+		workerDone:   make(map[string]chan struct{}),
 		uiBroadcast:  make(chan UIEvent, 256),
 	}
 }
@@ -273,17 +275,25 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 
 // startSessionWorker spawns a goroutine that drains the per-session event
 // queue, calling processEvent sequentially for each envelope. The goroutine
-// exits when the channel is closed (session disconnect).
+// exits when the channel is closed (session disconnect) and signals via
+// workerDone[sessionID].
 func (h *Hub) startSessionWorker(sessionID string) {
 	h.mu.Lock()
 	ch := make(chan attach.Envelope, 64)
+	done := make(chan struct{})
 	h.eventQueues[sessionID] = ch
+	h.workerDone[sessionID] = done
 	h.mu.Unlock()
 
 	go func() {
 		for ev := range ch {
 			h.processEvent(sessionID, ev)
 		}
+		// Signal exit and clean up done-channel entry.
+		h.mu.Lock()
+		close(done)
+		delete(h.workerDone, sessionID)
+		h.mu.Unlock()
 	}()
 }
 

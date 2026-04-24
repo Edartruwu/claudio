@@ -43,10 +43,11 @@ func sendToWorker(t *testing.T, h *Hub, sessionID string, envs ...attach.Envelop
 	// Close the channel — the worker drains then exits.
 	h.stopSessionWorker(sessionID)
 
-	// Poll until the message(s) land in the DB or the deadline fires.
-	// The worker exits asynchronously after the channel closes, so we need to
-	// give it a moment.
-	time.Sleep(20 * time.Millisecond)
+	// Block until the worker goroutine has fully exited so that all DB writes
+	// are committed before the caller queries storage.
+	if !h.WaitSessionWorker(sessionID, 2*time.Second) {
+		t.Fatal("worker goroutine did not exit in time")
+	}
 }
 
 // pollMessages polls storage until at least minCount messages appear for the
@@ -205,7 +206,12 @@ func TestProcessEvent_SessionIsolation(t *testing.T) {
 	// Stop both workers — waits for drain via channel close.
 	h.stopSessionWorker(sessA)
 	h.stopSessionWorker(sessB)
-	time.Sleep(20 * time.Millisecond)
+	if !h.WaitSessionWorker(sessA, 2*time.Second) {
+		t.Fatal("worker A goroutine did not exit in time")
+	}
+	if !h.WaitSessionWorker(sessB, 2*time.Second) {
+		t.Fatal("worker B goroutine did not exit in time")
+	}
 
 	msgsA := pollMessages(t, s, sessA, 1)
 	msgsB := pollMessages(t, s, sessB, 1)
