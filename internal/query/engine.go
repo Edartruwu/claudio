@@ -1370,6 +1370,31 @@ func (e *Engine) startBgWatcher(parentCtx context.Context) {
 				if watchCtx.Err() != nil {
 					return
 				}
+
+			case <-e.mailboxNotifyChan:
+				// Snapshot message count before poll.
+				e.mu.Lock()
+				before := len(e.messages)
+				e.mu.Unlock()
+
+				// Drain notify signal and inject any pending mailbox messages.
+				e.pollMailbox()
+
+				// Only trigger a new turn if messages were actually injected.
+				e.mu.Lock()
+				injected := len(e.messages) > before
+				e.mu.Unlock()
+
+				if injected {
+					_ = e.RunWithBlocks(parentCtx, []api.UserContentBlock{
+						api.NewTextBlock("You have an incoming message from a teammate. Review it above and respond."),
+					})
+
+					// Check if we should exit (stopBgWatcher was called inside RunWithBlocks).
+					if watchCtx.Err() != nil {
+						return
+					}
+				}
 			}
 		}
 	}()
