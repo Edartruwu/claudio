@@ -53,7 +53,6 @@ func (t *RenderMockupTool) WithPusher(pusher ScreenshotPusher, sessionID string)
 type RenderMockupInput struct {
 	HTMLPath       string `json:"html_path"`
 	SessionDir     string `json:"session_dir"`     // optional: reuse existing session dir instead of creating new timestamp
-	ForceNew       bool   `json:"force_new"`       // if true, always create a new timestamped session dir even if one exists
 	ViewportWidth  int    `json:"viewport_width"`  // default: 1440
 	ViewportHeight int    `json:"viewport_height"` // default: 900
 	DeviceScale    int    `json:"device_scale"`    // default: 3
@@ -212,10 +211,6 @@ func (t *RenderMockupTool) InputSchema() json.RawMessage {
 			"session_dir": {
 				"type": "string",
 				"description": "Session directory to write screenshots into ({session_dir}/screenshots/). Pass the same session_dir used for BundleMockup to keep all outputs together. If omitted, the tool reuses the most recent existing session for this project, or creates a new one if none exists."
-			},
-			"force_new": {
-				"type": "boolean",
-				"description": "If true, always create a new timestamped session directory even if one already exists. Use this only when the user explicitly wants to start a brand new design from scratch. Default: false."
 			},
 			"viewport_width": {
 				"type": "integer",

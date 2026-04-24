@@ -239,7 +239,7 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	if outPath == "" {
 		sessionDir := in.SessionDir
 		if sessionDir == "" {
-			sessionDir = filepath.Join(t.designsDir, time.Now().Format("20060102-150405"))
+			sessionDir = filepath.Join(t.designsDir, "session")
 		}
 		outPath = filepath.Join(sessionDir, "bundle", "mockup.html")
 	}
