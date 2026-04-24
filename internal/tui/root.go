@@ -1907,7 +1907,7 @@ func (m Model) applyTeamContext(msg teamselector.TeamSelectedMsg) Model {
 	var block string
 	if msg.IsEphemeral {
 		block = `## Active Team
-An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.
+An ephemeral team is active. Use SpawnTeammate to add members.
 
 When all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents.`
 	} else {
@@ -2166,7 +2166,7 @@ func (m Model) ApplyTeamContextAtStartup(msg teamselector.TeamSelectedMsg, appCt
 	var block string
 	if msg.IsEphemeral {
 		block = `## Active Team
-An ephemeral team is active. Use TeamCreate to name it, then SpawnTeammate to add members.
+An ephemeral team is active. Use SpawnTeammate to add members.
 
 When all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents.`
 	} else {
@@ -3229,7 +3229,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 
 			teamInstruction := teamContext + `Use agent teams to accomplish this task. Follow this workflow:
 
-1. If a suitable team already exists, reuse it. Otherwise, create a new team with TeamCreate.
+1. If a suitable team already exists, reuse it. Otherwise, use SpawnTeammate to add members to the active team.
 2. Break the work into discrete tasks using TaskCreate — assign each task to an agent name (assigned_to field).
 3. Spawn one agent per task using the Agent tool with run_in_background=true. Include the task ID in the agent's prompt so it knows which task it owns.
 4. Tasks are auto-completed when agents finish — no manual status updates needed.

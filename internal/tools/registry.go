@@ -345,7 +345,6 @@ func (r *Registry) Names() []string {
 // TeamToolNames lists the team collaboration tools that are only available
 // to the principal agent when a team template or ephemeral team is active.
 var TeamToolNames = []string{
-	"TeamCreate",
 	"TeamDelete",
 	"SendMessage",
 	"SpawnTeammate",
@@ -412,7 +411,6 @@ func DefaultRegistry() *Registry {
 	r.Register(&TaskOutputTool{deferrable: newDeferrable("read background task output")})
 
 	// Team management (Manager injected later)
-	r.Register(&TeamCreateTool{deferrable: newDeferrable("create team multi-agent collaboration")})
 	r.Register(&TeamDeleteTool{deferrable: newDeferrable("delete remove team")})
 	r.Register(&SendMessageTool{deferrable: newDeferrable("send message to team agent")})
 	r.Register(&SpawnTeammateTool{deferrable: newDeferrable("spawn teammate agent background parallel named")})
