@@ -19,6 +19,7 @@ const pingInterval = 30 * time.Second
 type wsConn interface {
 	writeEnvelope(env attach.Envelope) error
 	readEnvelope(env *attach.Envelope) error
+	setWriteDeadline(t time.Time) error
 	close() error
 }
 
@@ -33,6 +34,10 @@ func (n *netWSConn) writeEnvelope(env attach.Envelope) error {
 
 func (n *netWSConn) readEnvelope(env *attach.Envelope) error {
 	return websocket.JSON.Receive(n.c, env)
+}
+
+func (n *netWSConn) setWriteDeadline(t time.Time) error {
+	return n.c.SetWriteDeadline(t)
 }
 
 func (n *netWSConn) close() error {
@@ -87,10 +92,12 @@ func (h *Hub) Unregister(sessionID string) {
 }
 
 // Send writes an envelope to the session identified by sessionID.
+// The RLock is held during the write to prevent a concurrent Unregister+Close
+// from racing with the write on the underlying connection.
 func (h *Hub) Send(sessionID string, env attach.Envelope) error {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	conn, ok := h.sessions[sessionID]
-	h.mu.RUnlock()
 	if !ok {
 		return fmt.Errorf("hub: session %s not connected", sessionID)
 	}
@@ -352,7 +359,9 @@ func (h *Hub) handleConn(conn wsConn) {
 		for {
 			select {
 			case <-pingTicker.C:
+				_ = conn.setWriteDeadline(time.Now().Add(30 * time.Second))
 				_ = conn.writeEnvelope(attach.Envelope{Type: "ping"})
+				_ = conn.setWriteDeadline(time.Time{}) // clear deadline for subsequent writes
 			case <-pingDone:
 				return
 			}

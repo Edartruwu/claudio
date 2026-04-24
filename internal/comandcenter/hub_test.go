@@ -41,6 +41,10 @@ func (m *mockConn) writeEnvelope(env attach.Envelope) error {
 	return nil
 }
 
+func (m *mockConn) setWriteDeadline(_ time.Time) error {
+	return nil
+}
+
 func (m *mockConn) close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
