@@ -171,6 +171,17 @@ func (s *Storage) migrate() error {
 		`ALTER TABLE cc_agents ADD COLUMN call_count INTEGER NOT NULL DEFAULT 0`,
 		// 21
 		`ALTER TABLE cc_agents ADD COLUMN elapsed_secs INTEGER NOT NULL DEFAULT 0`,
+		// 22 — agent event history for reconnect replay
+		`CREATE TABLE IF NOT EXISTS cc_agent_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id TEXT NOT NULL,
+			agent_name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			payload TEXT NOT NULL DEFAULT '{}',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// 23
+		`CREATE INDEX IF NOT EXISTS idx_cc_agent_events_session ON cc_agent_events(session_id, created_at)`,
 	}
 
 	for i, m := range migrations {
@@ -725,6 +736,54 @@ func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
 		agents = append(agents, a)
 	}
 	return agents, rows.Err()
+}
+
+// InsertAgentEvent persists an agent status event for reconnect replay.
+func (s *Storage) InsertAgentEvent(sessionID, agentName, status, payload string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO cc_agent_events (session_id, agent_name, status, payload, created_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`, sessionID, agentName, status, payload)
+	if err != nil {
+		return fmt.Errorf("insert agent event: %w", err)
+	}
+	return nil
+}
+
+// GetLatestAgentEvents returns the last known status event per agent in a session,
+// limited to events from the last 15 minutes. Used for reconnect replay.
+func (s *Storage) GetLatestAgentEvents(sessionID string) ([]AgentEvent, error) {
+	rows, err := s.db.Query(`
+		SELECT ae.session_id, ae.agent_name, ae.status, ae.payload, ae.created_at
+		FROM cc_agent_events ae
+		INNER JOIN (
+			SELECT agent_name, MAX(id) AS max_id
+			FROM cc_agent_events
+			WHERE session_id = ? AND created_at >= datetime('now', '-15 minutes')
+			GROUP BY agent_name
+		) latest ON ae.id = latest.max_id
+		ORDER BY ae.created_at DESC
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("get latest agent events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []AgentEvent
+	for rows.Next() {
+		var e AgentEvent
+		if err := rows.Scan(&e.SessionID, &e.AgentName, &e.Status, &e.Payload, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan agent event: %w", err)
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+// PruneAgentEvents removes agent events older than 15 minutes.
+func (s *Storage) PruneAgentEvents() error {
+	_, err := s.db.Exec(`DELETE FROM cc_agent_events WHERE created_at < datetime('now', '-15 minutes')`)
+	return err
 }
 
 // InsertAttachment stores a new attachment record.

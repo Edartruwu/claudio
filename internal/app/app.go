@@ -681,6 +681,20 @@ func (a *App) SubscribeTaskEvents(broadcastFn func(sessionID string, env attach.
 	})
 }
 
+// SubscribeAgentEvents subscribes to EventAgentStatus and EventTeamChanged on the app bus
+// and routes each to broadcastFn so the hub can forward them to web UI clients.
+// Call this after the hub is wired, e.g. app.SubscribeAgentEvents(hub.Broadcast).
+func (a *App) SubscribeAgentEvents(broadcastFn func(sessionID string, env attach.Envelope)) {
+	a.Bus.Subscribe(attach.EventAgentStatus, func(event bus.Event) {
+		env := attach.Envelope{Type: attach.EventAgentStatus, Payload: event.Payload}
+		broadcastFn(event.SessionID, env)
+	})
+	a.Bus.Subscribe(attach.EventTeamChanged, func(event bus.Event) {
+		env := attach.Envelope{Type: attach.EventTeamChanged, Payload: event.Payload}
+		broadcastFn(event.SessionID, env)
+	})
+}
+
 // InjectPayload sends a UserMsgPayload to the inject channel for headless mode processing.
 // Non-blocking — if channel full, drops with log (no blocking, no panic).
 func (a *App) InjectPayload(p attach.UserMsgPayload) {
