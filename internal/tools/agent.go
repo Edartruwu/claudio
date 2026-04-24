@@ -221,14 +221,16 @@ func ExtraToolsFromContext(ctx context.Context) []Tool {
 
 // AgentTool spawns sub-agents for complex, multi-step tasks.
 type AgentTool struct {
-	// cachedDescription and cachedSchema are computed once on first call and reused.
-	// AgentTypesList() reads agent files from disk on every call — caching here
-	// prevents repeated disk reads and keeps tool definitions byte-stable so
-	// the Anthropic prompt cache is not busted on every turn.
-	cachedDescription     string
-	cachedDescriptionOnce sync.Once
-	cachedSchema          json.RawMessage
-	cachedSchemaOnce      sync.Once
+	// descMu guards the state-aware description cache.
+	// cachedDesc is invalidated when team-active state changes so custom agents
+	// appear only when a team template is active.
+	descMu          sync.Mutex
+	cachedDesc      string
+	cachedTeamActive bool
+
+	// cachedSchema is computed once on first call and reused.
+	cachedSchema     json.RawMessage
+	cachedSchemaOnce sync.Once
 
 	// ParentRegistry is set by the registry after construction.
 	ParentRegistry *Registry
@@ -264,10 +266,19 @@ type agentInput struct {
 func (t *AgentTool) Name() string { return "Agent" }
 
 func (t *AgentTool) Description() string {
-	t.cachedDescriptionOnce.Do(func() {
-		t.cachedDescription = prompts.AgentDescription(agents.AgentTypesList())
-	})
-	return t.cachedDescription
+	teamActive := t.TeamRunner != nil && t.TeamRunner.ActiveTeamName() != ""
+	t.descMu.Lock()
+	defer t.descMu.Unlock()
+	if t.cachedDesc != "" && t.cachedTeamActive == teamActive {
+		return t.cachedDesc
+	}
+	var dirs []string
+	if teamActive {
+		dirs = agents.GetCustomDirs()
+	}
+	t.cachedDesc = prompts.AgentDescription(agents.FormatAgentTypes(agents.AllAgents(dirs...)))
+	t.cachedTeamActive = teamActive
+	return t.cachedDesc
 }
 
 func (t *AgentTool) InputSchema() json.RawMessage {
