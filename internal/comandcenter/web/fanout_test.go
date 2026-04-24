@@ -61,18 +61,18 @@ func assertAgentStatusJSON(t *testing.T, c *uiClient, wantName, wantStatus strin
 	t.Helper()
 	select {
 	case raw := <-c.send:
-		var m map[string]string
+		var m map[string]any
 		if err := json.Unmarshal(raw, &m); err != nil {
 			t.Fatalf("unmarshal JSON: %v (raw: %s)", err, raw)
 		}
 		if m["type"] != "agent_status" {
-			t.Errorf("type: want %q, got %q", "agent_status", m["type"])
+			t.Errorf("type: want %q, got %v", "agent_status", m["type"])
 		}
 		if m["name"] != wantName {
-			t.Errorf("name: want %q, got %q", wantName, m["name"])
+			t.Errorf("name: want %q, got %v", wantName, m["name"])
 		}
 		if m["status"] != wantStatus {
-			t.Errorf("status: want %q, got %q", wantStatus, m["status"])
+			t.Errorf("status: want %q, got %v", wantStatus, m["status"])
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: no payload pushed to client within 2s")

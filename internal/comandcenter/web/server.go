@@ -1424,12 +1424,15 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
 			return
 		}
-		payload, err := json.Marshal(map[string]string{
-			"type":        "agent_status",
-			"name":        p.Name,
-			"status":      p.Status,
-			"summary":     p.Summary,
-			"report_path": p.ReportPath,
+		payload, err := json.Marshal(map[string]any{
+			"type":         "agent_status",
+			"name":         p.Name,
+			"status":       p.Status,
+			"summary":      p.Summary,
+			"report_path":  p.ReportPath,
+			"current_tool": p.CurrentTool,
+			"call_count":   p.CallCount,
+			"elapsed_secs": p.ElapsedSecs,
 		})
 		if err != nil {
 			return
