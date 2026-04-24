@@ -1026,11 +1026,14 @@ func TestTeammateRunner_KillTeam_OnlyAffectsTargetTeam(t *testing.T) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
+	t.Cleanup(func() {
+		runner.KillAll()
+		runner.WaitForTeam("team-b", 5*time.Second)
+	})
 
 	a1, _ := runner.Spawn(SpawnConfig{TeamName: "team-a", AgentName: "a1", Prompt: "t"})
 	a2, _ := runner.Spawn(SpawnConfig{TeamName: "team-a", AgentName: "a2", Prompt: "t"})
 	b1, _ := runner.Spawn(SpawnConfig{TeamName: "team-b", AgentName: "b1", Prompt: "t"})
-	defer runner.KillAll()
 
 	time.Sleep(50 * time.Millisecond)
 	if c := runner.WorkingCount(); c != 3 {
@@ -1114,10 +1117,13 @@ func TestTeammateRunner_CleanupTeam_DoesNotTouchOtherTeams(t *testing.T) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
+	t.Cleanup(func() {
+		runner.KillAll()
+		runner.WaitForTeam("team-b", 5*time.Second)
+	})
 
 	runner.Spawn(SpawnConfig{TeamName: "team-a", AgentName: "a1", Prompt: "t"})
 	bState, _ := runner.Spawn(SpawnConfig{TeamName: "team-b", AgentName: "b1", Prompt: "t"})
-	defer runner.KillAll()
 
 	runner.KillTeam("team-a")
 	runner.WaitForTeam("team-a", 5*time.Second)
