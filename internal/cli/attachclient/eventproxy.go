@@ -18,17 +18,20 @@ type ClientSender interface {
 // EventProxy wraps a query.EventHandler and forwards events to a ComandCenter Client.
 // If client is nil, behaves exactly like the wrapped handler (zero overhead).
 type EventProxy struct {
-	inner  query.EventHandler
-	client ClientSender
-	mu     sync.Mutex
-	buf    strings.Builder
+	inner     query.EventHandler
+	client    ClientSender
+	agentName string
+	mu        sync.Mutex
+	buf       strings.Builder
 }
 
 // NewEventProxy creates EventProxy wrapping inner handler and optionally forwarding to client.
-func NewEventProxy(inner query.EventHandler, client ClientSender) *EventProxy {
+// agentName is stamped onto every payload so cc_messages rows are queryable by agent.
+func NewEventProxy(inner query.EventHandler, client ClientSender, agentName string) *EventProxy {
 	return &EventProxy{
-		inner:  inner,
-		client: client,
+		inner:     inner,
+		client:    client,
+		agentName: agentName,
 	}
 }
 
@@ -66,9 +69,10 @@ func (e *EventProxy) OnToolUseStart(toolUse tools.ToolUse) {
 
 	if e.client != nil {
 		payload := attach.ToolUsePayload{
-			ID:    toolUse.ID,
-			Tool:  toolUse.Name,
-			Input: toolUse.Input,
+			ID:        toolUse.ID,
+			Tool:      toolUse.Name,
+			Input:     toolUse.Input,
+			AgentName: e.agentName,
 		}
 		_ = e.client.SendEvent(attach.EventMsgToolUse, payload)
 	}
@@ -84,6 +88,7 @@ func (e *EventProxy) OnToolUseEnd(toolUse tools.ToolUse, result *tools.Result) {
 		payload := attach.ToolResultPayload{
 			ToolUseID: toolUse.ID,
 			Output:    result.Content,
+			AgentName: e.agentName,
 		}
 		_ = e.client.SendEvent(attach.EventMsgToolResult, payload)
 	}
@@ -153,7 +158,8 @@ func (e *EventProxy) flushBuffer() {
 	}
 
 	payload := attach.AssistantMsgPayload{
-		Content: content,
+		Content:   content,
+		AgentName: e.agentName,
 	}
 	_ = e.client.SendEvent(attach.EventMsgAssistant, payload)
 }

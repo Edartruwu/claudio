@@ -308,7 +308,7 @@ func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 
 	var handler query.EventHandler = &query.StdoutHandler{Verbose: flagVerbose}
 	if attachClient != nil {
-		handler = attachclient.NewEventProxy(handler, attachClient)
+		handler = attachclient.NewEventProxy(handler, attachClient, flagAgent)
 	}
 	singleTurnCfg := query.EngineConfig{
 		Hooks:           appInstance.Hooks,
@@ -468,7 +468,7 @@ func runHeadlessAttach(args []string) error {
 
 	var handler query.EventHandler = &query.StdoutHandler{Verbose: flagVerbose}
 	if attachClient != nil {
-		handler = attachclient.NewEventProxy(handler, attachClient)
+		handler = attachclient.NewEventProxy(handler, attachClient, flagAgent)
 	}
 
 	// Capture session ID for bus filtering and runner stamping.
