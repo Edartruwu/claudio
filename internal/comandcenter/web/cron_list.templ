@@ -7,36 +7,43 @@ type CronRowData struct {
 	Entry   tasks.CronEntry
 	Type    string // "inline" or "background"
 	Prompt  string // truncated prompt
-	Badge   string // CSS background color
+	Badge   string // CSS background color (legacy, kept for compat)
 }
 
 templ CronEmpty() {
-	<div class="text-gray-500 text-sm px-4 py-2">No scheduled tasks.</div>
+	<div class="text-sm px-4 py-2" style="color:var(--color-textMuted);">No scheduled tasks.</div>
 }
 
 templ CronNotConfigured() {
-	<div class="text-gray-500 text-sm px-4 py-2">Cron store not configured.</div>
+	<div class="text-sm px-4 py-2" style="color:var(--color-textMuted);">Cron store not configured.</div>
 }
 
 templ CronRow(data CronRowData) {
-	<div class="cron-row" style="background:#1C1C1E;border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
-		<div style="flex:1;min-width:0;">
-			<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-				<span style={ data.Badge + ";color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;" }>{ data.Type }</span>
-				<span class="text-gray-300 text-xs font-mono">{ data.Entry.Schedule }</span>
-				if data.Entry.Agent != "" {
-					<span class="text-gray-400 text-xs ml-2">agent: { data.Entry.Agent }</span>
-				}
+	<div class="cron-row" style="margin-bottom:var(--space-sm);">
+		@CardContainer() {
+			<div style="display:flex;align-items:center;gap:12px;">
+				<div style="flex:1;min-width:0;">
+					<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+						@StatusBadge(data.Type)
+						<span class="text-xs font-mono" style="color:var(--color-textSecondary);">{ data.Entry.Schedule }</span>
+						if data.Entry.Agent != "" {
+							<span class="text-xs ml-2" style="color:var(--color-textMuted);">agent: { data.Entry.Agent }</span>
+						}
+					</div>
+					<div class="text-xs truncate" style="color:var(--color-textSecondary);">{ data.Prompt }</div>
+				</div>
+				<button
+					hx-delete={ "/api/crons/" + data.Entry.ID }
+					hx-confirm="Delete this cron?"
+					hx-target="closest .cron-row"
+					hx-swap="outerHTML swap:300ms"
+					style="background:none;border:none;cursor:pointer;color:var(--color-error);border-radius:var(--radius-sm);min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;"
+					title="Delete cron"
+					aria-label="Delete cron"
+				>
+					@DeleteIcon()
+				</button>
 			</div>
-			<div class="text-gray-400 text-xs truncate">{ data.Prompt }</div>
-		</div>
-		<button
-			hx-delete={ "/api/crons/" + data.Entry.ID }
-			hx-confirm="Delete this cron?"
-			hx-target="closest .cron-row"
-			hx-swap="outerHTML swap:300ms"
-			style="background:none;border:none;cursor:pointer;color:#EF4444;padding:4px 8px;border-radius:6px;font-size:18px;"
-			title="Delete cron"
-		>🗑</button>
+		}
 	</div>
 }
