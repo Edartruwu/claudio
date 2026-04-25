@@ -1,0 +1,206 @@
+package web
+
+import "fmt"
+
+// SettingsPage renders the /settings page.
+templ SettingsPage(data SettingsData) {
+	@Layout(data.SessionID, data.CsrfToken) {
+		<div class="flex flex-col min-h-screen" style="background:var(--color-bg);">
+			<!-- Header -->
+			<header class="flex items-center gap-3 px-4 py-3 border-b" style="border-color:var(--color-border);background:var(--color-surface);padding-top:calc(env(safe-area-inset-top) + 12px);">
+				<a href="/" aria-label="Back" class="flex items-center justify-center" style="width:36px;height:36px;color:var(--color-textSecondary);">
+					@BackChevronIcon()
+				</a>
+				<h1 class="text-base font-semibold" style="color:var(--color-textPrimary);">Settings</h1>
+			</header>
+
+			<!-- Content -->
+			<main class="flex-1 overflow-y-auto px-4 py-5" style="padding-bottom:calc(env(safe-area-inset-bottom) + 80px);">
+				<div class="mx-auto flex flex-col gap-5" style="max-width:600px;">
+
+					<!-- Session section -->
+					<section>
+						<p class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--color-textMuted);">Session</p>
+						@CardContainer() {
+							<div class="flex items-center justify-between py-2">
+								<div>
+									<p class="text-sm font-medium" style="color:var(--color-textPrimary);">Active sessions</p>
+									<p class="text-xs mt-0.5" style="color:var(--color-textMuted);">{ formatSessionCount(data.SessionCount) }</p>
+								</div>
+								<button
+									type="button"
+									hx-delete="/api/sessions/all"
+									hx-headers={ `{"X-CSRF-Token":"` + data.CsrfToken + `"}` }
+									hx-confirm="Clear all sessions? This cannot be undone."
+									hx-swap="none"
+									class="text-xs font-semibold px-3 py-1.5 rounded-lg"
+									style="background:var(--color-errorDim);color:var(--color-error);border:1px solid var(--color-error);cursor:pointer;"
+								>
+									Clear all
+								</button>
+							</div>
+						}
+					</section>
+
+					<!-- Appearance section -->
+					<section>
+						<p class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--color-textMuted);">Appearance</p>
+						@CardContainer() {
+							<div class="py-2">
+								<p class="text-sm font-medium mb-3" style="color:var(--color-textPrimary);">Font size</p>
+								<div class="flex gap-2" role="group" aria-label="Font size">
+									<button
+										type="button"
+										onclick="ccSetFontSize('small')"
+										id="font-btn-small"
+										class="flex-1 py-2 rounded-lg text-xs font-semibold border"
+										style="background:var(--color-surfaceHigh);color:var(--color-textSecondary);border-color:var(--color-border);cursor:pointer;"
+									>
+										Small
+									</button>
+									<button
+										type="button"
+										onclick="ccSetFontSize('medium')"
+										id="font-btn-medium"
+										class="flex-1 py-2 rounded-lg text-sm font-semibold border"
+										style="background:var(--color-surfaceHigh);color:var(--color-textSecondary);border-color:var(--color-border);cursor:pointer;"
+									>
+										Medium
+									</button>
+									<button
+										type="button"
+										onclick="ccSetFontSize('large')"
+										id="font-btn-large"
+										class="flex-1 py-2 rounded-lg text-base font-semibold border"
+										style="background:var(--color-surfaceHigh);color:var(--color-textSecondary);border-color:var(--color-border);cursor:pointer;"
+									>
+										Large
+									</button>
+								</div>
+							</div>
+						}
+					</section>
+
+					<!-- Notifications section -->
+					<section>
+						<p class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--color-textMuted);">Notifications</p>
+						@CardContainer() {
+							<div class="flex items-center justify-between py-2">
+								<div>
+									<p class="text-sm font-medium" style="color:var(--color-textPrimary);">Push notifications</p>
+									<p id="notif-status" class="text-xs mt-0.5" style="color:var(--color-textMuted);">Checking…</p>
+								</div>
+								<button
+									type="button"
+									id="notif-btn"
+									onclick="ccRequestNotifPermission()"
+									class="text-xs font-semibold px-3 py-1.5 rounded-lg"
+									style="background:var(--color-brandDim);color:var(--color-brand);border:1px solid var(--color-brand);cursor:pointer;"
+								>
+									Enable
+								</button>
+							</div>
+						}
+					</section>
+
+					<!-- About section -->
+					<section>
+						<p class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--color-textMuted);">About</p>
+						@CardContainer() {
+							<div class="flex flex-col gap-1 py-1">
+								@MetadataRow("Version") {
+									{ data.Version }
+								}
+								@MetadataRow("Source") {
+									<a href="https://github.com/Abraxas-365/claudio" target="_blank" rel="noopener noreferrer" style="color:var(--color-brand);">
+										github.com/Abraxas-365/claudio
+									</a>
+								}
+							</div>
+						}
+					</section>
+
+				</div>
+			</main>
+		</div>
+
+		<!-- Font-size + notification JS -->
+		<script>
+		(function () {
+			var SIZES = { small: '13px', medium: '15px', large: '17px' };
+			var LS_KEY = 'cc-font-size';
+
+			function applySize(s) {
+				var sz = SIZES[s] || SIZES.medium;
+				document.documentElement.style.setProperty('--text-body', sz);
+				document.body.style.fontSize = sz;
+				['small','medium','large'].forEach(function(k) {
+					var btn = document.getElementById('font-btn-' + k);
+					if (!btn) return;
+					if (k === s) {
+						btn.style.background = 'var(--color-brandDim)';
+						btn.style.color = 'var(--color-brand)';
+						btn.style.borderColor = 'var(--color-brand)';
+					} else {
+						btn.style.background = 'var(--color-surfaceHigh)';
+						btn.style.color = 'var(--color-textSecondary)';
+						btn.style.borderColor = 'var(--color-border)';
+					}
+				});
+			}
+
+			window.ccSetFontSize = function(s) {
+				localStorage.setItem(LS_KEY, s);
+				applySize(s);
+			};
+
+			// Init from localStorage
+			document.addEventListener('DOMContentLoaded', function() {
+				var saved = localStorage.getItem(LS_KEY) || 'medium';
+				applySize(saved);
+				updateNotifStatus();
+			});
+
+			// Notification permission
+			function updateNotifStatus() {
+				var status = document.getElementById('notif-status');
+				var btn = document.getElementById('notif-btn');
+				if (!status || !btn) return;
+				if (!('Notification' in window)) {
+					status.textContent = 'Not supported in this browser';
+					btn.style.display = 'none';
+					return;
+				}
+				var perm = Notification.permission;
+				if (perm === 'granted') {
+					status.textContent = 'Granted';
+					status.style.color = 'var(--color-brand)';
+					btn.style.display = 'none';
+				} else if (perm === 'denied') {
+					status.textContent = 'Denied — allow in browser settings';
+					status.style.color = 'var(--color-error)';
+					btn.style.display = 'none';
+				} else {
+					status.textContent = 'Not enabled';
+					btn.style.display = '';
+				}
+			}
+
+			window.ccRequestNotifPermission = function() {
+				if (!('Notification' in window)) return;
+				Notification.requestPermission().then(function() {
+					updateNotifStatus();
+				});
+			};
+		})();
+		</script>
+	}
+}
+
+// formatSessionCount returns a human-readable session count string.
+func formatSessionCount(n int) string {
+	if n == 1 {
+		return "1 active session"
+	}
+	return fmt.Sprintf("%d active sessions", n)
+}

@@ -88,6 +88,7 @@ type WebServer struct {
 	apiClient        *api.Client
 	teamTemplatesDir string
 	publicURL        string
+	version          string
 
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
