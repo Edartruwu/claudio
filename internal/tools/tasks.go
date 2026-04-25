@@ -220,32 +220,69 @@ func (s *TaskStore) CompleteByIDs(ids []string, status, sessionID string) []*Tas
 func (s *TaskStore) CompleteByAssignee(agentName, status, sessionID string) []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if sessionID == "" {
+		sessionID = s.currentSession
+	}
+
+	// Collect affected tasks and update in-memory state.
 	var affected []*Task
+	now := time.Now()
 	for _, t := range s.tasks {
 		if t.AssignedTo == agentName && (t.Status == "pending" || t.Status == "in_progress") {
 			t.Status = status
-			t.UpdatedAt = time.Now()
-			s.saveToDBWithSession(t, sessionID)
+			t.UpdatedAt = now
 			affected = append(affected, t)
+		}
+	}
 
-			// Publish EventTaskUpdated
-			if s.bus != nil {
-				payload, _ := json.Marshal(attach.TaskUpdatedPayload{
-					ID:          t.ID,
-					Title:       t.Title,
-					Description: t.Description,
-					AssignedTo:  t.AssignedTo,
-					Status:      t.Status,
-					SessionID:   sessionID,
-				})
-				s.bus.Publish(bus.Event{
-					Type:      attach.EventTaskUpdated,
-					SessionID: sessionID,
-					Payload:   payload,
-				})
+	// Persist all updates in a single DB transaction; rollback on any error.
+	if s.db != nil && len(affected) > 0 {
+		tx, err := s.db.Begin()
+		if err != nil {
+			log.Printf("[tasks] CompleteByAssignee begin tx: %v", err)
+		} else {
+			txErr := false
+			for _, t := range affected {
+				_, err := tx.Exec(
+					`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+					t.ID, sessionID, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt,
+				)
+				if err != nil {
+					log.Printf("[tasks] CompleteByAssignee exec task %s: %v", t.ID, err)
+					txErr = true
+					break
+				}
+			}
+			if txErr {
+				if rbErr := tx.Rollback(); rbErr != nil {
+					log.Printf("[tasks] CompleteByAssignee rollback: %v", rbErr)
+				}
+			} else if err := tx.Commit(); err != nil {
+				log.Printf("[tasks] CompleteByAssignee commit: %v", err)
 			}
 		}
 	}
+
+	// Publish EventTaskUpdated for each affected task.
+	for _, t := range affected {
+		if s.bus != nil {
+			payload, _ := json.Marshal(attach.TaskUpdatedPayload{
+				ID:          t.ID,
+				Title:       t.Title,
+				Description: t.Description,
+				AssignedTo:  t.AssignedTo,
+				Status:      t.Status,
+				SessionID:   sessionID,
+			})
+			s.bus.Publish(bus.Event{
+				Type:      attach.EventTaskUpdated,
+				SessionID: sessionID,
+				Payload:   payload,
+			})
+		}
+	}
+
 	return affected
 }
 

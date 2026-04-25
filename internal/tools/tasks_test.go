@@ -741,6 +741,70 @@ func TestLoadForSession_NoopOnEmptySessionID(t *testing.T) {
 	}
 }
 
+// --- Fix CompleteByAssignee: rolls back on partial DB failure ---
+
+func TestCompleteByAssignee_RollsBackOnPartialFailure(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	// Trigger that forces any INSERT with id = '2' to fail.
+	_, err := db.Exec(`
+		CREATE TRIGGER fail_assignee_task_id_2
+		BEFORE INSERT ON team_tasks
+		WHEN NEW.id = '2'
+		BEGIN
+			SELECT RAISE(ABORT, 'forced failure for rollback test');
+		END
+	`)
+	if err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	store := freshStore()
+	store.db = db
+	store.tasks["1"] = &Task{ID: "1", Title: "task-one", Status: "pending", AssignedTo: "agent-r"}
+	store.tasks["2"] = &Task{ID: "2", Title: "task-two", Status: "in_progress", AssignedTo: "agent-r"}
+
+	// Call; task "2" triggers DB error → rollback.
+	store.CompleteByAssignee("agent-r", "completed", "sess-rollback")
+
+	// After rollback, DB must have 0 rows.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM team_tasks`).Scan(&count); err != nil {
+		t.Fatalf("count query: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 rows after rollback, got %d — partial write leaked", count)
+	}
+}
+
+// --- Fix CompleteByAssignee: falls back to currentSession when sessionID is empty ---
+
+func TestCompleteByAssignee_EmptySessionIDFallback(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	store := freshStore()
+	store.db = db
+	store.currentSession = "fallback-session"
+	store.tasks["1"] = &Task{ID: "1", Title: "task", Status: "pending", AssignedTo: "agent-fb"}
+
+	// Pass empty sessionID → must fall back to store.currentSession.
+	affected := store.CompleteByAssignee("agent-fb", "completed", "")
+	if len(affected) != 1 {
+		t.Fatalf("expected 1 affected, got %d", len(affected))
+	}
+
+	var gotSession string
+	err := db.QueryRow(`SELECT session_id FROM team_tasks WHERE id = '1'`).Scan(&gotSession)
+	if err != nil {
+		t.Fatalf("query team_tasks: %v", err)
+	}
+	if gotSession != "fallback-session" {
+		t.Errorf("session_id in DB = %q, want %q", gotSession, "fallback-session")
+	}
+}
+
 // --- Fix #4: CompleteByIDs rolls back on partial DB failure ---
 
 func TestCompleteByIDs_RollsBackOnPartialFailure(t *testing.T) {
