@@ -77,6 +77,14 @@ templ Layout(sessionID, csrfToken string) {
 		// NOTE: hx-swap="outerHTML" on <body> must never be used — use innerHTML instead.
 		</script>
 		@filterAndSwipeScript()
+		<!-- Agent log dialog -->
+		<dialog id="agent-log-dialog" aria-label="Agent logs" onclick="if(event.target===this)this.close()" style="background:var(--color-surface);color:var(--color-text);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:var(--space-lg);max-width:90vw;width:600px;max-height:80vh;overflow-y:auto;">
+			<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-md);">
+				<h2 id="agent-log-dialog-title" style="font-size:16px;font-weight:600;color:var(--color-text);margin:0;">Agent Logs</h2>
+				<button onclick="document.getElementById('agent-log-dialog').close()" aria-label="Close" style="background:none;border:1px solid var(--color-border);color:var(--color-textSecondary);border-radius:var(--radius-sm);padding:4px 10px;cursor:pointer;font-size:14px;">&#10005;</button>
+			</div>
+			<div id="agent-log-content" role="log" aria-live="polite" aria-label="Agent log messages" style="font-family:monospace;font-size:13px;white-space:pre-wrap;color:var(--color-textSecondary);"></div>
+		</dialog>
 	</body>
 	</html>
 }
@@ -267,6 +275,12 @@ templ layoutCSS() {
 		input, textarea, select {
 			touch-action: manipulation;
 		}
+		:focus-visible {
+			outline: 2px solid var(--color-brand);
+			outline-offset: 2px;
+			border-radius: var(--radius-sm);
+		}
+		:focus:not(:focus-visible) { outline: none; }
 		@media (orientation: landscape) and (max-height: 500px) {
 			.chat-header { padding-top: calc(env(safe-area-inset-top) + 4px) !important; }
 			.input-bar { padding-bottom: calc(env(safe-area-inset-bottom) + 4px) !important; }
@@ -667,67 +681,36 @@ templ filterAndSwipeScript() {
 			});
 	};
 
-	// ccOpenAgentLogs — open live log drawer for an agent.
+	// ccOpenAgentLogs — open agent log dialog.
 	window.ccOpenAgentLogs = function(agentName, sessionID) {
 		window._ccLogAgent = {name: agentName, sessionID: sessionID};
-		var drawer = document.getElementById('agent-log-drawer');
-		if (!drawer) {
-			drawer = document.createElement('div');
-			drawer.id = 'agent-log-drawer';
-			drawer.style.cssText = 'position:fixed;top:0;right:0;height:100%;width:' + (window.innerWidth < 768 ? '100vw' : '384px') + ';background:var(--color-surface);border-left:1px solid var(--color-border);z-index:900;display:flex;flex-direction:column;transform:translateX(100%);transition:transform 0.25s ease;';
-			drawer.innerHTML =
-				'<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--color-border);gap:8px;">' +
-					'<button onclick="ccCloseAgentLogs()" style="background:none;border:none;color:var(--color-textMuted);font-size:18px;cursor:pointer;padding:4px 8px;">←</button>' +
-					'<span id="agent-log-title" style="flex:1;font-weight:600;color:var(--color-textPrimary);font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>' +
-					'<span id="agent-log-live" style="display:none;align-items:center;gap:4px;font-size:11px;color:#34C759;"><span style="width:6px;height:6px;border-radius:50%;background:#34C759;animation:pulse 1.5s infinite;"></span>Live</span>' +
-					'<button onclick="ccCloseAgentLogs()" style="background:none;border:none;color:var(--color-textMuted);font-size:20px;cursor:pointer;padding:4px 8px;">×</button>' +
-				'</div>' +
-				'<div id="agent-log-body" style="flex:1;overflow-y:auto;padding:12px 16px;font-size:13px;font-family:ui-monospace,monospace;color:var(--color-textPrimary);"></div>';
-			document.body.appendChild(drawer);
-			// Close on click outside (desktop only)
-			document.addEventListener('click', function(e) {
-				if (window.innerWidth < 768) return;
-				var d = document.getElementById('agent-log-drawer');
-				if (d && d.style.transform === 'translateX(0px)' && !d.contains(e.target) && !e.target.closest('[onclick*="ccOpenAgentLogs"]')) {
-					ccCloseAgentLogs();
-				}
-			});
-		}
-		// Update width for current viewport
-		drawer.style.width = window.innerWidth < 768 ? '100vw' : '384px';
-		document.getElementById('agent-log-title').textContent = agentName;
-		document.getElementById('agent-log-live').style.display = 'flex';
-		document.getElementById('agent-log-body').innerHTML = '<span style="color:var(--color-textMuted);">Loading…</span>';
-		// Slide in
-		requestAnimationFrame(function() { drawer.style.transform = 'translateX(0)'; });
+		var dialog = document.getElementById('agent-log-dialog');
+		var title = document.getElementById('agent-log-dialog-title');
+		var content = document.getElementById('agent-log-content');
+		if (!dialog || !content) return;
+		title.textContent = agentName;
+		content.textContent = 'Loading…';
+		dialog.showModal();
 		// Fetch logs
 		fetch('/chat/' + sessionID + '/agents/' + encodeURIComponent(agentName) + '/logs', {credentials: 'include'})
 			.then(function(r) { return r.text(); })
-			.then(function(html) {
-				var body = document.getElementById('agent-log-body');
-				if (!body) return;
-				body.innerHTML = html;
-				body.scrollTop = body.scrollHeight;
+			.then(function(text) {
+				var c = document.getElementById('agent-log-content');
+				if (!c) return;
+				c.textContent = text;
 			})
 			.catch(function() {
-				var body = document.getElementById('agent-log-body');
-				if (body) body.innerHTML = '<span style="color:var(--color-error);">Failed to load logs</span>';
+				var c = document.getElementById('agent-log-content');
+				if (c) c.textContent = 'Failed to load logs';
 			});
 	};
 
-	// ccCloseAgentLogs — close the log drawer.
+	// ccCloseAgentLogs — close the log dialog.
 	window.ccCloseAgentLogs = function() {
 		window._ccLogAgent = null;
-		var drawer = document.getElementById('agent-log-drawer');
-		if (drawer) drawer.style.transform = 'translateX(100%)';
+		var dialog = document.getElementById('agent-log-dialog');
+		if (dialog) dialog.close();
 	};
-
-	// ESC closes agent log drawer
-	document.addEventListener('keydown', function(e) {
-		if (e.key === 'Escape' && window._ccLogAgent) {
-			ccCloseAgentLogs();
-		}
-	});
 
 	// ccShowToast — brief toast notification.
 	window.ccShowToast = function(msg) {
