@@ -12,17 +12,10 @@ templ InfoPanel(data InfoPageData) {
 		<header class="info-panel-header shrink-0 bg-[var(--color-surface)] px-4 py-3 flex flex-row items-center gap-3 border-b border-b-[var(--color-border)]">
 			<!-- Back chevron -->
 			<button onclick="history.back()" class="bg-transparent border-none cursor-pointer p-1 shrink-0 flex items-center text-[var(--color-textMuted)]">
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+				@BackChevronIcon()
 			</button>
 			<!-- Avatar with status dot -->
-			<div class="relative shrink-0">
-				<div class="flex items-center justify-center font-bold w-10 h-10 rounded-full bg-[var(--color-brand)] text-[var(--color-bg)] text-base">
-					{ FirstChar(data.Session.Name) }
-				</div>
-				if data.Session.Status == "active" {
-					<span class="absolute bottom-0 right-0 w-[11px] h-[11px] bg-[var(--color-brand)] border-2 border-[var(--color-bg)] rounded-full"></span>
-				}
-			</div>
+			@AvatarCircle(data.Session.Name, data.Session.Status == "active", "md")
 			<!-- Name + path -->
 			<div class="flex-1 min-w-0">
 				<p class="text-[var(--color-textPrimary)] text-base font-semibold m-0 overflow-hidden text-ellipsis whitespace-nowrap">
@@ -36,7 +29,7 @@ templ InfoPanel(data InfoPageData) {
 		</header>
 		<!-- Metadata info card -->
 		<div class="px-4 pt-3 shrink-0">
-			<div class="bg-[var(--color-surface)] rounded-xl py-[10px] px-[14px] border border-[var(--color-border)]">
+			@CardContainer() {
 				<div class="flex items-center gap-2 py-1">
 					<span class="text-[var(--color-textMuted)] text-[13px] min-w-[70px]">Path</span>
 					<span class="text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap">{ data.Session.Path }</span>
@@ -57,7 +50,7 @@ templ InfoPanel(data InfoPageData) {
 					<span class="text-[var(--color-textMuted)] text-[13px] min-w-[70px]">Connected</span>
 					<span class="text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap">{ RelTime(data.Session.LastActiveAt) }</span>
 				</div>
-			</div>
+			}
 		</div>
 		<!-- Tab bar -->
 		<div id="info-tab-bar" class="flex bg-[var(--color-surface)] border-b border-b-[var(--color-border)] shrink-0">

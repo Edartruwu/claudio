@@ -3,15 +3,7 @@ package web
 templ TaskDetail(data TaskDetailData) {
 	<div style="margin-top:12px;padding-top:12px;font-size:13px;border-top:1px solid var(--color-border);">
 		<div class="flex items-center gap-2 flex-wrap" style="margin-bottom:8px;">
-			if data.Task.Status == "done" {
-				<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-brand);">&#10003; done</span>
-			} else if data.Task.Status == "in_progress" {
-				<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-ai);">&#9679; in progress</span>
-			} else if data.Task.Status == "blocked" {
-				<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-error);">&#10005; blocked</span>
-			} else {
-				<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-textMuted);">&#9675; pending</span>
-			}
+			@StatusBadge(data.Task.Status)
 			if data.Task.AssignedTo != "" {
 				<span style="color:var(--color-textMuted);font-size:11px;">&rarr; { data.Task.AssignedTo }</span>
 			}
