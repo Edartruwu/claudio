@@ -16,52 +16,52 @@ import (
 	ansitruncate "github.com/muesli/reflow/truncate"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/app"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/bus"
-	"github.com/Abraxas-365/claudio/internal/prompts"
-	"github.com/Abraxas-365/claudio/internal/snippets"
-	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
-	"github.com/Abraxas-365/claudio/internal/ratelimit"
 	"github.com/Abraxas-365/claudio/internal/config"
+	"github.com/Abraxas-365/claudio/internal/prompts"
 	"github.com/Abraxas-365/claudio/internal/query"
+	"github.com/Abraxas-365/claudio/internal/ratelimit"
 	"github.com/Abraxas-365/claudio/internal/services/compact"
 	"github.com/Abraxas-365/claudio/internal/services/memory"
 	"github.com/Abraxas-365/claudio/internal/services/naming"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/session"
+	"github.com/Abraxas-365/claudio/internal/snippets"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/agentselector"
-	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
 	"github.com/Abraxas-365/claudio/internal/tui/commandpalette"
 	"github.com/Abraxas-365/claudio/internal/tui/components"
+	"github.com/Abraxas-365/claudio/internal/tui/docks"
 	"github.com/Abraxas-365/claudio/internal/tui/filepicker"
+	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/modelselector"
 	"github.com/Abraxas-365/claudio/internal/tui/panels"
-	"github.com/Abraxas-365/claudio/internal/tui/panels/conversationpanel"
-	panelsessions "github.com/Abraxas-365/claudio/internal/tui/panels/sessions"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/analyticspanel"
 	panelconfig "github.com/Abraxas-365/claudio/internal/tui/panels/config"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/conversationpanel"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/memorypanel"
+	panelsessions "github.com/Abraxas-365/claudio/internal/tui/panels/sessions"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/skillspanel"
+	"github.com/Abraxas-365/claudio/internal/tui/panels/stree"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
-	"github.com/Abraxas-365/claudio/internal/tui/panels/stree"
-	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
-	"github.com/Abraxas-365/claudio/internal/utils"
-	"github.com/Abraxas-365/claudio/internal/tui/docks"
-	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
-	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
-	sidebarblocks "github.com/Abraxas-365/claudio/internal/tui/sidebar/blocks"
-	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
-	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
+	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
+	sidebarblocks "github.com/Abraxas-365/claudio/internal/tui/sidebar/blocks"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
+	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
+	"github.com/Abraxas-365/claudio/internal/utils"
 )
 
 // WindowState holds per-window session state so the main viewport and the
@@ -75,69 +75,69 @@ type WindowState struct {
 // Model is the root Bubble Tea model for the TUI.
 type Model struct {
 	// Components
-	viewport      viewport.Model
-	prompt        prompt.Model
-	spinner       components.SpinnerModel
-	permission    permissions.Model
-	palette       commandpalette.Model
-	filePicker    filepicker.Model
-	modelSelector  modelselector.Model
-	agentSelector  agentselector.Model
-	teamSelector   teamselector.Model
+	viewport            viewport.Model
+	prompt              prompt.Model
+	spinner             components.SpinnerModel
+	permission          permissions.Model
+	palette             commandpalette.Model
+	filePicker          filepicker.Model
+	modelSelector       modelselector.Model
+	agentSelector       agentselector.Model
+	teamSelector        teamselector.Model
 	teamTemplatesDir    string   // path to ~/.claudio/team-templates
 	harnessTemplateDirs []string // additional dirs from installed harnesses
-	currentAgent     string // type of the active persona ("" = default Claudio)
-	baseSystemPrompt string // system prompt before any agent persona is applied
-	baseModel        string // model before any agent override
-	whichKey       whichkey.Model
-	sessionPicker  *panelsessions.Panel
-	toast          Toast
-	todoDock       *docks.TodoDock
-	filesPanel     *filespanel.Panel
-	fileOps        []filespanel.FileOp
-	sidebar        *sidebar.Sidebar
-	sidebarFiles   *sidebarblocks.FilesBlock
+	currentAgent        string   // type of the active persona ("" = default Claudio)
+	baseSystemPrompt    string   // system prompt before any agent persona is applied
+	baseModel           string   // model before any agent override
+	whichKey            whichkey.Model
+	sessionPicker       *panelsessions.Panel
+	toast               Toast
+	todoDock            *docks.TodoDock
+	filesPanel          *filespanel.Panel
+	fileOps             []filespanel.FileOp
+	sidebar             *sidebar.Sidebar
+	sidebarFiles        *sidebarblocks.FilesBlock
 
 	// Panels
 	activePanel   panels.Panel
 	activePanelID PanelID
-	lastPanelID   PanelID              // last panel opened, for wl/wv to reopen
+	lastPanelID   PanelID                  // last panel opened, for wl/wv to reopen
 	panelPool     map[PanelID]panels.Panel // pooled panel instances; keyed by PanelID
 
 	// State
-	messages       []ChatMessage
-	focus          Focus
-	width, height  int
-	streaming      bool
-	streamText     *strings.Builder
-	pendingToolCount    int             // tools in-flight this turn (tool_start - tool_end)
+	messages            []ChatMessage
+	focus               Focus
+	width, height       int
+	streaming           bool
+	streamText          *strings.Builder
+	pendingToolCount    int              // tools in-flight this turn (tool_start - tool_end)
 	pendingPostToolText *strings.Builder // text_delta buffered while tools are in-flight
-	model          string
-	totalTokens    int
-	totalCost      float64
-	usageTracker   *api.UsageTracker
-	turns          int
-	spinText       string // current spinner status text
-	toolSpinFrame  int    // braille spinner frame counter for in-progress tool status
-	expandedGroups  map[int]bool          // tool group msg indices that are expanded
-	thinkingExpanded map[int]bool         // message index → thinking block expanded state
-	thinkingHidden   bool                 // /thinking toggle: hide all MsgThinking blocks
-	undoStash        []ChatMessage        // last user+assistant exchange popped by /undo, restored by /redo
-	lastToolGroup   int                   // msg index of the last tool group start (-1 = none)
-	toolStartTimes  map[string]time.Time  // ToolUseID → execution start time
-	km              *keymap.Keymap // remappable key bindings
-	leaderSeq       string       // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
-	leaderSeqGen    int          // incremented each time a new timeout is scheduled; stale TimeoutMsgs are ignored
-	prevSessionID   string       // for alternate session switching
-	vpCursor        int          // viewport section cursor (-1 = none)
-	vpSections      []Section    // cached section metadata from last render
-	messageQueue    []string     // messages queued while streaming
+	model               string
+	totalTokens         int
+	totalCost           float64
+	usageTracker        *api.UsageTracker
+	turns               int
+	spinText            string               // current spinner status text
+	toolSpinFrame       int                  // braille spinner frame counter for in-progress tool status
+	expandedGroups      map[int]bool         // tool group msg indices that are expanded
+	thinkingExpanded    map[int]bool         // message index → thinking block expanded state
+	thinkingHidden      bool                 // /thinking toggle: hide all MsgThinking blocks
+	undoStash           []ChatMessage        // last user+assistant exchange popped by /undo, restored by /redo
+	lastToolGroup       int                  // msg index of the last tool group start (-1 = none)
+	toolStartTimes      map[string]time.Time // ToolUseID → execution start time
+	km                  *keymap.Keymap       // remappable key bindings
+	leaderSeq           string               // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
+	leaderSeqGen        int                  // incremented each time a new timeout is scheduled; stale TimeoutMsgs are ignored
+	prevSessionID       string               // for alternate session switching
+	vpCursor            int                  // viewport section cursor (-1 = none)
+	vpSections          []Section            // cached section metadata from last render
+	messageQueue        []string             // messages queued while streaming
 
 	// Viewport search
-	vpSearchActive  bool     // true when search input is shown
-	vpSearchQuery   string   // current search text
-	vpSearchMatches []int    // section indices that match
-	vpSearchIdx     int      // current match index in vpSearchMatches
+	vpSearchActive  bool   // true when search input is shown
+	vpSearchQuery   string // current search text
+	vpSearchMatches []int  // section indices that match
+	vpSearchIdx     int    // current match index in vpSearchMatches
 
 	// Message pinning — maps ChatMessage index to pinned state
 	pinnedMsgIndices map[int]bool
@@ -161,24 +161,24 @@ type Model struct {
 	engineRef             **query.Engine // optional external pointer updated whenever engine is set
 	pendingEngineMessages []api.Message
 	apiClient             *api.Client
-	registry     *tools.Registry
-	baseRegistry *tools.Registry // pristine registry with all tools; used to restore team tools on activation
-	cancelFunc   context.CancelFunc
-	eventCh      chan tuiEvent
-	approvalCh   chan bool
-	systemPrompt   string
-	userContext    string // CLAUDE.md injected as first user message
-	systemContext  string // git status appended to system prompt
-	commands       *commands.Registry
-	session        *session.Session
-	db             *storage.DB // for sub-agent persistence
-	skills         *skills.Registry
-	engineConfig   *query.EngineConfig
-	planModeActive      bool   // true while the AI is in plan mode (EnterPlanMode called)
-	planFilePath        string // path of the current plan file (set by EnterPlanMode)
-	planApprovalCursor  int    // selected option in the plan approval dialog (0-3)
-	planContentCache    string // cached plan file content (loaded once in Update, used by View)
-	tooSmall            bool   // true if terminal is too small (< 60×20)
+	registry              *tools.Registry
+	baseRegistry          *tools.Registry // pristine registry with all tools; used to restore team tools on activation
+	cancelFunc            context.CancelFunc
+	eventCh               chan tuiEvent
+	approvalCh            chan bool
+	systemPrompt          string
+	userContext           string // CLAUDE.md injected as first user message
+	systemContext         string // git status appended to system prompt
+	commands              *commands.Registry
+	session               *session.Session
+	db                    *storage.DB // for sub-agent persistence
+	skills                *skills.Registry
+	engineConfig          *query.EngineConfig
+	planModeActive        bool   // true while the AI is in plan mode (EnterPlanMode called)
+	planFilePath          string // path of the current plan file (set by EnterPlanMode)
+	planApprovalCursor    int    // selected option in the plan approval dialog (0-3)
+	planContentCache      string // cached plan file content (loaded once in Update, used by View)
+	tooSmall              bool   // true if terminal is too small (< 60×20)
 
 	// Rate limit state
 	rateLimitWarning string
@@ -187,8 +187,8 @@ type Model struct {
 
 	askUserDialog *askUserDialogState // active AskUser question dialog (nil = not showing)
 
-	pendingModelRestore  string // non-empty = restore this model after current interaction finishes
-	resumeSummarySet     bool   // true once the resumed session summary has been appended to systemPrompt
+	pendingModelRestore string // non-empty = restore this model after current interaction finishes
+	resumeSummarySet    bool   // true once the resumed session summary has been appended to systemPrompt
 
 	// Agent detail overlay
 	agentDetail *agentDetailOverlay
@@ -221,20 +221,20 @@ type ToolCallEntry struct {
 // agentDetailOverlay holds state for the full-screen agent conversation view.
 type agentDetailOverlay struct {
 	state     *teams.TeammateState
-	scroll    int              // vertical scroll offset
+	scroll    int             // vertical scroll offset
 	toolCalls []ToolCallEntry // live tool call feed (max 20 entries)
 }
 
 // askUserDialogState holds the state for an interactive AskUser question dialog.
 type askUserDialogState struct {
-	questions    []tools.AskQuestion
-	qIdx         int               // current question index
-	optCursor    int               // cursor within current question's options
-	answers      map[string]string // question label → selected answer
-	multiSelected map[int]bool     // for multi_select: which option indices are selected
-	responseCh   chan<- tools.AskUserResponse
-	freeText     string // typed text when "Other" option is selected
-	typingOther  bool   // true when user is typing a custom answer
+	questions     []tools.AskQuestion
+	qIdx          int               // current question index
+	optCursor     int               // cursor within current question's options
+	answers       map[string]string // question label → selected answer
+	multiSelected map[int]bool      // for multi_select: which option indices are selected
+	responseCh    chan<- tools.AskUserResponse
+	freeText      string // typed text when "Other" option is selected
+	typingOther   bool   // true when user is typing a custom answer
 }
 
 // tuiEvent wraps query engine events for the Bubble Tea message loop.
@@ -242,28 +242,28 @@ type tuiEvent struct {
 	typ           string
 	text          string
 	toolUse       tools.ToolUse
-	toolUses      []tools.ToolUse          // for "retry" events
+	toolUses      []tools.ToolUse // for "retry" events
 	result        *tools.Result
 	usage         api.Usage
 	err           error
-	askUserReq    tools.AskUserRequest     // for "askuser_request" events
-	teammateEvent *teams.TeammateEvent     // for "teammate_event" events
+	askUserReq    tools.AskUserRequest // for "askuser_request" events
+	teammateEvent *teams.TeammateEvent // for "teammate_event" events
 }
 
 // Tea messages
 type (
-	engineEventMsg   tuiEvent
-	engineDoneMsg    struct{ err error }
+	engineEventMsg    tuiEvent
+	engineDoneMsg     struct{ err error }
 	clipboardImageMsg struct {
 		data      string // base64-encoded
 		mediaType string
 		err       error
 	}
-	timerTickMsg     struct{}
-	logoTickMsg      struct{} // drives the welcome-screen logo color-wave animation
-	taskTickMsg      struct{} // drives live refresh of the TodoDock
-	streamRenderMsg  struct{} // throttled streaming viewport refresh
-	compactDoneMsg struct {
+	timerTickMsg    struct{}
+	logoTickMsg     struct{} // drives the welcome-screen logo color-wave animation
+	taskTickMsg     struct{} // drives live refresh of the TodoDock
+	streamRenderMsg struct{} // throttled streaming viewport refresh
+	compactDoneMsg  struct {
 		compacted []api.Message
 		summary   string
 		err       error
@@ -334,30 +334,30 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	vp.SetContent("")
 
 	m := Model{
-		viewport:       vp,
-		prompt:         prompt.New(),
-		spinner:        components.NewSpinner(),
-		focus:          FocusPrompt,
-		model:          apiClient.GetModel(),
-		apiClient:      apiClient,
-		registry:       registry,
-		eventCh:        make(chan tuiEvent, 64),
-		systemPrompt:     systemPrompt,
-		baseSystemPrompt: systemPrompt,
-		baseModel:        apiClient.GetModel(),
+		viewport:            vp,
+		prompt:              prompt.New(),
+		spinner:             components.NewSpinner(),
+		focus:               FocusPrompt,
+		model:               apiClient.GetModel(),
+		apiClient:           apiClient,
+		registry:            registry,
+		eventCh:             make(chan tuiEvent, 64),
+		systemPrompt:        systemPrompt,
+		baseSystemPrompt:    systemPrompt,
+		baseModel:           apiClient.GetModel(),
 		streamText:          &strings.Builder{},
 		pendingPostToolText: &strings.Builder{},
-		session:        sess,
-		expandedGroups:   make(map[int]bool),
-		thinkingExpanded: make(map[int]bool),
-		lastToolGroup:    -1,
-		lastPanelID:      PanelConfig,
-		toolStartTimes:  make(map[string]time.Time),
-		vpCursor:        -1,
-		km:              loadKeymap(),
-		whichKey:        whichkey.New(),
-		sessionRuntimes: make(map[string]*SessionRuntime),
-		panelPool:       make(map[PanelID]panels.Panel),
+		session:             sess,
+		expandedGroups:      make(map[int]bool),
+		thinkingExpanded:    make(map[int]bool),
+		lastToolGroup:       -1,
+		lastPanelID:         PanelConfig,
+		toolStartTimes:      make(map[string]time.Time),
+		vpCursor:            -1,
+		km:                  loadKeymap(),
+		whichKey:            whichkey.New(),
+		sessionRuntimes:     make(map[string]*SessionRuntime),
+		panelPool:           make(map[PanelID]panels.Panel),
 	}
 
 	// Apply options
@@ -2088,8 +2088,6 @@ func registerCapabilityTools(registry *tools.Registry, capabilities []string, cl
 	tools.RegisterCapabilityTools(registry, capabilities, client, pusher, sessionID, cfg)
 }
 
-
-
 // applySkillFiltering updates the SkillTool inside toolRegistry with a filtered
 // skills registry based on the agent's capabilities and design config.
 // It creates a new SkillTool instance (never mutates the shared pointer) so the
@@ -2789,7 +2787,7 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 
 				var notification string
 				if ev.Type == "complete" {
-					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.AgentName, ev.TeamName, ev.Text, taskInfo, worktreeInfo)
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\n</task-notification>", ev.AgentName, ev.TeamName, ev.Text, taskInfo, worktreeInfo)
 				} else {
 					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.AgentName, ev.TeamName, ev.Text, taskInfo, worktreeInfo)
 				}
@@ -3090,7 +3088,6 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-
 	cmd, ok := m.commands.Get(name)
 	if !ok {
 		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", name)})
@@ -3285,8 +3282,8 @@ func (m Model) handleAskUserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	q := d.questions[d.qIdx]
-	otherIdx := len(q.Options)   // "Other (type your own...)"
-	chatIdx := otherIdx + 1      // "Chat about this"
+	otherIdx := len(q.Options) // "Other (type your own...)"
+	chatIdx := otherIdx + 1    // "Chat about this"
 
 	// If user is currently typing a free-text answer, handle that first.
 	if d.typingOther {
@@ -3786,19 +3783,25 @@ func buildPermissionRule(tu tools.ToolUse) config.PermissionRule {
 func extractRulePattern(tu tools.ToolUse) string {
 	switch tu.Name {
 	case "Bash":
-		var in struct{ Command string `json:"command"` }
+		var in struct {
+			Command string `json:"command"`
+		}
 		if json.Unmarshal(tu.Input, &in) == nil && in.Command != "" {
 			// Use first word as prefix: "go test ./..." → "go test *"
 			parts := strings.SplitN(in.Command, " ", 2)
 			return parts[0] + " *"
 		}
 	case "Read", "Write", "Edit":
-		var in struct{ FilePath string `json:"file_path"` }
+		var in struct {
+			FilePath string `json:"file_path"`
+		}
 		if json.Unmarshal(tu.Input, &in) == nil && in.FilePath != "" {
 			return in.FilePath
 		}
 	case "WebFetch":
-		var in struct{ URL string `json:"url"` }
+		var in struct {
+			URL string `json:"url"`
+		}
 		if json.Unmarshal(tu.Input, &in) == nil && in.URL != "" {
 			return extractDomainPattern(in.URL)
 		}
@@ -4688,7 +4691,6 @@ func (m *Model) showBufferList() {
 	m.refreshViewport()
 }
 
-
 // countBackgroundSessions returns the number of sessions still streaming in the background.
 // Also cleans up finished runtimes.
 func (m *Model) countBackgroundSessions() int {
@@ -4818,7 +4820,7 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 				}
 				var notification string
 				if ev.teammateEvent.Type == "complete" {
-					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\nUse the Agents panel or SendMessage to get full details if needed.\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, ev.teammateEvent.Text, taskInfo, worktreeInfo)
+					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q completed.\nResult summary: %s%s%s\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, ev.teammateEvent.Text, taskInfo, worktreeInfo)
 				} else {
 					notification = fmt.Sprintf("<task-notification>\nAgent %q in team %q failed.\nError: %s%s%s\n</task-notification>", ev.teammateEvent.AgentName, ev.teammateEvent.TeamName, ev.teammateEvent.Text, taskInfo, worktreeInfo)
 				}
@@ -4937,7 +4939,6 @@ func (m *Model) deleteCurrentSession() (bool, tea.Cmd) {
 	m.refreshViewport()
 	return true, nil
 }
-
 
 func (m *Model) renameCurrentSession() (bool, tea.Cmd) {
 	m.addMessage(ChatMessage{Type: MsgSystem, Content: "Use /rename <title> to rename this session"})
@@ -6266,10 +6267,10 @@ func (m *Model) buildSidebar() *sidebar.Sidebar {
 			blks = append(blks, sidebarblocks.NewTodosBlock())
 		case "tokens":
 			blks = append(blks, sidebarblocks.NewTokensBlock(
-				func() int     { return m.totalTokens },
+				func() int { return m.totalTokens },
 				func() float64 { return m.totalCost },
-				func() int     { return utils.MaxContextForModel(m.model) },
-				func() string  { return m.model },
+				func() int { return utils.MaxContextForModel(m.model) },
+				func() string { return m.model },
 			))
 		case "session":
 			blks = append(blks, sidebarblocks.NewSessionBlock(
@@ -6579,16 +6580,16 @@ func (m Model) View() string {
 		displayModel = m.currentAgent
 	}
 	sections = append(sections, renderStatusBar(m.width, StatusBarState{
-		Model:       displayModel,
-		Tokens:      m.totalTokens,
-		Cost:        m.totalCost,
-		Turns:       m.turns,
-		Streaming:   m.streaming,
-		SpinText:    m.spinText,
-		Hint:        hint,
-		VimMode:     m.vimModeDisplay(),
-		SessionName: m.sessionName(),
-		PanelName:   m.panelName(),
+		Model:              displayModel,
+		Tokens:             m.totalTokens,
+		Cost:               m.totalCost,
+		Turns:              m.turns,
+		Streaming:          m.streaming,
+		SpinText:           m.spinText,
+		Hint:               hint,
+		VimMode:            m.vimModeDisplay(),
+		SessionName:        m.sessionName(),
+		PanelName:          m.panelName(),
 		ContextUsed:        ctxUsed,
 		ContextMax:         ctxMax,
 		BackgroundSessions: m.countBackgroundSessions(),

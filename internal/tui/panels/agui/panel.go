@@ -971,7 +971,15 @@ func (p *Panel) updateLeft(key string) (tea.Cmd, bool) {
 		return nil, true
 
 	case "tab":
-		// Switch to right pane
+		// Auto-select the cursor item (if needed) then switch to right pane.
+		if len(fe) > 0 && p.cursor < len(fe) {
+			e := fe[p.cursor]
+			if p.selectedID != e.id {
+				p.selectedID = e.id
+				p.loadConversation()
+				p.atBottom = true
+			}
+		}
 		if p.selectedID != "" {
 			p.focusedPane = 1
 			return nil, true

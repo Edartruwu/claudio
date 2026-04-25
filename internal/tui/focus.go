@@ -47,7 +47,7 @@ const (
 // panelOverlayMode returns the overlay rendering mode for a given panel.
 func panelOverlayMode(id PanelID) OverlayMode {
 	switch id {
-	case PanelAgentGUI, PanelSessionTree, PanelTasks, PanelMemory:
+	case PanelAgentGUI, PanelSessionTree, PanelTasks, PanelMemory, PanelSkills:
 		return OverlayFullscreen
 	case PanelSessions:
 		return OverlayDrawer
