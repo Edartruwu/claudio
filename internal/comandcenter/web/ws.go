@@ -247,6 +247,10 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 		if msg == nil {
 			return
 		}
+		// Skip agent status noise (⏳ agent — done, ✅ agent — done).
+		if IsAgentStatusLine(msg.Content) {
+			return
+		}
 		var buf bytes.Buffer
 		if err := MessageBubble(MessageView{Message: *msg}).Render(renderCtx, &buf); err != nil {
 			return
