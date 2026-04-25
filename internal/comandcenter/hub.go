@@ -271,7 +271,7 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 		}, &webpush.Options{
 			VAPIDPublicKey:  pub,
 			VAPIDPrivateKey: priv,
-			Subscriber:      "mailto:vapid@example.com",
+			Subscriber:      "https://github.com/Abraxas-365/claudio",
 			Urgency:         webpush.UrgencyHigh,
 			TTL:             86400, // 24h — redeliver even if device was offline
 		})
