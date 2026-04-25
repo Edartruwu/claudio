@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
+	"github.com/Abraxas-365/claudio/internal/cli"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/auth"
@@ -154,6 +155,7 @@ func main() {
 
 	// Mount browser UI (WhatsApp-style chat interface).
 	webSrv := web.NewWebServer(storage, hub, *password, *dataDir)
+	webSrv.SetVersion(cli.Version)
 	webSrv.SetCronStore(cronStore)
 	webSrv.SetAPIClient(sharedAPIClient)
 	webSrv.SetTeamTemplatesDir(filepath.Join(claudioDir, "team-templates"))
