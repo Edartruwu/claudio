@@ -55,8 +55,11 @@ func (d *TodoDock) ToggleExpanded() {
 	d.expanded = !d.expanded
 }
 
-// Height returns the number of lines this dock will render.
+// Height returns the number of lines this dock will render (0 when there are no tasks).
 func (d *TodoDock) Height() int {
+	if !d.IsActive() {
+		return 0
+	}
 	if d.expanded {
 		items := d.planItems()
 		h := len(items)

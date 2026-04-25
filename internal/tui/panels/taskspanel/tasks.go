@@ -118,6 +118,16 @@ func (p *Panel) HandleRefresh() tea.Cmd {
 	return nil
 }
 
+// Refresh syncs planItems and bgItems from live sources without starting a tick.
+// Called by the TUI's taskTickMsg so the panel stays current while open.
+func (p *Panel) Refresh() {
+	if !p.active {
+		return
+	}
+	p.tick++
+	p.refresh()
+}
+
 // ScheduleRefresh returns a cmd that immediately starts a refresh tick.
 func ScheduleRefresh() tea.Cmd {
 	return tickCmd()

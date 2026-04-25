@@ -53,13 +53,18 @@ func (s *TaskStore) initDB() {
 }
 
 // LoadForSession clears the in-memory store and loads only tasks belonging to sessionID.
+// If sessionID is empty the call is a no-op — utility/sub-agent engines with no session
+// must not wipe the parent session's tasks.
 func (s *TaskStore) LoadForSession(sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if sessionID == "" {
+		return
+	}
 	s.tasks = make(map[string]*Task)
 	s.nextID = 0
 	s.currentSession = sessionID
-	if s.db == nil || sessionID == "" {
+	if s.db == nil {
 		return
 	}
 	rows, err := s.db.Query(`SELECT id, title, description, status, assigned_to, created_at, updated_at FROM team_tasks WHERE session_id = ? AND status != 'deleted' ORDER BY CAST(id AS INTEGER)`, sessionID)

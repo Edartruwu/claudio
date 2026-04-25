@@ -249,7 +249,7 @@ func (p *Panel) View() string {
 	lb.WriteString(styles.SeparatorLine(leftW - 4))
 	lb.WriteString("\n")
 
-	listH := p.height - 8
+	listH := p.height - 6
 	if listH < 3 {
 		listH = 3
 	}
@@ -303,7 +303,7 @@ func (p *Panel) View() string {
 	}
 
 	leftBox := lipgloss.NewStyle().
-		Width(leftW - 2).Height(p.height - 4).
+		Width(leftW - 2).Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(leftBorderColor).
 		Padding(0, 1).
@@ -350,25 +350,14 @@ func (p *Panel) View() string {
 	}
 
 	rightBox := lipgloss.NewStyle().
-		Width(rightW - 2).Height(p.height - 4).
+		Width(rightW - 2).Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(rightBorderColor).
 		Padding(0, 1).
 		Render(rb.String())
 
 	// ── Combine ──────────────────────────────────────────
-	main := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
-
-	// Footer hints
-	var hint string
-	if p.focusRight {
-		hint = "j/k scroll  h back  esc close"
-	} else {
-		hint = "j/k navigate  l/enter detail  1/2 tabs  a add  d delete  e edit  r refresh  esc close"
-	}
-	footer := styles.PanelHint.Render("  " + hint)
-
-	return lipgloss.JoinVertical(lipgloss.Left, main, footer)
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 }
 
 // countTypes returns a map of memory type -> count.

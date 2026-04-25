@@ -1616,9 +1616,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case taskTickMsg:
-		// Refresh TodoDock live so tasks created/updated by sub-agents appear immediately.
+		// Refresh TodoDock and tasks panel live so tasks appear immediately.
 		if m.todoDock != nil {
 			m.refreshViewport()
+		}
+		if m.activePanel != nil {
+			if tp, ok := m.activePanel.(*taskspanel.Panel); ok {
+				tp.Refresh()
+			}
 		}
 		return m, tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return taskTickMsg{} })
 
@@ -2438,9 +2443,12 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			// at high token rates, visually corrupting split words on screen.
 			if !m.streamDirty {
 				m.streamDirty = true
-				return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
-					return streamRenderMsg{}
-				})
+				return m, tea.Batch(
+					m.waitForEvent(),
+					tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+						return streamRenderMsg{}
+					}),
+				)
 			}
 		}
 
@@ -2858,7 +2866,8 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 
 	// /team → team template picker
 	if name == "team" {
-		allTemplateDirs := append([]string{m.teamTemplatesDir}, m.harnessTemplateDirs...)
+		// Priority: project-local (.claudio/team-templates) > global (~/.claudio) > harness
+		allTemplateDirs := append(m.harnessTemplateDirs, m.teamTemplatesDir)
 		m.teamSelector = teamselector.New(allTemplateDirs...)
 		m.teamSelector.SetWidth(m.width)
 		m.teamSelector.SetHeight(m.height)
@@ -3546,9 +3555,9 @@ func (m Model) renderAskUserDialog(width int) string {
 	}
 	q := d.questions[d.qIdx]
 
-	boxW := width - 8
-	if boxW > 72 {
-		boxW = 72
+	boxW := width - 4
+	if boxW > 110 {
+		boxW = 110
 	}
 	if boxW < 30 {
 		boxW = 30
@@ -3636,17 +3645,12 @@ func (m Model) renderAskUserDialog(width int) string {
 	}
 	b.WriteString(styles.PanelHint.Render(hint))
 
-	box := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Aqua).
 		Padding(1, 2).
 		Width(boxW).
 		Render(b.String())
-
-	return lipgloss.NewStyle().
-		Width(width).
-		Align(lipgloss.Center).
-		Render(box)
 }
 
 func (m Model) renderPlanApprovalDialog(width int) string {
@@ -3654,8 +3658,8 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 	if boxWidth < 40 {
 		boxWidth = 40
 	}
-	if boxWidth > 80 {
-		boxWidth = 80
+	if boxWidth > 110 {
+		boxWidth = 110
 	}
 
 	border := lipgloss.NewStyle().
@@ -6024,6 +6028,14 @@ func (m *Model) refreshViewport() {
 		}
 	}
 
+	// Append inline AskUser or PlanApproval dialog at the bottom of the chat.
+	if m.focus == FocusAskUser && m.askUserDialog != nil {
+		content += "\n\n" + m.renderAskUserDialog(m.viewport.Width)
+	}
+	if m.focus == FocusPlanApproval {
+		content += "\n\n" + m.renderPlanApprovalDialog(m.viewport.Width)
+	}
+
 	// Track whether user was at the bottom before content update.
 	// Only auto-scroll if they were already following (at bottom).
 	oldMax := m.viewport.TotalLineCount() - m.viewport.Height
@@ -6043,7 +6055,9 @@ func (m *Model) refreshViewport() {
 			}
 		}
 	}
-	if m.focus != FocusViewport {
+	if m.focus == FocusAskUser || m.focus == FocusPlanApproval {
+		m.viewport.GotoBottom()
+	} else if m.focus != FocusViewport {
 		contentLines := strings.Count(content, "\n") + 1
 		if contentLines <= m.viewport.Height {
 			m.viewport.GotoTop()
@@ -6430,22 +6444,6 @@ func (m Model) View() string {
 	vpView := m.viewport.View()
 
 	// Overlay model selector and other dialogs on top of viewport
-	if m.focus == FocusPlanApproval {
-		overlay := m.renderPlanApprovalDialog(mw)
-		boxW := mw - 4
-		if boxW > 80 {
-			boxW = 80
-		}
-		vpView = placeOverlayAt(vpView, overlay, (mw-boxW)/2, 0, mw, m.viewport.Height)
-	}
-	if m.focus == FocusAskUser && m.askUserDialog != nil {
-		overlay := m.renderAskUserDialog(mw)
-		boxW := mw - 8
-		if boxW > 72 {
-			boxW = 72
-		}
-		vpView = placeOverlayAt(vpView, overlay, (mw-boxW)/2, 0, mw, m.viewport.Height)
-	}
 	if m.modelSelector.IsActive() {
 		overlay := m.modelSelector.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)

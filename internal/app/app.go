@@ -327,7 +327,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 
 	// Register custom agent directories so GetAgent() can discover them (user, project, harnesses)
 	{
-		agentDirs := append([]string{paths.Agents, cwd + "/.claudio/agents"}, harness.CollectAgentDirs(harnesses)...)
+		// Priority order (last-write-wins in typeMap): harness < global < project-local
+		agentDirs := append(harness.CollectAgentDirs(harnesses), paths.Agents, cwd+"/.claudio/agents")
 		agents.SetCustomDirs(agentDirs...)
 	}
 
@@ -401,9 +402,10 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Team manager (primary templates dir = user, then project-scoped, then harness dirs)
 	var teamMgr *teams.Manager
 	{
+		// Priority order (first-match wins): project-local > global > harness
 		templatesDirs := []string{
-			paths.TeamTemplates,
 			filepath.Join(cwd, ".claudio", "team-templates"),
+			paths.TeamTemplates,
 		}
 		templatesDirs = append(templatesDirs, harness.CollectTemplateDirs(harnesses)...)
 		teamMgr = teams.NewManager(paths.Home+"/teams", templatesDirs...)
@@ -680,6 +682,8 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		CronRunner:  cronRunner,
 		LSP:         lspManager,
 		MCPManager:          globalMCPMgr,
+		// Priority order for TUI (first-match wins): project-local > harness
+		// (~/.claudio/team-templates is prepended by TUI as the primary/writable dir)
 		HarnessTemplateDirs: append([]string{filepath.Join(cwd, ".claudio", "team-templates")}, harness.CollectTemplateDirs(harnesses)...),
 		InjectCh:            injectCh,
 		InterruptCh:         interruptCh,
