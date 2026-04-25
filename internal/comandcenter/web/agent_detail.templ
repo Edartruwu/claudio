@@ -27,10 +27,10 @@ type AgentEvent struct {
 templ AgentDetailPage(data AgentDetailData) {
 	@Layout(data.SessionID) {
 		<div class="flex h-full">
-			<div class="flex-1 flex flex-col h-full overflow-hidden" style="background:var(--color-bg);">
+			<div class="flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
 				@agentDetailHeader(data)
 				@agentStatStrip(data)
-				<div class="flex-1 overflow-y-auto no-scrollbar" style="padding:12px 16px;" id={ fmt.Sprintf("agent-timeline-%s", data.Agent.ID) }>
+				<div class="flex-1 overflow-y-auto no-scrollbar px-4 py-3" id={ fmt.Sprintf("agent-timeline-%s", data.Agent.ID) }>
 					@activityTimeline(data)
 				</div>
 				@agentMessageInput(data)
@@ -49,8 +49,7 @@ templ AgentDetailPage(data AgentDetailData) {
 // agentDetailHeader renders the top bar: back arrow, avatar+pulse, name, status badge, stop button.
 templ agentDetailHeader(data AgentDetailData) {
 	<header
-		class="flex items-center flex-shrink-0"
-		style="background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;gap:12px;"
+		class="flex items-center flex-shrink-0 bg-[var(--color-surface)] border-b border-b-[var(--color-border)] pt-[calc(env(safe-area-inset-top)+12px)] px-4 pb-3 gap-3"
 	>
 		<!-- back arrow → team tab -->
 		<a
@@ -59,37 +58,37 @@ templ agentDetailHeader(data AgentDetailData) {
 			hx-target="#main"
 			hx-swap="innerHTML"
 			hx-push-url={ fmt.Sprintf("/chat/%s/info", data.SessionID) }
-			style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;min-width:40px;background:transparent;border:none;cursor:pointer;color:var(--color-textPrimary);text-decoration:none;flex-shrink:0;"
+			class="flex items-center justify-center w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textPrimary)] no-underline shrink-0"
 			aria-label="Back to team"
 		>
 			<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"></path></svg>
 		</a>
 		<!-- avatar with optional pulse ring -->
-		<div style="position:relative;flex-shrink:0;">
+		<div class="relative shrink-0">
 			if data.Agent.Status == "running" || data.Agent.Status == "working" {
 				<div
-					class="flex items-center justify-center font-bold flex-shrink-0 agent-pulse-ring"
-					style={ "width:44px;height:44px;border-radius:9999px;color:#000;font-size:16px;background:" + AvatarColor(data.Agent.Name) }
+					class="flex items-center justify-center font-bold shrink-0 agent-pulse-ring w-11 h-11 rounded-full text-black text-base"
+					style={ "background:" + AvatarColor(data.Agent.Name) }
 				>
 					{ FirstChar(data.Agent.Name) }
 				</div>
 			} else {
 				<div
-					class="flex items-center justify-center font-bold flex-shrink-0"
-					style={ "width:44px;height:44px;border-radius:9999px;color:#000;font-size:16px;background:" + AvatarColor(data.Agent.Name) }
+					class="flex items-center justify-center font-bold shrink-0 w-11 h-11 rounded-full text-black text-base"
+					style={ "background:" + AvatarColor(data.Agent.Name) }
 				>
 					{ FirstChar(data.Agent.Name) }
 				</div>
 			}
 		</div>
 		<!-- name + status badge -->
-		<div style="flex:1;min-width:0;">
-			<p style="color:var(--color-textPrimary);font-size:18px;font-weight:700;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Agent.Name }</p>
-			<div style="margin-top:4px;">
+		<div class="flex-1 min-w-0">
+			<p class="text-[var(--color-textPrimary)] text-[18px] font-bold m-0 overflow-hidden text-ellipsis whitespace-nowrap">{ data.Agent.Name }</p>
+			<div class="mt-1">
 				if data.Agent.Status == "running" || data.Agent.Status == "working" {
-					<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-brand);color:var(--color-textInverse);">RUNNING</span>
+					<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-brand)] text-[var(--color-textInverse)]">RUNNING</span>
 				} else {
-					<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-surfaceHigh);color:var(--color-textSecondary);border:1px solid var(--color-border);">DONE</span>
+					<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-surfaceHigh)] text-[var(--color-textSecondary)] border border-[var(--color-border)]">DONE</span>
 				}
 			</div>
 		</div>
@@ -99,7 +98,7 @@ templ agentDetailHeader(data AgentDetailData) {
 				type="button"
 				data-agent-id={ data.Agent.ID }
 				onclick="ccInterruptAgent(this.dataset.agentId)"
-				style="padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;background:var(--color-error);color:#fff;border:none;cursor:pointer;flex-shrink:0;transition:background 0.15s;"
+				class="px-4 py-2 rounded-lg text-[13px] font-semibold bg-[var(--color-error)] text-white border-none cursor-pointer shrink-0 transition-[background] duration-150"
 				onmouseenter="this.style.background='var(--color-errorDim)'"
 				onmouseleave="this.style.background='var(--color-error)'"
 			>Stop</button>
@@ -110,24 +109,23 @@ templ agentDetailHeader(data AgentDetailData) {
 // agentStatStrip renders the 4-column stat bar: TOOL / FILE / CALLS / ELAPSED.
 templ agentStatStrip(data AgentDetailData) {
 	<div
-		class="flex flex-shrink-0"
-		style="background:var(--color-surfaceHigh);border-bottom:1px solid var(--color-border);"
+		class="flex flex-shrink-0 bg-[var(--color-surfaceHigh)] border-b border-b-[var(--color-border)]"
 	>
-		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;border-right:1px solid var(--color-border);">
-			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">Tool</span>
-			<span style="font-size:15px;color:var(--color-textPrimary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center;">-</span>
+		<div class="flex-1 flex flex-col items-center px-2 py-[10px] border-r border-r-[var(--color-border)]">
+			<span class="text-[11px] font-semibold tracking-[0.8px] text-[var(--color-textMuted)] uppercase mb-1">Tool</span>
+			<span class="text-[15px] text-[var(--color-textPrimary)] overflow-hidden text-ellipsis whitespace-nowrap max-w-full text-center">-</span>
 		</div>
-		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;border-right:1px solid var(--color-border);">
-			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">File</span>
-			<span style="font-size:15px;color:var(--color-textPrimary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center;">-</span>
+		<div class="flex-1 flex flex-col items-center px-2 py-[10px] border-r border-r-[var(--color-border)]">
+			<span class="text-[11px] font-semibold tracking-[0.8px] text-[var(--color-textMuted)] uppercase mb-1">File</span>
+			<span class="text-[15px] text-[var(--color-textPrimary)] overflow-hidden text-ellipsis whitespace-nowrap max-w-full text-center">-</span>
 		</div>
-		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;border-right:1px solid var(--color-border);">
-			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">Calls</span>
-			<span style="font-size:15px;color:var(--color-textPrimary);text-align:center;">-</span>
+		<div class="flex-1 flex flex-col items-center px-2 py-[10px] border-r border-r-[var(--color-border)]">
+			<span class="text-[11px] font-semibold tracking-[0.8px] text-[var(--color-textMuted)] uppercase mb-1">Calls</span>
+			<span class="text-[15px] text-[var(--color-textPrimary)] text-center">-</span>
 		</div>
-		<div class="flex-1 flex flex-col items-center" style="padding:10px 8px;">
-			<span style="font-size:11px;font-weight:600;letter-spacing:0.8px;color:var(--color-textMuted);text-transform:uppercase;margin-bottom:4px;">Elapsed</span>
-			<span style="font-size:15px;color:var(--color-textPrimary);text-align:center;">{ RelTime(data.Agent.UpdatedAt) }</span>
+		<div class="flex-1 flex flex-col items-center px-2 py-[10px]">
+			<span class="text-[11px] font-semibold tracking-[0.8px] text-[var(--color-textMuted)] uppercase mb-1">Elapsed</span>
+			<span class="text-[15px] text-[var(--color-textPrimary)] text-center">{ RelTime(data.Agent.UpdatedAt) }</span>
 		</div>
 	</div>
 }
@@ -136,9 +134,9 @@ templ agentStatStrip(data AgentDetailData) {
 // Container id targets WS OOB swaps: agent-timeline-{agentID} is on the outer scroll div.
 templ activityTimeline(data AgentDetailData) {
 	if len(data.Events) == 0 {
-		<div class="flex flex-col items-center justify-center mt-16" style="color:var(--color-textMuted);">
-			<svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="opacity:0.3;margin-bottom:8px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-			<p style="font-size:13px;">No activity yet</p>
+		<div class="flex flex-col items-center justify-center mt-16 text-[var(--color-textMuted)]">
+			<svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" class="opacity-30 mb-2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+			<p class="text-[13px]">No activity yet</p>
 		</div>
 	} else {
 		for _, event := range data.Events {
@@ -150,29 +148,29 @@ templ activityTimeline(data AgentDetailData) {
 // agentTimelineItem renders a single event row with the correct variant styling.
 templ agentTimelineItem(event AgentEvent) {
 	if event.Type == "tool_call" {
-		<div style="border-left:2px solid var(--color-tool);background:var(--color-toolDim);border-radius:8px;padding:12px 16px;margin-bottom:8px;">
-			<div class="flex items-center gap-2" style="margin-bottom:6px;">
-				<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:var(--color-tool);color:#000;">{ event.Label }</span>
-				<span style="font-size:11px;color:var(--color-textMuted);">{ RelTime(event.CreatedAt) }</span>
+		<div class="border-l-2 border-l-[var(--color-tool)] bg-[var(--color-toolDim)] rounded-lg px-4 py-3 mb-2">
+			<div class="flex items-center gap-2 mb-[6px]">
+				<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-tool)] text-black">{ event.Label }</span>
+				<span class="text-[11px] text-[var(--color-textMuted)]">{ RelTime(event.CreatedAt) }</span>
 			</div>
-			<p style="font-size:13px;color:var(--color-textPrimary);margin:0;white-space:pre-wrap;word-break:break-word;">{ event.Content }</p>
+			<p class="text-[13px] text-[var(--color-textPrimary)] m-0 whitespace-pre-wrap break-words">{ event.Content }</p>
 		</div>
 	} else if event.Type == "thinking" {
-		<div style="border-left:2px solid var(--color-ai);background:var(--color-aiDim);border-radius:8px;padding:12px 16px;margin-bottom:8px;">
-			<div style="margin-bottom:4px;">
-				<span style="font-size:11px;font-weight:600;color:var(--color-ai);">Thinking</span>
-				<span style="font-size:11px;color:var(--color-textMuted);margin-left:8px;">{ RelTime(event.CreatedAt) }</span>
+		<div class="border-l-2 border-l-[var(--color-ai)] bg-[var(--color-aiDim)] rounded-lg px-4 py-3 mb-2">
+			<div class="mb-1">
+				<span class="text-[11px] font-semibold text-[var(--color-ai)]">Thinking</span>
+				<span class="text-[11px] text-[var(--color-textMuted)] ml-2">{ RelTime(event.CreatedAt) }</span>
 			</div>
-			<p style="font-size:13px;color:var(--color-ai);margin:0;font-style:italic;white-space:pre-wrap;word-break:break-word;">{ event.Content }</p>
+			<p class="text-[13px] text-[var(--color-ai)] m-0 italic whitespace-pre-wrap break-words">{ event.Content }</p>
 		</div>
 	} else {
 		<!-- streaming variant -->
-		<div style="border-left:2px solid var(--color-border);background:var(--color-surface);border-radius:8px;padding:12px 16px;margin-bottom:8px;">
-			<div style="margin-bottom:4px;">
-				<span style="font-size:11px;font-weight:600;color:var(--color-textMuted);">{ event.Label }</span>
-				<span style="font-size:11px;color:var(--color-textMuted);margin-left:8px;">{ RelTime(event.CreatedAt) }</span>
+		<div class="border-l-2 border-l-[var(--color-border)] bg-[var(--color-surface)] rounded-lg px-4 py-3 mb-2">
+			<div class="mb-1">
+				<span class="text-[11px] font-semibold text-[var(--color-textMuted)]">{ event.Label }</span>
+				<span class="text-[11px] text-[var(--color-textMuted)] ml-2">{ RelTime(event.CreatedAt) }</span>
 			</div>
-			<p style="font-size:13px;color:var(--color-textPrimary);margin:0;white-space:pre-wrap;word-break:break-word;">
+			<p class="text-[13px] text-[var(--color-textPrimary)] m-0 whitespace-pre-wrap break-words">
 				{ event.Content }
 				<span class="typing-dots">
 					<span></span><span></span><span></span>
@@ -185,22 +183,21 @@ templ agentTimelineItem(event AgentEvent) {
 // agentMessageInput renders the bottom message bar for sending a message to this agent.
 templ agentMessageInput(data AgentDetailData) {
 	<div
-		class="input-bar flex items-end gap-2 flex-shrink-0"
-		style="background:var(--color-surface);border-top:1px solid var(--color-border);padding:10px 12px;padding-bottom:max(10px, env(safe-area-inset-bottom));"
+		class="input-bar flex items-end gap-2 flex-shrink-0 bg-[var(--color-surface)] border-t border-t-[var(--color-border)] px-3 py-[10px] pb-[max(10px,env(safe-area-inset-bottom))]"
 	>
 		<textarea
 			id="agent-msg-input"
 			name="content"
 			placeholder={ fmt.Sprintf("Message %s...", data.Agent.Name) }
 			rows="1"
-			style="flex:1;resize:none;padding:10px 14px;border-radius:12px;border:1px solid var(--color-border);background:var(--color-surfaceHigh);color:var(--color-textPrimary);font-family:inherit;font-size:14px;outline:none;max-height:80px;overflow-y:auto;line-height:1.4;"
+			class="flex-1 resize-none px-[14px] py-[10px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surfaceHigh)] text-[var(--color-textPrimary)] font-[inherit] text-sm outline-none max-h-[80px] overflow-y-auto leading-[1.4]"
 			oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"
 			onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();document.getElementById('agent-msg-send').click();}"
 		></textarea>
 		<button
 			id="agent-msg-send"
 			type="button"
-			style="padding:10px 16px;border-radius:12px;background:var(--color-brand);color:#000;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;flex-shrink:0;"
+			class="px-4 py-[10px] rounded-xl bg-[var(--color-brand)] text-black border-none cursor-pointer font-[inherit] text-[13px] font-semibold shrink-0"
 			hx-post={ fmt.Sprintf("/api/sessions/%s/agents/%s/message", data.SessionID, data.Agent.ID) }
 			hx-include="#agent-msg-input"
 			hx-swap="none"

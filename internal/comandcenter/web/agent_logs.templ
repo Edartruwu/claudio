@@ -9,28 +9,28 @@ import (
 // AgentLogs renders a compact log of agent activity for the drawer.
 templ AgentLogs(msgs []cc.Message) {
 	if len(msgs) == 0 {
-		<div style="color:var(--color-textMuted);font-size:13px;text-align:center;padding:24px 0;">No activity yet</div>
+		<div class="text-[var(--color-textMuted)] text-[13px] text-center py-6">No activity yet</div>
 	}
 	for _, msg := range msgs {
 		if msg.Role == "tool_use" {
-			<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 8px;margin-bottom:2px;">
-				<span style="display:inline-block;background:rgba(45,212,191,0.15);color:#2dd4bf;font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0;">{ ToolName(msg.Content) }</span>
-				<span style="font-size:11px;color:var(--color-textMuted);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ Truncate(120, ToolInput(msg.Content)) }</span>
+			<div class="flex items-start gap-[6px] px-2 py-1 mb-[2px]">
+				<span class="inline-block bg-[rgba(45,212,191,0.15)] text-[#2dd4bf] text-[11px] font-semibold px-2 py-[2px] rounded-full whitespace-nowrap shrink-0">{ ToolName(msg.Content) }</span>
+				<span class="text-[11px] text-[var(--color-textMuted)] leading-[1.4] overflow-hidden text-ellipsis whitespace-nowrap">{ Truncate(120, ToolInput(msg.Content)) }</span>
 			</div>
 			if msg.Output != "" {
 				if strings.Contains(strings.ToLower(msg.Output), "error") {
-					<div style="padding:2px 8px 4px 34px;margin-bottom:2px;">
-						<span style="display:inline-block;background:rgba(239,68,68,0.12);color:#f87171;font-size:11px;padding:2px 8px;border-radius:9999px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">{ Truncate(120, msg.Output) }</span>
+					<div class="pt-[2px] pr-2 pb-1 pl-[34px] mb-[2px]">
+						<span class="inline-block bg-[rgba(239,68,68,0.12)] text-[#f87171] text-[11px] px-2 py-[2px] rounded-full overflow-hidden text-ellipsis whitespace-nowrap max-w-full">{ Truncate(120, msg.Output) }</span>
 					</div>
 				} else {
-					<div style="padding:2px 8px 4px 34px;margin-bottom:2px;">
-						<span style="display:inline-block;background:rgba(148,163,184,0.12);color:var(--color-textMuted);font-size:11px;padding:2px 8px;border-radius:9999px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">{ Truncate(120, msg.Output) }</span>
+					<div class="pt-[2px] pr-2 pb-1 pl-[34px] mb-[2px]">
+						<span class="inline-block bg-[rgba(148,163,184,0.12)] text-[var(--color-textMuted)] text-[11px] px-2 py-[2px] rounded-full overflow-hidden text-ellipsis whitespace-nowrap max-w-full">{ Truncate(120, msg.Output) }</span>
 					</div>
 				}
 			}
 		} else if msg.Role == "assistant" {
-			<div style="padding:4px 8px;margin-bottom:2px;">
-				<span style="font-size:12px;color:var(--color-textMuted);line-height:1.5;">{ msg.Content }</span>
+			<div class="px-2 py-1 mb-[2px]">
+				<span class="text-xs text-[var(--color-textMuted)] leading-[1.5]">{ msg.Content }</span>
 			</div>
 		}
 	}

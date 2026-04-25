@@ -37,34 +37,34 @@ func AgentLogs(msgs []cc.Message) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(msgs) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div style=\"color:var(--color-textMuted);font-size:13px;text-align:center;padding:24px 0;\">No activity yet</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"text-[var(--color-textMuted)] text-[13px] text-center py-6\">No activity yet</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		for _, msg := range msgs {
 			if msg.Role == "tool_use" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div style=\"display:flex;align-items:flex-start;gap:6px;padding:4px 8px;margin-bottom:2px;\"><span style=\"display:inline-block;background:rgba(45,212,191,0.15);color:#2dd4bf;font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"flex items-start gap-[6px] px-2 py-1 mb-[2px]\"><span class=\"inline-block bg-[rgba(45,212,191,0.15)] text-[#2dd4bf] text-[11px] font-semibold px-2 py-[2px] rounded-full whitespace-nowrap shrink-0\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(ToolName(msg.Content))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 17, Col: 211}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 17, Col: 176}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</span> <span style=\"font-size:11px;color:var(--color-textMuted);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</span> <span class=\"text-[11px] text-[var(--color-textMuted)] leading-[1.4] overflow-hidden text-ellipsis whitespace-nowrap\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(Truncate(120, ToolInput(msg.Content)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 18, Col: 176}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 18, Col: 161}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -76,14 +76,14 @@ func AgentLogs(msgs []cc.Message) templ.Component {
 				}
 				if msg.Output != "" {
 					if strings.Contains(strings.ToLower(msg.Output), "error") {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div style=\"padding:2px 8px 4px 34px;margin-bottom:2px;\"><span style=\"display:inline-block;background:rgba(239,68,68,0.12);color:#f87171;font-size:11px;padding:2px 8px;border-radius:9999px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"pt-[2px] pr-2 pb-1 pl-[34px] mb-[2px]\"><span class=\"inline-block bg-[rgba(239,68,68,0.12)] text-[#f87171] text-[11px] px-2 py-[2px] rounded-full overflow-hidden text-ellipsis whitespace-nowrap max-w-full\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var4 string
 						templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(Truncate(120, msg.Output))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 23, Col: 240}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 23, Col: 199}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 						if templ_7745c5c3_Err != nil {
@@ -94,14 +94,14 @@ func AgentLogs(msgs []cc.Message) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div style=\"padding:2px 8px 4px 34px;margin-bottom:2px;\"><span style=\"display:inline-block;background:rgba(148,163,184,0.12);color:var(--color-textMuted);font-size:11px;padding:2px 8px;border-radius:9999px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"pt-[2px] pr-2 pb-1 pl-[34px] mb-[2px]\"><span class=\"inline-block bg-[rgba(148,163,184,0.12)] text-[var(--color-textMuted)] text-[11px] px-2 py-[2px] rounded-full overflow-hidden text-ellipsis whitespace-nowrap max-w-full\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var5 string
 						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(Truncate(120, msg.Output))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 27, Col: 257}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 27, Col: 216}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 						if templ_7745c5c3_Err != nil {
@@ -114,14 +114,14 @@ func AgentLogs(msgs []cc.Message) templ.Component {
 					}
 				}
 			} else if msg.Role == "assistant" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div style=\"padding:4px 8px;margin-bottom:2px;\"><span style=\"font-size:12px;color:var(--color-textMuted);line-height:1.5;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"px-2 py-1 mb-[2px]\"><span class=\"text-xs text-[var(--color-textMuted)] leading-[1.5]\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 33, Col: 92}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/agent_logs.templ`, Line: 33, Col: 83}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {

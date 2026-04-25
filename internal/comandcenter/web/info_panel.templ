@@ -7,60 +7,60 @@ import (
 )
 
 templ InfoPanel(data InfoPageData) {
-	<div class="flex flex-col h-full" style="background:var(--color-bg);">
+	<div class="flex flex-col h-full bg-[var(--color-bg)]">
 		<!-- Header -->
-		<header class="info-panel-header flex-shrink-0" style="background:var(--color-surface);padding:12px 16px;display:flex;flex-direction:row;align-items:center;gap:12px;border-bottom:1px solid var(--color-border);">
+		<header class="info-panel-header shrink-0 bg-[var(--color-surface)] px-4 py-3 flex flex-row items-center gap-3 border-b border-b-[var(--color-border)]">
 			<!-- Back chevron -->
-			<button onclick="history.back()" style="background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0;display:flex;align-items:center;color:var(--color-textMuted);">
+			<button onclick="history.back()" class="bg-transparent border-none cursor-pointer p-1 shrink-0 flex items-center text-[var(--color-textMuted)]">
 				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
 			</button>
 			<!-- Avatar with status dot -->
-			<div style="position:relative;flex-shrink:0;">
-				<div class="flex items-center justify-center font-bold" style="width:40px;height:40px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:16px;">
+			<div class="relative shrink-0">
+				<div class="flex items-center justify-center font-bold w-10 h-10 rounded-full bg-[var(--color-brand)] text-[var(--color-bg)] text-base">
 					{ FirstChar(data.Session.Name) }
 				</div>
 				if data.Session.Status == "active" {
-					<span style="position:absolute;bottom:0;right:0;width:11px;height:11px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;"></span>
+					<span class="absolute bottom-0 right-0 w-[11px] h-[11px] bg-[var(--color-brand)] border-2 border-[var(--color-bg)] rounded-full"></span>
 				}
 			</div>
 			<!-- Name + path -->
-			<div style="flex:1;min-width:0;">
-				<p style="color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+			<div class="flex-1 min-w-0">
+				<p class="text-[var(--color-textPrimary)] text-base font-semibold m-0 overflow-hidden text-ellipsis whitespace-nowrap">
 					if data.Session.Master {
-						<span style="color:#F0A500;">&#9733; </span>
+						<span class="text-[#F0A500]">&#9733; </span>
 					}
 					{ data.Session.Name }
 				</p>
-				<p style="color:var(--color-textMuted);font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Path }</p>
+				<p class="text-[var(--color-textMuted)] text-[13px] m-0 overflow-hidden text-ellipsis whitespace-nowrap">{ data.Session.Path }</p>
 			</div>
 		</header>
 		<!-- Metadata info card -->
-		<div style="padding:12px 16px 0;flex-shrink:0;">
-			<div style="background:var(--color-surface);border-radius:12px;padding:10px 14px;border:1px solid var(--color-border);">
-				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Path</span>
-					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.Path }</span>
+		<div class="px-4 pt-3 shrink-0">
+			<div class="bg-[var(--color-surface)] rounded-xl py-[10px] px-[14px] border border-[var(--color-border)]">
+				<div class="flex items-center gap-2 py-1">
+					<span class="text-[var(--color-textMuted)] text-[13px] min-w-[70px]">Path</span>
+					<span class="text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap">{ data.Session.Path }</span>
 				</div>
-				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Status</span>
+				<div class="flex items-center gap-2 py-1">
+					<span class="text-[var(--color-textMuted)] text-[13px] min-w-[70px]">Status</span>
 					if data.Session.Status == "active" {
-						<span style="color:var(--color-brand);font-size:13px;flex:1;text-align:right;"><span style="display:inline-block;width:7px;height:7px;border-radius:9999px;background:var(--color-brand);margin-right:4px;vertical-align:middle;"></span>online</span>
+						<span class="text-[var(--color-brand)] text-[13px] flex-1 text-right"><span class="inline-block w-[7px] h-[7px] rounded-full bg-[var(--color-brand)] mr-1 align-middle"></span>online</span>
 					} else {
-						<span style="color:var(--color-textMuted);font-size:13px;flex:1;text-align:right;">offline</span>
+						<span class="text-[var(--color-textMuted)] text-[13px] flex-1 text-right">offline</span>
 					}
 				</div>
-				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Model</span>
-					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ data.Session.AgentType }</span>
+				<div class="flex items-center gap-2 py-1">
+					<span class="text-[var(--color-textMuted)] text-[13px] min-w-[70px]">Model</span>
+					<span class="text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap">{ data.Session.AgentType }</span>
 				</div>
-				<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-					<span style="color:var(--color-textMuted);font-size:13px;min-width:70px;">Connected</span>
-					<span style="color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ RelTime(data.Session.LastActiveAt) }</span>
+				<div class="flex items-center gap-2 py-1">
+					<span class="text-[var(--color-textMuted)] text-[13px] min-w-[70px]">Connected</span>
+					<span class="text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap">{ RelTime(data.Session.LastActiveAt) }</span>
 				</div>
 			</div>
 		</div>
 		<!-- Tab bar -->
-		<div id="info-tab-bar" style="display:flex;background:var(--color-surface);border-bottom:1px solid var(--color-border);flex-shrink:0;">
+		<div id="info-tab-bar" class="flex bg-[var(--color-surface)] border-b border-b-[var(--color-border)] shrink-0">
 			@infoTab(data.Session.ID, "tasks", "Tasks", data.ActiveTab, infoTabIconTasks())
 			@infoTab(data.Session.ID, "team", "Team", data.ActiveTab, infoTabIconTeam())
 			@infoTab(data.Session.ID, "media", "Media", data.ActiveTab, infoTabIconMedia())
@@ -68,7 +68,7 @@ templ InfoPanel(data InfoPageData) {
 			@infoTab(data.Session.ID, "config", "Config", data.ActiveTab, infoTabIconConfig())
 		</div>
 		<!-- Tab content -->
-		<div id="tab-content" class="flex-1 overflow-y-auto" style="padding:12px 16px;">
+		<div id="tab-content" class="flex-1 overflow-y-auto px-4 py-3">
 			if data.ActiveTab == "team" {
 				@TabTeam(data)
 			} else if data.ActiveTab == "media" {
@@ -175,7 +175,7 @@ templ infoTab(sessID, tab, label, activeTab string, icon templ.Component) {
 		hx-swap="innerHTML"
 		hx-on::after-request="setActiveTab(this)"
 	>
-		<span style="color:inherit;">@icon</span>
+		<span class="text-inherit">@icon</span>
 		<span>{ label }</span>
 	</button>
 }
@@ -216,10 +216,9 @@ templ TabTasks(data InfoPageData) {
 // TaskRows renders just the task rows — used by polling endpoint so the detail panel isn't destroyed.
 templ TaskRows(tasks []cc.Task, sessionID string) {
 	for _, task := range tasks {
-		<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;margin-bottom:4px;" data-task-id={ task.ID }>
+		<div class="bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px] mb-1" data-task-id={ task.ID }>
 			<div
-				class="flex items-start cursor-pointer select-none task-row"
-				style="gap:16px;"
+				class="flex items-start cursor-pointer select-none task-row gap-4"
 				hx-get={ fmt.Sprintf("/chat/%s/tasks/%s", sessionID, task.ID) }
 				hx-trigger="open-detail"
 				hx-swap="innerHTML"
@@ -227,30 +226,30 @@ templ TaskRows(tasks []cc.Task, sessionID string) {
 				onclick="toggleTaskDetail(this)"
 			>
 				if task.Status == "done" {
-					<span style="color:var(--color-brand);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#10003;</span>
-					<div style="flex:1;min-width:0;"><p style="color:var(--color-textMuted);font-size:15px;text-decoration:line-through;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
+					<span class="text-[var(--color-brand)] text-sm mt-px shrink-0 font-bold">&#10003;</span>
+					<div class="flex-1 min-w-0"><p class="text-[var(--color-textMuted)] text-[15px] line-through m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Title }</p></div>
 				} else if task.Status == "in_progress" {
-					<span style="color:var(--color-ai);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#9679;</span>
-					<div style="flex:1;min-width:0;">
-						<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">{ task.Title }</p>
+					<span class="text-[var(--color-ai)] text-sm mt-px shrink-0 font-bold">&#9679;</span>
+					<div class="flex-1 min-w-0">
+						<p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold">{ task.Title }</p>
 						if task.AssignedTo != "" {
-							<p style="color:var(--color-textMuted);font-size:13px;margin-top:2px;">&rarr; { task.AssignedTo }</p>
+							<p class="text-[var(--color-textMuted)] text-[13px] mt-[2px]">&rarr; { task.AssignedTo }</p>
 						}
 					</div>
 				} else if task.Status == "blocked" {
-					<span style="color:var(--color-error);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#10005;</span>
-					<div style="flex:1;min-width:0;"><p style="color:var(--color-error);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
+					<span class="text-[var(--color-error)] text-sm mt-px shrink-0 font-bold">&#10005;</span>
+					<div class="flex-1 min-w-0"><p class="text-[var(--color-error)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Title }</p></div>
 				} else {
-					<span style="color:var(--color-textMuted);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;">&#9675;</span>
-					<div style="flex:1;min-width:0;"><p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;">{ task.Title }</p></div>
+					<span class="text-[var(--color-textMuted)] text-sm mt-px shrink-0 font-bold">&#9675;</span>
+					<div class="flex-1 min-w-0"><p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Title }</p></div>
 				}
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E6268" stroke-width="2" style="flex-shrink:0;" class="task-chevron"><path d="M9 5l7 7-7 7"></path></svg>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E6268" stroke-width="2" class="task-chevron shrink-0"><path d="M9 5l7 7-7 7"></path></svg>
 			</div>
 			<div class="task-detail hidden"></div>
 		</div>
 	}
 	if len(tasks) == 0 {
-		<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No tasks yet</div>
+		<div class="text-center text-sm mt-8 text-[var(--color-textMuted)]">No tasks yet</div>
 	}
 }
 
@@ -270,7 +269,7 @@ templ TabTeam(data InfoPageData) {
 templ TabMedia(data InfoPageData) {
 	if len(data.Images) > 0 || len(data.Docs) > 0 {
 		if len(data.Images) > 0 {
-			<p style="font-size:11px;margin-bottom:8px;color:var(--color-textMuted);">Images</p>
+			<p class="text-[11px] mb-2 text-[var(--color-textMuted)]">Images</p>
 			<div class="grid grid-cols-3 gap-1 mb-4">
 				for _, img := range data.Images {
 					<a href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", img.SessionID, img.Filename)) } target="_blank" class="block aspect-square overflow-hidden rounded-lg">
@@ -285,7 +284,7 @@ templ TabMedia(data InfoPageData) {
 			</div>
 		}
 		if len(data.Docs) > 0 {
-			<p style="font-size:11px;margin-bottom:8px;color:var(--color-textMuted);">Documents</p>
+			<p class="text-[11px] mb-2 text-[var(--color-textMuted)]">Documents</p>
 			<div class="flex flex-col gap-2">
 				for _, doc := range data.Docs {
 					@docRow(doc)
@@ -293,12 +292,12 @@ templ TabMedia(data InfoPageData) {
 			</div>
 		}
 	} else {
-		<div class="flex flex-col items-center justify-center mt-16 gap-3" style="color:var(--color-textMuted);">
+		<div class="flex flex-col items-center justify-center mt-16 gap-3 text-[var(--color-textMuted)]">
 			<svg class="w-12 h-12 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
 			</svg>
-			<p style="font-size:13px;">No media yet</p>
-			<p style="font-size:11px;opacity:0.6;">Upload files via chat</p>
+			<p class="text-[13px]">No media yet</p>
+			<p class="text-[11px] opacity-60">Upload files via chat</p>
 		</div>
 	}
 }
@@ -307,18 +306,17 @@ templ docRow(doc cc.Attachment) {
 	<a
 		href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", doc.SessionID, doc.Filename)) }
 		download={ doc.OriginalName }
-		class="flex items-center gap-3 no-underline"
-		style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;color:var(--color-textPrimary);"
+		class="flex items-center gap-3 no-underline bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px] text-[var(--color-textPrimary)]"
 	>
-		<svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" style="color:var(--color-textMuted);">
+		<svg class="w-5 h-5 flex-shrink-0 text-[var(--color-textMuted)]" fill="currentColor" viewBox="0 0 24 24">
 			<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"></path>
 			<polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"></polyline>
 		</svg>
-		<div style="flex:1;min-width:0;">
-			<p style="font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{ doc.OriginalName }</p>
-			<p style="font-size:11px;color:var(--color-textMuted);margin:0;">{ doc.MimeType }</p>
+		<div class="flex-1 min-w-0">
+			<p class="text-[13px] m-0 overflow-hidden text-ellipsis whitespace-nowrap">{ doc.OriginalName }</p>
+			<p class="text-[11px] text-[var(--color-textMuted)] m-0">{ doc.MimeType }</p>
 		</div>
-		<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--color-textMuted);">
+		<svg class="w-4 h-4 flex-shrink-0 text-[var(--color-textMuted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
 		</svg>
 	</a>
@@ -327,28 +325,27 @@ templ docRow(doc cc.Attachment) {
 templ TabCrons(data InfoPageData) {
 	<div class="flex flex-col gap-2">
 		for _, cron := range data.Crons {
-			<div class="cron-row flex items-start gap-3" style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;">
-				<div style="flex:1;min-width:0;">
-					<div class="flex items-center gap-2 flex-wrap" style="margin-bottom:4px;">
-						<span style="font-size:13px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--color-surfaceHigh);color:var(--color-textPrimary);border:1px solid var(--color-border);">{ cron.Schedule }</span>
+			<div class="cron-row flex items-start gap-3 bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]">
+				<div class="flex-1 min-w-0">
+					<div class="flex items-center gap-2 flex-wrap mb-1">
+						<span class="text-[13px] font-semibold py-[2px] px-2 rounded-[6px] bg-[var(--color-surfaceHigh)] text-[var(--color-textPrimary)] border border-[var(--color-border)]">{ cron.Schedule }</span>
 						if cron.Type == "inline" {
-							<span style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;background:var(--color-toolDim);color:var(--color-tool);">inline</span>
+							<span class="text-[11px] py-[2px] px-2 rounded-[6px] font-semibold bg-[var(--color-toolDim)] text-[var(--color-tool)]">inline</span>
 						} else {
-							<span style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;background:var(--color-cronDim);color:var(--color-cron);">background</span>
+							<span class="text-[11px] py-[2px] px-2 rounded-[6px] font-semibold bg-[var(--color-cronDim)] text-[var(--color-cron)]">background</span>
 						}
 					</div>
 					if cron.Agent != "" {
-						<p style="font-size:11px;color:var(--color-textMuted);margin:0;">{ cron.Agent }</p>
+						<p class="text-[11px] text-[var(--color-textMuted)] m-0">{ cron.Agent }</p>
 					}
-					<p style="font-size:11px;color:var(--color-textMuted);margin:0;">{ Truncate(60, cron.Prompt) }</p>
+					<p class="text-[11px] text-[var(--color-textMuted)] m-0">{ Truncate(60, cron.Prompt) }</p>
 				</div>
 				<button
 					hx-delete={ fmt.Sprintf("/api/crons/%s", cron.ID) }
 					hx-confirm="Delete this cron?"
 					hx-target="closest .cron-row"
 					hx-swap="outerHTML swap:300ms"
-					class="flex-shrink-0 p-1 rounded"
-					style="color:var(--color-error);background:none;border:none;cursor:pointer;"
+					class="flex-shrink-0 p-1 rounded text-[var(--color-error)] bg-transparent border-none cursor-pointer"
 				>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -357,16 +354,16 @@ templ TabCrons(data InfoPageData) {
 			</div>
 		}
 		if len(data.Crons) == 0 {
-			<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No crons yet</div>
+			<div class="text-center text-sm mt-8 text-[var(--color-textMuted)]">No crons yet</div>
 		}
 	</div>
 }
 
 templ TabConfig(data InfoPageData) {
 	<div class="flex flex-col gap-4" data-session-id={ data.Session.ID }>
-		<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;">
-			<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-textMuted);margin:0 0 8px;">Agent</p>
-			<select id="agent-select" style="width:100%;border-radius:8px;padding:8px 12px;font-size:13px;appearance:none;background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-textPrimary);outline:none;font-family:inherit;">
+		<div class="bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]">
+			<p class="text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Agent</p>
+			<select id="agent-select" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
 				<option value="">Default (no agent)</option>
 				for _, agent := range data.AvailableAgents {
 					<option
@@ -379,13 +376,13 @@ templ TabConfig(data InfoPageData) {
 			</select>
 			<button
 				onclick="applyAgent(this.closest('[data-session-id]').dataset.sessionId)"
-				style="width:100%;padding:8px;border-radius:8px;font-size:13px;font-weight:600;background:var(--color-brand);color:#000;border:none;cursor:pointer;margin-top:8px;"
+				class="w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2"
 			>Apply</button>
-			<div id="agent-feedback" style="font-size:11px;text-align:center;color:var(--color-textMuted);min-height:1.2em;margin-top:4px;"></div>
+			<div id="agent-feedback" class="text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1"></div>
 		</div>
-		<div style="background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;">
-			<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-textMuted);margin:0 0 8px;">Team</p>
-			<select id="team-select" style="width:100%;border-radius:8px;padding:8px 12px;font-size:13px;appearance:none;background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-textPrimary);outline:none;font-family:inherit;">
+		<div class="bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]">
+			<p class="text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Team</p>
+			<select id="team-select" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
 				<option value="">Default (no team)</option>
 				for _, team := range data.AvailableTeams {
 					<option
@@ -398,9 +395,9 @@ templ TabConfig(data InfoPageData) {
 			</select>
 			<button
 				onclick="applyTeam(this.closest('[data-session-id]').dataset.sessionId)"
-				style="width:100%;padding:8px;border-radius:8px;font-size:13px;font-weight:600;background:var(--color-brand);color:#000;border:none;cursor:pointer;margin-top:8px;"
+				class="w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2"
 			>Apply</button>
-			<div id="team-feedback" style="font-size:11px;text-align:center;color:var(--color-textMuted);min-height:1.2em;margin-top:4px;"></div>
+			<div id="team-feedback" class="text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1"></div>
 		</div>
 	</div>
 }

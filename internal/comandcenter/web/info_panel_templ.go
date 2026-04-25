@@ -35,7 +35,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col h-full\" style=\"background:var(--color-bg);\"><!-- Header --><header class=\"info-panel-header flex-shrink-0\" style=\"background:var(--color-surface);padding:12px 16px;display:flex;flex-direction:row;align-items:center;gap:12px;border-bottom:1px solid var(--color-border);\"><!-- Back chevron --><button onclick=\"history.back()\" style=\"background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0;display:flex;align-items:center;color:var(--color-textMuted);\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 18l-6-6 6-6\"></path></svg></button><!-- Avatar with status dot --><div style=\"position:relative;flex-shrink:0;\"><div class=\"flex items-center justify-center font-bold\" style=\"width:40px;height:40px;border-radius:9999px;background:var(--color-brand);color:var(--color-bg);font-size:16px;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col h-full bg-[var(--color-bg)]\"><!-- Header --><header class=\"info-panel-header shrink-0 bg-[var(--color-surface)] px-4 py-3 flex flex-row items-center gap-3 border-b border-b-[var(--color-border)]\"><!-- Back chevron --><button onclick=\"history.back()\" class=\"bg-transparent border-none cursor-pointer p-1 shrink-0 flex items-center text-[var(--color-textMuted)]\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 18l-6-6 6-6\"></path></svg></button><!-- Avatar with status dot --><div class=\"relative shrink-0\"><div class=\"flex items-center justify-center font-bold w-10 h-10 rounded-full bg-[var(--color-brand)] text-[var(--color-bg)] text-base\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -53,17 +53,17 @@ func InfoPanel(data InfoPageData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if data.Session.Status == "active" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<span style=\"position:absolute;bottom:0;right:0;width:11px;height:11px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;\"></span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<span class=\"absolute bottom-0 right-0 w-[11px] h-[11px] bg-[var(--color-brand)] border-2 border-[var(--color-bg)] rounded-full\"></span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div><!-- Name + path --><div style=\"flex:1;min-width:0;\"><p style=\"color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div><!-- Name + path --><div class=\"flex-1 min-w-0\"><p class=\"text-[var(--color-textPrimary)] text-base font-semibold m-0 overflow-hidden text-ellipsis whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if data.Session.Master {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<span style=\"color:#F0A500;\">&#9733; </span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<span class=\"text-[#F0A500]\">&#9733; </span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -77,74 +77,74 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p><p style=\"color:var(--color-textMuted);font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p><p class=\"text-[var(--color-textMuted)] text-[13px] m-0 overflow-hidden text-ellipsis whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(data.Session.Path)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 34, Col: 146}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 34, Col: 128}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p></div></header><!-- Metadata info card --><div style=\"padding:12px 16px 0;flex-shrink:0;\"><div style=\"background:var(--color-surface);border-radius:12px;padding:10px 14px;border:1px solid var(--color-border);\"><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Path</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p></div></header><!-- Metadata info card --><div class=\"px-4 pt-3 shrink-0\"><div class=\"bg-[var(--color-surface)] rounded-xl py-[10px] px-[14px] border border-[var(--color-border)]\"><div class=\"flex items-center gap-2 py-1\"><span class=\"text-[var(--color-textMuted)] text-[13px] min-w-[70px]\">Path</span> <span class=\"text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(data.Session.Path)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 42, Col: 167}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 42, Col: 148}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span></div><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Status</span> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span></div><div class=\"flex items-center gap-2 py-1\"><span class=\"text-[var(--color-textMuted)] text-[13px] min-w-[70px]\">Status</span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if data.Session.Status == "active" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span style=\"color:var(--color-brand);font-size:13px;flex:1;text-align:right;\"><span style=\"display:inline-block;width:7px;height:7px;border-radius:9999px;background:var(--color-brand);margin-right:4px;vertical-align:middle;\"></span>online</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span class=\"text-[var(--color-brand)] text-[13px] flex-1 text-right\"><span class=\"inline-block w-[7px] h-[7px] rounded-full bg-[var(--color-brand)] mr-1 align-middle\"></span>online</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<span style=\"color:var(--color-textMuted);font-size:13px;flex:1;text-align:right;\">offline</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<span class=\"text-[var(--color-textMuted)] text-[13px] flex-1 text-right\">offline</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Model</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div><div class=\"flex items-center gap-2 py-1\"><span class=\"text-[var(--color-textMuted)] text-[13px] min-w-[70px]\">Model</span> <span class=\"text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(data.Session.AgentType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 54, Col: 172}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 54, Col: 153}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></div><div style=\"display:flex;align-items:center;gap:8px;padding:4px 0;\"><span style=\"color:var(--color-textMuted);font-size:13px;min-width:70px;\">Connected</span> <span style=\"color:var(--color-textPrimary);font-size:13px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></div><div class=\"flex items-center gap-2 py-1\"><span class=\"text-[var(--color-textMuted)] text-[13px] min-w-[70px]\">Connected</span> <span class=\"text-[var(--color-textPrimary)] text-[13px] flex-1 text-right overflow-hidden text-ellipsis whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(data.Session.LastActiveAt))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 58, Col: 184}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 58, Col: 165}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</span></div></div></div><!-- Tab bar --><div id=\"info-tab-bar\" style=\"display:flex;background:var(--color-surface);border-bottom:1px solid var(--color-border);flex-shrink:0;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</span></div></div></div><!-- Tab bar --><div id=\"info-tab-bar\" class=\"flex bg-[var(--color-surface)] border-b border-b-[var(--color-border)] shrink-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -168,7 +168,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div><!-- Tab content --><div id=\"tab-content\" class=\"flex-1 overflow-y-auto\" style=\"padding:12px 16px;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div><!-- Tab content --><div id=\"tab-content\" class=\"flex-1 overflow-y-auto px-4 py-3\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -258,7 +258,7 @@ func infoTab(sessID, tab, label, activeTab string, icon templ.Component) templ.C
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" hx-target=\"#tab-content\" hx-swap=\"innerHTML\" hx-on::after-request=\"setActiveTab(this)\"><span style=\"color:inherit;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" hx-target=\"#tab-content\" hx-swap=\"innerHTML\" hx-on::after-request=\"setActiveTab(this)\"><span class=\"text-inherit\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -505,27 +505,27 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, task := range tasks {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<div style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;margin-bottom:4px;\" data-task-id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<div class=\"bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px] mb-1\" data-task-id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(task.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 219, Col: 129}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 219, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\"><div class=\"flex items-start cursor-pointer select-none task-row\" style=\"gap:16px;\" hx-get=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\"><div class=\"flex items-start cursor-pointer select-none task-row gap-4\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/chat/%s/tasks/%s", sessionID, task.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 223, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 222, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -536,14 +536,14 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if task.Status == "done" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<span style=\"color:var(--color-brand);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;\">&#10003;</span><div style=\"flex:1;min-width:0;\"><p style=\"color:var(--color-textMuted);font-size:15px;text-decoration:line-through;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<span class=\"text-[var(--color-brand)] text-sm mt-px shrink-0 font-bold\">&#10003;</span><div class=\"flex-1 min-w-0\"><p class=\"text-[var(--color-textMuted)] text-[15px] line-through m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(task.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 231, Col: 218}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 230, Col: 175}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 				if templ_7745c5c3_Err != nil {
@@ -554,14 +554,14 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else if task.Status == "in_progress" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span style=\"color:var(--color-ai);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;\">&#9679;</span><div style=\"flex:1;min-width:0;\"><p style=\"color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span class=\"text-[var(--color-ai)] text-sm mt-px shrink-0 font-bold\">&#9679;</span><div class=\"flex-1 min-w-0\"><p class=\"text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(task.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 235, Col: 159}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 234, Col: 139}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 				if templ_7745c5c3_Err != nil {
@@ -572,14 +572,14 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				if task.AssignedTo != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<p style=\"color:var(--color-textMuted);font-size:13px;margin-top:2px;\">&rarr; ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<p class=\"text-[var(--color-textMuted)] text-[13px] mt-[2px]\">&rarr; ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var25 string
 					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(task.AssignedTo)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 237, Col: 102}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 236, Col: 93}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 					if templ_7745c5c3_Err != nil {
@@ -595,14 +595,14 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else if task.Status == "blocked" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<span style=\"color:var(--color-error);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;\">&#10005;</span><div style=\"flex:1;min-width:0;\"><p style=\"color:var(--color-error);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<span class=\"text-[var(--color-error)] text-sm mt-px shrink-0 font-bold\">&#10005;</span><div class=\"flex-1 min-w-0\"><p class=\"text-[var(--color-error)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var26 string
 				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(task.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 242, Col: 185}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 241, Col: 158}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 				if templ_7745c5c3_Err != nil {
@@ -613,14 +613,14 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<span style=\"color:var(--color-textMuted);font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700;\">&#9675;</span><div style=\"flex:1;min-width:0;\"><p style=\"color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<span class=\"text-[var(--color-textMuted)] text-sm mt-px shrink-0 font-bold\">&#9675;</span><div class=\"flex-1 min-w-0\"><p class=\"text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var27 string
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(task.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 245, Col: 191}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 244, Col: 164}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
@@ -631,13 +631,13 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4E6268\" stroke-width=\"2\" style=\"flex-shrink:0;\" class=\"task-chevron\"><path d=\"M9 5l7 7-7 7\"></path></svg></div><div class=\"task-detail hidden\"></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4E6268\" stroke-width=\"2\" class=\"task-chevron shrink-0\"><path d=\"M9 5l7 7-7 7\"></path></svg></div><div class=\"task-detail hidden\"></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(tasks) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<div class=\"text-center text-sm mt-8\" style=\"color:var(--color-textMuted);\">No tasks yet</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<div class=\"text-center text-sm mt-8 text-[var(--color-textMuted)]\">No tasks yet</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -674,7 +674,7 @@ func TabTeam(data InfoPageData) templ.Component {
 		var templ_7745c5c3_Var29 string
 		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/sessions/%s/team", data.Session.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 261, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 260, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 		if templ_7745c5c3_Err != nil {
@@ -719,7 +719,7 @@ func TabMedia(data InfoPageData) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		if len(data.Images) > 0 || len(data.Docs) > 0 {
 			if len(data.Images) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<p style=\"font-size:11px;margin-bottom:8px;color:var(--color-textMuted);\">Images</p><div class=\"grid grid-cols-3 gap-1 mb-4\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<p class=\"text-[11px] mb-2 text-[var(--color-textMuted)]\">Images</p><div class=\"grid grid-cols-3 gap-1 mb-4\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -731,7 +731,7 @@ func TabMedia(data InfoPageData) templ.Component {
 					var templ_7745c5c3_Var31 templ.SafeURL
 					templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", img.SessionID, img.Filename)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 276, Col: 88}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 275, Col: 88}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 					if templ_7745c5c3_Err != nil {
@@ -744,7 +744,7 @@ func TabMedia(data InfoPageData) templ.Component {
 					var templ_7745c5c3_Var32 string
 					templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/uploads/%s/%s", img.SessionID, img.Filename))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 278, Col: 71}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 277, Col: 71}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 					if templ_7745c5c3_Err != nil {
@@ -757,7 +757,7 @@ func TabMedia(data InfoPageData) templ.Component {
 					var templ_7745c5c3_Var33 string
 					templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(img.OriginalName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 279, Col: 29}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 278, Col: 29}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 					if templ_7745c5c3_Err != nil {
@@ -778,7 +778,7 @@ func TabMedia(data InfoPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(data.Docs) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<p style=\"font-size:11px;margin-bottom:8px;color:var(--color-textMuted);\">Documents</p><div class=\"flex flex-col gap-2\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<p class=\"text-[11px] mb-2 text-[var(--color-textMuted)]\">Documents</p><div class=\"flex flex-col gap-2\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -794,7 +794,7 @@ func TabMedia(data InfoPageData) templ.Component {
 				}
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<div class=\"flex flex-col items-center justify-center mt-16 gap-3\" style=\"color:var(--color-textMuted);\"><svg class=\"w-12 h-12 opacity-40\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z\"></path></svg><p style=\"font-size:13px;\">No media yet</p><p style=\"font-size:11px;opacity:0.6;\">Upload files via chat</p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<div class=\"flex flex-col items-center justify-center mt-16 gap-3 text-[var(--color-textMuted)]\"><svg class=\"w-12 h-12 opacity-40\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z\"></path></svg><p class=\"text-[13px]\">No media yet</p><p class=\"text-[11px] opacity-60\">Upload files via chat</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -831,7 +831,7 @@ func docRow(doc cc.Attachment) templ.Component {
 		var templ_7745c5c3_Var35 templ.SafeURL
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", doc.SessionID, doc.Filename)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 308, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 307, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 		if templ_7745c5c3_Err != nil {
@@ -844,39 +844,39 @@ func docRow(doc cc.Attachment) templ.Component {
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(doc.OriginalName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 309, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 308, Col: 29}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" class=\"flex items-center gap-3 no-underline\" style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;color:var(--color-textPrimary);\"><svg class=\"w-5 h-5 flex-shrink-0\" fill=\"currentColor\" viewBox=\"0 0 24 24\" style=\"color:var(--color-textMuted);\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z\"></path> <polyline points=\"14 2 14 8 20 8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"></polyline></svg><div style=\"flex:1;min-width:0;\"><p style=\"font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" class=\"flex items-center gap-3 no-underline bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px] text-[var(--color-textPrimary)]\"><svg class=\"w-5 h-5 flex-shrink-0 text-[var(--color-textMuted)]\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z\"></path> <polyline points=\"14 2 14 8 20 8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"></polyline></svg><div class=\"flex-1 min-w-0\"><p class=\"text-[13px] m-0 overflow-hidden text-ellipsis whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(doc.OriginalName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 318, Col: 115}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 316, Col: 96}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</p><p style=\"font-size:11px;color:var(--color-textMuted);margin:0;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</p><p class=\"text-[11px] text-[var(--color-textMuted)] m-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var38 string
 		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(doc.MimeType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 319, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 317, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</p></div><svg class=\"w-4 h-4 flex-shrink-0\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\" style=\"color:var(--color-textMuted);\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg></a>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</p></div><svg class=\"w-4 h-4 flex-shrink-0 text-[var(--color-textMuted)]\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg></a>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -910,14 +910,14 @@ func TabCrons(data InfoPageData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, cron := range data.Crons {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div class=\"cron-row flex items-start gap-3\" style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;\"><div style=\"flex:1;min-width:0;\"><div class=\"flex items-center gap-2 flex-wrap\" style=\"margin-bottom:4px;\"><span style=\"font-size:13px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--color-surfaceHigh);color:var(--color-textPrimary);border:1px solid var(--color-border);\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div class=\"cron-row flex items-start gap-3 bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]\"><div class=\"flex-1 min-w-0\"><div class=\"flex items-center gap-2 flex-wrap mb-1\"><span class=\"text-[13px] font-semibold py-[2px] px-2 rounded-[6px] bg-[var(--color-surfaceHigh)] text-[var(--color-textPrimary)] border border-[var(--color-border)]\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(cron.Schedule)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 333, Col: 205}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 331, Col: 187}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -928,12 +928,12 @@ func TabCrons(data InfoPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if cron.Type == "inline" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<span style=\"font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;background:var(--color-toolDim);color:var(--color-tool);\">inline</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<span class=\"text-[11px] py-[2px] px-2 rounded-[6px] font-semibold bg-[var(--color-toolDim)] text-[var(--color-tool)]\">inline</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<span style=\"font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;background:var(--color-cronDim);color:var(--color-cron);\">background</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<span class=\"text-[11px] py-[2px] px-2 rounded-[6px] font-semibold bg-[var(--color-cronDim)] text-[var(--color-cron)]\">background</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -943,14 +943,14 @@ func TabCrons(data InfoPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if cron.Agent != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<p style=\"font-size:11px;color:var(--color-textMuted);margin:0;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<p class=\"text-[11px] text-[var(--color-textMuted)] m-0\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var41 string
 				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(cron.Agent)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 341, Col: 83}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 339, Col: 75}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 				if templ_7745c5c3_Err != nil {
@@ -961,14 +961,14 @@ func TabCrons(data InfoPageData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<p style=\"font-size:11px;color:var(--color-textMuted);margin:0;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<p class=\"text-[11px] text-[var(--color-textMuted)] m-0\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(Truncate(60, cron.Prompt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 343, Col: 97}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 341, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
@@ -981,19 +981,19 @@ func TabCrons(data InfoPageData) templ.Component {
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/crons/%s", cron.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 346, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 344, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "\" hx-confirm=\"Delete this cron?\" hx-target=\"closest .cron-row\" hx-swap=\"outerHTML swap:300ms\" class=\"flex-shrink-0 p-1 rounded\" style=\"color:var(--color-error);background:none;border:none;cursor:pointer;\"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "\" hx-confirm=\"Delete this cron?\" hx-target=\"closest .cron-row\" hx-swap=\"outerHTML swap:300ms\" class=\"flex-shrink-0 p-1 rounded text-[var(--color-error)] bg-transparent border-none cursor-pointer\"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(data.Crons) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<div class=\"text-center text-sm mt-8\" style=\"color:var(--color-textMuted);\">No crons yet</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<div class=\"text-center text-sm mt-8 text-[var(--color-textMuted)]\">No crons yet</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1034,13 +1034,13 @@ func TabConfig(data InfoPageData) templ.Component {
 		var templ_7745c5c3_Var45 string
 		templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(data.Session.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 366, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 363, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "\"><div style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;\"><p style=\"font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-textMuted);margin:0 0 8px;\">Agent</p><select id=\"agent-select\" style=\"width:100%;border-radius:8px;padding:8px 12px;font-size:13px;appearance:none;background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-textPrimary);outline:none;font-family:inherit;\"><option value=\"\">Default (no agent)</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "\"><div class=\"bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]\"><p class=\"text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0\">Agent</p><select id=\"agent-select\" class=\"w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]\"><option value=\"\">Default (no agent)</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1052,7 +1052,7 @@ func TabConfig(data InfoPageData) templ.Component {
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Type)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 373, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 370, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
@@ -1075,7 +1075,7 @@ func TabConfig(data InfoPageData) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Type)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 377, Col: 18}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 374, Col: 18}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -1086,7 +1086,7 @@ func TabConfig(data InfoPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</select> <button onclick=\"applyAgent(this.closest('[data-session-id]').dataset.sessionId)\" style=\"width:100%;padding:8px;border-radius:8px;font-size:13px;font-weight:600;background:var(--color-brand);color:#000;border:none;cursor:pointer;margin-top:8px;\">Apply</button><div id=\"agent-feedback\" style=\"font-size:11px;text-align:center;color:var(--color-textMuted);min-height:1.2em;margin-top:4px;\"></div></div><div style=\"background:var(--color-surfaceHigh);border-radius:12px;padding:12px 14px;\"><p style=\"font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-textMuted);margin:0 0 8px;\">Team</p><select id=\"team-select\" style=\"width:100%;border-radius:8px;padding:8px 12px;font-size:13px;appearance:none;background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-textPrimary);outline:none;font-family:inherit;\"><option value=\"\">Default (no team)</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</select> <button onclick=\"applyAgent(this.closest('[data-session-id]').dataset.sessionId)\" class=\"w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2\">Apply</button><div id=\"agent-feedback\" class=\"text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1\"></div></div><div class=\"bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]\"><p class=\"text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0\">Team</p><select id=\"team-select\" class=\"w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]\"><option value=\"\">Default (no team)</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1098,7 +1098,7 @@ func TabConfig(data InfoPageData) templ.Component {
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(team)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 392, Col: 18}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 389, Col: 18}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
@@ -1121,7 +1121,7 @@ func TabConfig(data InfoPageData) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(team)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 396, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/info_panel.templ`, Line: 393, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1132,7 +1132,7 @@ func TabConfig(data InfoPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "</select> <button onclick=\"applyTeam(this.closest('[data-session-id]').dataset.sessionId)\" style=\"width:100%;padding:8px;border-radius:8px;font-size:13px;font-weight:600;background:var(--color-brand);color:#000;border:none;cursor:pointer;margin-top:8px;\">Apply</button><div id=\"team-feedback\" style=\"font-size:11px;text-align:center;color:var(--color-textMuted);min-height:1.2em;margin-top:4px;\"></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "</select> <button onclick=\"applyTeam(this.closest('[data-session-id]').dataset.sessionId)\" class=\"w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2\">Apply</button><div id=\"team-feedback\" class=\"text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1\"></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

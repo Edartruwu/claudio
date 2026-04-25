@@ -68,7 +68,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" style=\"background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;\" onclick=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" class=\"bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-3 cursor-pointer flex items-center gap-3\" onclick=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -81,7 +81,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var5 = []any{agentAvatarClass(agent.Status)}
+			var templ_7745c5c3_Var5 = []any{"w-10 h-10 rounded-full bg-[var(--color-surfaceHigh)] text-[var(--color-brand)] text-sm " + agentAvatarClass(agent.Status)}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var5...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -99,27 +99,27 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" style=\"width:40px;height:40px;border-radius:9999px;background:var(--color-surfaceHigh);color:var(--color-brand);font-size:14px;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(FirstChar(agent.Name))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 26, Col: 27}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 25, Col: 27}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><!-- Card body --><div style=\"flex:1;min-width:0;\"><!-- Name + tool chip row --><div style=\"display:flex;align-items:center;gap:8px;\"><p style=\"color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><!-- Card body --><div class=\"flex-1 min-w-0\"><!-- Name + tool chip row --><div class=\"flex items-center gap-2\"><p class=\"text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap flex-1\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 32, Col: 149}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 31, Col: 131}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -130,14 +130,14 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if agent.Status == "running" && agent.CurrentTool != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span style=\"background:var(--color-toolDim);color:var(--color-tool);font-size:11px;font-weight:600;letter-spacing:0.5px;border-radius:9999px;padding:2px 8px;white-space:nowrap;flex-shrink:0;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span class=\"bg-[var(--color-toolDim)] text-[var(--color-tool)] text-[11px] font-semibold tracking-[0.5px] rounded-full px-2 py-[2px] whitespace-nowrap shrink-0\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(agent.CurrentTool)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 34, Col: 218}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 33, Col: 187}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -148,24 +148,24 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div><!-- Status dot + label --><div style=\"display:flex;align-items:center;gap:6px;margin-top:4px;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div><!-- Status dot + label --><div class=\"flex items-center gap-[6px] mt-1\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if agent.Status == "running" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-brand);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-brand);\">running</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span class=\"w-2 h-2 rounded-full bg-[var(--color-brand)] shrink-0 inline-block\"></span> <span class=\"text-xs text-[var(--color-brand)]\">running</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else if agent.Status == "done" || agent.Status == "inactive" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-textMuted);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-textMuted);\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span class=\"w-2 h-2 rounded-full bg-[var(--color-textMuted)] shrink-0 inline-block\"></span> <span class=\"text-xs text-[var(--color-textMuted)]\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 44, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 43, Col: 72}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -176,14 +176,14 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span style=\"width:8px;height:8px;border-radius:9999px;background:var(--color-tool);flex-shrink:0;display:inline-block;\"></span> <span style=\"font-size:12px;color:var(--color-tool);\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"w-2 h-2 rounded-full bg-[var(--color-tool)] shrink-0 inline-block\"></span> <span class=\"text-xs text-[var(--color-tool)]\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(agent.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 47, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 46, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -199,14 +199,14 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if agent.CallCount > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<p style=\"font-size:13px;color:var(--color-textMuted);margin:4px 0 0;\">⚡ ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<p class=\"text-[13px] text-[var(--color-textMuted)] m-0 mt-1\">⚡ ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(agent.CallCount))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 52, Col: 103}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 51, Col: 94}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -219,7 +219,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(formatElapsed(agent.ElapsedSecs))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 52, Col: 149}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/team_members.templ`, Line: 51, Col: 140}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
@@ -236,7 +236,7 @@ func TeamMembers(agents []cc.Agent, sessionID string) templ.Component {
 			}
 		}
 		if len(agents) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 0;gap:8px;\"><svg width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" style=\"color:var(--color-textMuted);\"><circle cx=\"12\" cy=\"8\" r=\"4\"></circle> <path d=\"M4 20c0-4 3.6-7 8-7s8 3 8 7\"></path></svg> <span style=\"font-size:14px;color:var(--color-textMuted);\">No agents running</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div class=\"flex flex-col items-center justify-center py-10 gap-2\"><svg width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" class=\"text-[var(--color-textMuted)]\"><circle cx=\"12\" cy=\"8\" r=\"4\"></circle> <path d=\"M4 20c0-4 3.6-7 8-7s8 3 8 7\"></path></svg> <span class=\"text-sm text-[var(--color-textMuted)]\">No agents running</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

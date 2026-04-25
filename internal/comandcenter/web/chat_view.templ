@@ -10,14 +10,13 @@ import (
 // Works as both full-page (wrapped in Layout) and HTMX partial.
 templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 	<div class="flex flex-1 min-h-0" id="chat-app" data-session-id={ sess.ID }>
-		<div class="flex-1 flex flex-col min-h-0" style="background:var(--color-bg);position:relative;">
+		<div class="flex-1 flex flex-col min-h-0 bg-[var(--color-bg)] relative">
 			<!-- Header -->
-			<header class="chat-header flex items-center flex-shrink-0" style="background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:48px 8px 10px;gap:8px;">
+			<header class="chat-header flex items-center flex-shrink-0 bg-[var(--color-surface)] border-b border-b-[var(--color-border)] p-[48px_8px_10px] gap-2">
 				<!-- Back button: mobile only -->
 				<button
 					type="button"
-					class="flex md:hidden items-center justify-center flex-shrink-0"
-					style="width:40px;height:40px;min-width:40px;background:transparent;border:none;cursor:pointer;color:var(--color-textPrimary);"
+					class="flex md:hidden items-center justify-center flex-shrink-0 w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textPrimary)]"
 					hx-get="/sessions"
 					hx-target="body"
 					hx-swap="innerHTML"
@@ -26,46 +25,44 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				>
 					<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"></path></svg>
 				</button>
-				<div style="position:relative;flex-shrink:0;">
-					<div class="rounded-full flex items-center justify-center flex-shrink-0" style="width:36px;height:36px;background:var(--color-brand);font-size:13.68px;font-weight:700;color:var(--color-bg);">
+				<div class="relative shrink-0">
+					<div class="rounded-full flex items-center justify-center flex-shrink-0 w-9 h-9 bg-[var(--color-brand)] text-[13.68px] font-bold text-[var(--color-bg)]">
 						{ FirstChar(sess.Name) }
 					</div>
 					if sess.Status == "active" {
-						<span style="position:absolute;bottom:1px;right:1px;width:9.36px;height:9.36px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;"></span>
+						<span class="absolute bottom-[1px] right-[1px] w-[9.36px] h-[9.36px] bg-[var(--color-brand)] border-2 border-[var(--color-bg)] rounded-full"></span>
 					}
 				</div>
-				<div style="flex:1 1 0%;min-width:0;">
-					<p style="color:var(--color-textPrimary);font-size:16px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+				<div class="flex-1 min-w-0">
+					<p class="text-[var(--color-textPrimary)] text-base font-semibold m-0 overflow-hidden text-ellipsis whitespace-nowrap">
 						if sess.Master {
 							★ 
 						}
 						{ sess.Name }
 					</p>
 					if sess.Status == "active" {
-						<p id="typing-indicator" style="color:var(--color-brand);font-size:13px;margin:0;">● online</p>
+						<p id="typing-indicator" class="text-[var(--color-brand)] text-[13px] m-0">● online</p>
 					} else {
-						<p id="typing-indicator" style="color:var(--color-textMuted);font-size:13px;margin:0;">last seen recently</p>
+						<p id="typing-indicator" class="text-[var(--color-textMuted)] text-[13px] m-0">last seen recently</p>
 					}
 				</div>
 				<button
 					id="bell-btn"
 					type="button"
 					onclick="ccTogglePush()"
-					class="flex items-center justify-center flex-shrink-0"
-					style="width:40px;height:40px;min-width:40px;background:transparent;border:none;cursor:pointer;color:var(--color-textMuted);"
+					class="flex items-center justify-center flex-shrink-0 w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textMuted)]"
 					aria-label="Toggle push notifications"
 				>
 					<svg id="bell-outline" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 						<path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
 					</svg>
-					<svg id="bell-filled" class="hidden" width="18" height="18" fill="currentColor" viewBox="0 0 24 24" style="color:var(--color-brand);">
+					<svg id="bell-filled" class="hidden text-[var(--color-brand)]" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
 						<path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
 					</svg>
 				</button>
 				<button
 					type="button"
-					class="flex items-center justify-center flex-shrink-0"
-					style="width:40px;height:40px;min-width:40px;background:transparent;border:none;cursor:pointer;color:var(--color-textMuted);"
+					class="flex items-center justify-center flex-shrink-0 w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textMuted)]"
 					hx-get={ fmt.Sprintf("/chat/%s/info", sess.ID) }
 					hx-target="#info-panel"
 					hx-swap="innerHTML"
@@ -76,33 +73,35 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				</button>
 			</header>
 			<!-- Push toast -->
-			<div id="push-toast" class="hidden fixed top-4 left-1/2 text-white text-sm px-4 py-2 rounded-full shadow-lg z-50" style="transform:translateX(-50%);background:#2C2C2E;"></div>
+			<div id="push-toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 text-white text-sm px-4 py-2 rounded-full shadow-lg z-50 bg-[#2C2C2E]"></div>
 			<!-- WS reconnect banner -->
-			<div id="ws-banner" class="hidden" style="position:fixed;top:0;left:0;width:100%;z-index:300;background:#9B6FE0;padding:8px 16px;text-align:center;">
-				<span style="display:inline-flex;align-items:center;gap:12px;">
-					<span style="color:#fff;font-size:13px;">Reconnecting...</span>
-					<button onclick="location.reload()" style="background:transparent;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:4px 12px;border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit;">Retry</button>
+			<div id="ws-banner" class="hidden fixed top-0 left-0 w-full z-[300] bg-[#9B6FE0] px-4 py-2 text-center" role="alert" aria-live="assertive">
+				<span class="inline-flex items-center gap-3">
+					<span class="text-white text-[13px]">Reconnecting...</span>
+					<button onclick="location.reload()" class="bg-transparent border border-[rgba(255,255,255,0.3)] text-white px-3 py-1 rounded-md text-[13px] cursor-pointer font-[inherit]">Retry</button>
 				</span>
 			</div>
 			<!-- Messages -->
 			<div
 				id="messages"
-				class="flex-1 overflow-y-auto"
-				style="background:var(--color-bg);overflow-anchor:none;padding:16px 20px;"
+				class="flex-1 overflow-y-auto bg-[var(--color-bg)] [overflow-anchor:none] p-[16px_20px]"
 				data-session={ sess.ID }
+				role="log"
+				aria-live="polite"
+				aria-label="Conversation messages"
 			>
 				@MessagesContainer(messages)
-				<div id="typing-indicator-dots" class="hidden flex items-center gap-2" style="padding:6px 0 12px;">
-					<div class="msg-bubble-assistant flex items-center gap-2" style="padding:10px 14px;">
-						<span class="typing-text" style="color:var(--color-textMuted);font-size:13px;"></span>
+				<div id="typing-indicator-dots" class="hidden flex items-center gap-2 pt-[6px] pb-3" role="status" aria-label="Agent is typing">
+					<div class="msg-bubble-assistant flex items-center gap-2 px-[14px] py-[10px]">
+						<span class="typing-text text-[var(--color-textMuted)] text-[13px]"></span>
 						<span class="typing-dots" aria-label="typing">
 							<span></span><span></span><span></span>
 						</span>
 					</div>
 				</div>
-				<div id="typing-bubble" class="hidden flex items-center gap-2" style="padding:6px 0 12px;">
-					<div class="msg-bubble-assistant flex items-center gap-2" style="padding:10px 14px;">
-						<span class="typing-text" style="color:var(--color-textMuted);font-size:13px;"></span>
+				<div id="typing-bubble" class="hidden flex items-center gap-2 pt-[6px] pb-3" role="status" aria-label="Agent is typing">
+					<div class="msg-bubble-assistant flex items-center gap-2 px-[14px] py-[10px]">
+						<span class="typing-text text-[var(--color-textMuted)] text-[13px]"></span>
 						<span class="typing-dots" aria-label="typing">
 							<span></span><span></span><span></span>
 						</span>
@@ -110,97 +109,95 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				</div>
 			</div>
 			<!-- Upload progress bar -->
-			<div id="upload-progress" class="hidden px-3 py-1" style="background:#1C1C1E;">
+			<div id="upload-progress" class="hidden px-3 py-1 bg-[#1C1C1E]">
 				<div class="flex items-center gap-2">
-					<div class="flex-1 rounded-full overflow-hidden" style="height:2px;background:#2C2C2E;">
-						<div id="upload-progress-bar" class="h-full rounded-full" style="background:#25D366;width:0%;transition:width 0.15s;"></div>
+					<div class="flex-1 rounded-full overflow-hidden h-[2px] bg-[#2C2C2E]">
+						<div id="upload-progress-bar" class="h-full rounded-full bg-[#25D366] w-0 [transition:width_0.15s]"></div>
 					</div>
-					<span id="upload-pct" class="text-xs flex-shrink-0" style="color:#8E8E93;min-width:2.5rem;text-align:right;">0%</span>
+					<span id="upload-pct" class="text-xs flex-shrink-0 text-[#8E8E93] min-w-[2.5rem] text-right">0%</span>
 				</div>
 			</div>
 			<!-- @mention autocomplete dropdown -->
-			<div id="mention-dropdown" class="hidden" style="position:absolute;bottom:72px;left:12px;right:12px;z-index:100;background:#1C1C1E;border-radius:12px;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,0.5);"></div>
+			<div id="mention-dropdown" class="hidden absolute bottom-[72px] left-[12px] right-[12px] z-[100] bg-[#1C1C1E] rounded-xl overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.5)]"></div>
 			<!-- + popover -->
-			<div id="plus-popover" class="hidden" style="position:absolute;bottom:68px;left:12px;z-index:200;background:#2C2C2E;border-radius:14px;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,0.6);min-width:210px;">
-				<button type="button" onclick="ccInterrupt()" style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
-					<span style="font-size:20px;">⏹</span> Interrupt
+			<div id="plus-popover" class="hidden absolute bottom-[68px] left-[12px] z-[200] bg-[#2C2C2E] rounded-[14px] overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.6)] min-w-[210px]">
+				<button type="button" onclick="ccInterrupt()" class="flex items-center gap-3 w-full px-[18px] py-[13px] bg-transparent border-none cursor-pointer text-white text-[15px] border-b border-b-[#3A3A3C]" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+					<span class="text-xl">⏹</span> Interrupt
 				</button>
-				<button type="button" onclick="ccSendCommand('/clear')" style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
-					<span style="font-size:20px;">🗑</span> Clear Conversation
+				<button type="button" onclick="ccSendCommand('/clear')" class="flex items-center gap-3 w-full px-[18px] py-[13px] bg-transparent border-none cursor-pointer text-white text-[15px] border-b border-b-[#3A3A3C]" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+					<span class="text-xl">🗑</span> Clear Conversation
 				</button>
-				<button type="button" onclick="ccSendCommand('/compact')" style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
-					<span style="font-size:20px;">⚡</span> Compact
+				<button type="button" onclick="ccSendCommand('/compact')" class="flex items-center gap-3 w-full px-[18px] py-[13px] bg-transparent border-none cursor-pointer text-white text-[15px] border-b border-b-[#3A3A3C]" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+					<span class="text-xl">⚡</span> Compact
 				</button>
-				<button type="button" onclick="document.getElementById('file-input').click();document.getElementById('plus-popover').classList.add('hidden');" style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;border-bottom:1px solid #3A3A3C;" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
-					<span style="font-size:20px;">📄</span> Upload File
+				<button type="button" onclick="document.getElementById('file-input').click();document.getElementById('plus-popover').classList.add('hidden');" class="flex items-center gap-3 w-full px-[18px] py-[13px] bg-transparent border-none cursor-pointer text-white text-[15px] border-b border-b-[#3A3A3C]" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+					<span class="text-xl">📄</span> Upload File
 				</button>
-				<button type="button" onclick="ccOpenFileBrowser();document.getElementById('plus-popover').classList.add('hidden');" style="display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;background:transparent;border:none;cursor:pointer;color:#fff;font-size:15px;" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
-					<span style="font-size:20px;">📁</span> Browse Session Files
+				<button type="button" onclick="ccOpenFileBrowser();document.getElementById('plus-popover').classList.add('hidden');" class="flex items-center gap-3 w-full px-[18px] py-[13px] bg-transparent border-none cursor-pointer text-white text-[15px]" onmouseenter="this.style.background='#3A3A3C'" onmouseleave="this.style.background='transparent'">
+					<span class="text-xl">📁</span> Browse Session Files
 				</button>
 			</div>
 			<!-- File browser modal -->
-			<div id="file-browser-modal" class="hidden fixed inset-0 flex items-end md:items-center justify-center" style="z-index:300;background:rgba(0,0,0,0.75);">
-				<div class="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl flex flex-col" style="background:#1C1C1E;max-height:80vh;padding-bottom:env(safe-area-inset-bottom);">
-					<div class="flex items-center justify-between px-4 py-3 flex-shrink-0" style="border-bottom:1px solid #2C2C2E;">
+			<div id="file-browser-modal" class="hidden fixed inset-0 flex items-end md:items-center justify-center z-[300] bg-[rgba(0,0,0,0.75)]">
+				<div class="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl flex flex-col bg-[#1C1C1E] max-h-[80vh] pb-[env(safe-area-inset-bottom)]">
+					<div class="flex items-center justify-between px-4 py-3 flex-shrink-0 border-b border-b-[#2C2C2E]">
 						<h2 class="text-white font-semibold text-base">Session Files</h2>
-						<button type="button" onclick="ccCloseFileBrowser()" style="color:#8E8E93;background:transparent;border:none;cursor:pointer;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;font-size:20px;">✕</button>
+						<button type="button" onclick="ccCloseFileBrowser()" class="text-[#8E8E93] bg-transparent border-none cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center text-xl">✕</button>
 					</div>
-					<div id="fb-breadcrumb" class="px-4 py-2 flex-shrink-0 overflow-x-auto" style="font-size:13px;color:#8E8E93;white-space:nowrap;border-bottom:1px solid #2C2C2E;min-height:36px;"></div>
-					<div id="fb-list" class="overflow-y-auto flex-1" style="min-height:0;"></div>
-					<div id="fb-status" class="hidden text-center py-6" style="color:#8E8E93;font-size:14px;"></div>
+					<div id="fb-breadcrumb" class="px-4 py-2 flex-shrink-0 overflow-x-auto text-[13px] text-[#8E8E93] whitespace-nowrap border-b border-b-[#2C2C2E] min-h-[36px]"></div>
+					<div id="fb-list" class="overflow-y-auto flex-1 min-h-0"></div>
+					<div id="fb-status" class="hidden text-center py-6 text-[#8E8E93] text-sm"></div>
 				</div>
 			</div>
 			<!-- Staged files preview strip (multi-file) -->
-			<div id="staged-files-preview" class="hidden px-3 py-2 flex-shrink-0" style="background:#1C1C1E;border-top:1px solid #2C2C2E;">
+			<div id="staged-files-preview" class="hidden px-3 py-2 flex-shrink-0 bg-[#1C1C1E] border-t border-t-[#2C2C2E]">
 				<div id="staged-thumbs" class="flex gap-2 overflow-x-auto pb-1"></div>
 			</div>
 			<!-- Compact loading indicator -->
-			<div id="compact-loading" style="display:none;padding:10px 16px;background:#1C1C1E;border-top:1px solid #2C2C2E;text-align:center;font-size:13px;color:#8E8E93;">
+			<div id="compact-loading" class="px-4 py-[10px] bg-[#1C1C1E] border-t border-t-[#2C2C2E] text-center text-[13px] text-[#8E8E93]" style="display:none;">
 				<span class="compact-spinner"></span> Compacting conversation…
 			</div>
 			<!-- Input bar -->
-			<form class="input-bar flex items-center flex-shrink-0" style="background:var(--color-surface);border-top:1px solid var(--color-border);padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom));gap:8px;" onsubmit="return false;">
+			<form class="input-bar flex items-center flex-shrink-0 bg-[var(--color-surface)] border-t border-t-[var(--color-border)] pt-2 px-3 pb-[calc(8px+env(safe-area-inset-bottom))] gap-2" onsubmit="return false;">
 				<input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip" multiple/>
 				<!-- Mobile: + button -->
 				<button
 					id="plus-btn"
 					type="button"
 					onclick="(function(){var p=document.getElementById('plus-popover');p.classList.toggle('hidden');})()"
-					class="flex md:hidden items-center justify-center flex-shrink-0"
-					style="width:36px;height:36px;border-radius:9999px;background:var(--color-surfaceHigh);border:none;cursor:pointer;"
+					class="flex md:hidden items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-[var(--color-surfaceHigh)] border-none cursor-pointer"
 					aria-label="Attach or browse files"
 				>
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2.5"><path d="M12 4v16m8-8H4"></path></svg>
 				</button>
 				<!-- Desktop: 5 action buttons -->
-				<button type="button" onclick="ccInterrupt()" class="hidden md:flex items-center justify-center flex-shrink-0" style="width:30px;height:30px;border-radius:8px;background:rgba(224,80,80,0.15);border:1px solid var(--color-error);cursor:pointer;" title="Interrupt" aria-label="Interrupt">
+				<button type="button" onclick="ccInterrupt()" class="hidden md:flex items-center justify-center flex-shrink-0 w-[30px] h-[30px] rounded-lg bg-[rgba(224,80,80,0.15)] border border-[var(--color-error)] cursor-pointer" title="Interrupt" aria-label="Interrupt">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>
 				</button>
-				<button type="button" onclick="document.getElementById('file-input').click();" class="hidden md:flex items-center justify-center flex-shrink-0" style="width:30px;height:30px;border-radius:8px;background:rgba(240,165,0,0.15);border:1px solid var(--color-tool);cursor:pointer;" title="Upload File" aria-label="Upload file">
+				<button type="button" onclick="document.getElementById('file-input').click();" class="hidden md:flex items-center justify-center flex-shrink-0 w-[30px] h-[30px] rounded-lg bg-[rgba(240,165,0,0.15)] border border-[var(--color-tool)] cursor-pointer" title="Upload File" aria-label="Upload file">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-tool)" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"></path></svg>
 				</button>
-				<button type="button" onclick="ccOpenFileBrowser()" class="hidden md:flex items-center justify-center flex-shrink-0" style="width:30px;height:30px;border-radius:8px;background:var(--color-surfaceHigh);border:1px solid var(--color-textMuted);cursor:pointer;" title="Browse Files" aria-label="Browse session files">
+				<button type="button" onclick="ccOpenFileBrowser()" class="hidden md:flex items-center justify-center flex-shrink-0 w-[30px] h-[30px] rounded-lg bg-[var(--color-surfaceHigh)] border border-[var(--color-textMuted)] cursor-pointer" title="Browse Files" aria-label="Browse session files">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"></path></svg>
 				</button>
-				<button type="button" onclick="ccSendCommand('/compact')" class="hidden md:flex items-center justify-center flex-shrink-0" style="width:30px;height:30px;border-radius:8px;background:rgba(59,158,255,0.15);border:1px solid var(--color-ai);cursor:pointer;" title="Compact" aria-label="Compact conversation">
+				<button type="button" onclick="ccSendCommand('/compact')" class="hidden md:flex items-center justify-center flex-shrink-0 w-[30px] h-[30px] rounded-lg bg-[rgba(59,158,255,0.15)] border border-[var(--color-ai)] cursor-pointer" title="Compact" aria-label="Compact conversation">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-ai)" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
 				</button>
-				<button type="button" onclick="ccSendCommand('/clear')" class="hidden md:flex items-center justify-center flex-shrink-0" style="width:30px;height:30px;border-radius:8px;background:var(--color-surfaceHigh);border:1px solid var(--color-textMuted);cursor:pointer;" title="Clear" aria-label="Clear conversation">
+				<button type="button" onclick="ccSendCommand('/clear')" class="hidden md:flex items-center justify-center flex-shrink-0 w-[30px] h-[30px] rounded-lg bg-[var(--color-surfaceHigh)] border border-[var(--color-textMuted)] cursor-pointer" title="Clear" aria-label="Clear conversation">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path></svg>
 				</button>
-				<div style="flex:1 1 0%;background:var(--color-surfaceHigh);border-radius:24px;position:relative;">
+				<div class="flex-1 bg-[var(--color-surfaceHigh)] rounded-[24px] relative">
 					<textarea
 						id="msg-input"
 						rows="1"
 						placeholder="Message"
-						style="width:100%;background:transparent;color:var(--color-textPrimary);border:none;resize:none;overflow:hidden;line-height:1.4;max-height:120px;min-height:36px;padding:9px 16px;font-size:16px;font-family:inherit;outline:none;"
+						class="w-full bg-transparent text-[var(--color-textPrimary)] border-none resize-none overflow-hidden leading-[1.4] max-h-[120px] min-h-[36px] px-4 py-[9px] text-base font-[inherit] outline-none"
 					></textarea>
 				</div>
 				<button
 					id="send-btn"
 					type="button"
-					class="flex items-center justify-center flex-shrink-0"
-					style="width:36px;height:36px;border-radius:9999px;background:var(--color-brand);border:none;cursor:pointer;"
+					class="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-[var(--color-brand)] border-none cursor-pointer"
 					onclick="ccSend()"
 				>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="#0B0E0F"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
@@ -208,12 +205,11 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 			</form>
 		</div>
 		<!-- Info panel backdrop (mobile only) -->
-		<div id="info-panel-backdrop" class="hidden fixed inset-0 z-40" style="background:rgba(0,0,0,0.5);" onclick="ccCloseInfoPanel()"></div>
+		<div id="info-panel-backdrop" class="hidden fixed inset-0 z-40 bg-[rgba(0,0,0,0.5)]" onclick="ccCloseInfoPanel()"></div>
 		<!-- Info panel slot -->
 		<div
 			id="info-panel"
-			class="hidden lg:flex flex-col overflow-y-auto"
-			style="width:300px;flex-shrink:0;background:var(--color-bg);border-left:1px solid var(--color-border);"
+			class="hidden lg:flex flex-col overflow-y-auto w-[300px] shrink-0 bg-[var(--color-bg)] border-l border-l-[var(--color-border)]"
 		></div>
 	</div>
 	@PushPrompt()
@@ -225,27 +221,28 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 templ PushPrompt() {
 	<div
 		id="push-prompt"
-		style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--color-surface);border-top:1px solid var(--color-border);padding:20px 24px;flex-direction:column;gap:12px;max-width:480px;margin:0 auto;"
+		class="fixed bottom-0 left-0 right-0 z-[200] bg-[var(--color-surface)] border-t border-t-[var(--color-border)] p-[20px_24px] flex-col gap-3 max-w-[480px] mx-auto"
+		style="display:none;"
 	>
-		<div style="display:flex;align-items:center;gap:12px;">
-			<div style="width:40px;height:40px;border-radius:10px;background:var(--color-brandDim);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+		<div class="flex items-center gap-3">
+			<div class="w-10 h-10 rounded-[10px] bg-[var(--color-brandDim)] flex items-center justify-center shrink-0">
 				<svg width="22" height="22" fill="none" stroke="var(--color-brand)" stroke-width="2" viewBox="0 0 24 24">
 					<path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
 				</svg>
 			</div>
-			<div style="flex:1;min-width:0;">
-				<p style="color:var(--color-textPrimary);font-weight:600;font-size:15px;margin:0 0 2px 0;">Enable notifications</p>
-				<p style="color:var(--color-textSecondary);font-size:13px;margin:0;">Get notified when your agent responds</p>
+			<div class="flex-1 min-w-0">
+				<p class="text-[var(--color-textPrimary)] font-semibold text-[15px] m-0 mb-[2px]">Enable notifications</p>
+				<p class="text-[var(--color-textSecondary)] text-[13px] m-0">Get notified when your agent responds</p>
 			</div>
 		</div>
-		<div style="display:flex;gap:8px;">
+		<div class="flex gap-2">
 			<button
 				onclick="ccDismissPush()"
-				style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--color-border);background:transparent;color:var(--color-textSecondary);font-family:inherit;font-size:14px;cursor:pointer;"
+				class="flex-1 p-[10px] rounded-[10px] border border-[var(--color-border)] bg-transparent text-[var(--color-textSecondary)] font-[inherit] text-sm cursor-pointer"
 			>Not now</button>
 			<button
 				onclick="ccSubscribePush()"
-				style="flex:2;padding:10px;border-radius:10px;border:none;background:var(--color-brand);color:#0B0E0F;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;"
+				class="flex-[2] p-[10px] rounded-[10px] border-none bg-[var(--color-brand)] text-[#0B0E0F] font-[inherit] text-sm font-semibold cursor-pointer"
 			>Enable</button>
 		</div>
 	</div>

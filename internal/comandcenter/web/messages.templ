@@ -6,7 +6,7 @@ templ MessagesPartial(messages []MessageView) {
 		@MessageBubble(msg)
 	}
 	if len(messages) == 0 {
-		<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No messages yet</div>
+		<div class="text-center text-sm mt-8 text-[var(--color-textMuted)]">No messages yet</div>
 	}
 }
 
@@ -14,15 +14,15 @@ templ MessagesPartial(messages []MessageView) {
 templ MessagesContainer(messages []MessageView) {
 	<div id="messages-inner">
 		if len(messages) > 0 {
-			<div style="display:flex;justify-content:center;margin:8px 0;">
-				<span style="background:var(--color-surfaceHigh);color:var(--color-textMuted);font-size:11px;padding:3px 12px;border-radius:9999px;letter-spacing:0.5px;border:1px solid var(--color-border);">Today</span>
+			<div class="flex justify-center my-2">
+				<span class="bg-[var(--color-surfaceHigh)] text-[var(--color-textMuted)] text-[11px] px-3 py-[3px] rounded-full tracking-[0.5px] border border-[var(--color-border)]">Today</span>
 			</div>
 		}
 		for _, msg := range messages {
 			@MessageBubble(msg)
 		}
 		if len(messages) == 0 {
-			<div class="text-center text-sm mt-8" style="color:var(--color-textMuted);">No messages yet</div>
+			<div class="text-center text-sm mt-8 text-[var(--color-textMuted)]">No messages yet</div>
 		}
 	</div>
 }
