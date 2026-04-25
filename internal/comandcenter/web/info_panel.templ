@@ -121,6 +121,7 @@ templ InfoPanel(data InfoPageData) {
 			var val = document.getElementById('agent-select').value;
 			fetch('/api/sessions/' + sessionId + '/set-agent', {
 				method: 'POST',
+				credentials: 'include',
 				headers: {'Content-Type': 'application/json'},
 				body: JSON.stringify({agent_type: val})
 			}).then(function(r){ return r.json(); })
@@ -131,6 +132,7 @@ templ InfoPanel(data InfoPageData) {
 			var val = document.getElementById('team-select').value;
 			fetch('/api/sessions/' + sessionId + '/set-team', {
 				method: 'POST',
+				credentials: 'include',
 				headers: {'Content-Type': 'application/json'},
 				body: JSON.stringify({team_name: val})
 			}).then(function(r){ return r.json(); })
@@ -363,7 +365,7 @@ templ TabCrons(data InfoPageData) {
 templ TabConfig(data InfoPageData) {
 	<div class="flex flex-col gap-4" data-session-id={ data.Session.ID }>
 		<div class="bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]">
-			<p class="text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Agent</p>
+			<label for="agent-select" class="block text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Agent</label>
 			<select id="agent-select" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
 				<option value="">Default (no agent)</option>
 				for _, agent := range data.AvailableAgents {
@@ -382,7 +384,7 @@ templ TabConfig(data InfoPageData) {
 			<div id="agent-feedback" class="text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1"></div>
 		</div>
 		<div class="bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]">
-			<p class="text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Team</p>
+			<label for="team-select" class="block text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Team</label>
 			<select id="team-select" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
 				<option value="">Default (no team)</option>
 				for _, team := range data.AvailableTeams {

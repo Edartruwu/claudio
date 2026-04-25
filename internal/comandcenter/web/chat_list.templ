@@ -86,6 +86,7 @@ templ ChatListSidebar(data ChatListData) {
 					type="text"
 					name="q"
 					placeholder="Search"
+					aria-label="Search sessions"
 					autocomplete="off"
 					hx-get="/partials/sessions"
 					hx-trigger="keyup changed delay:300ms"
@@ -104,7 +105,7 @@ templ ChatListSidebar(data ChatListData) {
 			<script>
 			(function() {
 				function loadProjectChips() {
-					fetch('/api/projects').then(function(r){ return r.json(); }).then(function(projects) {
+					fetch('/api/projects', { credentials: 'include' }).then(function(r){ return r.json(); }).then(function(projects) {
 						var bar = document.getElementById('filter-chips');
 						if (!bar) return;
 						bar.querySelectorAll('[data-project-chip]').forEach(function(el){ el.remove(); });

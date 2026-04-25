@@ -215,7 +215,7 @@
   function reloadMessages() {
     if (!msgs || _streaming) return;
     _reloading = true;
-    fetch('/partials/messages/' + sessionId)
+    fetch('/partials/messages/' + sessionId, { credentials: 'include' })
       .then(function(res) { return res.text(); })
       .then(function(html) {
         if (_streaming) { _reloading = false; return; } // streaming started during fetch — don't clobber

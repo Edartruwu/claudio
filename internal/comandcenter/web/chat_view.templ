@@ -159,7 +159,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string, pag Me
 			</div>
 			<!-- Input bar -->
 			<form class="input-bar flex items-center flex-shrink-0 bg-[var(--color-surface)] border-t border-t-[var(--color-border)] pt-2 px-3 pb-[calc(8px+env(safe-area-inset-bottom))] gap-2" onsubmit="return false;">
-				<input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip" multiple/>
+				<input id="file-input" type="file" class="hidden" accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip" multiple aria-label="Upload files"/>
 				<!-- Mobile: + button -->
 				<button
 					id="plus-btn"
@@ -191,6 +191,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string, pag Me
 						id="msg-input"
 						rows="1"
 						placeholder="Message"
+						aria-label="Message input"
 						autocorrect="off"
 						autocapitalize="off"
 						spellcheck="false"
@@ -535,7 +536,7 @@ templ chatViewScript(sessionID string) {
 				statusEl.textContent = 'Loading…';
 				statusEl.classList.remove('hidden');
 				breadEl.innerHTML = '';
-				fetch('/api/sessions/' + sessionId + '/browse?path=' + encodeURIComponent(path || '/'))
+				fetch('/api/sessions/' + sessionId + '/browse?path=' + encodeURIComponent(path || '/'), { credentials: 'include' })
 					.then(function(res) {
 						if (!res.ok) return res.text().then(function(t) { throw new Error(t || res.statusText); });
 						return res.json();
@@ -684,7 +685,7 @@ templ chatViewScript(sessionID string) {
 			function doFetch(prefix) {
 				var now = Date.now();
 				if (cachedSessions && now < cacheExpiry) { renderDrop(cachedSessions, prefix); return; }
-				fetch('/api/sessions/list').then(function(res) {
+				fetch('/api/sessions/list', { credentials: 'include' }).then(function(res) {
 					return res.json();
 				}).then(function(data) {
 					cachedSessions = data;
@@ -720,6 +721,7 @@ templ chatViewScript(sessionID string) {
 			try {
 				var res = await fetch('/api/sessions/' + sessionId + '/interrupt', {
 					method: 'POST',
+					credentials: 'include',
 					headers: { 'X-CSRF-Token': csrfToken }
 				});
 				if (res.ok) ccToast('Turn interrupted', true);
@@ -741,6 +743,7 @@ templ chatViewScript(sessionID string) {
 				params.append('content', cmd);
 				var res = await fetch('/api/sessions/' + sessionId + '/message', {
 					method: 'POST',
+					credentials: 'include',
 					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 					body: params.toString()
 				});

@@ -69,6 +69,7 @@ templ SessionRow(row sessionRow) {
 			<a
 				href={ templ.SafeURL(fmt.Sprintf("/chat/%s", row.Session.ID)) }
 				data-session-id={ row.Session.ID }
+				aria-label={ fmt.Sprintf("Open session %s", row.Session.Name) }
 				class="session-row-link flex items-center gap-4 px-4 py-3 no-underline cursor-pointer relative"
 			>
 				<!-- Active indicator -->
