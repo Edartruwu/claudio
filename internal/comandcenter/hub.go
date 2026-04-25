@@ -270,7 +270,7 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 		}, &webpush.Options{
 			VAPIDPublicKey:  pub,
 			VAPIDPrivateKey: priv,
-			Subscriber:      "mailto:admin@comandcenter.local",
+			Subscriber:      "mailto:vapid@example.com",
 			Urgency:         webpush.UrgencyHigh,
 			TTL:             86400, // 24h — redeliver even if device was offline
 		})
