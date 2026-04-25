@@ -561,7 +561,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (perm !== 'granted') return;
       return Promise.all([
         navigator.serviceWorker.ready,
-        fetch('/api/push/vapid-public-key').then(function(r) { return r.json(); })
+        fetch('/api/push/vapid-public-key', { credentials: 'include' }).then(function(r) { return r.json(); })
       ]).then(function(results) {
         var reg  = results[0];
         var data = results[1];
@@ -577,6 +577,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var headers = { 'Content-Type': 'application/json' };
         return fetch('/api/push/subscribe', {
           method: 'POST',
+          credentials: 'include',
           headers: headers,
           body: JSON.stringify({
             endpoint: j.endpoint,

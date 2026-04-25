@@ -790,7 +790,7 @@ templ chatViewScript(sessionID string) {
 				navigator.serviceWorker.ready.then(function(reg) {
 					return reg.pushManager.getSubscription().then(function(sub) {
 						if (sub) { setBellState(true); return; }
-						return fetch('/api/push/vapid-public-key').then(function(res) {
+						return fetch('/api/push/vapid-public-key', { credentials: 'include' }).then(function(res) {
 							return res.json();
 						}).then(function(data) {
 							if (!data.publicKey) return;
@@ -801,6 +801,7 @@ templ chatViewScript(sessionID string) {
 							var j = newSub.toJSON();
 							return fetch('/api/push/subscribe', {
 								method: 'POST',
+								credentials: 'include',
 								headers: { 'Content-Type': 'application/json' },
 								body: JSON.stringify({ endpoint: j.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } }),
 							});
@@ -819,6 +820,7 @@ templ chatViewScript(sessionID string) {
 							return existing.unsubscribe().then(function() {
 								return fetch('/api/push/subscribe', {
 									method: 'DELETE',
+									credentials: 'include',
 									headers: { 'Content-Type': 'application/json' },
 									body: JSON.stringify({ endpoint: existing.endpoint }),
 								});
@@ -826,7 +828,7 @@ templ chatViewScript(sessionID string) {
 						}
 						return Notification.requestPermission().then(function(perm) {
 							if (perm !== 'granted') { showToast('Notifications blocked'); return; }
-							return fetch('/api/push/vapid-public-key').then(function(res) {
+							return fetch('/api/push/vapid-public-key', { credentials: 'include' }).then(function(res) {
 								return res.json();
 							}).then(function(data) {
 								if (!data.publicKey) throw new Error('VAPID key not available');
@@ -836,6 +838,7 @@ templ chatViewScript(sessionID string) {
 								var j = sub.toJSON();
 								return fetch('/api/push/subscribe', {
 									method: 'POST',
+									credentials: 'include',
 									headers: { 'Content-Type': 'application/json' },
 									body: JSON.stringify({ endpoint: j.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } }),
 								});
