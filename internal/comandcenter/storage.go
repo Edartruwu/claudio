@@ -12,75 +12,101 @@ import (
 )
 
 // Storage is the ComandCenter SQLite persistence layer.
+// It uses separate read/write DB pools to exploit SQLite WAL concurrency:
+// writeDB is serialized (MaxOpenConns=1), readDB allows concurrent readers.
 type Storage struct {
-	db *sql.DB
+	writeDB *sql.DB
+	readDB  *sql.DB
 }
 
 // ExecRaw executes arbitrary SQL. Used by tests to seed native claudio tables.
 func (s *Storage) ExecRaw(query string, args ...any) error {
-	_, err := s.db.Exec(query, args...)
+	_, err := s.writeDB.Exec(query, args...)
 	return err
 }
 
-// Open creates or opens the ComandCenter SQLite database at path.
-func Open(path string) (*Storage, error) {
-	conn, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_busy_timeout=5000")
+// openPool opens a single SQLite connection pool with WAL + busy_timeout + foreign_keys.
+// For :memory: databases, shared cache is used so multiple pools see the same data.
+func openPool(path string) (*sql.DB, error) {
+	dsn := path + "?_journal_mode=WAL&_busy_timeout=5000"
+	if path == ":memory:" {
+		dsn = "file::memory:?mode=memory&cache=shared&_journal_mode=WAL&_busy_timeout=5000"
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("comandcenter: open db: %w", err)
+		return nil, err
 	}
-
-	// Serialize all writes at the driver level. For :memory: this also ensures
-	// all connections see the same DB. For on-disk DBs, combined with WAL +
-	// busy_timeout this is the production-standard SQLite concurrency pattern.
-	conn.SetMaxOpenConns(1)
-
-	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("comandcenter: WAL pragma: %w", err)
+	for _, pragma := range []struct{ sql, label string }{
+		{"PRAGMA journal_mode=WAL", "WAL"},
+		{"PRAGMA busy_timeout=5000", "busy_timeout"},
+		{"PRAGMA foreign_keys=ON", "foreign_keys"},
+	} {
+		if _, err := db.Exec(pragma.sql); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("%s pragma: %w", pragma.label, err)
+		}
 	}
+	return db, nil
+}
 
-	if _, err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("comandcenter: busy_timeout pragma: %w", err)
+// Open creates or opens the ComandCenter SQLite database at path.
+// Two connection pools are opened on the same file:
+//   - writeDB: serialized (MaxOpenConns=1) for INSERT/UPDATE/DELETE
+//   - readDB: concurrent (unlimited conns) for SELECT queries
+func Open(path string) (*Storage, error) {
+	writeDB, err := openPool(path)
+	if err != nil {
+		return nil, fmt.Errorf("comandcenter: open write db: %w", err)
 	}
+	// Serialize all writes — production-standard SQLite concurrency pattern.
+	writeDB.SetMaxOpenConns(1)
 
-	if _, err := conn.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("comandcenter: foreign_keys pragma: %w", err)
+	readDB, err := openPool(path)
+	if err != nil {
+		writeDB.Close()
+		return nil, fmt.Errorf("comandcenter: open read db: %w", err)
 	}
+	// Allow concurrent readers — WAL mode supports this.
+	readDB.SetMaxOpenConns(0)
+	readDB.SetMaxIdleConns(4)
 
-	s := &Storage{db: conn}
+	s := &Storage{writeDB: writeDB, readDB: readDB}
 	if err := s.migrate(); err != nil {
-		conn.Close()
+		writeDB.Close()
+		readDB.Close()
 		return nil, fmt.Errorf("comandcenter: migration: %w", err)
 	}
 
 	return s, nil
 }
 
-// Close closes the database connection.
+// Close closes both database connection pools.
 func (s *Storage) Close() error {
-	return s.db.Close()
+	err := s.writeDB.Close()
+	if err2 := s.readDB.Close(); err == nil {
+		err = err2
+	}
+	return err
 }
 
 func (s *Storage) migrate() error {
 	// Use a CC-specific version table so we don't collide with claudio's
 	// schema_version table when both run against the same DB file.
-	if _, err := s.db.Exec(
+	if _, err := s.writeDB.Exec(
 		`CREATE TABLE IF NOT EXISTS cc_schema_version (version INTEGER NOT NULL DEFAULT 0)`,
 	); err != nil {
 		return fmt.Errorf("bootstrap version table: %w", err)
 	}
 
 	var version int
-	if err := s.db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM cc_schema_version`).Scan(&version); err != nil {
+	if err := s.writeDB.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM cc_schema_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read version: %w", err)
 	}
 
 	if version == 0 {
 		version = s.detectExistingSchemaVersion()
 		if version > 0 {
-			if _, err := s.db.Exec(`INSERT INTO cc_schema_version (version) VALUES (?)`, version); err != nil {
+			if _, err := s.writeDB.Exec(`INSERT INTO cc_schema_version (version) VALUES (?)`, version); err != nil {
 				return fmt.Errorf("bootstrap version: %w", err)
 			}
 		}
@@ -198,12 +224,12 @@ func (s *Storage) migrate() error {
 		if i < version {
 			continue
 		}
-		if _, err := s.db.Exec(m); err != nil {
+		if _, err := s.writeDB.Exec(m); err != nil {
 			if !isCCAlreadyExistsErr(err) {
 				return fmt.Errorf("migration %d: %w\nSQL: %s", i+1, err, m)
 			}
 		}
-		if _, err := s.db.Exec(`INSERT INTO cc_schema_version (version) VALUES (?)`, i+1); err != nil {
+		if _, err := s.writeDB.Exec(`INSERT INTO cc_schema_version (version) VALUES (?)`, i+1); err != nil {
 			return fmt.Errorf("update version to %d: %w", i+1, err)
 		}
 	}
@@ -214,7 +240,7 @@ func (s *Storage) migrate() error {
 func (s *Storage) detectExistingSchemaVersion() int {
 	hasTable := func(table string) bool {
 		var n int
-		s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n)
+		s.writeDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n)
 		return n > 0
 	}
 	switch {
@@ -247,7 +273,7 @@ func (s *Storage) UpsertSession(sess Session) error {
 	if sess.Master {
 		master = 1
 	}
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_sessions (id, name, path, model, master, status, created_at, last_active_at, agent_type, team_template)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -269,7 +295,7 @@ func (s *Storage) UpsertSession(sess Session) error {
 
 // SetSessionStatus updates the status of a session.
 func (s *Storage) SetSessionStatus(id, status string) error {
-	_, err := s.db.Exec(
+	_, err := s.writeDB.Exec(
 		`UPDATE cc_sessions SET status=?, last_active_at=? WHERE id=?`,
 		status, time.Now(), id,
 	)
@@ -282,7 +308,7 @@ func (s *Storage) SetSessionStatus(id, status string) error {
 // UpdateSessionConfig persists the agent type and team template overrides for a session.
 // Pass empty strings to clear the overrides.
 func (s *Storage) UpdateSessionConfig(id, agentType, teamTemplate string) error {
-	_, err := s.db.Exec(
+	_, err := s.writeDB.Exec(
 		`UPDATE cc_sessions SET agent_type=?, team_template=? WHERE id=?`,
 		agentType, teamTemplate, id,
 	)
@@ -294,7 +320,7 @@ func (s *Storage) UpdateSessionConfig(id, agentType, teamTemplate string) error 
 
 // UpdateContextTokens stores the latest context window token count for a session.
 func (s *Storage) UpdateContextTokens(sessionID string, tokens int) error {
-	_, err := s.db.Exec(
+	_, err := s.writeDB.Exec(
 		`UPDATE cc_sessions SET context_tokens=?, last_active_at=? WHERE id=?`,
 		tokens, time.Now(), sessionID,
 	)
@@ -307,7 +333,7 @@ func (s *Storage) UpdateContextTokens(sessionID string, tokens int) error {
 // ArchiveSession sets a session's status to 'archived'.
 // Archived sessions are excluded from ListSessions.
 func (s *Storage) ArchiveSession(id string) error {
-	_, err := s.db.Exec(
+	_, err := s.writeDB.Exec(
 		`UPDATE cc_sessions SET status='archived', last_active_at=? WHERE id=?`,
 		time.Now(), id,
 	)
@@ -320,7 +346,7 @@ func (s *Storage) ArchiveSession(id string) error {
 // DeleteSession permanently removes a session and all its related records.
 // Deletes messages, tasks, and agents before removing the session row.
 func (s *Storage) DeleteSession(id string) error {
-	tx, err := s.db.Begin()
+	tx, err := s.writeDB.Begin()
 	if err != nil {
 		return fmt.Errorf("delete session begin tx: %w", err)
 	}
@@ -349,7 +375,7 @@ type Project struct {
 
 // ListProjects returns unique projects derived from session paths, ordered by name.
 func (s *Storage) ListProjects() ([]Project, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT path, COUNT(*) as cnt
 		FROM cc_sessions
 		WHERE status != 'archived' AND path != ''
@@ -393,7 +419,7 @@ func (s *Storage) ListSessions(filter string) ([]Session, error) {
 	default:
 		query = sel + ` FROM cc_sessions WHERE status != 'archived' ORDER BY last_active_at DESC`
 	}
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.readDB.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
@@ -418,7 +444,7 @@ func (s *Storage) ListSessions(filter string) ([]Session, error) {
 func (s *Storage) GetSession(id string) (Session, error) {
 	var sess Session
 	var master int
-	err := s.db.QueryRow(`
+	err := s.readDB.QueryRow(`
 		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)
 		FROM cc_sessions WHERE id=?
 	`, id).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
@@ -438,7 +464,7 @@ func (s *Storage) GetSession(id string) (Session, error) {
 func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 	var sess Session
 	var master int
-	err := s.db.QueryRow(`
+	err := s.readDB.QueryRow(`
 		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)
 		FROM cc_sessions WHERE name=? ORDER BY created_at DESC LIMIT 1
 	`, name).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
@@ -456,7 +482,7 @@ func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 
 // InsertMessage stores a message for a session.
 func (s *Storage) InsertMessage(msg Message) error {
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_messages (id, session_id, role, content, agent_name, created_at,
 		                         reply_to_session, quoted_content, tool_use_id)
 		VALUES (?, ?, ?, ?, ?, ?, NULLIF(?,?), NULLIF(?,?), NULLIF(?,?))
@@ -470,7 +496,7 @@ func (s *Storage) InsertMessage(msg Message) error {
 
 // UpdateMessageOutput sets the output field on a tool_use message by ToolUseID.
 func (s *Storage) UpdateMessageOutput(sessionID, toolUseID, output string) error {
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		UPDATE cc_messages SET output=? WHERE session_id=? AND tool_use_id=?
 	`, output, sessionID, toolUseID)
 	if err != nil {
@@ -484,7 +510,7 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
 		       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
 		       COALESCE(tool_use_id,''), COALESCE(output,'')
@@ -522,7 +548,7 @@ func (s *Storage) ListMessagesPaginated(sessionID string, limit int, beforeID st
 	var rows *sql.Rows
 	var err error
 	if beforeID != "" {
-		rows, err = s.db.Query(`
+		rows, err = s.readDB.Query(`
 			SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
 			       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
 			       COALESCE(tool_use_id,''), COALESCE(output,'')
@@ -531,7 +557,7 @@ func (s *Storage) ListMessagesPaginated(sessionID string, limit int, beforeID st
 			ORDER BY created_at DESC LIMIT ?
 		`, sessionID, beforeID, fetchLimit)
 	} else {
-		rows, err = s.db.Query(`
+		rows, err = s.readDB.Query(`
 			SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
 			       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
 			       COALESCE(tool_use_id,''), COALESCE(output,'')
@@ -570,7 +596,7 @@ func (s *Storage) ListMessagesByAgent(sessionID, agentName string, limit int) ([
 	if limit <= 0 {
 		limit = 200
 	}
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
 		       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
 		       COALESCE(tool_use_id,''), COALESCE(output,'')
@@ -601,7 +627,7 @@ func (s *Storage) GetNativeMessages(sessionID string, limit int) ([]Message, err
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, session_id, role, content, COALESCE(type,'text'), COALESCE(tool_use_id,''), COALESCE(tool_name,''), created_at
 		FROM messages WHERE session_id=?
 		ORDER BY id DESC LIMIT ?
@@ -645,15 +671,15 @@ func (s *Storage) GetNativeMessages(sessionID string, limit int) ([]Message, err
 
 // DeleteMessages removes all messages for a session (used by /clear command).
 func (s *Storage) DeleteMessageByID(id string) error {
-	_, err := s.db.Exec(`DELETE FROM cc_messages WHERE id = ?`, id)
+	_, err := s.writeDB.Exec(`DELETE FROM cc_messages WHERE id = ?`, id)
 	return err
 }
 
 func (s *Storage) DeleteMessages(sessionID string) error {
-	if _, err := s.db.Exec(`DELETE FROM cc_attachments WHERE session_id = ?`, sessionID); err != nil {
+	if _, err := s.writeDB.Exec(`DELETE FROM cc_attachments WHERE session_id = ?`, sessionID); err != nil {
 		return fmt.Errorf("delete attachments: %w", err)
 	}
-	_, err := s.db.Exec(`DELETE FROM cc_messages WHERE session_id = ?`, sessionID)
+	_, err := s.writeDB.Exec(`DELETE FROM cc_messages WHERE session_id = ?`, sessionID)
 	if err != nil {
 		return fmt.Errorf("delete messages: %w", err)
 	}
@@ -662,14 +688,14 @@ func (s *Storage) DeleteMessages(sessionID string) error {
 
 // DeleteNativeMessages deletes all messages for a session from the native claudio messages table.
 func (s *Storage) DeleteNativeMessages(sessionID string) error {
-	_, err := s.db.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID)
+	_, err := s.writeDB.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID)
 	return err
 }
 
 // InsertNativeMessage inserts a text message into the native claudio messages table.
 func (s *Storage) InsertNativeMessage(sessionID, role, content string, ts time.Time) error {
 	id := fmt.Sprintf("%d", ts.UnixNano())
-	_, err := s.db.Exec(
+	_, err := s.writeDB.Exec(
 		`INSERT INTO messages (id, session_id, role, content, type, tool_use_id, tool_name, created_at) VALUES (?, ?, ?, ?, 'text', '', '', ?)`,
 		id, sessionID, role, content, ts,
 	)
@@ -679,7 +705,7 @@ func (s *Storage) InsertNativeMessage(sessionID, role, content string, ts time.T
 // GetTask returns a single task by ID from team_tasks, filtered by sessionID.
 func (s *Storage) GetTask(id, sessionID string) (Task, error) {
 	var t Task
-	err := s.db.QueryRow(`
+	err := s.readDB.QueryRow(`
 		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
 		FROM team_tasks WHERE id=? AND session_id=?
 	`, id, sessionID).Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
@@ -692,7 +718,7 @@ func (s *Storage) GetTask(id, sessionID string) (Task, error) {
 
 // UpsertTask inserts or updates a task record in team_tasks.
 func (s *Storage) UpsertTask(task Task) error {
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id, session_id) DO UPDATE SET
@@ -711,7 +737,7 @@ func (s *Storage) UpsertTask(task Task) error {
 
 // UpsertAgent inserts or updates an agent record.
 func (s *Storage) UpsertAgent(agent Agent) error {
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_agents (id, session_id, name, status, current_task_id, current_tool, call_count, elapsed_secs, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -733,7 +759,7 @@ func (s *Storage) UpsertAgent(agent Agent) error {
 // Messages are unread if created_at > last_read_at (or all if last_read_at is NULL).
 func (s *Storage) UnreadCount(sessionID string) (int, error) {
 	var count int
-	err := s.db.QueryRow(`
+	err := s.readDB.QueryRow(`
 		SELECT COUNT(*) FROM cc_messages
 		WHERE session_id = ? AND created_at > COALESCE(
 			(SELECT last_read_at FROM cc_sessions WHERE id = ?),
@@ -748,7 +774,7 @@ func (s *Storage) UnreadCount(sessionID string) (int, error) {
 
 // MarkRead updates the last_read_at timestamp for a session to now.
 func (s *Storage) MarkRead(sessionID string) error {
-	_, err := s.db.Exec(
+	_, err := s.writeDB.Exec(
 		`UPDATE cc_sessions SET last_read_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		sessionID)
 	if err != nil {
@@ -759,7 +785,7 @@ func (s *Storage) MarkRead(sessionID string) error {
 
 // ListTasks returns all tasks for a session from team_tasks.
 func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
 		FROM team_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
 	`, sessionID)
@@ -782,7 +808,7 @@ func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 
 // ListAgents returns all agents for a session.
 func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, session_id, name, status, COALESCE(current_task_id,''),
 		       COALESCE(current_tool,''), COALESCE(call_count,0), COALESCE(elapsed_secs,0), updated_at
 		FROM cc_agents WHERE session_id=?
@@ -806,19 +832,19 @@ func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
 
 // DeleteAgentsBySession removes all agent records for a session (used by /clear).
 func (s *Storage) DeleteAgentsBySession(sessionID string) error {
-	_, err := s.db.Exec(`DELETE FROM cc_agents WHERE session_id=?`, sessionID)
+	_, err := s.writeDB.Exec(`DELETE FROM cc_agents WHERE session_id=?`, sessionID)
 	return err
 }
 
 // DeleteAgentEventsBySession removes all agent events for a session (used by /clear).
 func (s *Storage) DeleteAgentEventsBySession(sessionID string) error {
-	_, err := s.db.Exec(`DELETE FROM cc_agent_events WHERE session_id=?`, sessionID)
+	_, err := s.writeDB.Exec(`DELETE FROM cc_agent_events WHERE session_id=?`, sessionID)
 	return err
 }
 
 // InsertAgentEvent persists an agent status event for reconnect replay.
 func (s *Storage) InsertAgentEvent(sessionID, agentName, status, payload string) error {
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_agent_events (session_id, agent_name, status, payload, created_at)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
 	`, sessionID, agentName, status, payload)
@@ -831,7 +857,7 @@ func (s *Storage) InsertAgentEvent(sessionID, agentName, status, payload string)
 // GetLatestAgentEvents returns the last known status event per agent in a session,
 // limited to events from the last 15 minutes. Used for reconnect replay.
 func (s *Storage) GetLatestAgentEvents(sessionID string) ([]AgentEvent, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT ae.session_id, ae.agent_name, ae.status, ae.payload, ae.created_at
 		FROM cc_agent_events ae
 		INNER JOIN (
@@ -860,13 +886,13 @@ func (s *Storage) GetLatestAgentEvents(sessionID string) ([]AgentEvent, error) {
 
 // PruneAgentEvents removes agent events older than 15 minutes.
 func (s *Storage) PruneAgentEvents() error {
-	_, err := s.db.Exec(`DELETE FROM cc_agent_events WHERE created_at < datetime('now', '-15 minutes')`)
+	_, err := s.writeDB.Exec(`DELETE FROM cc_agent_events WHERE created_at < datetime('now', '-15 minutes')`)
 	return err
 }
 
 // InsertAttachment stores a new attachment record.
 func (s *Storage) InsertAttachment(att Attachment) error {
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_attachments (id, session_id, message_id, filename, original_name, mime_type, size, created_at)
 		VALUES (?, ?, NULLIF(?,?), ?, ?, ?, ?, ?)
 	`, att.ID, att.SessionID, att.MessageID, "", att.Filename, att.OriginalName,
@@ -879,7 +905,7 @@ func (s *Storage) InsertAttachment(att Attachment) error {
 
 // ListAttachments returns all attachments for a session ordered by created_at DESC.
 func (s *Storage) ListAttachments(sessionID string) ([]Attachment, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, session_id, COALESCE(message_id,''), filename, original_name, mime_type, size, created_at
 		FROM cc_attachments WHERE session_id=? ORDER BY created_at DESC
 	`, sessionID)
@@ -902,7 +928,7 @@ func (s *Storage) ListAttachments(sessionID string) ([]Attachment, error) {
 
 // SavePushSubscription inserts or replaces a push subscription.
 func (s *Storage) SavePushSubscription(sub PushSubscription) error {
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_push_subscriptions (id, endpoint, p256dh, auth, created_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(endpoint) DO UPDATE SET
@@ -917,7 +943,7 @@ func (s *Storage) SavePushSubscription(sub PushSubscription) error {
 
 // ListPushSubscriptions returns all stored push subscriptions.
 func (s *Storage) ListPushSubscriptions() ([]PushSubscription, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, endpoint, p256dh, auth, created_at FROM cc_push_subscriptions
 	`)
 	if err != nil {
@@ -938,7 +964,7 @@ func (s *Storage) ListPushSubscriptions() ([]PushSubscription, error) {
 
 // DeletePushSubscription removes a push subscription by endpoint.
 func (s *Storage) DeletePushSubscription(endpoint string) error {
-	_, err := s.db.Exec(`DELETE FROM cc_push_subscriptions WHERE endpoint=?`, endpoint)
+	_, err := s.writeDB.Exec(`DELETE FROM cc_push_subscriptions WHERE endpoint=?`, endpoint)
 	if err != nil {
 		return fmt.Errorf("delete push subscription: %w", err)
 	}
@@ -947,7 +973,7 @@ func (s *Storage) DeletePushSubscription(endpoint string) error {
 
 // GetOrCreateVAPIDKeys returns stored VAPID keys, generating and storing them on first call.
 func (s *Storage) GetOrCreateVAPIDKeys() (public, private string, err error) {
-	err = s.db.QueryRow(`SELECT public_key, private_key FROM cc_vapid_keys WHERE id=1`).
+	err = s.writeDB.QueryRow(`SELECT public_key, private_key FROM cc_vapid_keys WHERE id=1`).
 		Scan(&public, &private)
 	if err == nil {
 		return public, private, nil
@@ -962,7 +988,7 @@ func (s *Storage) GetOrCreateVAPIDKeys() (public, private string, err error) {
 		return "", "", fmt.Errorf("generate vapid keys: %w", err)
 	}
 
-	_, err = s.db.Exec(`INSERT INTO cc_vapid_keys (id, public_key, private_key) VALUES (1, ?, ?)`, pub, priv)
+	_, err = s.writeDB.Exec(`INSERT INTO cc_vapid_keys (id, public_key, private_key) VALUES (1, ?, ?)`, pub, priv)
 	if err != nil {
 		return "", "", fmt.Errorf("store vapid keys: %w", err)
 	}
@@ -971,7 +997,7 @@ func (s *Storage) GetOrCreateVAPIDKeys() (public, private string, err error) {
 
 // ListMessageAttachments returns all attachments linked to a specific message.
 func (s *Storage) ListMessageAttachments(messageID string) ([]Attachment, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.readDB.Query(`
 		SELECT id, session_id, COALESCE(message_id,''), filename, original_name, mime_type, size, created_at
 		FROM cc_attachments WHERE message_id=? ORDER BY created_at ASC
 	`, messageID)

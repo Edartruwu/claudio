@@ -48,11 +48,11 @@ func simulateClaudioDB(t *testing.T, db *sql.DB, atVersion int) {
 // This lets us test migration against a pre-populated DB without using the file path.
 func openStorageOnDB(t *testing.T, db *sql.DB) *Storage {
 	t.Helper()
-	s := &Storage{db: db}
+	s := &Storage{writeDB: db, readDB: db}
 	if err := s.migrate(); err != nil {
 		t.Fatalf("openStorageOnDB migrate: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { s.writeDB.Close() }) // readDB is same conn, close once
 	return s
 }
 
@@ -67,7 +67,7 @@ func TestMigration_FreshDB(t *testing.T) {
 	}
 	for _, table := range tables {
 		var n int
-		err := s.db.QueryRow(
+		err := s.readDB.QueryRow(
 			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table,
 		).Scan(&n)
 		if err != nil {
@@ -94,7 +94,7 @@ func TestMigration_CC_Idempotent(t *testing.T) {
 	}
 
 	// Run migrations again on the same underlying db — must not error.
-	s2 := &Storage{db: s1.db}
+	s2 := &Storage{writeDB: s1.writeDB, readDB: s1.readDB}
 	if err := s2.migrate(); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}

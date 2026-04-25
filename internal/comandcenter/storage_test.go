@@ -12,7 +12,7 @@ func newTestStorage(t *testing.T) *Storage {
 		t.Fatalf("open storage: %v", err)
 	}
 	// Create team_tasks (normally created by claudio migrations).
-	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
+	if _, err := s.writeDB.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
 		title TEXT NOT NULL DEFAULT '',
@@ -32,7 +32,7 @@ func newTestStorage(t *testing.T) *Storage {
 // seedTask inserts a task directly into team_tasks (claudio's native table).
 func seedTask(t *testing.T, s *Storage, tk Task) {
 	t.Helper()
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		tk.ID, tk.SessionID, tk.Title, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
@@ -278,7 +278,7 @@ func TestUnreadCount_CountsMessagesAfterLastRead(t *testing.T) {
 
 	// Mark as read at 1.5 hours ago.
 	// Manually set last_read_at to between msg2 and msg3.
-	_, err = s.db.Exec(
+	_, err = s.writeDB.Exec(
 		`UPDATE cc_sessions SET last_read_at = ? WHERE id = ?`,
 		now.Add(-90*time.Minute), "sess-unread-2",
 	)
@@ -1166,7 +1166,7 @@ func TestStorage_PruneAgentEvents(t *testing.T) {
 	}
 
 	// Insert a stale event by directly writing an old timestamp.
-	_, err := s.db.Exec(`
+	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_agent_events (session_id, agent_name, status, payload, created_at)
 		VALUES (?, ?, ?, ?, datetime('now', '-20 minutes'))
 	`, sess, "stale-agent", "done", `{"name":"stale-agent","status":"done"}`)
@@ -1191,7 +1191,7 @@ func TestStorage_PruneAgentEvents(t *testing.T) {
 
 	// Verify stale row is deleted from the raw table.
 	var count int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM cc_agent_events WHERE session_id = ?`, sess).Scan(&count); err != nil {
+	if err := s.writeDB.QueryRow(`SELECT COUNT(*) FROM cc_agent_events WHERE session_id = ?`, sess).Scan(&count); err != nil {
 		t.Fatalf("count after prune: %v", err)
 	}
 	if count != 1 {
@@ -1200,7 +1200,7 @@ func TestStorage_PruneAgentEvents(t *testing.T) {
 
 	// Verify the remaining row is the fresh one.
 	var name string
-	if err := s.db.QueryRow(`SELECT agent_name FROM cc_agent_events WHERE session_id = ?`, sess).Scan(&name); err != nil {
+	if err := s.writeDB.QueryRow(`SELECT agent_name FROM cc_agent_events WHERE session_id = ?`, sess).Scan(&name); err != nil {
 		t.Fatalf("query remaining row: %v", err)
 	}
 	if name != "fresh-agent" {
