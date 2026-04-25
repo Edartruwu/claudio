@@ -96,7 +96,8 @@ func HasPrefix(s, prefix string) bool {
 
 // IsAgentStatusLine returns true for messages composed entirely of agent
 // status lines (e.g. "⏳ agent — done", "✅agent — done") that should
-// render as compact status badges instead of full chat bubbles.
+// be filtered from chat history. Matches any line starting with a status
+// emoji (⏳✅❌) and ending with "done" regardless of dash style.
 func IsAgentStatusLine(content string) bool {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
@@ -108,11 +109,31 @@ func IsAgentStatusLine(content string) bool {
 		if l == "" {
 			continue
 		}
-		if !strings.Contains(l, "— done") {
+		if !isAgentStatusSingle(l) {
 			return false
 		}
 	}
 	return true
+}
+
+// isAgentStatusSingle matches a single line like "⏳ name — done" or "✅name - done".
+// Checks: starts with status emoji + contains "done" at end + short enough to be a status line.
+func isAgentStatusSingle(line string) bool {
+	if len(line) > 200 {
+		return false
+	}
+	hasPrefix := strings.HasPrefix(line, "⏳") ||
+		strings.HasPrefix(line, "✅") ||
+		strings.HasPrefix(line, "❌")
+	if !hasPrefix {
+		return false
+	}
+	lower := strings.ToLower(line)
+	return strings.HasSuffix(lower, "done") ||
+		strings.Contains(lower, "— done") ||
+		strings.Contains(lower, "- done") ||
+		strings.Contains(lower, "– done") ||
+		strings.Contains(lower, "-- done")
 }
 
 // CountStatusLines counts non-empty lines in agent status content.
