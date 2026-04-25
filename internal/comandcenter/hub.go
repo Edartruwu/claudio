@@ -205,13 +205,19 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 	h.mu.RUnlock()
 
 	if pub == "" || priv == "" {
+		log.Printf("[push] skipping: VAPID keys not configured")
 		return
 	}
 
 	subs, err := h.storage.ListPushSubscriptions()
-	if err != nil || len(subs) == 0 {
+	if err != nil {
+		log.Printf("[push] error listing subscriptions: %v", err)
 		return
 	}
+	if len(subs) == 0 {
+		return
+	}
+	log.Printf("[push] sending to %d subscriber(s): %s", len(subs), sessionName)
 
 	// Truncate preview to 100 chars.
 	body := preview
@@ -264,9 +270,13 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 			TTL:             86400, // 24h — redeliver even if device was offline
 		})
 		if err != nil {
+			log.Printf("[push] send error to %s: %v", sub.Endpoint, err)
 			continue
 		}
 		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			log.Printf("[push] HTTP %d from %s", resp.StatusCode, sub.Endpoint)
+		}
 		if resp.StatusCode == http.StatusGone {
 			_ = h.storage.DeletePushSubscription(sub.Endpoint)
 		}

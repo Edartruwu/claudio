@@ -163,8 +163,9 @@ func main() {
 		webSrv.SetPublicURL(*publicURL)
 	}
 	agents.SetCustomDirs(filepath.Join(claudioDir, "agents"))
-	if pk, _, err := storage.GetOrCreateVAPIDKeys(); err == nil && pk != "" {
+	if pk, privKey, err := storage.GetOrCreateVAPIDKeys(); err == nil && pk != "" {
 		webSrv.SetVAPIDPublicKey(pk)
+		hub.SetVAPIDKeys(pk, privKey)
 	}
 	webSrv.RegisterRoutes(srv.Mux())
 
