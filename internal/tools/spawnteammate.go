@@ -26,10 +26,11 @@ type spawnTeammateInput struct {
 	SubagentType string          `json:"subagent_type"`
 	Prompt       string          `json:"prompt"`
 	Model        string          `json:"model,omitempty"`
-	Isolation    string          `json:"isolation,omitempty"`
-	TaskIDs      json.RawMessage `json:"task_ids,omitempty"`
-	MaxTurns     int             `json:"max_turns,omitempty"`
-	Background   json.RawMessage `json:"run_in_background,omitempty"`
+	Isolation          string          `json:"isolation,omitempty"`
+	TaskIDs            json.RawMessage `json:"task_ids,omitempty"`
+	MaxTurns           int             `json:"max_turns,omitempty"`
+	Background         json.RawMessage `json:"run_in_background,omitempty"`
+	MergeWhenFinished  bool            `json:"merge_when_finished,omitempty"`
 }
 
 // backgroundBool coerces run_in_background from bool, string "true"/"false", or absent (defaults true).
@@ -164,6 +165,10 @@ func (t *SpawnTeammateTool) InputSchema() json.RawMessage {
 				"type": "string",
 				"description": "\"worktree\" to run in an isolated git worktree",
 				"enum": ["worktree"]
+			},
+			"merge_when_finished": {
+				"type": "boolean",
+				"description": "If true, automatically merge the agent's worktree branch into main when it finishes. Default false — worktree is preserved for manual inspection/merge."
 			}
 		},
 		"required": ["name", "subagent_type", "prompt"]
@@ -267,11 +272,12 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		Model:         modelOverride,
 		SubagentType:  in.SubagentType,
 		MaxTurns:      maxTurns,
-		Isolation:     in.Isolation,
-		MemoryDir:     agentDef.MemoryDir,
-		Foreground:    !background,
-		TaskIDs:       taskIDs,
-		ParentAgentID: parentAgentID,
+		Isolation:         in.Isolation,
+		MemoryDir:         agentDef.MemoryDir,
+		Foreground:        !background,
+		TaskIDs:           taskIDs,
+		ParentAgentID:     parentAgentID,
+		MergeWhenFinished: in.MergeWhenFinished,
 	})
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to spawn teammate %q: %v", resolvedName, err), IsError: true}, nil
@@ -301,6 +307,14 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 	const maxBytes = 50_000
 	if len(result) > maxBytes {
 		result = result[:maxBytes] + fmt.Sprintf("\n[Output truncated at %d bytes]", maxBytes)
+	}
+	if state.WorktreePath != "" {
+		result += fmt.Sprintf("\n\nWorktree: %s\nBranch: %s", state.WorktreePath, state.WorktreeBranch)
+		if state.MergeStatus != "" {
+			result += fmt.Sprintf("\nMerge status: %s", state.MergeStatus)
+		} else {
+			result += "\nMerge status: not-requested (worktree preserved)"
+		}
 	}
 	return &Result{Content: result}, nil
 }

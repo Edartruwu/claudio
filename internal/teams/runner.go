@@ -459,6 +459,7 @@ type SpawnConfig struct {
 	AutoCompactThreshold int            // % of context window to trigger full compact (0 = engine default 95%)
 	ParentAgentID        string         // non-empty when spawned by another teammate
 	AdvisorConfig        *AdvisorConfig // optional; if set, advisor tool is injected into executor
+	MergeWhenFinished    bool           // if true, auto-merge worktree branch into main after agent completes
 }
 
 // Spawn starts a new teammate goroutine.
@@ -855,6 +856,20 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	}
 	status := state.Status
 	state.mu.Unlock()
+
+	// Auto-merge worktree branch into main if requested.
+	if cfg.MergeWhenFinished && state.WorktreePath != "" && state.WorktreeBranch != "" {
+		mainRepo := git.NewRepo(state.WorktreeMainRoot)
+		if mergeErr := mainRepo.MergeFFOnly(state.WorktreeBranch); mergeErr != nil {
+			state.mu.Lock()
+			state.MergeStatus = fmt.Sprintf("merge-failed: %v", mergeErr)
+			state.mu.Unlock()
+		} else {
+			state.mu.Lock()
+			state.MergeStatus = fmt.Sprintf("auto-merged: %s", state.WorktreeBranch)
+			state.mu.Unlock()
+		}
+	}
 
 	// Stop heartbeat goroutine before emitting terminal event to prevent
 	// a stale "working" heartbeat racing after the "done"/"failed" status.

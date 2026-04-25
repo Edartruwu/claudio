@@ -255,9 +255,10 @@ type agentInput struct {
 	SubagentType    string   `json:"subagent_type,omitempty"`
 	Model           string   `json:"model,omitempty"`
 	MaxTurns        int      `json:"max_turns,omitempty"`
-	RunInBackground bool     `json:"run_in_background,omitempty"`
-	Isolation       string   `json:"isolation,omitempty"` // "worktree"
-	TaskIDs         []string `json:"task_ids,omitempty"`  // task IDs to auto-complete when agent finishes
+	RunInBackground   bool     `json:"run_in_background,omitempty"`
+	Isolation         string   `json:"isolation,omitempty"` // "worktree"
+	TaskIDs           []string `json:"task_ids,omitempty"`  // task IDs to auto-complete when agent finishes
+	MergeWhenFinished bool     `json:"merge_when_finished,omitempty"`
 }
 
 func (t *AgentTool) Name() string { return "Agent" }
@@ -331,6 +332,10 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 				"type": "string",
 				"description": "Isolation mode. \"worktree\" creates a temporary git worktree.",
 				"enum": ["worktree"]
+			},
+			"merge_when_finished": {
+				"type": "boolean",
+				"description": "If true, automatically merge the agent's worktree branch into main when it finishes. Default false — worktree is preserved for manual inspection/merge."
 			}
 		},
 		"required": ["description", "prompt"]
@@ -407,17 +412,18 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		teamName := t.TeamRunner.ActiveTeamName()
 		shortName := slugifyName(desc)
 		state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
-			TeamName:      teamName,
-			AgentName:     shortName,
-			SubagentType:  agentDef.Type,
-			Prompt:        in.Prompt,
-			System:        agentDef.SystemPrompt,
-			Model:         modelOverride,
-			MaxTurns:      maxTurns,
-			MemoryDir:     agentDef.MemoryDir,
-			Foreground:    !in.RunInBackground,
-			TaskIDs:       in.TaskIDs,
-			ParentAgentID: teams.TeammateAgentIDFromContext(ctx),
+			TeamName:          teamName,
+			AgentName:         shortName,
+			SubagentType:      agentDef.Type,
+			Prompt:            in.Prompt,
+			System:            agentDef.SystemPrompt,
+			Model:             modelOverride,
+			MaxTurns:          maxTurns,
+			MemoryDir:         agentDef.MemoryDir,
+			Foreground:        !in.RunInBackground,
+			TaskIDs:           in.TaskIDs,
+			ParentAgentID:     teams.TeammateAgentIDFromContext(ctx),
+			MergeWhenFinished: in.MergeWhenFinished,
 		})
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Failed to spawn teammate: %v", err), IsError: true}, nil
@@ -444,6 +450,14 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		const maxAgentBytes = 50_000
 		if len(result) > maxAgentBytes {
 			result = result[:maxAgentBytes] + fmt.Sprintf("\n[Agent output truncated at %d bytes]", maxAgentBytes)
+		}
+		if state.WorktreePath != "" {
+			result += fmt.Sprintf("\n\nWorktree: %s\nBranch: %s", state.WorktreePath, state.WorktreeBranch)
+			if state.MergeStatus != "" {
+				result += fmt.Sprintf("\nMerge status: %s", state.MergeStatus)
+			} else {
+				result += "\nMerge status: not-requested (worktree preserved)"
+			}
 		}
 		return &Result{Content: result}, nil
 	}
