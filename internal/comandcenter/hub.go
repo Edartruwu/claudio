@@ -283,7 +283,9 @@ func (h *Hub) sendPushNotifications(sessionName, sessionID, preview string) {
 		if resp.StatusCode >= 400 {
 			log.Printf("[push] HTTP %d from %s", resp.StatusCode, sub.Endpoint)
 		}
-		if resp.StatusCode == http.StatusGone {
+		// 403 = invalid/expired subscription, 410 = gone. Auto-cleanup both.
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusGone {
+			log.Printf("[push] removing stale subscription: %s", sub.Endpoint)
 			_ = h.storage.DeletePushSubscription(sub.Endpoint)
 		}
 	}
