@@ -71,10 +71,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/sessions", s.auth(http.HandlerFunc(s.handlePreRegisterSession)))
 	s.mux.Handle("GET /api/sessions/{id}/messages", s.auth(http.HandlerFunc(s.handleListMessages)))
 
-	// Push notification routes.
-	s.mux.Handle("GET /api/vapid-public-key", s.auth(http.HandlerFunc(s.handleVAPIDPublicKey)))
-	s.mux.Handle("POST /api/push/subscribe", s.auth(http.HandlerFunc(s.handlePushSubscribe)))
-	s.mux.Handle("DELETE /api/push/subscribe", s.auth(http.HandlerFunc(s.handlePushUnsubscribe)))
+	// Push notification routes registered in web/routes.go
 
 }
 

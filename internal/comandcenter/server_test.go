@@ -164,9 +164,8 @@ func TestServer_VAPIDPublicKey(t *testing.T) {
 	srv := newTestServer(t, "secret")
 
 	req := httptest.NewRequest("GET", "/api/vapid-public-key", nil)
-	req.Header.Set("Authorization", "Bearer secret")
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+	srv.handleVAPIDPublicKey(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("vapid-public-key: got %d, want 200", rec.Code)
@@ -186,10 +185,9 @@ func TestServer_PushSubscribe(t *testing.T) {
 
 	body := `{"endpoint":"https://push.example.com/test","keys":{"p256dh":"dGVzdA==","auth":"dGVzdA=="}}`
 	req := httptest.NewRequest("POST", "/api/push/subscribe", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer secret")
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+	srv.handlePushSubscribe(rec, req)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("push subscribe: got %d, want 201", rec.Code)
@@ -212,9 +210,8 @@ func TestServer_PushSubscribe_InvalidBody(t *testing.T) {
 	srv := newTestServer(t, "secret")
 
 	req := httptest.NewRequest("POST", "/api/push/subscribe", strings.NewReader(`not-json`))
-	req.Header.Set("Authorization", "Bearer secret")
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+	srv.handlePushSubscribe(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("push subscribe bad body: got %d, want 400", rec.Code)
@@ -235,10 +232,9 @@ func TestServer_PushUnsubscribe(t *testing.T) {
 
 	body := `{"endpoint":"https://push.example.com/unsub"}`
 	req := httptest.NewRequest("DELETE", "/api/push/subscribe", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer secret")
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+	srv.handlePushUnsubscribe(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("push unsubscribe: got %d, want 200", rec.Code)
