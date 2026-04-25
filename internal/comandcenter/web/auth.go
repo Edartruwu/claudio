@@ -81,7 +81,7 @@ func (ws *WebServer) uiAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// CSP on all responses.
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+			"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "+
 				"font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
 
 		// Trust same-machine requests (e.g. Playwright fidelity tool)
@@ -127,7 +127,7 @@ func (ws *WebServer) validPassword(v string) bool {
 
 func (ws *WebServer) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "+
 			"font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
 	templ.Handler(Login(LoginPageData{Error: ""})).ServeHTTP(w, r)
 }
