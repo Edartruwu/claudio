@@ -549,7 +549,8 @@ func AllAgents(customDirs ...string) []AgentDefinition {
 	}
 	for _, a := range custom {
 		if !seen[a.Type] {
-			result = append(result, a)
+			result = append(result, typeMap[a.Type])
+			seen[a.Type] = true
 		}
 	}
 	return result
