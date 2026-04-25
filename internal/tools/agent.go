@@ -225,9 +225,9 @@ type AgentTool struct {
 	cachedDesc      string
 	cachedTeamActive bool
 
-	// cachedSchema is computed once on first call and reused.
-	cachedSchema     json.RawMessage
-	cachedSchemaOnce sync.Once
+	// cachedSchema is regenerated when team-active state changes.
+	cachedSchema           json.RawMessage
+	cachedSchemaTeamActive bool
 
 	// ParentRegistry is set by the registry after construction.
 	ParentRegistry *Registry
@@ -279,9 +279,25 @@ func (t *AgentTool) Description() string {
 }
 
 func (t *AgentTool) InputSchema() json.RawMessage {
-	t.cachedSchemaOnce.Do(func() {
-		modelEnum := buildModelEnum(t.AvailableModels)
-		t.cachedSchema = json.RawMessage(fmt.Sprintf(`{
+	teamActive := t.TeamRunner != nil && t.TeamRunner.ActiveTeamName() != ""
+
+	t.descMu.Lock()
+	if t.cachedSchema != nil && t.cachedSchemaTeamActive == teamActive {
+		schema := t.cachedSchema
+		t.descMu.Unlock()
+		return schema
+	}
+	t.descMu.Unlock()
+
+	modelEnum := buildModelEnum(t.AvailableModels)
+	bgField := ""
+	if teamActive {
+		bgField = `"run_in_background": {
+				"type": "boolean",
+				"description": "Set to true to run this agent in the background"
+			},`
+	}
+	schema := json.RawMessage(fmt.Sprintf(`{
 		"type": "object",
 		"properties": {
 			"prompt": {
@@ -305,10 +321,7 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 				"type": "number",
 				"description": "Maximum number of agentic turns (API calls) before the agent stops. If omitted, uses the agent type's default limit."
 			},
-			"run_in_background": {
-				"type": "boolean",
-				"description": "Set to true to run this agent in the background"
-			},
+			%s
 			"task_ids": {
 				"type": "array",
 				"items": {"type": "string"},
@@ -321,9 +334,14 @@ func (t *AgentTool) InputSchema() json.RawMessage {
 			}
 		},
 		"required": ["description", "prompt"]
-	}`, modelEnum))
-	})
-	return t.cachedSchema
+	}`, modelEnum, bgField))
+
+	t.descMu.Lock()
+	t.cachedSchema = schema
+	t.cachedSchemaTeamActive = teamActive
+	t.descMu.Unlock()
+
+	return schema
 }
 
 func (t *AgentTool) IsReadOnly() bool                        { return false }
