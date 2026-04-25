@@ -79,7 +79,7 @@ func NewHub(storage *Storage) *Hub {
 		storage:      storage,
 		eventQueues:  make(map[string]chan attach.Envelope),
 		workerDone:   make(map[string]chan struct{}),
-		uiBroadcast:  make(chan UIEvent, 256),
+		uiBroadcast:  make(chan UIEvent, 1024),
 	}
 }
 
@@ -602,6 +602,7 @@ func (h *Hub) Broadcast(sessionID string, env attach.Envelope) {
 	select {
 	case h.uiBroadcast <- UIEvent{SessionID: sessionID, Envelope: env}:
 	default:
+		log.Printf("[hub] uiBroadcast full, dropping event for session %s (type %s)", sessionID, env.Type)
 	}
 	if env.Type == attach.EventMsgAssistant {
 		var p attach.AssistantMsgPayload

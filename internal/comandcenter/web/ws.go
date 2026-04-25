@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
@@ -88,7 +89,7 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 
 			client := &uiClient{
 				sessionID: sessionID,
-				send:      make(chan []byte, 64),
+				send:      make(chan []byte, 256),
 			}
 			ws.addClient(client)
 			defer ws.removeClient(client)
@@ -178,6 +179,11 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 			}()
 			defer close(pingDone)
 
+			// Write loop — on any exit, remove client so no silent drops accumulate.
+			defer func() {
+				ws.removeClient(client)
+				conn.Close()
+			}()
 			for {
 				select {
 				case msg, ok := <-client.send:
@@ -186,6 +192,7 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 					}
 					conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 					if err := websocket.Message.Send(conn, string(msg)); err != nil {
+						log.Printf("[ws] write error for session %s: %v", sessionID, err)
 						return
 					}
 					conn.SetWriteDeadline(time.Time{})
@@ -206,24 +213,55 @@ func (ws *WebServer) pushToSessionClients(sessionID string, payload []byte) {
 		if client.sessionID == sessionID {
 			select {
 			case client.send <- payload:
-			default: // drop if full
+			default:
+				log.Printf("[ws] client send buffer full for session %s, dropping message", sessionID)
 			}
 		}
 	}
 }
 
-// fanout reads UIBroadcast events and forwards rendered HTML to interested clients.
+// fanoutWorkers is the number of goroutines that render templates concurrently.
+const fanoutWorkers = 8
+
+// fanoutQueueSize is the buffer size for the render work queue.
+const fanoutQueueSize = 512
+
+// fanout reads UIBroadcast events and forwards them to a worker pool for
+// async template rendering. The read loop never blocks on rendering.
 // Exits when ws.done is closed or the UIBroadcast channel is closed.
 func (ws *WebServer) fanout() {
 	ch := ws.hub.UIBroadcast()
+	renderQueue := make(chan cc.UIEvent, fanoutQueueSize)
+
+	// Start worker pool.
+	var wg sync.WaitGroup
+	for i := 0; i < fanoutWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ev := range renderQueue {
+				ws.fanoutHandleEvent(ev)
+			}
+		}()
+	}
+
+	// Read loop — forward events to workers, never block on rendering.
 	for {
 		select {
 		case ev, ok := <-ch:
 			if !ok {
+				close(renderQueue)
+				wg.Wait()
 				return
 			}
-			ws.fanoutHandleEvent(ev)
+			select {
+			case renderQueue <- ev:
+			default:
+				log.Printf("[ws] fanout render queue full, dropping event for session %s (type %s)", ev.SessionID, ev.Envelope.Type)
+			}
 		case <-ws.done:
+			close(renderQueue)
+			wg.Wait()
 			return
 		}
 	}

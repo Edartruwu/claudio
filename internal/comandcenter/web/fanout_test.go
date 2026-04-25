@@ -25,7 +25,9 @@ func newFanoutServer(t *testing.T) (*WebServer, *cc.Hub) {
 		storage: storage,
 		hub:     hub,
 		clients: make(map[*uiClient]struct{}),
+		done:    make(chan struct{}),
 	}
+	t.Cleanup(func() { close(ws.done) })
 	go ws.fanout()
 	return ws, hub
 }
