@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,11 +103,11 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 	}
 	// Mark as read when chat view opens.
 	_ = ws.storage.MarkRead(id)
-	msgs, err := ws.storage.ListMessages(id, 100)
+	msgs, hasMore, err := ws.storage.ListMessagesPaginated(id, 50, "")
 	if err != nil {
 		msgs = nil
 	}
-	// ListMessages returns newest first; reverse for display.
+	// ListMessagesPaginated returns newest first; reverse for display.
 	reversed := reverseMessages(msgs)
 
 	// Load all session attachments and group by message_id for O(1) lookup.
@@ -121,16 +122,20 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 	for i, m := range reversed {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
+	pag := MessagePagination{HasMore: hasMore, SessionID: id}
+	if len(views) > 0 {
+		pag.FirstMessageID = views[0].ID
+	}
 
 	if r.Header.Get("HX-Request") == "true" {
-		ChatView(sess, views, id).Render(r.Context(), w)
+		ChatView(sess, views, id, pag).Render(r.Context(), w)
 		return
 	}
 	// Full-page render (hard refresh / direct URL): render full shell with sidebar.
 	sessions, _ := ws.storage.ListSessions("")
 	rows := ws.buildSessionRows(sessions)
 	listData := ChatListData{Rows: rows, SessionID: id, CsrfToken: ws.CSRFToken(r)}
-	templ.Handler(ChatPage(listData, sess, views, id)).ServeHTTP(w, r)
+	templ.Handler(ChatPage(listData, sess, views, id, pag)).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +299,16 @@ func (ws *WebServer) handlePartialSessions(w http.ResponseWriter, r *http.Reques
 
 func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("session_id")
-	msgs, err := ws.storage.ListMessages(id, 100)
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	beforeID := r.URL.Query().Get("before")
+
+	msgs, hasMore, err := ws.storage.ListMessagesPaginated(id, limit, beforeID)
 	if err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
 		return
@@ -311,6 +325,23 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 	views := make([]MessageView, len(reversed))
 	for i, m := range reversed {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
+	}
+
+	pag := MessagePagination{HasMore: hasMore, SessionID: id}
+	if len(views) > 0 {
+		pag.FirstMessageID = views[0].ID
+	}
+
+	// When loading older messages (before= set), render just the messages + sentinel.
+	// When no more messages, signal the client to stop polling.
+	if beforeID != "" {
+		if !hasMore && len(views) == 0 {
+			w.Header().Set("HX-Reswap", "none")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		MessagesOlderPage(views, pag).Render(r.Context(), w)
+		return
 	}
 	MessagesPartial(views).Render(r.Context(), w)
 }

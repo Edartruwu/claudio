@@ -505,6 +505,62 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
+// ListMessagesPaginated returns the most recent `limit` messages for a session,
+// optionally before the message with ID `beforeID`. Returns (messages newest-first,
+// hasMore bool, error). hasMore is true when older messages exist beyond the returned page.
+func (s *Storage) ListMessagesPaginated(sessionID string, limit int, beforeID string) ([]Message, bool, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	// Fetch limit+1 to detect whether more messages exist.
+	fetchLimit := limit + 1
+
+	var rows *sql.Rows
+	var err error
+	if beforeID != "" {
+		rows, err = s.db.Query(`
+			SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
+			       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
+			       COALESCE(tool_use_id,''), COALESCE(output,'')
+			FROM cc_messages
+			WHERE session_id=? AND created_at < (SELECT created_at FROM cc_messages WHERE id=? LIMIT 1)
+			ORDER BY created_at DESC LIMIT ?
+		`, sessionID, beforeID, fetchLimit)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT id, session_id, role, content, COALESCE(agent_name,''), created_at,
+			       COALESCE(reply_to_session,''), COALESCE(quoted_content,''),
+			       COALESCE(tool_use_id,''), COALESCE(output,'')
+			FROM cc_messages WHERE session_id=?
+			ORDER BY created_at DESC LIMIT ?
+		`, sessionID, fetchLimit)
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("list messages paginated: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content,
+			&m.AgentName, &m.CreatedAt, &m.ReplyToSession, &m.QuotedContent,
+			&m.ToolUseID, &m.Output); err != nil {
+			return nil, false, fmt.Errorf("scan message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(msgs) > limit
+	if hasMore {
+		msgs = msgs[:limit]
+	}
+	return msgs, hasMore, nil
+}
+
 // ListMessagesByAgent returns messages for a session filtered by agent_name, oldest first, up to limit.
 func (s *Storage) ListMessagesByAgent(sessionID, agentName string, limit int) ([]Message, error) {
 	if limit <= 0 {

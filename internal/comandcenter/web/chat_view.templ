@@ -8,7 +8,7 @@ import (
 
 // ChatView renders the chat view page (messages + input bar).
 // Works as both full-page (wrapped in Layout) and HTMX partial.
-templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
+templ ChatView(sess cc.Session, messages []MessageView, sessionID string, pag MessagePagination) {
 	<div class="flex flex-1 min-h-0" id="chat-app" data-session-id={ sess.ID }>
 		<div class="flex-1 flex flex-col min-h-0 bg-[var(--color-bg)] relative">
 			<!-- Header -->
@@ -90,7 +90,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				aria-live="polite"
 				aria-label="Conversation messages"
 			>
-				@MessagesContainer(messages)
+				@MessagesContainer(messages, pag)
 				<div id="typing-indicator-dots" class="hidden flex items-center gap-2 pt-[6px] pb-3" role="status" aria-label="Agent is typing">
 					<div class="msg-bubble-assistant flex items-center gap-2 px-[14px] py-[10px]">
 						<span class="typing-text text-[var(--color-textMuted)] text-[13px]"></span>
@@ -259,6 +259,27 @@ templ chatViewScript(sessionID string) {
 		(function() {
 			var msgs = document.getElementById('messages');
 			if (msgs) msgs.scrollTop = msgs.scrollHeight;
+		})();
+
+		// --- Preserve scroll position when loading older messages ---
+		// htmx:beforeSwap fires before the sentinel is replaced with older messages.
+		// We record the scroll offset from the bottom, then restore it after swap.
+		(function() {
+			var msgs = document.getElementById('messages');
+			if (!msgs) return;
+			var savedScrollBottom = null;
+			document.addEventListener('htmx:beforeSwap', function(evt) {
+				var trigger = evt.detail.elt;
+				if (trigger && trigger.id === 'load-more-sentinel') {
+					savedScrollBottom = msgs.scrollHeight - msgs.scrollTop;
+				}
+			});
+			document.addEventListener('htmx:afterSwap', function(evt) {
+				if (savedScrollBottom !== null) {
+					msgs.scrollTop = msgs.scrollHeight - savedScrollBottom;
+					savedScrollBottom = null;
+				}
+			});
 		})();
 
 		// --- Info panel: mobile overlay / desktop side panel ---
