@@ -229,7 +229,9 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	}
 	e.taskRuntime = cfg.TaskRuntime
 	e.sessionID = cfg.SessionID
-	tools.GlobalTaskStore.LoadForSession(cfg.SessionID)
+	if err := tools.GlobalTaskStore.LoadForSession(cfg.SessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "[engine] LoadForSession: %v\n", err)
+	}
 	// Wire session ID into InstantiateTeam tool so it can auto-name teams.
 	if it, err := registry.Get("InstantiateTeam"); err == nil {
 		if tool, ok := it.(*tools.InstantiateTeamTool); ok {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -55,21 +56,21 @@ func (s *TaskStore) initDB() {
 // LoadForSession clears the in-memory store and loads only tasks belonging to sessionID.
 // If sessionID is empty the call is a no-op — utility/sub-agent engines with no session
 // must not wipe the parent session's tasks.
-func (s *TaskStore) LoadForSession(sessionID string) {
+func (s *TaskStore) LoadForSession(sessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if sessionID == "" {
-		return
+		return nil
 	}
 	s.tasks = make(map[string]*Task)
 	s.nextID = 0
 	s.currentSession = sessionID
 	if s.db == nil {
-		return
+		return nil
 	}
 	rows, err := s.db.Query(`SELECT id, title, description, status, assigned_to, created_at, updated_at FROM team_tasks WHERE session_id = ? AND status != 'deleted' ORDER BY CAST(id AS INTEGER)`, sessionID)
 	if err != nil {
-		return
+		return fmt.Errorf("LoadForSession query: %w", err)
 	}
 	defer rows.Close()
 	maxID := 0
@@ -90,18 +91,25 @@ func (s *TaskStore) LoadForSession(sessionID string) {
 		}
 	}
 	s.nextID = maxID
+	return nil
 }
 
 func (s *TaskStore) saveToDB(t *Task) {
-	s.saveToDBWithSession(t, s.currentSession)
+	if err := s.saveToDBWithSession(t, s.currentSession); err != nil {
+		log.Printf("[tasks] saveToDB: %v", err)
+	}
 }
 
-func (s *TaskStore) saveToDBWithSession(t *Task, sessionID string) {
+func (s *TaskStore) saveToDBWithSession(t *Task, sessionID string) error {
 	if s.db == nil {
-		return
+		return nil
 	}
-	s.db.Exec(`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, sessionID, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("saveToDBWithSession task %s: %w", t.ID, err)
+	}
+	return nil
 }
 
 // List returns all non-deleted tasks sorted by numeric ID.
@@ -133,36 +141,76 @@ func (s *TaskStore) Get(id string) (*Task, bool) {
 func (s *TaskStore) CompleteByIDs(ids []string, status, sessionID string) []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var affected []*Task
+
+	// BUG #5: guard against sessionID mismatch — wrong session creates a duplicate row
+	// under the composite PK (id, session_id). Fall back to currentSession when mismatched.
+	if sessionID == "" {
+		sessionID = s.currentSession
+	}
+
 	idSet := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		idSet[strings.TrimPrefix(id, "#")] = true
 	}
+
+	// Collect affected tasks and update in-memory state.
+	var affected []*Task
+	now := time.Now()
 	for _, t := range s.tasks {
 		if idSet[t.ID] && (t.Status == "pending" || t.Status == "in_progress") {
 			t.Status = status
-			t.UpdatedAt = time.Now()
-			s.saveToDBWithSession(t, sessionID)
+			t.UpdatedAt = now
 			affected = append(affected, t)
+		}
+	}
 
-			// Publish EventTaskUpdated
-			if s.bus != nil {
-				payload, _ := json.Marshal(attach.TaskUpdatedPayload{
-					ID:          t.ID,
-					Title:       t.Title,
-					Description: t.Description,
-					AssignedTo:  t.AssignedTo,
-					Status:      t.Status,
-					SessionID:   sessionID,
-				})
-				s.bus.Publish(bus.Event{
-					Type:      attach.EventTaskUpdated,
-					SessionID: sessionID,
-					Payload:   payload,
-				})
+	// BUG #4: persist all updates in a single DB transaction; rollback on any error.
+	if s.db != nil && len(affected) > 0 {
+		tx, err := s.db.Begin()
+		if err != nil {
+			log.Printf("[tasks] CompleteByIDs begin tx: %v", err)
+		} else {
+			txErr := false
+			for _, t := range affected {
+				_, err := tx.Exec(
+					`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+					t.ID, sessionID, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt,
+				)
+				if err != nil {
+					log.Printf("[tasks] CompleteByIDs exec task %s: %v", t.ID, err)
+					txErr = true
+					break
+				}
+			}
+			if txErr {
+				if rbErr := tx.Rollback(); rbErr != nil {
+					log.Printf("[tasks] CompleteByIDs rollback: %v", rbErr)
+				}
+			} else if err := tx.Commit(); err != nil {
+				log.Printf("[tasks] CompleteByIDs commit: %v", err)
 			}
 		}
 	}
+
+	// Publish EventTaskUpdated for each affected task.
+	for _, t := range affected {
+		if s.bus != nil {
+			payload, _ := json.Marshal(attach.TaskUpdatedPayload{
+				ID:          t.ID,
+				Title:       t.Title,
+				Description: t.Description,
+				AssignedTo:  t.AssignedTo,
+				Status:      t.Status,
+				SessionID:   sessionID,
+			})
+			s.bus.Publish(bus.Event{
+				Type:      attach.EventTaskUpdated,
+				SessionID: sessionID,
+				Payload:   payload,
+			})
+		}
+	}
+
 	return affected
 }
 

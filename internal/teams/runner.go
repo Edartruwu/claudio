@@ -862,13 +862,22 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		})
 	}
 
-	// Auto-complete assigned tasks
+	// Auto-complete assigned tasks.
+	// BUG #2: wrap in recover so a panic inside taskCompleter does not kill the goroutine
+	// and freeze the agent as in-progress forever.
 	if r.taskCompleter != nil && len(cfg.TaskIDs) > 0 {
 		taskStatus := "completed"
 		if state.Status == StatusFailed {
 			taskStatus = "failed"
 		}
-		r.taskCompleter(cfg.TaskIDs, taskStatus, r.sessionID)
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					fmt.Fprintf(os.Stderr, "[runner] taskCompleter panic for agent %s: %v\n", cfg.AgentName, rec)
+				}
+			}()
+			r.taskCompleter(cfg.TaskIDs, taskStatus, r.sessionID)
+		}()
 	}
 
 	// Kill and remove any child agents spawned by this teammate.
