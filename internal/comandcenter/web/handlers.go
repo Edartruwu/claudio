@@ -132,6 +132,14 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 	// ListMessagesPaginated returns newest first; reverse for display.
 	reversed := reverseMessages(msgs)
 
+	// Filter out agent status noise ("⏳ agent — done", "✅agent — done").
+	filtered := reversed[:0]
+	for _, m := range reversed {
+		if !IsAgentStatusLine(m.Content) {
+			filtered = append(filtered, m)
+		}
+	}
+
 	// Load all session attachments and group by message_id for O(1) lookup.
 	allAtts, _ := ws.storage.ListAttachments(id)
 	attsByMsg := make(map[string][]cc.Attachment, len(allAtts))
@@ -140,8 +148,8 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 			attsByMsg[att.MessageID] = append(attsByMsg[att.MessageID], att)
 		}
 	}
-	views := make([]MessageView, len(reversed))
-	for i, m := range reversed {
+	views := make([]MessageView, len(filtered))
+	for i, m := range filtered {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
 	pag := MessagePagination{HasMore: hasMore, SessionID: id}
@@ -337,6 +345,14 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 	}
 	reversed := reverseMessages(msgs)
 
+	// Filter out agent status noise ("⏳ agent — done", "✅agent — done").
+	filtered := reversed[:0]
+	for _, m := range reversed {
+		if !IsAgentStatusLine(m.Content) {
+			filtered = append(filtered, m)
+		}
+	}
+
 	allAtts, _ := ws.storage.ListAttachments(id)
 	attsByMsg := make(map[string][]cc.Attachment, len(allAtts))
 	for _, att := range allAtts {
@@ -344,8 +360,8 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 			attsByMsg[att.MessageID] = append(attsByMsg[att.MessageID], att)
 		}
 	}
-	views := make([]MessageView, len(reversed))
-	for i, m := range reversed {
+	views := make([]MessageView, len(filtered))
+	for i, m := range filtered {
 		views[i] = MessageView{Message: m, Attachments: attsByMsg[m.ID]}
 	}
 

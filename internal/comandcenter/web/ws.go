@@ -111,16 +111,23 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				// Replay recent terminal events with full payload (summary, report, etc.)
+				// Inject "replay":"true" so client skips toast/notification for these.
 				if events, err := ws.storage.GetLatestAgentEvents(sessionID); err == nil {
 					for _, evt := range events {
-						env := attach.Envelope{
-							Type:    attach.EventAgentStatus,
-							Payload: json.RawMessage(evt.Payload),
-						}
-						data, _ := json.Marshal(env)
-						select {
-						case client.send <- data:
-						default:
+						// Parse payload, inject replay flag, re-marshal.
+						var payloadMap map[string]interface{}
+						if json.Unmarshal([]byte(evt.Payload), &payloadMap) == nil {
+							payloadMap["replay"] = "true"
+							taggedPayload, _ := json.Marshal(payloadMap)
+							env := attach.Envelope{
+								Type:    attach.EventAgentStatus,
+								Payload: json.RawMessage(taggedPayload),
+							}
+							data, _ := json.Marshal(env)
+							select {
+							case client.send <- data:
+							default:
+							}
 						}
 					}
 				}
