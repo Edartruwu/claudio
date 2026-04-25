@@ -12,6 +12,7 @@ type AgentDetailData struct {
 	SessionID string
 	Agent     cc.Agent
 	Events    []AgentEvent
+	CsrfToken string
 }
 
 // AgentEvent is a single timeline entry shown in the ActivityTimeline.
@@ -25,7 +26,7 @@ type AgentEvent struct {
 
 // AgentDetailPage renders the full agent detail screen wrapped in the app layout.
 templ AgentDetailPage(data AgentDetailData) {
-	@Layout(data.SessionID) {
+	@Layout(data.SessionID, data.CsrfToken) {
 		<div class="flex h-full">
 			<div class="flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
 				@agentDetailHeader(data)

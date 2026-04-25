@@ -6,10 +6,11 @@ import cc "github.com/Abraxas-365/claudio/internal/comandcenter"
 type ChatListData struct {
 	Rows      []sessionRow
 	SessionID string
+	CsrfToken string
 }
 
 templ ChatList(data ChatListData) {
-	@Layout(data.SessionID) {
+	@Layout(data.SessionID, data.CsrfToken) {
 		<div class="flex h-full">
 			<!-- Sidebar: full width mobile, 320px fixed desktop -->
 			<div
@@ -32,7 +33,7 @@ templ ChatList(data ChatListData) {
 // ChatPage is used on hard refresh of /chat/:id — renders the full shell
 // (sidebar + chat view) so CSS/JS and the session list are all present.
 templ ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string) {
-	@Layout(sessionID) {
+	@Layout(sessionID, list.CsrfToken) {
 		<div class="flex h-full">
 			<div
 				id="sidebar"

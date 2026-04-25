@@ -3,7 +3,7 @@ package web
 import "fmt"
 
 templ Designs(data DesignGalleryData) {
-	@Layout(data.SessionID) {
+	@Layout(data.SessionID, data.CsrfToken) {
 		@DesignsContent(data)
 	}
 }

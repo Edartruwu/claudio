@@ -1,6 +1,6 @@
 package web
 
-templ Layout(sessionID string) {
+templ Layout(sessionID, csrfToken string) {
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
@@ -23,7 +23,7 @@ templ Layout(sessionID string) {
 		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
 		<script src="/static/vendor/htmx.min.js" defer></script>
 		<!-- CSRF token — value wired server-side by security middleware -->
-		<meta name="csrf-token" content=""/>
+		<meta name="csrf-token" content={ csrfToken }/>
 		@layoutCSS()
 	</head>
 	<body
