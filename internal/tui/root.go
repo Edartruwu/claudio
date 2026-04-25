@@ -201,6 +201,10 @@ type Model struct {
 	// Welcome screen logo animation
 	logoFrame int // increments on each logoTickMsg to drive the color-wave animation
 
+	// streamDirty is set true when tokens arrive; cleared by streamRenderMsg handler.
+	// Throttles viewport refreshes during streaming to prevent ANSI diff corruption.
+	streamDirty bool
+
 	// busUnsub removes the EventBgTaskComplete subscription; called on quit.
 	busUnsub func()
 }
@@ -255,9 +259,10 @@ type (
 		mediaType string
 		err       error
 	}
-	timerTickMsg  struct{}
-	logoTickMsg   struct{} // drives the welcome-screen logo color-wave animation
-	taskTickMsg   struct{} // drives live refresh of the TodoDock
+	timerTickMsg     struct{}
+	logoTickMsg      struct{} // drives the welcome-screen logo color-wave animation
+	taskTickMsg      struct{} // drives live refresh of the TodoDock
+	streamRenderMsg  struct{} // throttled streaming viewport refresh
 	compactDoneMsg struct {
 		compacted []api.Message
 		summary   string
@@ -1587,6 +1592,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case streamRenderMsg:
+		// Flush the pending streaming viewport refresh. If tokens are still
+		// arriving, schedule one more tick so we don't skip the tail of the stream.
+		if m.streamDirty {
+			m.streamDirty = false
+			m.refreshViewport()
+			if m.streaming {
+				return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+					return streamRenderMsg{}
+				})
+			}
+		}
+		return m, nil
+
 	case logoTickMsg:
 		if m.isWelcomeScreen() {
 			m.logoFrame++
@@ -2413,7 +2432,16 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			m.spinText = "Responding..."
 			m.spinner.SetText("Responding...")
 			m.updateStreamingMessage()
-			m.refreshViewport()
+			// Throttle: mark dirty and schedule a single render tick if not already
+			// scheduled. Emitting a full viewport refresh + BubbleTea ANSI diff on
+			// every token causes the diff renderer to miscalculate cursor positions
+			// at high token rates, visually corrupting split words on screen.
+			if !m.streamDirty {
+				m.streamDirty = true
+				return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+					return streamRenderMsg{}
+				})
+			}
 		}
 
 	case "thinking_delta":
@@ -5958,6 +5986,7 @@ func (m *Model) finalizeStreamingMessage() {
 		}
 		m.streamText.Reset()
 	}
+	m.streamDirty = false
 }
 
 func (m *Model) refreshViewport() {
@@ -6403,11 +6432,19 @@ func (m Model) View() string {
 	// Overlay model selector and other dialogs on top of viewport
 	if m.focus == FocusPlanApproval {
 		overlay := m.renderPlanApprovalDialog(mw)
-		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+		boxW := mw - 4
+		if boxW > 80 {
+			boxW = 80
+		}
+		vpView = placeOverlayAt(vpView, overlay, (mw-boxW)/2, 0, mw, m.viewport.Height)
 	}
 	if m.focus == FocusAskUser && m.askUserDialog != nil {
 		overlay := m.renderAskUserDialog(mw)
-		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
+		boxW := mw - 8
+		if boxW > 72 {
+			boxW = 72
+		}
+		vpView = placeOverlayAt(vpView, overlay, (mw-boxW)/2, 0, mw, m.viewport.Height)
 	}
 	if m.modelSelector.IsActive() {
 		overlay := m.modelSelector.View()
