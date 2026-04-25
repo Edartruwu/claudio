@@ -4,8 +4,10 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -88,6 +90,15 @@ type MessageView struct {
 	Attachments []cc.Attachment
 }
 
+// sessionEntry holds a session token's metadata.
+type sessionEntry struct {
+	csrfToken string
+	expiresAt time.Time
+}
+
+// sessionTTL is how long a session token remains valid.
+const sessionTTL = 24 * time.Hour
+
 // WebServer serves the browser UI for ComandCenter.
 type WebServer struct {
 	storage          *cc.Storage
@@ -103,6 +114,9 @@ type WebServer struct {
 	mu      sync.RWMutex
 	clients map[*uiClient]struct{}
 	done    chan struct{} // closed on Close() to stop fanout goroutine
+
+	sessionMu sync.RWMutex
+	sessions  map[string]sessionEntry // token → entry
 }
 
 // NewWebServer creates a WebServer. uploadsDir is the base directory for uploaded files.
@@ -110,6 +124,7 @@ func NewWebServer(storage *cc.Storage, hub *cc.Hub, password, uploadsDir string)
 	ws := &WebServer{
 		storage:  storage,
 		hub:      hub,
+		sessions: make(map[string]sessionEntry),
 		password: password,
 		clients:    make(map[*uiClient]struct{}),
 		uploadsDir: uploadsDir,
@@ -122,6 +137,69 @@ func NewWebServer(storage *cc.Storage, hub *cc.Hub, password, uploadsDir string)
 // Close shuts down the fanout goroutine and releases resources.
 func (ws *WebServer) Close() {
 	close(ws.done)
+}
+
+// createSession generates a new session token + CSRF token, stores them, and returns both.
+func (ws *WebServer) createSession() (token, csrfToken string, err error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", "", fmt.Errorf("generate session token: %w", err)
+	}
+	csrfBytes := make([]byte, 32)
+	if _, err := rand.Read(csrfBytes); err != nil {
+		return "", "", fmt.Errorf("generate csrf token: %w", err)
+	}
+	token = hex.EncodeToString(tokenBytes)
+	csrfToken = hex.EncodeToString(csrfBytes)
+	ws.sessionMu.Lock()
+	ws.sessions[token] = sessionEntry{csrfToken: csrfToken, expiresAt: time.Now().Add(sessionTTL)}
+	ws.sessionMu.Unlock()
+	return token, csrfToken, nil
+}
+
+// validateSession checks if the token is valid and not expired. Returns the CSRF token if valid.
+func (ws *WebServer) validateSession(token string) (csrfToken string, ok bool) {
+	if token == "" {
+		return "", false
+	}
+	ws.sessionMu.RLock()
+	entry, exists := ws.sessions[token]
+	ws.sessionMu.RUnlock()
+	if !exists || time.Now().After(entry.expiresAt) {
+		if exists {
+			// Expired — clean up.
+			ws.sessionMu.Lock()
+			delete(ws.sessions, token)
+			ws.sessionMu.Unlock()
+		}
+		return "", false
+	}
+	return entry.csrfToken, true
+}
+
+// csrfTokenFromSession extracts the CSRF token for the current request's session.
+func (ws *WebServer) csrfTokenFromSession(r *http.Request) string {
+	c, err := r.Cookie("auth")
+	if err != nil {
+		return ""
+	}
+	csrf, _ := ws.validateSession(c.Value)
+	return csrf
+}
+
+// CSRFToken returns the CSRF token for the current request, for use in templates.
+func (ws *WebServer) CSRFToken(r *http.Request) string {
+	return ws.csrfTokenFromSession(r)
+}
+
+// ExpireSessionForTest sets a session's expiry to the given time. Test-only helper.
+func (ws *WebServer) ExpireSessionForTest(token string, expiresAt time.Time) {
+	ws.sessionMu.Lock()
+	defer ws.sessionMu.Unlock()
+	if entry, ok := ws.sessions[token]; ok {
+		entry.expiresAt = expiresAt
+		ws.sessions[token] = entry
+	}
 }
 
 // RegisterRoutes mounts all UI routes on mux.
@@ -254,8 +332,7 @@ func (ws *WebServer) handlePushUnsubscribe(w http.ResponseWriter, r *http.Reques
 func (ws *WebServer) handleCronList(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("session_id")
 	if ws.cronStore == nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<div class="text-gray-500 text-sm px-4 py-2">Cron store not configured.</div>`)
+		CronNotConfigured().Render(r.Context(), w)
 		return
 	}
 
@@ -266,9 +343,8 @@ func (ws *WebServer) handleCronList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if len(entries) == 0 {
-		fmt.Fprint(w, `<div class="text-gray-500 text-sm px-4 py-2">No scheduled tasks.</div>`)
+		CronEmpty().Render(r.Context(), w)
 		return
 	}
 
@@ -283,38 +359,14 @@ func (ws *WebServer) handleCronList(w http.ResponseWriter, r *http.Request) {
 		}
 		prompt := e.Prompt
 		if len([]rune(prompt)) > 60 {
-			runes := []rune(prompt)
-			prompt = string(runes[:60]) + "…"
+			prompt = string([]rune(prompt)[:60]) + "…"
 		}
-		agent := ""
-		if e.Agent != "" {
-			agent = fmt.Sprintf(`<span class="text-gray-400 text-xs ml-2">agent: %s</span>`, html.EscapeString(e.Agent))
-		}
-		fmt.Fprintf(w, `
-<div class="cron-row" style="background:#1C1C1E;border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
-  <div style="flex:1;min-width:0;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-      <span style="%s;color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;">%s</span>
-      <span class="text-gray-300 text-xs font-mono">%s</span>
-      %s
-    </div>
-    <div class="text-gray-400 text-xs truncate">%s</div>
-  </div>
-  <button
-    hx-delete="/api/crons/%s"
-    hx-confirm="Delete this cron?"
-    hx-target="closest .cron-row"
-    hx-swap="outerHTML swap:300ms"
-    style="background:none;border:none;cursor:pointer;color:#EF4444;padding:4px 8px;border-radius:6px;font-size:18px;"
-    title="Delete cron">🗑</button>
-</div>`,
-			badgeColor,
-			html.EscapeString(cronType),
-			html.EscapeString(e.Schedule),
-			agent,
-			html.EscapeString(prompt),
-			html.EscapeString(e.ID),
-		)
+		CronRow(CronRowData{
+			Entry:  e,
+			Type:   cronType,
+			Prompt: prompt,
+			Badge:  badgeColor,
+		}).Render(r.Context(), w)
 	}
 }
 
@@ -332,9 +384,15 @@ func (ws *WebServer) handleCronDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// uiAuth checks the "auth" HttpOnly cookie.
+// uiAuth checks the "auth" HttpOnly cookie against the session store.
+// Also applies CSP headers and CSRF validation for state-changing methods.
 func (ws *WebServer) uiAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// CSP on all responses.
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+				"font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
+
 		// Trust same-machine requests (e.g. Playwright fidelity tool)
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
 		if host == "127.0.0.1" || host == "::1" {
@@ -342,24 +400,46 @@ func (ws *WebServer) uiAuth(next http.Handler) http.Handler {
 			return
 		}
 		c, err := r.Cookie("auth")
-		if err != nil || !ws.validPassword(c.Value) {
+		if err != nil {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
+		}
+		csrfToken, ok := ws.validateSession(c.Value)
+		if !ok {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		// CSRF validation for state-changing methods.
+		if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
+			gotCSRF := r.Header.Get("X-CSRF-Token")
+			if gotCSRF == "" {
+				// Try form value (for non-htmx forms).
+				// ParseForm is idempotent; safe to call even if body was read.
+				_ = r.ParseForm()
+				gotCSRF = r.FormValue("_csrf")
+			}
+			if subtle.ConstantTimeCompare([]byte(gotCSRF), []byte(csrfToken)) != 1 {
+				http.Error(w, "forbidden: invalid CSRF token", http.StatusForbidden)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (ws *WebServer) validPassword(token string) bool {
-	if token == "" || ws.password == "" {
+func (ws *WebServer) validPassword(v string) bool {
+	if v == "" || ws.password == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(token), []byte(ws.password)) == 1
+	return subtle.ConstantTimeCompare([]byte(v), []byte(ws.password)) == 1
 }
 
 // --- Handlers ---
 
 func (ws *WebServer) handleLoginGet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+			"font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
 	templ.Handler(Login(LoginPageData{Error: ""})).ServeHTTP(w, r)
 }
 
@@ -374,9 +454,14 @@ func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(Login(LoginPageData{Error: "Invalid password"})).ServeHTTP(w, r)
 		return
 	}
+	token, _, err := ws.createSession()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth",
-		Value:    pass,
+		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,

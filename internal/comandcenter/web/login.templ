@@ -212,9 +212,7 @@ templ LoginContent(data LoginPageData) {
 	      hideIcon.style.display = 'none';
 	    }
 	  }
-	  document.getElementById('login-form').addEventListener('submit', function () {
-	    var pass = document.getElementById('password-input').value;
-	    if (pass) localStorage.setItem('cc_token', pass);
-	  });
+	  // Session token is set via HttpOnly cookie by the server.
+	  // No client-side token storage needed.
 	</script>
 }

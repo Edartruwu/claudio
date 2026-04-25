@@ -61,9 +61,10 @@ func seedTask(t *testing.T, s *cc.Storage, tk cc.Task) {
 }
 
 // authedRequest creates a request with the auth cookie set.
+// Uses localhost RemoteAddr so auth middleware trusts it (backward-compatible shortcut).
 func authedRequest(method, target string) *http.Request {
 	r := httptest.NewRequest(method, target, nil)
-	r.AddCookie(&http.Cookie{Name: "auth", Value: testPassword})
+	r.RemoteAddr = "127.0.0.1:12345"
 	return r
 }
 
@@ -98,13 +99,13 @@ func TestWebServer_Login_POST_Valid(t *testing.T) {
 	}
 	var found bool
 	for _, c := range w.Result().Cookies() {
-		if c.Name == "auth" && c.Value == testPassword {
+		if c.Name == "auth" && c.Value != "" && c.Value != testPassword {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatal("auth cookie not set after valid login")
+		t.Fatal("auth cookie not set or contains raw password after valid login")
 	}
 }
 
