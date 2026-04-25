@@ -831,6 +831,12 @@ func (ws *WebServer) handleDeleteSession(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 }
 
+// handleDeleteAllSessions is a stub endpoint for the settings page "Clear all sessions" button.
+// Full implementation is deferred; returns 501 Not Implemented.
+func (ws *WebServer) handleDeleteAllSessions(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "not implemented", http.StatusNotImplemented)
+}
+
 // handleInterruptSession sends an interrupt signal to the active engine turn for a session.
 // Returns 200 on success, 404 if the session is unknown, 503 if no active turn is registered.
 func (ws *WebServer) handleInterruptSession(w http.ResponseWriter, r *http.Request) {

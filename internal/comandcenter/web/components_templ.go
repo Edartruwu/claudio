@@ -326,7 +326,7 @@ func CardContainer() templ.Component {
 			templ_7745c5c3_Var15 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"rounded-xl\" style=\"background:var(--color-surface);border:1px solid var(--color-border);padding:10px 14px;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"card-container rounded-xl\" style=\"background:var(--color-surface);border:1px solid var(--color-border);padding:10px 14px;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
