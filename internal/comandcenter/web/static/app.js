@@ -2,6 +2,7 @@
   var _gen = 0; // incremented on every startChat call; stale closures check this
   var _activeWS = null; // single active WS; closed before each new startChat
   var wsConnected = false;  // hoisted — shared across startChat calls
+  window._wsConnected = false; // exposed for htmx polling conditional
   var isConnecting = false; // guard: prevents concurrent initWS calls
   var reconnectTimer = null; // hoisted — cleared/set from any closure
   var _initWSFn = null;     // always points to current-session initWS
@@ -19,6 +20,7 @@
     }
     // Reset shared state for new session
     wsConnected = false;
+    window._wsConnected = false;
     isConnecting = false;
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
@@ -234,6 +236,7 @@
       var isReconnect = _hadConnected && !wsConnected;
       _hadConnected = true;
       wsConnected = true;
+      window._wsConnected = true;
       hideBanner();
       // Only reload on true reconnects (not initial page load — server already rendered).
       // Delay 600ms so any WS messages that arrive right after reconnect are processed first.
@@ -253,6 +256,10 @@
     ws.onmessage = function (e) {
       try {
         var data = JSON.parse(e.data);
+        if (!data || typeof data !== 'object' || !data.type) {
+          console.warn('[claudio-ws] invalid payload shape:', e.data);
+          return;
+        }
         var type = data.type;
 
         if (type === 'ping') {
@@ -407,7 +414,9 @@
           }
           appendMessage(data.html);
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error('[claudio-ws] message parse error:', err, e.data);
+      }
     };
 
     ws.onerror = function () {
@@ -418,6 +427,7 @@
     ws.onclose = function () {
       isConnecting = false;
       wsConnected = false;
+      window._wsConnected = false;
       showBanner();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       // Don't reconnect if a newer startChat call has taken over.
@@ -554,9 +564,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }).then(function(sub) {
         if (!sub) return;
         var j     = sub.toJSON();
-        var token = (window.CLAUDIO_TOKEN || '');
         var headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = 'Bearer ' + token;
         return fetch('/api/push/subscribe', {
           method: 'POST',
           headers: headers,

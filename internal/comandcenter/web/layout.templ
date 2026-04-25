@@ -16,16 +16,14 @@ templ Layout(sessionID string) {
 		<link rel="apple-touch-icon" sizes="167x167" href="/static/apple-touch-icon-167.png"/>
 		<link rel="apple-touch-icon" sizes="152x152" href="/static/apple-touch-icon-152.png"/>
 		<title>ComandCenter</title>
-		<script src="https://cdn.tailwindcss.com"></script>
+		<!-- Self-hosted assets — no CDN dependencies -->
+		<link rel="stylesheet" href="/static/vendor/tailwind.min.css"/>
 		<link rel="preconnect" href="https://fonts.googleapis.com"/>
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
-		<script>
-			tailwind.config = {
-				theme: { extend: { fontFamily: { mono: ['"JetBrains Mono"', 'monospace'] } } }
-			}
-		</script>
-		<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+		<script src="/static/vendor/htmx.min.js" defer></script>
+		<!-- CSRF token — value wired server-side by security middleware -->
+		<meta name="csrf-token" content=""/>
 		@layoutCSS()
 	</head>
 	<body
@@ -35,15 +33,50 @@ templ Layout(sessionID string) {
 		}
 	>
 		{ children... }
+		<!-- Global a11y live regions -->
+		<div id="error-toast-region" aria-live="assertive" aria-atomic="true" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 		@annotatorOverlay()
 		@annotatorScript()
-		<script src="/static/app.js"></script>
+		<script src="/static/app.js" defer></script>
 		<script>
 		if ('serviceWorker' in navigator) {
 			navigator.serviceWorker.register('/sw.js').catch(function(err) {
 				console.warn('SW registration failed:', err);
 			});
 		}
+		</script>
+		<script>
+		// htmx config — run after htmx loads (deferred)
+		document.addEventListener('DOMContentLoaded', function() {
+			if (window.htmx) {
+				htmx.config.historyCacheSize = 0;
+				htmx.config.defaultSwapStyle = 'innerHTML';
+				htmx.config.defaultSettleDelay = 100;
+			}
+		});
+		// CSRF — inject token into every htmx request
+		document.addEventListener('htmx:configRequest', function(e) {
+			var meta = document.querySelector('meta[name="csrf-token"]');
+			if (meta && meta.content) e.detail.headers['X-CSRF-Token'] = meta.content;
+		});
+		// Global htmx error handler
+		document.addEventListener('htmx:responseError', function(e) {
+			var msg = e.detail.xhr.responseText || 'Request failed';
+			var code = e.detail.xhr.status;
+			showErrorToast(msg, code);
+		});
+		function showErrorToast(msg, code) {
+			var region = document.getElementById('error-toast-region');
+			if (!region) return;
+			var toast = document.createElement('div');
+			toast.setAttribute('role', 'alert');
+			toast.className = 'pointer-events-auto px-4 py-3 rounded-lg text-sm font-semibold shadow-lg';
+			toast.style.cssText = 'background:var(--color-errorDim);color:var(--color-error);border:1px solid var(--color-error);max-width:360px;';
+			toast.textContent = (code ? code + ': ' : '') + msg;
+			region.appendChild(toast);
+			setTimeout(function() { toast.remove(); }, 5000);
+		}
+		// NOTE: hx-swap="outerHTML" on <body> must never be used — use innerHTML instead.
 		</script>
 		@filterAndSwipeScript()
 	</body>
@@ -81,7 +114,7 @@ templ layoutCSS() {
 			/* Text */
 			--color-textPrimary:   #D4DDE0;
 			--color-textSecondary: #8A9BA0;
-			--color-textMuted:     #4E6268;
+			--color-textMuted:     #6B8A93;
 			--color-textInverse:   #0B0E0F;
 			/* Semantic */
 			--color-error:         #E05050;
@@ -239,48 +272,48 @@ templ layoutCSS() {
 }
 
 templ annotatorOverlay() {
-	<div id="annotation-overlay" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,0.85);flex-direction:column;">
+	<div id="annotation-overlay" class="hidden fixed inset-0 z-[400] bg-black/85 flex-col" style="display:none;">
 		<!-- Canvas fills available space -->
-		<canvas id="annotation-canvas" style="flex:1;display:block;touch-action:none;cursor:crosshair;"></canvas>
+		<canvas id="annotation-canvas" class="flex-1 block touch-none cursor-crosshair"></canvas>
 		<!-- Text input for text tool (hidden by default) -->
-		<input id="ann-text-input" type="text" style="display:none;position:fixed;z-index:401;background:transparent;color:#FFFFFF;border:1px dashed rgba(255,255,255,0.5);outline:none;font-family:inherit;font-size:16px;padding:2px 4px;min-width:100px;" aria-label="Annotation text"/>
+		<input id="ann-text-input" type="text" class="fixed z-[401] bg-transparent text-white border border-dashed border-white/50 outline-none font-[inherit] text-base p-[2px_4px] min-w-[100px]" style="display:none;" aria-label="Annotation text"/>
 		<!-- Toolbar — bottom bar -->
-		<div id="annotation-toolbar" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;background:var(--color-surfaceHigh);border-top:1px solid var(--color-border);flex-shrink:0;flex-wrap:wrap;">
+		<div id="annotation-toolbar" class="flex items-center justify-center gap-2 px-4 py-[10px] bg-[var(--color-surfaceHigh)] border-t border-t-[var(--color-border)] shrink-0 flex-wrap">
 			<!-- Tool buttons -->
-			<button data-tool="pen" id="ann-tool-pen" onclick="annSetTool('pen')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(0,196,140,0.15);color:var(--color-brand);border:1px solid var(--color-brand);" aria-label="Pen tool">
+			<button data-tool="pen" id="ann-tool-pen" onclick="annSetTool('pen')" class="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer bg-[rgba(0,196,140,0.15)] text-[var(--color-brand)] border border-[var(--color-brand)]" aria-label="Pen tool">
 				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 3l4 4L7 21H3v-4L17 3z"/></svg>
 			</button>
-			<button data-tool="rect" id="ann-tool-rect" onclick="annSetTool('rect')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--color-surfaceFloat);color:var(--color-textSecondary);border:1px solid transparent;" aria-label="Rectangle tool">
+			<button data-tool="rect" id="ann-tool-rect" onclick="annSetTool('rect')" class="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer bg-[var(--color-surfaceFloat)] text-[var(--color-textSecondary)] border border-transparent" aria-label="Rectangle tool">
 				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
 			</button>
-			<button data-tool="arrow" id="ann-tool-arrow" onclick="annSetTool('arrow')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--color-surfaceFloat);color:var(--color-textSecondary);border:1px solid transparent;" aria-label="Arrow tool">
+			<button data-tool="arrow" id="ann-tool-arrow" onclick="annSetTool('arrow')" class="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer bg-[var(--color-surfaceFloat)] text-[var(--color-textSecondary)] border border-transparent" aria-label="Arrow tool">
 				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 19L19 5M19 5v10M19 5H9"/></svg>
 			</button>
-			<button data-tool="text" id="ann-tool-text" onclick="annSetTool('text')" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--color-surfaceFloat);color:var(--color-textSecondary);border:1px solid transparent;" aria-label="Text tool">
+			<button data-tool="text" id="ann-tool-text" onclick="annSetTool('text')" class="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer bg-[var(--color-surfaceFloat)] text-[var(--color-textSecondary)] border border-transparent" aria-label="Text tool">
 				<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 4h12M12 4v16"/></svg>
 			</button>
 
-			<div style="width:1px;height:24px;background:var(--color-border);margin:0 4px;"></div>
+			<div class="w-px h-6 bg-[var(--color-border)] mx-1"></div>
 
 			<!-- Color swatches -->
-			<button class="ann-color-btn" data-color="#FFFFFF" onclick="annSetColor('#FFFFFF')" style="width:24px;height:24px;border-radius:50%;background:#FFFFFF;border:2px solid var(--color-brand);cursor:pointer;padding:0;" aria-label="White"></button>
-			<button class="ann-color-btn" data-color="#E05050" onclick="annSetColor('#E05050')" style="width:24px;height:24px;border-radius:50%;background:#E05050;border:2px solid transparent;cursor:pointer;padding:0;" aria-label="Red"></button>
-			<button class="ann-color-btn" data-color="#00C48C" onclick="annSetColor('#00C48C')" style="width:24px;height:24px;border-radius:50%;background:#00C48C;border:2px solid transparent;cursor:pointer;padding:0;" aria-label="Green"></button>
-			<button class="ann-color-btn" data-color="#F0A500" onclick="annSetColor('#F0A500')" style="width:24px;height:24px;border-radius:50%;background:#F0A500;border:2px solid transparent;cursor:pointer;padding:0;" aria-label="Yellow"></button>
+			<button class="ann-color-btn w-6 h-6 rounded-full bg-white border-2 border-[var(--color-brand)] cursor-pointer p-0" data-color="#FFFFFF" onclick="annSetColor('#FFFFFF')" aria-label="White"></button>
+			<button class="ann-color-btn w-6 h-6 rounded-full bg-[#E05050] border-2 border-transparent cursor-pointer p-0" data-color="#E05050" onclick="annSetColor('#E05050')" aria-label="Red"></button>
+			<button class="ann-color-btn w-6 h-6 rounded-full bg-[#00C48C] border-2 border-transparent cursor-pointer p-0" data-color="#00C48C" onclick="annSetColor('#00C48C')" aria-label="Green"></button>
+			<button class="ann-color-btn w-6 h-6 rounded-full bg-[#F0A500] border-2 border-transparent cursor-pointer p-0" data-color="#F0A500" onclick="annSetColor('#F0A500')" aria-label="Yellow"></button>
 
-			<div style="width:1px;height:24px;background:var(--color-border);margin:0 4px;"></div>
+			<div class="w-px h-6 bg-[var(--color-border)] mx-1"></div>
 
 			<!-- Stroke width slider -->
-			<input type="range" id="ann-stroke" min="2" max="16" value="4" oninput="annSetStroke(this.value)" style="width:80px;accent-color:var(--color-brand);" aria-label="Stroke width"/>
+			<input type="range" id="ann-stroke" min="2" max="16" value="4" oninput="annSetStroke(this.value)" class="w-20 accent-[var(--color-brand)]" aria-label="Stroke width"/>
 
-			<div style="flex:1;"></div>
+			<div class="flex-1"></div>
 
 			<!-- Caption (for non-staged mode) -->
-			<textarea id="ann-caption" placeholder="Describe what to change..." rows="1" style="flex:0 1 200px;resize:none;padding:8px 12px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surfaceFloat);color:var(--color-textPrimary);font-family:inherit;font-size:13px;outline:none;"></textarea>
+			<textarea id="ann-caption" placeholder="Describe what to change..." rows="1" class="flex-[0_1_200px] resize-none py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surfaceFloat)] text-[var(--color-textPrimary)] font-[inherit] text-[13px] outline-none"></textarea>
 
 			<!-- Cancel / Done -->
-			<button onclick="annCancel()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--color-border);background:transparent;color:var(--color-textSecondary);font-family:inherit;font-size:14px;cursor:pointer;">Cancel</button>
-			<button id="ann-send-btn" onclick="annSend()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--color-brand);color:#0B0E0F;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-left:4px;">Done</button>
+			<button onclick="annCancel()" class="py-2 px-4 rounded-lg border border-[var(--color-border)] bg-transparent text-[var(--color-textSecondary)] font-[inherit] text-sm cursor-pointer">Cancel</button>
+			<button id="ann-send-btn" onclick="annSend()" class="py-2 px-4 rounded-lg border-none bg-[var(--color-brand)] text-[#0B0E0F] font-[inherit] text-sm font-semibold cursor-pointer ml-1">Done</button>
 		</div>
 	</div>
 }
@@ -779,9 +812,7 @@ templ filterAndSwipeScript() {
 				});
 			}
 			if (!e.target.closest('.row-menu')) {
-				document.querySelectorAll('.row-menu-dropdown').forEach(function (d) {
-					d.style.display = 'none';
-				});
+				ccCloseAllRowMenus();
 			}
 		});
 
@@ -796,21 +827,34 @@ templ filterAndSwipeScript() {
 			}
 			// mobile: let href navigate naturally
 		});
-		window.ccToggleRowMenu = function (btn, e) {
-			if (e) e.stopPropagation();
-			var dd = btn.nextElementSibling;
-			var wasOpen = dd.style.display === 'block';
+		function ccCloseAllRowMenus() {
 			document.querySelectorAll('.row-menu-dropdown').forEach(function (d) {
 				d.style.display = 'none';
+			});
+			document.querySelectorAll('.row-menu-trigger').forEach(function (b) {
+				b.setAttribute('aria-expanded', 'false');
 			});
 			document.querySelectorAll('.swipe-content').forEach(function (el) {
 				el.style.zIndex = '1';
 			});
+		}
+		window.ccToggleRowMenu = function (btn, e) {
+			if (e) e.stopPropagation();
+			var dd = btn.nextElementSibling;
+			var wasOpen = dd.style.display === 'block';
+			ccCloseAllRowMenus();
 			if (!wasOpen) {
 				dd.style.display = 'block';
+				btn.setAttribute('aria-expanded', 'true');
 				btn.closest('.swipe-content').style.zIndex = '50';
 			}
 		};
+		// Escape key closes row menus
+		document.addEventListener('keydown', function(e) {
+			if (e.key === 'Escape') {
+				ccCloseAllRowMenus();
+			}
+		});
 
 		document.addEventListener('DOMContentLoaded', initAll);
 		document.addEventListener('htmx:afterSwap',   initAll);

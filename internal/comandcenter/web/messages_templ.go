@@ -37,7 +37,7 @@ func MessagesPartial(messages []MessageView) templ.Component {
 			}
 		}
 		if len(messages) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"text-center text-sm mt-8\" style=\"color:var(--color-textMuted);\">No messages yet</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"text-center text-sm mt-8 text-[var(--color-textMuted)]\">No messages yet</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -73,7 +73,7 @@ func MessagesContainer(messages []MessageView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if len(messages) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div style=\"display:flex;justify-content:center;margin:8px 0;\"><span style=\"background:var(--color-surfaceHigh);color:var(--color-textMuted);font-size:11px;padding:3px 12px;border-radius:9999px;letter-spacing:0.5px;border:1px solid var(--color-border);\">Today</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"flex justify-center my-2\"><span class=\"bg-[var(--color-surfaceHigh)] text-[var(--color-textMuted)] text-[11px] px-3 py-[3px] rounded-full tracking-[0.5px] border border-[var(--color-border)]\">Today</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -85,7 +85,7 @@ func MessagesContainer(messages []MessageView) templ.Component {
 			}
 		}
 		if len(messages) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"text-center text-sm mt-8\" style=\"color:var(--color-textMuted);\">No messages yet</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"text-center text-sm mt-8 text-[var(--color-textMuted)]\">No messages yet</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

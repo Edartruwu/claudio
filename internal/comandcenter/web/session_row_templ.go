@@ -31,20 +31,20 @@ func SessionRow(row sessionRow) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"swipe-row\" data-session-id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"swipe-row relative overflow-hidden border-b border-b-[var(--color-surface)] bg-[var(--color-bg)]\" data-session-id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(row.Session.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 6, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 6, Col: 143}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" style=\"position:relative;overflow:hidden;border-bottom:1px solid var(--color-surface);background:var(--color-bg);\"><!-- Swipe actions (mobile) --><div class=\"swipe-actions\" aria-hidden=\"true\" style=\"position:absolute;right:0;top:0;bottom:0;display:flex;width:160px;z-index:0;\"><button hx-patch=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><!-- Swipe actions (mobile) --><div class=\"swipe-actions absolute right-0 top-0 bottom-0 flex w-[160px] z-0\" aria-hidden=\"true\"><button hx-patch=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -57,7 +57,7 @@ func SessionRow(row sessionRow) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" style=\"width:80px;background:var(--color-brand);border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0;font-family:inherit;\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"#0B0E0F\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path d=\"M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8\"></path></svg> <span style=\"color:#0B0E0F;font-size:11px;font-weight:700;font-family:inherit;\">Archive</span></button> <button hx-delete=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" class=\"w-[80px] bg-[var(--color-brand)] border-none cursor-pointer flex flex-col items-center justify-center gap-1 p-0 font-[inherit]\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"#0B0E0F\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path d=\"M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8\"></path></svg> <span class=\"text-[#0B0E0F] text-[11px] font-bold font-[inherit]\">Archive</span></button> <button hx-delete=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -70,40 +70,40 @@ func SessionRow(row sessionRow) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" hx-confirm=\"Delete this session and all messages?\" style=\"width:80px;background:var(--color-error);border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0;font-family:inherit;\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><polyline points=\"3 6 5 6 21 6\"></polyline> <path d=\"M19 6l-1 14H6L5 6\"></path> <path d=\"M10 11v6m4-6v6\"></path></svg> <span style=\"color:#FFFFFF;font-size:11px;font-weight:700;font-family:inherit;\">Delete</span></button></div><!-- Row content --><div class=\"swipe-content\" style=\"position:relative;z-index:1;background:var(--color-bg);transform:translateX(0);transition:transform 0.2s ease;will-change:transform;\"><!-- Desktop 3-dot menu --><div class=\"row-menu\" style=\"position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:10;\"><button class=\"row-menu-trigger\" onclick=\"ccToggleRowMenu(this,event)\" style=\"width:32px;height:32px;border-radius:50%;background:rgba(35,43,45,0.95);border:none;cursor:pointer;color:var(--color-textSecondary);font-size:18px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.15s;font-family:inherit;\">&#x22EF;</button><div class=\"row-menu-dropdown\" style=\"position:absolute;right:0;top:calc(100% + 4px);background:var(--color-surface);border-radius:12px;overflow:hidden;min-width:160px;display:none;box-shadow:0 8px 32px rgba(0,0,0,0.6);z-index:200;border:1px solid var(--color-border);\"><button hx-patch=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" hx-confirm=\"Delete this session and all messages?\" class=\"w-[80px] bg-[var(--color-error)] border-none cursor-pointer flex flex-col items-center justify-center gap-1 p-0 font-[inherit]\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><polyline points=\"3 6 5 6 21 6\"></polyline> <path d=\"M19 6l-1 14H6L5 6\"></path> <path d=\"M10 11v6m4-6v6\"></path></svg> <span class=\"text-white text-[11px] font-bold font-[inherit]\">Delete</span></button></div><!-- Row content --><div class=\"swipe-content relative z-[1] bg-[var(--color-bg)] translate-x-0 will-change-transform\" style=\"transition:transform 0.2s ease;\"><!-- Desktop 3-dot menu --><div class=\"row-menu absolute right-2 top-1/2 -translate-y-1/2 z-10\"><button class=\"row-menu-trigger w-8 h-8 rounded-full bg-[rgba(35,43,45,0.95)] border-none cursor-pointer text-[var(--color-textSecondary)] text-[18px] flex items-center justify-center opacity-0 transition-opacity duration-150 font-[inherit]\" onclick=\"ccToggleRowMenu(this,event)\">&#x22EF;</button><div class=\"row-menu-dropdown absolute right-0 top-[calc(100%+4px)] bg-[var(--color-surface)] rounded-xl overflow-hidden min-w-[160px] shadow-[0_8px_32px_rgba(0,0,0,0.6)] z-[200] border border-[var(--color-border)]\" style=\"display:none;\"><button hx-patch=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/sessions/%s/archive", row.Session.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 49, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 48, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" style=\"width:100%;padding:11px 14px;background:none;border:none;border-bottom:1px solid var(--color-border);cursor:pointer;color:var(--color-textPrimary);text-align:left;font-size:15px;font-family:inherit;display:flex;align-items:center;gap:8px;\"><svg width=\"14\" height=\"14\" fill=\"none\" stroke=\"var(--color-textSecondary)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path d=\"M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8\"></path></svg> Archive</button> <button hx-delete=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" class=\"w-full px-[14px] py-[11px] bg-transparent border-none border-b border-b-[var(--color-border)] cursor-pointer text-[var(--color-textPrimary)] text-left text-[15px] font-[inherit] flex items-center gap-2\"><svg width=\"14\" height=\"14\" fill=\"none\" stroke=\"var(--color-textSecondary)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path d=\"M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8\"></path></svg> Archive</button> <button hx-delete=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/api/sessions/%s", row.Session.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 58, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 57, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" hx-confirm=\"Delete this session and all messages?\" style=\"width:100%;padding:11px 14px;background:none;border:none;cursor:pointer;color:var(--color-error);text-align:left;font-size:15px;font-family:inherit;display:flex;align-items:center;gap:8px;\"><svg width=\"14\" height=\"14\" fill=\"none\" stroke=\"var(--color-error)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><polyline points=\"3 6 5 6 21 6\"></polyline><path d=\"M19 6l-1 14H6L5 6\"></path></svg> Delete</button></div></div><!-- Main clickable row --><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-target=\"closest .swipe-row\" hx-swap=\"outerHTML\" hx-confirm=\"Delete this session and all messages?\" class=\"w-full px-[14px] py-[11px] bg-transparent border-none cursor-pointer text-[var(--color-error)] text-left text-[15px] font-[inherit] flex items-center gap-2\"><svg width=\"14\" height=\"14\" fill=\"none\" stroke=\"var(--color-error)\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><polyline points=\"3 6 5 6 21 6\"></polyline><path d=\"M19 6l-1 14H6L5 6\"></path></svg> Delete</button></div></div><!-- Main clickable row --><a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 templ.SafeURL
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/chat/%s", row.Session.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 71, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 70, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -116,30 +116,30 @@ func SessionRow(row sessionRow) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(row.Session.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 72, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 71, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" class=\"session-row-link\" style=\"display:flex;align-items:center;gap:16px;padding:12px 16px;text-decoration:none;cursor:pointer;position:relative;\"><!-- Active indicator -->")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" class=\"session-row-link flex items-center gap-4 px-4 py-3 no-underline cursor-pointer relative\"><!-- Active indicator -->")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if row.Session.Status == "active" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div style=\"position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--color-brand);border-radius:0 4px 4px 0;\"></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"absolute left-0 top-0 bottom-0 w-[3px] bg-[var(--color-brand)] rounded-[0_4px_4px_0]\"></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<!-- Avatar --><div style=\"position:relative;flex-shrink:0;\"><div style=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<!-- Avatar --><div class=\"relative shrink-0\"><div class=\"w-[52px] h-[52px] rounded-full flex items-center justify-center font-[inherit] text-[19.76px] font-bold text-[#0B0E0F] shrink-0\" style=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var9 string
-		templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("width:52px;height:52px;border-radius:9999px;background:%s;display:flex;align-items:center;justify-content:center;font-family:inherit;font-size:19.76px;font-weight:700;color:#0B0E0F;flex-shrink:0;", AvatarColor(row.Session.Name)))
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("background:%s;", AvatarColor(row.Session.Name)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 82, Col: 259}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 82, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -152,7 +152,7 @@ func SessionRow(row sessionRow) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(FirstChar(row.Session.Name))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 83, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 84, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -163,17 +163,17 @@ func SessionRow(row sessionRow) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if row.Session.Status == "active" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span style=\"position:absolute;bottom:1px;right:1px;width:13.52px;height:13.52px;background:var(--color-brand);border:2px solid var(--color-bg);border-radius:9999px;\"></span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span class=\"absolute bottom-[1px] right-[1px] w-[13.52px] h-[13.52px] bg-[var(--color-brand)] border-2 border-[var(--color-bg)] rounded-full\"></span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div><!-- Text content --><div style=\"flex:1 1 0%;min-width:0;\"><div style=\"display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;\"><span style=\"color:var(--color-textPrimary);font-size:16px;font-family:inherit;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div><!-- Text content --><div class=\"flex-1 min-w-0\"><div class=\"flex justify-between items-baseline mb-[3px]\"><span class=\"text-[var(--color-textPrimary)] text-base font-[inherit] font-semibold overflow-hidden text-ellipsis whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if row.Session.Master {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span style=\"color:var(--color-tool);\">&#9733; </span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"text-[var(--color-tool)]\">&#9733; </span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -181,7 +181,7 @@ func SessionRow(row sessionRow) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(row.Session.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 96, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 97, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -192,14 +192,14 @@ func SessionRow(row sessionRow) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if row.Session.Status == "active" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span style=\"color:var(--color-brand);font-size:13px;font-family:inherit;flex-shrink:0;margin-left:8px;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span class=\"text-[var(--color-brand)] text-[13px] font-[inherit] shrink-0 ml-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(row.Session.LastActiveAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 99, Col: 147}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 100, Col: 123}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -210,14 +210,14 @@ func SessionRow(row sessionRow) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span style=\"color:var(--color-textMuted);font-size:13px;font-family:inherit;flex-shrink:0;margin-left:8px;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit] shrink-0 ml-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(RelTime(row.Session.LastActiveAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 101, Col: 151}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 102, Col: 127}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -228,7 +228,7 @@ func SessionRow(row sessionRow) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div><div style=\"display:flex;justify-content:space-between;align-items:center;\"><span style=\"color:var(--color-textMuted);font-size:15px;font-family:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 0%;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div><div class=\"flex justify-between items-center\"><span class=\"text-[var(--color-textMuted)] text-[15px] font-[inherit] overflow-hidden text-ellipsis whitespace-nowrap flex-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -236,7 +236,7 @@ func SessionRow(row sessionRow) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(row.LastMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 107, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 108, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -253,14 +253,14 @@ func SessionRow(row sessionRow) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if row.UnreadCount > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<span style=\"background:var(--color-brand);color:#0B0E0F;font-size:11px;font-weight:700;font-family:inherit;min-width:20px;height:20px;padding:0 5px;border-radius:9999px;display:flex;align-items:center;justify-content:center;flex-shrink:0;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<span class=\"bg-[var(--color-brand)] text-[#0B0E0F] text-[11px] font-bold font-[inherit] min-w-[20px] h-5 px-[5px] rounded-full flex items-center justify-center shrink-0\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", row.UnreadCount))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 114, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 115, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -300,7 +300,7 @@ func SkeletonSessionRow() templ.Component {
 			templ_7745c5c3_Var16 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div style=\"display:flex;align-items:center;padding:12px 16px;gap:12px;border-bottom:1px solid var(--color-border);\"><!-- Avatar skeleton --><div style=\"width:40px;height:40px;border-radius:50%;flex-shrink:0;\" class=\"skeleton-shimmer\"></div><!-- Text lines skeleton --><div style=\"flex:1;display:flex;flex-direction:column;gap:8px;\"><div style=\"height:14px;border-radius:4px;width:60%;\" class=\"skeleton-shimmer\"></div><div style=\"height:12px;border-radius:4px;width:80%;\" class=\"skeleton-shimmer\"></div></div><!-- Time skeleton --><div style=\"width:32px;height:12px;border-radius:4px;\" class=\"skeleton-shimmer\"></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"flex items-center px-4 py-3 gap-3 border-b border-b-[var(--color-border)]\"><!-- Avatar skeleton --><div class=\"w-10 h-10 rounded-full shrink-0 skeleton-shimmer\"></div><!-- Text lines skeleton --><div class=\"flex-1 flex flex-col gap-2\"><div class=\"h-[14px] rounded w-[60%] skeleton-shimmer\"></div><div class=\"h-3 rounded w-[80%] skeleton-shimmer\"></div></div><!-- Time skeleton --><div class=\"w-8 h-3 rounded skeleton-shimmer\"></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -329,27 +329,27 @@ func ErrorState(title, subtitle, retryTarget, retryURL string) templ.Component {
 			templ_7745c5c3_Var17 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;padding:24px;gap:12px;text-align:center;\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 48 48\" fill=\"none\"><circle cx=\"24\" cy=\"24\" r=\"22\" stroke=\"#E05050\" stroke-width=\"2\"></circle> <path d=\"M16 16l16 16M32 16L16 32\" stroke=\"#E05050\" stroke-width=\"2\" stroke-linecap=\"round\"></path></svg><p style=\"margin:0;font-size:16px;font-weight:600;color:var(--color-textPrimary);\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div class=\"flex flex-col items-center justify-center h-[200px] p-6 gap-3 text-center\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 48 48\" fill=\"none\"><circle cx=\"24\" cy=\"24\" r=\"22\" stroke=\"#E05050\" stroke-width=\"2\"></circle> <path d=\"M16 16l16 16M32 16L16 32\" stroke=\"#E05050\" stroke-width=\"2\" stroke-linecap=\"round\"></path></svg><p class=\"m-0 text-base font-semibold text-[var(--color-textPrimary)]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 144, Col: 92}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 145, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</p><p style=\"margin:0;font-size:13px;color:var(--color-textSecondary);\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</p><p class=\"m-0 text-[13px] text-[var(--color-textSecondary)]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(subtitle)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 145, Col: 81}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 146, Col: 73}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -362,7 +362,7 @@ func ErrorState(title, subtitle, retryTarget, retryURL string) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(retryURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 147, Col: 20}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 148, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -375,13 +375,13 @@ func ErrorState(title, subtitle, retryTarget, retryURL string) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(retryTarget)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 148, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/session_row.templ`, Line: 149, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" hx-swap=\"innerHTML\" style=\"padding:8px 20px;border-radius:8px;border:1px solid var(--color-border);background:transparent;color:var(--color-textPrimary);font-family:inherit;font-size:14px;cursor:pointer;\">Retry</button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" hx-swap=\"innerHTML\" class=\"px-5 py-2 rounded-lg border border-[var(--color-border)] bg-transparent text-[var(--color-textPrimary)] font-[inherit] text-sm cursor-pointer\">Retry</button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

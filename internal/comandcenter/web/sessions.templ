@@ -5,17 +5,17 @@ templ SessionsPartial(rows []sessionRow) {
 		@SessionRow(row)
 	}
 	if len(rows) == 0 {
-		<div style="flex:1 1 0%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px;padding:40px;">
+		<div class="flex-1 flex flex-col justify-center items-center gap-4 p-10">
 			<svg width="48" height="48" fill="none" stroke="var(--color-border)" stroke-width="1" viewBox="0 0 24 24">
 				<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"></path>
 			</svg>
-			<p style="color:var(--color-textMuted);font-size:13px;font-family:inherit;text-align:center;line-height:1.5;margin:0;">
+			<p class="text-[var(--color-textMuted)] text-[13px] font-[inherit] text-center leading-[1.5] m-0">
 				No sessions yet.<br/>
 				Start a Claudio session<br/>
 				from your terminal.
 			</p>
-			<div style="background:var(--color-surface);border-radius:12px;padding:8px 14px;border:1px solid var(--color-border);">
-				<code style="color:var(--color-brand);font-size:13px;font-family:inherit;">claudio</code>
+			<div class="bg-[var(--color-surface)] rounded-xl py-2 px-[14px] border border-[var(--color-border)]">
+				<code class="text-[var(--color-brand)] text-[13px] font-[inherit]">claudio</code>
 			</div>
 		</div>
 	}

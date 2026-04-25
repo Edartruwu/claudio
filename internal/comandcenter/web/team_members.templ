@@ -13,54 +13,53 @@ templ TeamMembers(agents []cc.Agent, sessionID string) {
 		<div
 			id={ fmt.Sprintf("agent-card-%s", agent.ID) }
 			data-agent-name={ agent.Name }
-			style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;"
+			class="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-3 cursor-pointer flex items-center gap-3"
 			onclick={ templ.JSFuncCall("ccOpenAgentLogs", agent.Name, sessionID) }
 			onmouseover="this.style.background='var(--color-surfaceHigh)'"
 			onmouseout="this.style.background='var(--color-surface)'"
 		>
 			<!-- Avatar with optional pulse ring when running -->
 			<div
-				class={ agentAvatarClass(agent.Status) }
-				style="width:40px;height:40px;border-radius:9999px;background:var(--color-surfaceHigh);color:var(--color-brand);font-size:14px;"
+				class={ "w-10 h-10 rounded-full bg-[var(--color-surfaceHigh)] text-[var(--color-brand)] text-sm " + agentAvatarClass(agent.Status) }
 			>
 				{ FirstChar(agent.Name) }
 			</div>
 			<!-- Card body -->
-			<div style="flex:1;min-width:0;">
+			<div class="flex-1 min-w-0">
 				<!-- Name + tool chip row -->
-				<div style="display:flex;align-items:center;gap:8px;">
-					<p style="color:var(--color-textPrimary);font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">{ agent.Name }</p>
+				<div class="flex items-center gap-2">
+					<p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap flex-1">{ agent.Name }</p>
 					if agent.Status == "running" && agent.CurrentTool != "" {
-						<span style="background:var(--color-toolDim);color:var(--color-tool);font-size:11px;font-weight:600;letter-spacing:0.5px;border-radius:9999px;padding:2px 8px;white-space:nowrap;flex-shrink:0;">{ agent.CurrentTool }</span>
+						<span class="bg-[var(--color-toolDim)] text-[var(--color-tool)] text-[11px] font-semibold tracking-[0.5px] rounded-full px-2 py-[2px] whitespace-nowrap shrink-0">{ agent.CurrentTool }</span>
 					}
 				</div>
 				<!-- Status dot + label -->
-				<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+				<div class="flex items-center gap-[6px] mt-1">
 					if agent.Status == "running" {
-						<span style="width:8px;height:8px;border-radius:9999px;background:var(--color-brand);flex-shrink:0;display:inline-block;"></span>
-						<span style="font-size:12px;color:var(--color-brand);">running</span>
+						<span class="w-2 h-2 rounded-full bg-[var(--color-brand)] shrink-0 inline-block"></span>
+						<span class="text-xs text-[var(--color-brand)]">running</span>
 					} else if agent.Status == "done" || agent.Status == "inactive" {
-						<span style="width:8px;height:8px;border-radius:9999px;background:var(--color-textMuted);flex-shrink:0;display:inline-block;"></span>
-						<span style="font-size:12px;color:var(--color-textMuted);">{ agent.Status }</span>
+						<span class="w-2 h-2 rounded-full bg-[var(--color-textMuted)] shrink-0 inline-block"></span>
+						<span class="text-xs text-[var(--color-textMuted)]">{ agent.Status }</span>
 					} else {
-						<span style="width:8px;height:8px;border-radius:9999px;background:var(--color-tool);flex-shrink:0;display:inline-block;"></span>
-						<span style="font-size:12px;color:var(--color-tool);">{ agent.Status }</span>
+						<span class="w-2 h-2 rounded-full bg-[var(--color-tool)] shrink-0 inline-block"></span>
+						<span class="text-xs text-[var(--color-tool)]">{ agent.Status }</span>
 					}
 				</div>
 				<!-- Metrics: call count + elapsed (hidden when callCount == 0) -->
 				if agent.CallCount > 0 {
-					<p style="font-size:13px;color:var(--color-textMuted);margin:4px 0 0;">⚡ { itoa(agent.CallCount) } calls · { formatElapsed(agent.ElapsedSecs) }</p>
+					<p class="text-[13px] text-[var(--color-textMuted)] m-0 mt-1">⚡ { itoa(agent.CallCount) } calls · { formatElapsed(agent.ElapsedSecs) }</p>
 				}
 			</div>
 		</div>
 	}
 	if len(agents) == 0 {
-		<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 0;gap:8px;">
-			<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--color-textMuted);">
+		<div class="flex flex-col items-center justify-center py-10 gap-2">
+			<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-[var(--color-textMuted)]">
 				<circle cx="12" cy="8" r="4"></circle>
 				<path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path>
 			</svg>
-			<span style="font-size:14px;color:var(--color-textMuted);">No agents running</span>
+			<span class="text-sm text-[var(--color-textMuted)]">No agents running</span>
 		</div>
 	}
 }

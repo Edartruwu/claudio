@@ -10,68 +10,67 @@ templ MessageBubble(msg MessageView) {
 	if msg.Role == "user" {
 		<!-- USER: right-aligned -->
 		<div class="flex justify-end mb-1">
-			<div class="msg-bubble-user shadow-sm" style="padding:10px 14px;max-width:min(480px,90vw);box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+			<div class="msg-bubble-user shadow-sm px-[14px] py-[10px] max-w-[min(480px,90vw)] [box-shadow:0_2px_8px_rgba(0,0,0,0.4)]">
 				if msg.ReplyToSession != "" {
-					<div class="mb-2 rounded" style="border-left:3px solid rgba(255,255,255,0.5);padding:4px 8px;background:rgba(255,255,255,0.15);">
-						<p style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.9);">{ "@" + msg.ReplyToSession }</p>
-						<p style="font-size:11px;line-height:1.4;color:rgba(255,255,255,0.7);">{ Truncate(80, msg.QuotedContent) }</p>
+					<div class="mb-2 rounded border-l-[3px] border-l-[rgba(255,255,255,0.5)] px-2 py-1 bg-[rgba(255,255,255,0.15)]">
+						<p class="text-[11px] font-semibold text-[rgba(255,255,255,0.9)]">{ "@" + msg.ReplyToSession }</p>
+						<p class="text-[11px] leading-[1.4] text-[rgba(255,255,255,0.7)]">{ Truncate(80, msg.QuotedContent) }</p>
 					</div>
 				}
 				if msg.Content != "" {
-					<p style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;">{ msg.Content }</p>
+					<p class="text-[var(--color-textPrimary)] text-[15px] leading-[1.5] m-0 whitespace-pre-wrap break-words">{ msg.Content }</p>
 				}
 				@ImageGrid(FilterImages(msg.Attachments))
 				for _, att := range FilterNonImages(msg.Attachments) {
 					<a
 						href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)) }
 						download={ att.OriginalName }
-						class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline"
-						style="background:rgba(255,255,255,0.2);color:#fff;font-size:13px;"
+						class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline bg-[rgba(255,255,255,0.2)] text-white text-[13px]"
 					>
 						<svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
 							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"></path>
 							<polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"></polyline>
 						</svg>
-						<span class="truncate" style="max-width:160px;">{ att.OriginalName }</span>
+						<span class="truncate max-w-[160px]">{ att.OriginalName }</span>
 					</a>
 				}
-				<p style="color:var(--color-textMuted);font-size:11px;text-align:right;margin-top:4px;">{ RelTime(msg.CreatedAt) }</p>
+				<p class="text-[var(--color-textMuted)] text-[11px] text-right mt-1">{ RelTime(msg.CreatedAt) }</p>
 			</div>
 		</div>
 	} else if msg.Role == "tool_use" || msg.Role == "tool_call" {
 		<!-- TOOL CALL: collapsed by default -->
 		<div class="flex justify-start mb-1">
-			<div class="msg-bubble-tool" data-tool-use-id={ msg.ToolUseID } style={ "max-width:min(300px,85%);border-left:2px solid var(--color-tool);cursor:pointer;" }>
+			<div class="msg-bubble-tool max-w-[min(300px,85%)] border-l-2 border-l-[var(--color-tool)] cursor-pointer" data-tool-use-id={ msg.ToolUseID }>
 				<details ontoggle="this.setAttribute('aria-expanded', this.open)" aria-expanded="false">
-					<summary class="cursor-pointer list-none flex items-center gap-2 justify-between" style="padding:8px 12px;">
+					<summary class="cursor-pointer list-none flex items-center gap-2 justify-between px-3 py-2">
 						<div class="flex items-center gap-2">
 							<svg class="flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-tool)" stroke-width="2.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"></path></svg>
-							<span style="color:var(--color-tool);font-size:13px;font-weight:600;">{ ToolName(msg.Content) }</span>
+							<span class="text-[var(--color-tool)] text-[13px] font-semibold">{ ToolName(msg.Content) }</span>
 							if msg.AgentName != "" {
-								<span style="color:var(--color-textMuted);font-size:11px;">· { msg.AgentName }</span>
+								<span class="text-[var(--color-textMuted)] text-[11px]">· { msg.AgentName }</span>
 							}
 						</div>
-						<svg class="tool-chevron flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2" style="transition:transform 0.2s;"><path d="M9 5l7 7-7 7"></path></svg>
+						<svg class="tool-chevron flex-shrink-0 transition-transform duration-200" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2"><path d="M9 5l7 7-7 7"></path></svg>
 					</summary>
 					<div class="tool-sections px-3 pb-3 pt-1 space-y-2">
 						if ToolInput(msg.Content) != "" {
 							<details>
-								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;">▾ Input</summary>
-								<div style="background:#0B0E0F;border-radius:6px;padding:8px 12px;">
-									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textSecondary);max-height:200px;margin:0;max-width:100%;box-sizing:border-box;">{ ToolInput(msg.Content) }</pre>
+								<summary class="text-[11px] font-semibold text-[var(--color-textMuted)] mb-1 cursor-pointer list-none flex items-center gap-1 select-none uppercase tracking-[0.8px]">▾ Input</summary>
+								<div class="bg-[#0B0E0F] rounded-[6px] px-3 py-2">
+									<pre class="text-[13px] overflow-x-auto overflow-y-auto whitespace-pre-wrap text-[var(--color-textSecondary)] max-h-[200px] m-0 max-w-full box-border">{ ToolInput(msg.Content) }</pre>
 								</div>
 							</details>
 						}
 						if msg.Output != "" {
 							<details class="tool-output-section">
-								<summary style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin-bottom:4px;cursor:pointer;list-none;display:flex;align-items:center;gap:4px;user-select:none;text-transform:uppercase;letter-spacing:0.8px;">▾ Output</summary>
-								<div style="background:#071a10;border-radius:6px;padding:8px 12px;border-left:2px solid var(--color-brand);">
-									<pre style="font-size:13px;overflow-x:auto;overflow-y:auto;white-space:pre-wrap;color:var(--color-textPrimary);max-height:200px;margin:0;max-width:100%;box-sizing:border-box;">{ msg.Output }</pre>
+								<summary class="text-[11px] font-semibold text-[var(--color-textMuted)] mb-1 cursor-pointer list-none flex items-center gap-1 select-none uppercase tracking-[0.8px]">▾ Output</summary>
+								<div class="bg-[#071a10] rounded-[6px] px-3 py-2 border-l-2 border-l-[var(--color-brand)]">
+									<pre class="text-[13px] overflow-x-auto overflow-y-auto whitespace-pre-wrap text-[var(--color-textPrimary)] max-h-[200px] m-0 max-w-full box-border">{ msg.Output }</pre>
 								</div>
 							</details>
 						} else {
-							<div style="color:var(--color-textMuted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Output</div>
-							<div style="display:flex;gap:4px;padding:8px 12px;align-items:center;">
+							<div class="text-[var(--color-textMuted)] text-[11px] font-semibold uppercase tracking-[0.8px] mb-1">Output</div>
+							<div class="flex gap-1 px-3 py-2 items-center">
 								<span class="tool-dot"></span>
 								<span class="tool-dot"></span>
 								<span class="tool-dot"></span>
@@ -83,57 +82,57 @@ templ MessageBubble(msg MessageView) {
 		</div>
 	} else if msg.Role == "tool_result" {
 		<!-- TOOL RESULT: indented, muted -->
-		<div class="flex justify-start mb-1" style="margin-left:2rem;">
-			<div style="max-width:80%;padding:4px 8px;border-radius:8px;font-size:11px;background:var(--color-surfaceHigh);color:var(--color-textMuted);">
+		<div class="flex justify-start mb-1 ml-8">
+			<div class="max-w-[80%] px-2 py-1 rounded-lg text-[11px] bg-[var(--color-surfaceHigh)] text-[var(--color-textMuted)]">
 				{ msg.Content }
 			</div>
 		</div>
 	} else if msg.Role == "error" {
 		<!-- ERROR: red-tinted with warning icon -->
 		<div class="flex justify-start mb-2">
-			<div class="flex items-start gap-2" style="max-width:80%;padding:10px 14px;border-radius:12px;background:rgba(224,80,80,0.10);border:1px solid var(--color-error);">
+			<div class="flex items-start gap-2 max-w-[80%] px-[14px] py-[10px] rounded-xl bg-[rgba(224,80,80,0.10)] border border-[var(--color-error)]">
 				<span class="flex-shrink-0 mt-0.5">⚠</span>
 				<div class="min-w-0">
-					<p style="font-size:14px;color:var(--color-error);">{ msg.Content }</p>
-					<p style="font-size:11px;margin-top:4px;color:var(--color-textMuted);">{ RelTime(msg.CreatedAt) }</p>
+					<p class="text-sm text-[var(--color-error)]">{ msg.Content }</p>
+					<p class="text-[11px] mt-1 text-[var(--color-textMuted)]">{ RelTime(msg.CreatedAt) }</p>
 				</div>
 			</div>
 		</div>
 	} else if msg.Role == "bundle" {
 		<!-- BUNDLE CARD: left-aligned design card -->
 		<div class="flex flex-col items-start mb-1">
-			<div style="max-width:min(520px,85%);border-radius:12px;overflow:hidden;border:1px solid #3A3A3C;border-left:3px solid #BF5AF2;background:#1C1C1E;box-shadow:0 2px 8px rgba(0,0,0,0.4);">
-				<div style="padding:12px 14px;">
+			<div class="max-w-[min(520px,85%)] rounded-xl overflow-hidden border border-[#3A3A3C] border-l-[3px] border-l-[#BF5AF2] bg-[#1C1C1E] [box-shadow:0_2px_8px_rgba(0,0,0,0.4)]">
+				<div class="px-[14px] py-3">
 					<div class="flex items-center gap-2 mb-1">
-						<span style="font-size:18px;">🎨</span>
-						<p style="font-size:14px;font-weight:700;color:var(--color-textPrimary);margin:0;">Mockup Bundle Ready</p>
+						<span class="text-[18px]">🎨</span>
+						<p class="text-sm font-bold text-[var(--color-textPrimary)] m-0">Mockup Bundle Ready</p>
 					</div>
 					if msg.AgentName != "" {
-						<p style="font-size:12px;color:var(--color-textMuted);margin:0 0 10px 26px;">{ msg.AgentName }</p>
+						<p class="text-xs text-[var(--color-textMuted)] m-0 mb-[10px] ml-[26px]">{ msg.AgentName }</p>
 					}
 					<a
 						href={ templ.SafeURL(msg.Content) }
 						target="_blank"
 						rel="noopener noreferrer"
-						style="display:block;margin-top:10px;padding:8px 14px;border-radius:8px;background:#0A84FF;color:#fff;font-size:13px;font-weight:600;text-align:center;text-decoration:none;"
+						class="block mt-[10px] px-[14px] py-2 rounded-lg bg-[#0A84FF] text-white text-[13px] font-semibold text-center no-underline"
 					>Open Bundle →</a>
 				</div>
 			</div>
-			<p style="color:var(--color-textMuted);font-size:11px;margin-top:4px;padding-left:2px;">{ RelTime(msg.CreatedAt) }</p>
+			<p class="text-[var(--color-textMuted)] text-[11px] mt-1 pl-[2px]">{ RelTime(msg.CreatedAt) }</p>
 		</div>
 	} else {
 		<!-- ASSISTANT / CRON: left-aligned -->
 		<div class="flex flex-col items-start mb-1">
 			if msg.AgentName != "" {
 				if HasPrefix(msg.AgentName, "⏰") {
-					<p style="color:var(--color-cron);font-size:11px;font-weight:600;margin-bottom:4px;letter-spacing:0.5px;padding-left:2px;">{ msg.AgentName }</p>
+					<p class="text-[var(--color-cron)] text-[11px] font-semibold mb-1 tracking-[0.5px] pl-[2px]">{ msg.AgentName }</p>
 				} else {
-					<p style="color:var(--color-ai);font-size:11px;font-weight:600;margin-bottom:4px;letter-spacing:0.5px;padding-left:2px;">{ msg.AgentName }</p>
+					<p class="text-[var(--color-ai)] text-[11px] font-semibold mb-1 tracking-[0.5px] pl-[2px]">{ msg.AgentName }</p>
 				}
 			}
 			if msg.AgentName != "" && HasPrefix(msg.AgentName, "⏰") {
-				<div class="msg-bubble-cron shadow-sm" style="padding:10px 14px;max-width:min(480px,90vw);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-cron);">
-					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
+				<div class="msg-bubble-cron shadow-sm px-[14px] py-[10px] max-w-[min(480px,90vw)] [box-shadow:0_2px_8px_rgba(0,0,0,0.4)] border-l-2 border-l-[var(--color-cron)]">
+					<div class="md-content text-[var(--color-textPrimary)] text-[15px] leading-[1.5]">
 						@templ.Raw(string(RenderMD(msg.Content)))
 					</div>
 					@ImageGrid(FilterImages(msg.Attachments))
@@ -142,8 +141,8 @@ templ MessageBubble(msg MessageView) {
 					}
 				</div>
 			} else {
-				<div class="msg-bubble-assistant shadow-sm" style="padding:10px 14px;max-width:min(480px,90vw);box-shadow:0 2px 8px rgba(0,0,0,0.4);border-left:2px solid var(--color-ai);">
-					<div class="md-content" style="color:var(--color-textPrimary);font-size:15px;line-height:1.5;">
+				<div class="msg-bubble-assistant shadow-sm px-[14px] py-[10px] max-w-[min(480px,90vw)] [box-shadow:0_2px_8px_rgba(0,0,0,0.4)] border-l-2 border-l-[var(--color-ai)]">
+					<div class="md-content text-[var(--color-textPrimary)] text-[15px] leading-[1.5]">
 						@templ.Raw(string(RenderMD(msg.Content)))
 					</div>
 					@ImageGrid(FilterImages(msg.Attachments))
@@ -152,26 +151,26 @@ templ MessageBubble(msg MessageView) {
 					}
 				</div>
 			}
-			<p style="color:var(--color-textMuted);font-size:11px;margin-top:4px;padding-left:2px;">{ RelTime(msg.CreatedAt) }</p>
+			<p class="text-[var(--color-textMuted)] text-[11px] mt-1 pl-[2px]">{ RelTime(msg.CreatedAt) }</p>
 		</div>
 	}
 }
 
 templ SkeletonBubble(side string) {
 	if side == "left" {
-		<div style="display:flex;justify-content:flex-start;padding:4px 16px;">
-			<div style="max-width:70%;display:flex;flex-direction:column;gap:6px;">
-				<div style="height:14px;border-radius:8px;width:200px;" class="skeleton-shimmer"></div>
-				<div style="height:14px;border-radius:8px;width:150px;" class="skeleton-shimmer"></div>
-				<div style="height:14px;border-radius:8px;width:100px;" class="skeleton-shimmer"></div>
+		<div class="flex justify-start px-4 py-1">
+			<div class="max-w-[70%] flex flex-col gap-[6px]">
+				<div class="h-[14px] rounded-lg w-[200px] skeleton-shimmer"></div>
+				<div class="h-[14px] rounded-lg w-[150px] skeleton-shimmer"></div>
+				<div class="h-[14px] rounded-lg w-[100px] skeleton-shimmer"></div>
 			</div>
 		</div>
 	} else {
-		<div style="display:flex;justify-content:flex-end;padding:4px 16px;">
-			<div style="max-width:70%;display:flex;flex-direction:column;gap:6px;">
-				<div style="height:14px;border-radius:8px;width:200px;" class="skeleton-shimmer"></div>
-				<div style="height:14px;border-radius:8px;width:150px;" class="skeleton-shimmer"></div>
-				<div style="height:14px;border-radius:8px;width:100px;" class="skeleton-shimmer"></div>
+		<div class="flex justify-end px-4 py-1">
+			<div class="max-w-[70%] flex flex-col gap-[6px]">
+				<div class="h-[14px] rounded-lg w-[200px] skeleton-shimmer"></div>
+				<div class="h-[14px] rounded-lg w-[150px] skeleton-shimmer"></div>
+				<div class="h-[14px] rounded-lg w-[100px] skeleton-shimmer"></div>
 			</div>
 		</div>
 	}
@@ -181,14 +180,13 @@ templ assistantAttachment(att cc.Attachment) {
 	<a
 		href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", att.SessionID, att.Filename)) }
 		download={ att.OriginalName }
-		class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline"
-		style="background:rgba(255,255,255,0.08);color:var(--color-textPrimary);font-size:13px;"
+		class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg no-underline bg-[rgba(255,255,255,0.08)] text-[var(--color-textPrimary)] text-[13px]"
 	>
 		<svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
 			<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8L14 2z"></path>
 			<polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.5"></polyline>
 		</svg>
-		<span class="truncate" style="max-width:160px;">{ att.OriginalName }</span>
+		<span class="truncate max-w-[160px]">{ att.OriginalName }</span>
 	</a>
 }
 
@@ -196,35 +194,35 @@ templ assistantAttachment(att cc.Attachment) {
 // Supports 1, 2, 3, 4, and 5+ image layouts.
 templ ImageGrid(images []cc.Attachment) {
 	if len(images) > 0 {
-		<div class="mt-2" style="max-width:280px;border-radius:12px;overflow:hidden;">
+		<div class="mt-2 max-w-[280px] rounded-xl overflow-hidden">
 			if len(images) == 1 {
 				<!-- single: full width, 4:3 -->
-				<div style="position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;border-radius:4px;">
+				<div class="relative w-full aspect-[4/3] overflow-hidden rounded-[4px]">
 					<img
 						src={ imgURL(images[0]) }
 						alt={ images[0].OriginalName }
-						style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+						class="w-full h-full object-cover cursor-pointer block"
 						loading="lazy"
 						onclick="ccOpenLightbox(this.src,event)"
 					/>
 				</div>
 			} else if len(images) == 2 {
 				<!-- two equal columns, 140px height -->
-				<div style="display:flex;gap:2px;height:140px;">
-					<div style="flex:1;overflow:hidden;border-radius:4px;">
+				<div class="flex gap-[2px] h-[140px]">
+					<div class="flex-1 overflow-hidden rounded-[4px]">
 						<img
 							src={ imgURL(images[0]) }
 							alt={ images[0].OriginalName }
-							style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+							class="w-full h-full object-cover cursor-pointer block"
 							loading="lazy"
 							onclick="ccOpenLightbox(this.src,event)"
 						/>
 					</div>
-					<div style="flex:1;overflow:hidden;border-radius:4px;">
+					<div class="flex-1 overflow-hidden rounded-[4px]">
 						<img
 							src={ imgURL(images[1]) }
 							alt={ images[1].OriginalName }
-							style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+							class="w-full h-full object-cover cursor-pointer block"
 							loading="lazy"
 							onclick="ccOpenLightbox(this.src,event)"
 						/>
@@ -232,31 +230,31 @@ templ ImageGrid(images []cc.Attachment) {
 				</div>
 			} else if len(images) == 3 {
 				<!-- left 2/3 full height, right 1/3 stacked -->
-				<div style="display:flex;gap:2px;height:200px;">
-					<div style="flex:2;overflow:hidden;border-radius:4px;">
+				<div class="flex gap-[2px] h-[200px]">
+					<div class="[flex:2] overflow-hidden rounded-[4px]">
 						<img
 							src={ imgURL(images[0]) }
 							alt={ images[0].OriginalName }
-							style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+							class="w-full h-full object-cover cursor-pointer block"
 							loading="lazy"
 							onclick="ccOpenLightbox(this.src,event)"
 						/>
 					</div>
-					<div style="flex:1;display:flex;flex-direction:column;gap:2px;">
-						<div style="flex:1;overflow:hidden;border-radius:4px;">
+					<div class="flex-1 flex flex-col gap-[2px]">
+						<div class="flex-1 overflow-hidden rounded-[4px]">
 							<img
 								src={ imgURL(images[1]) }
 								alt={ images[1].OriginalName }
-								style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+								class="w-full h-full object-cover cursor-pointer block"
 								loading="lazy"
 								onclick="ccOpenLightbox(this.src,event)"
 							/>
 						</div>
-						<div style="flex:1;overflow:hidden;border-radius:4px;">
+						<div class="flex-1 overflow-hidden rounded-[4px]">
 							<img
 								src={ imgURL(images[2]) }
 								alt={ images[2].OriginalName }
-								style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+								class="w-full h-full object-cover cursor-pointer block"
 								loading="lazy"
 								onclick="ccOpenLightbox(this.src,event)"
 							/>
@@ -265,44 +263,44 @@ templ ImageGrid(images []cc.Attachment) {
 				</div>
 			} else {
 				<!-- 4 or 5+: 2×2 grid -->
-				<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">
+				<div class="grid grid-cols-2 gap-[2px]">
 					<!-- cell 0 -->
-					<div style="height:140px;overflow:hidden;border-radius:4px;">
+					<div class="h-[140px] overflow-hidden rounded-[4px]">
 						<img
 							src={ imgURL(images[0]) }
 							alt={ images[0].OriginalName }
-							style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+							class="w-full h-full object-cover cursor-pointer block"
 							loading="lazy"
 							onclick="ccOpenLightbox(this.src,event)"
 						/>
 					</div>
 					<!-- cell 1 -->
-					<div style="height:140px;overflow:hidden;border-radius:4px;">
+					<div class="h-[140px] overflow-hidden rounded-[4px]">
 						<img
 							src={ imgURL(images[1]) }
 							alt={ images[1].OriginalName }
-							style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+							class="w-full h-full object-cover cursor-pointer block"
 							loading="lazy"
 							onclick="ccOpenLightbox(this.src,event)"
 						/>
 					</div>
 					<!-- cell 2 -->
-					<div style="height:140px;overflow:hidden;border-radius:4px;">
+					<div class="h-[140px] overflow-hidden rounded-[4px]">
 						<img
 							src={ imgURL(images[2]) }
 							alt={ images[2].OriginalName }
-							style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+							class="w-full h-full object-cover cursor-pointer block"
 							loading="lazy"
 							onclick="ccOpenLightbox(this.src,event)"
 						/>
 					</div>
 					<!-- cell 3: plain for n==4, overlay for n>=5 -->
 					if len(images) == 4 {
-						<div style="height:140px;overflow:hidden;border-radius:4px;">
+						<div class="h-[140px] overflow-hidden rounded-[4px]">
 							<img
 								src={ imgURL(images[3]) }
 								alt={ images[3].OriginalName }
-								style="width:100%;height:100%;object-fit:cover;cursor:pointer;display:block;"
+								class="w-full h-full object-cover cursor-pointer block"
 								loading="lazy"
 								onclick="ccOpenLightbox(this.src,event)"
 							/>
@@ -310,18 +308,18 @@ templ ImageGrid(images []cc.Attachment) {
 					} else {
 						<!-- +N overlay cell -->
 						<div
-							style="height:140px;overflow:hidden;border-radius:4px;position:relative;cursor:pointer;"
+							class="h-[140px] overflow-hidden rounded-[4px] relative cursor-pointer"
 							data-src={ imgURL(images[3]) }
 							onclick="ccOpenLightbox(this.dataset.src,event)"
 						>
 							<img
 								src={ imgURL(images[3]) }
 								alt={ images[3].OriginalName }
-								style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"
+								class="w-full h-full object-cover block pointer-events-none"
 								loading="lazy"
 							/>
-							<div style="position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;pointer-events:none;border-radius:4px;">
-								<span style="color:#fff;font-size:22px;font-weight:700;">+{ itoa(len(images) - 4) }</span>
+							<div class="absolute inset-0 bg-[rgba(0,0,0,0.6)] flex items-center justify-center pointer-events-none rounded-[4px]">
+								<span class="text-white text-[22px] font-bold">+{ itoa(len(images) - 4) }</span>
 							</div>
 						</div>
 					}
