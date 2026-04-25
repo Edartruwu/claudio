@@ -15,6 +15,29 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ── Package-level style vars ─────────────────────────────────────────────────
+
+var (
+	sessDimStyle             = lipgloss.NewStyle().Foreground(styles.Dim)
+	sessTextStyle            = lipgloss.NewStyle().Foreground(styles.Text)
+	sessSelectedTitleStyle   = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	sessSubtleStyle          = lipgloss.NewStyle().Foreground(styles.Subtle)
+	sessWarningStyle         = lipgloss.NewStyle().Foreground(styles.Warning)
+	sessSelectedIndicatorStyle = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	sessSuccessStyle         = lipgloss.NewStyle().Foreground(styles.Success)
+	sessCurrentBadgeStyle    = lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
+	sessHeaderStyle          = lipgloss.NewStyle().Foreground(styles.Aqua).Bold(true)
+	sessMutedStyle           = lipgloss.NewStyle().Foreground(styles.Muted)
+	sessHintStyle            = lipgloss.NewStyle().Foreground(styles.Subtle).Italic(true)
+	sessWarnStyle            = lipgloss.NewStyle().Foreground(styles.Error).Bold(true)
+	sessRenamePromptStyle    = lipgloss.NewStyle().Foreground(styles.Aqua).Bold(true)
+	sessBadgeBaseStyle       = lipgloss.NewStyle().Foreground(styles.Surface)
+	sessBoxBaseStyle         = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					Padding(0, 1)
+	sessPaneBaseStyle = lipgloss.NewStyle()
+)
+
 // ResumeSessionMsg is emitted when the user selects a session to resume.
 type ResumeSessionMsg struct {
 	SessionID string
@@ -238,8 +261,8 @@ func (p *Panel) View() string {
 	rightContent := p.renderPreview(rightW, listH)
 
 	// Force consistent heights
-	leftStyled := lipgloss.NewStyle().Width(leftW).Height(listH).Render(leftContent)
-	rightStyled := lipgloss.NewStyle().Width(rightW).Height(listH).Render(rightContent)
+	leftStyled := sessPaneBaseStyle.Width(leftW).Height(listH).Render(leftContent)
+	rightStyled := sessPaneBaseStyle.Width(rightW).Height(listH).Render(rightContent)
 	sep := verticalSep(listH)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, sep, rightStyled)
@@ -251,10 +274,8 @@ func (p *Panel) View() string {
 
 	// ── Box border ──
 	borderColor := styles.SurfaceAlt
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+	box := sessBoxBaseStyle.
 		BorderForeground(borderColor).
-		Padding(0, 1).
 		Width(boxW).
 		Render(content)
 
@@ -275,7 +296,7 @@ func (p *Panel) renderResults(w, h int) string {
 	cwd, _ := os.Getwd()
 
 	if len(p.filtered) == 0 {
-		return lipgloss.NewStyle().Foreground(styles.Dim).Render("  No sessions found")
+		return sessDimStyle.Render("  No sessions found")
 	}
 
 	// Scrolling window
@@ -294,9 +315,9 @@ func (p *Panel) renderResults(w, h int) string {
 		// Indicator column
 		indicator := "  "
 		if selected {
-			indicator = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).Render("> ")
+			indicator = sessSelectedIndicatorStyle.Render("> ")
 		} else if isCurrent {
-			indicator = lipgloss.NewStyle().Foreground(styles.Success).Render("● ")
+			indicator = sessSuccessStyle.Render("● ")
 		}
 
 		// Title
@@ -309,24 +330,23 @@ func (p *Panel) renderResults(w, h int) string {
 			title = title[:maxTitle-1] + "…"
 		}
 
-		titleStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+		titleStyle := sessDimStyle
 		if selected {
-			titleStyle = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+			titleStyle = sessSelectedTitleStyle
 		}
 
 		// Dir indicator (only if different from cwd)
 		dirTag := ""
 		if !isLocal {
 			dirName := filepath.Base(s.ProjectDir)
-			dirTag = lipgloss.NewStyle().Foreground(styles.Subtle).Render(" [" + dirName + "]")
+			dirTag = sessSubtleStyle.Render(" [" + dirName + "]")
 		}
 
 		// Date
 		date := s.UpdatedAt.Format("01/02 15:04")
-		dateStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
 
 		left := indicator + titleStyle.Render(title) + dirTag
-		right := dateStyle.Render(date)
+		right := sessSubtleStyle.Render(date)
 		gap := w - lipgloss.Width(left) - lipgloss.Width(right)
 		if gap < 1 {
 			gap = 1
@@ -340,44 +360,40 @@ func (p *Panel) renderResults(w, h int) string {
 
 func (p *Panel) renderPreview(w, h int) string {
 	if p.cursor >= len(p.filtered) {
-		return lipgloss.NewStyle().Foreground(styles.Dim).Render("  No selection")
+		return sessDimStyle.Render("  No selection")
 	}
 
 	s := p.filtered[p.cursor]
-	lbl := lipgloss.NewStyle().Foreground(styles.Dim)
-	val := lipgloss.NewStyle().Foreground(styles.Text)
-	header := lipgloss.NewStyle().Foreground(styles.Aqua).Bold(true)
 
 	var lines []string
 
 	// Title
 	title := sessionLabel(s)
-	lines = append(lines, header.Render(" "+title))
+	lines = append(lines, sessHeaderStyle.Render(" "+title))
 	lines = append(lines, "")
 
 	// Metadata
-	lines = append(lines, lbl.Render("  ID      ")+val.Render(s.ID[:8]))
-	lines = append(lines, lbl.Render("  Model   ")+modelBadge(s.Model))
-	lines = append(lines, lbl.Render("  Dir     ")+val.Render(shortenDir(s.ProjectDir, w-12)))
-	lines = append(lines, lbl.Render("  Date    ")+val.Render(s.UpdatedAt.Format("2006-01-02 15:04:05")))
+	lines = append(lines, sessDimStyle.Render("  ID      ")+sessTextStyle.Render(s.ID[:8]))
+	lines = append(lines, sessDimStyle.Render("  Model   ")+modelBadge(s.Model))
+	lines = append(lines, sessDimStyle.Render("  Dir     ")+sessTextStyle.Render(shortenDir(s.ProjectDir, w-12)))
+	lines = append(lines, sessDimStyle.Render("  Date    ")+sessTextStyle.Render(s.UpdatedAt.Format("2006-01-02 15:04:05")))
 
 	// Current badge
 	if cur := p.session.Current(); cur != nil && cur.ID == s.ID {
 		lines = append(lines, "")
-		badge := lipgloss.NewStyle().Foreground(styles.Success).Bold(true).Render("  ● Current session")
-		lines = append(lines, badge)
+		lines = append(lines, sessCurrentBadgeStyle.Render("  ● Current session"))
 	}
 
 	// Summary
 	lines = append(lines, "")
 	if s.Summary != "" {
-		lines = append(lines, lbl.Render("  Summary"))
+		lines = append(lines, sessDimStyle.Render("  Summary"))
 		for _, sl := range wrapText(s.Summary, w-4) {
 			if len(lines) >= h-3 {
-				lines = append(lines, lipgloss.NewStyle().Foreground(styles.Subtle).Render("  ..."))
+				lines = append(lines, sessSubtleStyle.Render("  ..."))
 				break
 			}
-			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(styles.Muted).Render(sl))
+			lines = append(lines, "  "+sessMutedStyle.Render(sl))
 		}
 	}
 
@@ -385,9 +401,8 @@ func (p *Panel) renderPreview(w, h int) string {
 	for len(lines) < h-2 {
 		lines = append(lines, "")
 	}
-	hint := lipgloss.NewStyle().Foreground(styles.Subtle).Italic(true)
-	lines = append(lines, hint.Render("  enter open · ctrl+r rename"))
-	lines = append(lines, hint.Render("  ctrl+d delete · esc close"))
+	lines = append(lines, sessHintStyle.Render("  enter open · ctrl+r rename"))
+	lines = append(lines, sessHintStyle.Render("  ctrl+d delete · esc close"))
 
 	return strings.Join(lines, "\n")
 }
@@ -397,22 +412,20 @@ func (p *Panel) renderBottomBar(w int) string {
 	case modeConfirmDelete:
 		if p.cursor < len(p.filtered) {
 			name := sessionLabel(p.filtered[p.cursor])
-			warn := lipgloss.NewStyle().Foreground(styles.Error).Bold(true)
-			dim := lipgloss.NewStyle().Foreground(styles.Dim)
-			return warn.Render("  Delete ") + dim.Render("\""+name+"\"") + warn.Render("? ") +
-				dim.Render("(y to confirm, any key to cancel)")
+			return sessWarnStyle.Render("  Delete ") + sessDimStyle.Render("\""+name+"\"") + sessWarnStyle.Render("? ") +
+				sessDimStyle.Render("(y to confirm, any key to cancel)")
 		}
 	case modeRename:
-		prompt := lipgloss.NewStyle().Foreground(styles.Aqua).Bold(true).Render("  Rename: ")
-		text := lipgloss.NewStyle().Foreground(styles.Text).Render(p.renameText)
-		cursor := lipgloss.NewStyle().Foreground(styles.Warning).Render("│")
+		prompt := sessRenamePromptStyle.Render("  Rename: ")
+		text := sessTextStyle.Render(p.renameText)
+		cursor := sessWarningStyle.Render("│")
 		return prompt + text + cursor
 	}
 
 	// Search mode
-	icon := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).Render("> ")
-	text := lipgloss.NewStyle().Foreground(styles.Text).Render(p.query)
-	cursor := lipgloss.NewStyle().Foreground(styles.Warning).Render("│")
+	icon := sessSelectedIndicatorStyle.Render("> ")
+	text := sessTextStyle.Render(p.query)
+	cursor := sessWarningStyle.Render("│")
 
 	left := icon + text + cursor
 
@@ -420,7 +433,7 @@ func (p *Panel) renderBottomBar(w int) string {
 	if p.scopeAll {
 		scope = "all"
 	}
-	count := lipgloss.NewStyle().Foreground(styles.Dim).
+	count := sessDimStyle.
 		Render(fmt.Sprintf("%d / %d [%s]", len(p.filtered), len(p.sessions), scope))
 
 	gap := w - lipgloss.Width(left) - lipgloss.Width(count)
@@ -460,7 +473,7 @@ func modelBadge(model string) string {
 		label = " sonnet "
 		color = styles.Warning
 	}
-	return lipgloss.NewStyle().Foreground(styles.Surface).Background(color).Render(label)
+	return sessBadgeBaseStyle.Background(color).Render(label)
 }
 
 func shortenDir(p string, maxW int) string {
@@ -481,10 +494,9 @@ func shortenDir(p string, maxW int) string {
 }
 
 func verticalSep(height int) string {
-	style := lipgloss.NewStyle().Foreground(styles.Subtle)
 	lines := make([]string, height)
 	for i := range lines {
-		lines[i] = style.Render(" │ ")
+		lines[i] = sessSubtleStyle.Render(" │ ")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -497,8 +509,8 @@ func injectBorderTitle(box, leftTitle, rightTitle string, splitAt int) string {
 
 	// Top border: inject titles
 	top := []rune(lines[0])
-	lt := []rune(lipgloss.NewStyle().Foreground(styles.Dim).Render(leftTitle))
-	rt := []rune(lipgloss.NewStyle().Foreground(styles.Dim).Render(rightTitle))
+	lt := []rune(sessDimStyle.Render(leftTitle))
+	rt := []rune(sessDimStyle.Render(rightTitle))
 
 	// Left title near start
 	pos := 3

@@ -278,6 +278,11 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 			tool.SessionID = cfg.SessionID
 		}
 	}
+	if bl, err := registry.Get("BgTaskList"); err == nil {
+		if tool, ok := bl.(*tools.BgTaskListTool); ok {
+			tool.SessionID = cfg.SessionID
+		}
+	}
 	// Wire session ID into Bash/Agent so background tasks are tagged with the owning session.
 	if b, err := registry.Get("Bash"); err == nil {
 		if tool, ok := b.(*tools.BashTool); ok {

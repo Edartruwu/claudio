@@ -26,12 +26,14 @@ const (
 type Panel struct {
 	memoryStore *memory.ScopedStore
 
-	active  bool
-	width   int
-	height  int
-	cursor  int
-	tab     Tab
-	entries []*memory.Entry
+	active      bool
+	width       int
+	height      int
+	cursor      int
+	tab         Tab
+	entries     []*memory.Entry
+	focusRight  bool // whether right detail pane is focused
+	scrollOffset int // scroll position in right pane
 }
 
 // New creates a new memory/rules browser panel.
@@ -45,6 +47,8 @@ func (p *Panel) Activate() {
 	p.active = true
 	p.cursor = 0
 	p.tab = TabMemories
+	p.focusRight = false
+	p.scrollOffset = 0
 	p.refresh()
 }
 
@@ -64,21 +68,69 @@ func (p *Panel) refresh() {
 
 func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch msg.String() {
+	case "l", "enter":
+		if !p.focusRight {
+			p.focusRight = true
+		} else if msg.String() == "enter" {
+			// enter in right pane: no-op (could open editor in future)
+		}
+		return nil, true
+	case "h":
+		p.focusRight = false
+		return nil, true
 	case "j", "down":
-		if p.cursor < len(p.entries)-1 {
-			p.cursor++
+		if p.focusRight {
+			if len(p.entries) > 0 && p.cursor < len(p.entries) {
+				maxScroll := len(p.entries[p.cursor].Facts) - 1
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if p.scrollOffset < maxScroll {
+					p.scrollOffset++
+				}
+			}
+		} else {
+			if p.cursor < len(p.entries)-1 {
+				p.cursor++
+				p.scrollOffset = 0
+			}
 		}
 		return nil, true
 	case "k", "up":
-		if p.cursor > 0 {
-			p.cursor--
+		if p.focusRight {
+			if p.scrollOffset > 0 {
+				p.scrollOffset--
+			}
+		} else {
+			if p.cursor > 0 {
+				p.cursor--
+				p.scrollOffset = 0
+			}
 		}
 		return nil, true
 	case "G":
-		p.cursor = max(0, len(p.entries)-1)
+		if !p.focusRight {
+			p.cursor = max(0, len(p.entries)-1)
+			p.scrollOffset = 0
+		}
 		return nil, true
 	case "g":
+		if !p.focusRight {
+			p.cursor = 0
+			p.scrollOffset = 0
+		}
+		return nil, true
+	case "1":
+		p.tab = TabMemories
 		p.cursor = 0
+		p.scrollOffset = 0
+		p.refresh()
+		return nil, true
+	case "2":
+		p.tab = TabRules
+		p.cursor = 0
+		p.scrollOffset = 0
+		p.refresh()
 		return nil, true
 	case "tab":
 		if p.tab == TabMemories {
@@ -87,12 +139,14 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			p.tab = TabMemories
 		}
 		p.cursor = 0
+		p.scrollOffset = 0
 		p.refresh()
 		return nil, true
 	case "d":
 		if p.tab == TabMemories && p.cursor < len(p.entries) {
 			entry := p.entries[p.cursor]
 			p.memoryStore.Remove(entry.Name)
+			p.scrollOffset = 0
 			p.refresh()
 		}
 		return nil, true
@@ -169,50 +223,31 @@ func (p *Panel) View() string {
 		return ""
 	}
 
-	var b strings.Builder
+	leftW := p.width * 30 / 100
+	if leftW < 24 {
+		leftW = 24
+	}
+	rightW := p.width - leftW - 1
+	if rightW < 20 {
+		rightW = 20
+	}
 
-	// Tabs with type counts
-	typeCounts := p.countTypes()
-	tabMem := fmt.Sprintf("  Memories (%d)  ", len(p.entries))
-	tabRules := "  Rules  "
-	activeTab := lipgloss.NewStyle().Foreground(styles.Text).Bold(true).Underline(true)
-	inactiveTab := lipgloss.NewStyle().Foreground(styles.Dim)
+	// ── Left pane (list) ────────────────────────────────
+	var lb strings.Builder
 
+	// Tabs
+	tab1Style := styles.PanelHint
+	tab2Style := styles.PanelHint
 	if p.tab == TabMemories {
-		b.WriteString(activeTab.Render(tabMem))
-		b.WriteString(inactiveTab.Render(tabRules))
-	} else {
-		b.WriteString(inactiveTab.Render(tabMem))
-		b.WriteString(activeTab.Render(tabRules))
+		tab1Style = styles.PanelTitle
 	}
-	b.WriteString("\n")
-
-	// Type summary bar
-	if p.tab == TabMemories && len(typeCounts) > 0 {
-		var badges []string
-		if n, ok := typeCounts["user"]; ok {
-			badges = append(badges, styles.PanelBadgeUser.Render(fmt.Sprintf(" user:%d ", n)))
-		}
-		if n, ok := typeCounts["feedback"]; ok {
-			badges = append(badges, lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Warning).Render(fmt.Sprintf(" feedback:%d ", n)))
-		}
-		if n, ok := typeCounts["project"]; ok {
-			badges = append(badges, styles.PanelBadgeProject.Render(fmt.Sprintf(" project:%d ", n)))
-		}
-		if n, ok := typeCounts["reference"]; ok {
-			badges = append(badges, styles.PanelBadge.Render(fmt.Sprintf(" ref:%d ", n)))
-		}
-		b.WriteString("  " + strings.Join(badges, " "))
-		b.WriteString("\n")
+	if p.tab == TabRules {
+		tab2Style = styles.PanelTitle
 	}
-
-	b.WriteString(styles.SeparatorLine(p.width))
-	b.WriteString("\n")
-
-	if len(p.entries) == 0 {
-		b.WriteString(styles.PanelHint.Render("  No entries found"))
-		b.WriteString("\n")
-	}
+	lb.WriteString(tab1Style.Render(" 1 Memories ") + " " + tab2Style.Render(" 2 Rules "))
+	lb.WriteString("\n")
+	lb.WriteString(styles.SeparatorLine(leftW - 4))
+	lb.WriteString("\n")
 
 	listH := p.height - 8
 	if listH < 3 {
@@ -228,77 +263,112 @@ func (p *Panel) View() string {
 		endIdx = len(p.entries)
 	}
 
+	if len(p.entries) == 0 {
+		lb.WriteString(styles.PanelHint.Render("  No entries"))
+		lb.WriteString("\n")
+	}
+
 	for i := startIdx; i < endIdx; i++ {
 		e := p.entries[i]
-		selected := i == p.cursor
-
 		prefix := "  "
-		if selected {
-			prefix = styles.ViewportCursor.Render("▸ ")
+		if i == p.cursor {
+			prefix = "▸ "
 		}
-
-		// Type badge
-		var badge string
-		switch e.Type {
-		case "user":
-			badge = styles.PanelBadgeUser.Render(" user ")
-		case "feedback":
-			badge = lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Warning).Render(" feedback ")
-		case "project":
-			badge = styles.PanelBadgeProject.Render(" project ")
-		case "reference":
-			badge = styles.PanelBadge.Render(" ref ")
+		name := e.Name
+		maxName := leftW - 10
+		if maxName < 4 {
+			maxName = 4
 		}
-
-		// Scope indicator
-		scopeStr := ""
-		if e.Scope != "" {
-			scopeStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
-			scopeStr = scopeStyle.Render(" [" + e.Scope + "]")
+		if len(name) > maxName {
+			name = name[:maxName-1] + "…"
 		}
-
-		nameStyle := styles.PanelItem
-		if selected {
-			nameStyle = styles.PanelItemSelected
+		scopeTag := " [g]"
+		if e.Scope == "project" {
+			scopeTag = " [p]"
 		}
-
-		name := nameStyle.Render(e.Name)
-		desc := lipgloss.NewStyle().Foreground(styles.Dim).Render(e.Description)
-
-		b.WriteString(prefix + name + " " + badge + scopeStr)
-		b.WriteString("\n")
-		b.WriteString("    " + desc)
-		b.WriteString("\n")
+		line := prefix + name + scopeTag
+		if i == p.cursor && !p.focusRight {
+			lb.WriteString(styles.PanelItemSelected.Render(line))
+		} else if i == p.cursor {
+			lb.WriteString(styles.PanelItem.Render("▸ " + name + scopeTag))
+		} else {
+			lb.WriteString(styles.PanelItem.Render(line))
+		}
+		lb.WriteString("\n")
 	}
 
-	// Preview selected entry
-	if p.cursor < len(p.entries) {
-		content := p.entries[p.cursor].Content
-		maxPreview := 400
-		if p.height < 30 {
-			maxPreview = 200
-		}
-		if len(content) > maxPreview {
-			content = content[:maxPreview] + "..."
-		}
-		b.WriteString("\n")
-		b.WriteString(styles.SeparatorLine(p.width))
-		b.WriteString("\n")
-		preview := lipgloss.NewStyle().Foreground(styles.Muted)
-		b.WriteString(preview.Render(content))
+	leftBorderColor := styles.Muted
+	if !p.focusRight {
+		leftBorderColor = styles.Primary
 	}
 
-	b.WriteString("\n")
-	hint := "  j/k navigate · tab switch · esc close"
-	if p.tab == TabMemories {
-		hint = "  j/k · d delete · e edit · a add · r refresh · esc close"
-	}
-	b.WriteString(styles.PanelHint.Render(hint))
+	leftBox := lipgloss.NewStyle().
+		Width(leftW - 2).Height(p.height - 4).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(leftBorderColor).
+		Padding(0, 1).
+		Render(lb.String())
 
-	return lipgloss.NewStyle().
-		Width(p.width).
-		Height(p.height).
-		Render(b.String())
+	// ── Right pane (detail) ──────────────────────────────
+	var rb strings.Builder
+	if len(p.entries) > 0 && p.cursor < len(p.entries) {
+		e := p.entries[p.cursor]
+		rb.WriteString(styles.PanelTitle.Render(e.Name))
+		rb.WriteString("\n\n")
+		rb.WriteString(styles.PanelHint.Render("Scope: " + e.Scope))
+		if e.Type != "" {
+			rb.WriteString("  " + styles.PanelHint.Render("Type: "+e.Type))
+		}
+		rb.WriteString("\n")
+		if len(e.Tags) > 0 {
+			rb.WriteString(styles.PanelHint.Render("Tags: " + strings.Join(e.Tags, ", ")))
+			rb.WriteString("\n")
+		}
+		if e.Description != "" {
+			rb.WriteString(styles.PanelHint.Render("Desc: " + e.Description))
+			rb.WriteString("\n")
+		}
+		rb.WriteString("\n")
+		if len(e.Facts) > 0 {
+			rb.WriteString(styles.SeparatorLine(rightW - 6))
+			rb.WriteString("\n")
+			start := p.scrollOffset
+			if start >= len(e.Facts) {
+				start = 0
+			}
+			for fi := start; fi < len(e.Facts); fi++ {
+				rb.WriteString(fmt.Sprintf("  %d. %s\n", fi+1, e.Facts[fi]))
+			}
+		}
+	} else {
+		rb.WriteString(styles.PanelHint.Render("  No entries"))
+	}
+
+	rightBorderColor := styles.Muted
+	if p.focusRight {
+		rightBorderColor = styles.Primary
+	}
+
+	rightBox := lipgloss.NewStyle().
+		Width(rightW - 2).Height(p.height - 4).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(rightBorderColor).
+		Padding(0, 1).
+		Render(rb.String())
+
+	// ── Combine ──────────────────────────────────────────
+	main := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+
+	// Footer hints
+	var hint string
+	if p.focusRight {
+		hint = "j/k scroll  h back  esc close"
+	} else {
+		hint = "j/k navigate  l/enter detail  1/2 tabs  a add  d delete  e edit  r refresh  esc close"
+	}
+	footer := styles.PanelHint.Render("  " + hint)
+
+	return lipgloss.JoinVertical(lipgloss.Left, main, footer)
 }
 
 // countTypes returns a map of memory type -> count.
@@ -314,8 +384,11 @@ func (p *Panel) countTypes() map[string]int {
 
 // Help returns a short keybinding hint line for the panel footer.
 func (p *Panel) Help() string {
-	if p.tab == TabMemories {
-		return "j/k navigate · tab switch · d delete · e edit · a add · r refresh · esc close"
+	if p.focusRight {
+		return "j/k scroll · h back · esc close"
 	}
-	return "j/k navigate · tab switch · esc close"
+	if p.tab == TabMemories {
+		return "j/k navigate · l/enter detail · 1/2 tabs · d delete · e edit · a add · r refresh · esc close"
+	}
+	return "j/k navigate · l/enter detail · 1/2 tabs · esc close"
 }

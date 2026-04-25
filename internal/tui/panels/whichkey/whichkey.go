@@ -3,6 +3,7 @@
 package whichkey
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -25,30 +26,21 @@ type Binding struct {
 	Desc string
 }
 
-// DefaultBindings returns the standard leader key bindings.
-// Uses a special layout with grouped rows and special formatting.
-func DefaultBindings() []Binding {
-	return []Binding{
-		// Group 1: Quick commands
+// defaultLeft, defaultRight, defaultMulti define the two-column grid layout.
+// Multi-key bindings (len > 1) appear full-width below the grid.
+var (
+	defaultLeft = []Binding{
 		{Key: "p", Desc: "palette"},
 		{Key: "f", Desc: "files"},
 		{Key: "a", Desc: "agents"},
-		{Key: "oa", Desc: "agent inspector"},
 		{Key: "/", Desc: "search"},
-		// Divider row (empty key)
-		{Key: "", Desc: ""},
-		{Key: "e", Desc: "edit prompt"},
-		{Key: "ev", Desc: "view section"},
-		// Divider row (empty key)
-		{Key: "", Desc: ""},
-		{Key: ".", Desc: "sessions"},
 		{Key: ";", Desc: "recent"},
-		// Divider row (empty key)
-		{Key: "", Desc: ""},
+		{Key: ".", Desc: "sessions"},
+		{Key: "e", Desc: "edit prompt"},
+	}
+	defaultRight = []Binding{
 		{Key: "w", Desc: "windows"},
 		{Key: "b", Desc: "buffers"},
-		// Divider row (empty key)
-		{Key: "", Desc: ""},
 		{Key: "C", Desc: "config"},
 		{Key: "K", Desc: "skills"},
 		{Key: "M", Desc: "memory"},
@@ -56,6 +48,18 @@ func DefaultBindings() []Binding {
 		{Key: "O", Desc: "tools"},
 		{Key: "A", Desc: "analytics"},
 	}
+	defaultMulti = []Binding{
+		{Key: "oa", Desc: "agent inspector"},
+		{Key: "ev", Desc: "view section"},
+	}
+)
+
+func DefaultBindings() []Binding {
+	var all []Binding
+	all = append(all, defaultLeft...)
+	all = append(all, defaultRight...)
+	all = append(all, defaultMulti...)
+	return all
 }
 
 // WindowBindings returns bindings for the Space+W sub-menu.
@@ -202,58 +206,71 @@ func ScheduleTimeout(gen int) tea.Cmd {
 }
 
 // View renders the popup.
+// wkColW is the fixed visible width of each two-column cell (key + desc).
+const wkColW = 22
+
+// wkFormatBinding formats a single binding into a fixed-width cell.
+func wkFormatBinding(b Binding) string {
+	key := fmt.Sprintf("%-3s", b.Key)
+	desc := b.Desc
+	styled := styles.WhichKeyKey.Render(key) + "  " + styles.WhichKeyDesc.Render(desc)
+	visLen := 3 + 2 + len(desc)
+	if pad := wkColW - visLen; pad > 0 {
+		styled += strings.Repeat(" ", pad)
+	}
+	return styled
+}
+
 func (m Model) View() string {
 	if !m.active || len(m.bindings) == 0 {
 		return ""
 	}
 
 	var lines []string
-	lines = append(lines, styles.WhichKeyTitle.Render(" <Space> bindings "))
-	lines = append(lines, styles.WhichKeySep.Render(strings.Repeat("─", 40)))
+	lines = append(lines, styles.WhichKeyTitle.Render(" <Space> "))
+	lines = append(lines, "")
 
-	// Check if this is the default bindings with grouped layout (has divider entries)
-	hasDividers := false
-	for _, b := range m.bindings {
-		if b.Key == "" && b.Desc == "" {
-			hasDividers = true
-			break
+	isDefault := len(m.bindings) == len(defaultLeft)+len(defaultRight)+len(defaultMulti)
+	if isDefault {
+		left := defaultLeft
+		right := defaultRight
+		rows := len(left)
+		if len(right) > rows {
+			rows = len(right)
 		}
-	}
-
-	if hasDividers {
-		// Grouped layout for default bindings
-		var row []string
-		for _, b := range m.bindings {
-			if b.Key == "" && b.Desc == "" {
-				// Divider: render current row and add separator
-				if len(row) > 0 {
-					lines = append(lines, "  "+strings.Join(row, "    "))
-					row = nil
-				}
-				lines = append(lines, styles.WhichKeySep.Render(strings.Repeat("─", 40)))
+		for i := 0; i < rows; i++ {
+			var l, r string
+			if i < len(left) {
+				l = wkFormatBinding(left[i])
 			} else {
-				// Add binding to current row
-				binding := styles.WhichKeyKey.Render(b.Key) + " " + styles.WhichKeyDesc.Render(b.Desc)
-				row = append(row, binding)
+				l = strings.Repeat(" ", wkColW)
+			}
+			if i < len(right) {
+				r = wkFormatBinding(right[i])
+			}
+			lines = append(lines, "  "+l+"  "+r)
+		}
+		if len(defaultMulti) > 0 {
+			lines = append(lines, "")
+			for _, b := range defaultMulti {
+				line := "  " + styles.WhichKeyKey.Render(b.Key) + "  " + styles.WhichKeyDesc.Render(b.Desc)
+				lines = append(lines, line)
 			}
 		}
-		// Render final row if any
-		if len(row) > 0 {
-			lines = append(lines, "  "+strings.Join(row, "    "))
-		}
 	} else {
-		// Regular layout for sub-menus
 		for _, b := range m.bindings {
+			if b.Key == "" && b.Desc == "" {
+				continue
+			}
 			line := "  " + styles.WhichKeyKey.Render(b.Key) + " " + styles.WhichKeySep.Render("→") + " " + styles.WhichKeyDesc.Render(b.Desc)
 			lines = append(lines, line)
 		}
 	}
 
+	lines = append(lines, "")
+	lines = append(lines, styles.WhichKeySep.Render("  esc to close"))
+
 	content := strings.Join(lines, "\n")
-
-	box := styles.WhichKeyBorder.
-		Padding(0, 1).
-		Render(content)
-
+	box := styles.WhichKeyBorder.Padding(0, 1).Render(content)
 	return box
 }

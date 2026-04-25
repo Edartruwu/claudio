@@ -32,10 +32,33 @@ const (
 	tabBackground tab = 1
 )
 
+// focusedPane identifies which pane has keyboard focus.
+type focusedPane int
+
+const (
+	paneList   focusedPane = 0
+	paneDetail focusedPane = 1
+)
+
 // spinner frames for running tasks.
 var spinFrames = []string{"◐", "◓", "●", "◑"}
 
-// Panel is the unified tasks side panel.
+// Pre-allocated styles to avoid per-frame allocations.
+var (
+	tpPrimaryBold  = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	tpDimStyle     = lipgloss.NewStyle().Foreground(styles.Dim)
+	tpDimItalic    = lipgloss.NewStyle().Foreground(styles.Dim).Italic(true)
+	tpMutedStyle   = lipgloss.NewStyle().Foreground(styles.Muted)
+	tpMutedItalic  = lipgloss.NewStyle().Foreground(styles.Muted).Italic(true)
+	tpWarningStyle = lipgloss.NewStyle().Foreground(styles.Warning)
+	tpSuccessStyle = lipgloss.NewStyle().Foreground(styles.Success)
+	tpErrorStyle   = lipgloss.NewStyle().Foreground(styles.Error)
+	tpAquaStyle    = lipgloss.NewStyle().Foreground(styles.Aqua)
+	tpOrangeStyle  = lipgloss.NewStyle().Foreground(styles.Orange)
+	tpBorderBase   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+)
+
+// Panel is the unified tasks panel with full-screen split layout.
 type Panel struct {
 	runtime *tasks.Runtime
 
@@ -46,21 +69,17 @@ type Panel struct {
 	tab    tab
 	cursor int
 	tick   int // increments on each refresh, drives spinner
+	focus  focusedPane
 
 	// Planning tab state
 	planItems []*tools.Task
 
 	// Background tab state
-	bgItems      []*tasks.TaskState
-	showOutput   bool
-	outputLines  []string
-	outputScroll int
+	bgItems []*tasks.TaskState
 
-	// Detail overlay state (planning tab)
-	showDetail      bool
-	detailTask      *tools.Task
-	detailLines     []string // word-wrapped rendered lines
-	detailScroll    int
+	// Right pane: rendered detail lines + scroll
+	detailLines  []string
+	detailScroll int
 }
 
 // New creates a new unified tasks panel.
@@ -73,19 +92,14 @@ func (p *Panel) IsActive() bool { return p.active }
 func (p *Panel) Activate() {
 	p.active = true
 	p.cursor = 0
-	p.outputLines = nil
-	p.showOutput = false
-	p.showDetail = false
-	p.detailTask = nil
+	p.focus = paneList
 	p.detailLines = nil
+	p.detailScroll = 0
 	p.refresh()
 }
 
 func (p *Panel) Deactivate() {
 	p.active = false
-	p.outputLines = nil
-	p.showDetail = false
-	p.detailTask = nil
 	p.detailLines = nil
 }
 
@@ -94,14 +108,10 @@ func (p *Panel) SetSize(w, h int) {
 	p.height = h
 }
 
-// HandleRefresh is called when a RefreshMsg arrives. Returns a tick cmd if
-// any background task is still running.
+// HandleRefresh is called when a RefreshMsg arrives.
 func (p *Panel) HandleRefresh() tea.Cmd {
 	p.tick++
 	p.refresh()
-	if p.tab == tabBackground && p.showOutput {
-		p.loadOutput()
-	}
 	if p.hasRunningBg() {
 		return tickCmd()
 	}
@@ -109,7 +119,6 @@ func (p *Panel) HandleRefresh() tea.Cmd {
 }
 
 // ScheduleRefresh returns a cmd that immediately starts a refresh tick.
-// Call this when the background tab becomes active.
 func ScheduleRefresh() tea.Cmd {
 	return tickCmd()
 }
@@ -135,8 +144,8 @@ func (p *Panel) refresh() {
 		p.bgItems = p.runtime.List(false)
 	}
 
-	// Clamp cursor
 	p.clampCursor()
+	p.buildDetailLines()
 }
 
 func (p *Panel) clampCursor() {
@@ -166,180 +175,24 @@ func (p *Panel) hasRunningBg() bool {
 	return false
 }
 
-func (p *Panel) loadOutput() {
-	if p.tab != tabBackground || p.cursor >= len(p.bgItems) {
-		p.outputLines = nil
-		return
-	}
-	t := p.bgItems[p.cursor]
-	if t.OutputFile == "" {
-		p.outputLines = []string{"(no output file)"}
-		return
-	}
-	f, err := os.Open(t.OutputFile)
-	if err != nil {
-		p.outputLines = []string{"(output unavailable)"}
-		return
-	}
-	defer f.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	// Keep last N lines
-	const maxLines = 20
-	if len(lines) > maxLines {
-		lines = lines[len(lines)-maxLines:]
-	}
-	p.outputLines = lines
-	// Auto-scroll to bottom
-	p.outputScroll = 0
-}
-
-func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
-	// Detail overlay captures all keys
-	if p.showDetail {
-		switch msg.String() {
-		case "esc", "q", "enter":
-			p.showDetail = false
-			p.detailTask = nil
+// buildDetailLines populates p.detailLines for the currently selected item.
+func (p *Panel) buildDetailLines() {
+	if p.tab == tabPlanning {
+		if p.cursor >= len(p.planItems) {
 			p.detailLines = nil
-		case "j", "down":
-			maxScroll := len(p.detailLines) - (p.height - 6)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.detailScroll < maxScroll {
-				p.detailScroll++
-			}
-		case "k", "up":
-			if p.detailScroll > 0 {
-				p.detailScroll--
-			}
-		case "g":
-			p.detailScroll = 0
-		case "G":
-			maxScroll := len(p.detailLines) - (p.height - 6)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			p.detailScroll = maxScroll
+			return
 		}
-		return nil, true
+		p.detailLines = p.buildPlanDetail(p.planItems[p.cursor])
+	} else {
+		if p.cursor >= len(p.bgItems) {
+			p.detailLines = nil
+			return
+		}
+		p.detailLines = p.buildBgDetail(p.bgItems[p.cursor])
 	}
-
-	switch msg.String() {
-	// Tab switching
-	case "1":
-		if p.tab != tabPlanning {
-			p.tab = tabPlanning
-			p.cursor = 0
-			p.showOutput = false
-			p.refresh()
-		}
-		return nil, true
-	case "2":
-		if p.tab != tabBackground {
-			p.tab = tabBackground
-			p.cursor = 0
-			p.showOutput = false
-			p.refresh()
-			if p.hasRunningBg() {
-				return tickCmd(), true
-			}
-		}
-		return nil, true
-	case "tab":
-		if p.tab == tabPlanning {
-			p.tab = tabBackground
-			p.showOutput = false
-			p.refresh()
-			if p.hasRunningBg() {
-				return tickCmd(), true
-			}
-		} else {
-			p.tab = tabPlanning
-			p.showOutput = false
-			p.refresh()
-		}
-		p.cursor = 0
-		return nil, true
-
-	// Navigation
-	case "j", "down":
-		if p.cursor < p.itemCount()-1 {
-			p.cursor++
-			if p.showOutput {
-				p.loadOutput()
-			}
-		}
-		return nil, true
-	case "k", "up":
-		if p.cursor > 0 {
-			p.cursor--
-			if p.showOutput {
-				p.loadOutput()
-			}
-		}
-		return nil, true
-	case "g":
-		p.cursor = 0
-		if p.showOutput {
-			p.loadOutput()
-		}
-		return nil, true
-	case "G":
-		p.cursor = max(0, p.itemCount()-1)
-		if p.showOutput {
-			p.loadOutput()
-		}
-		return nil, true
-
-	// Actions
-	case "x":
-		if p.tab == tabBackground && p.cursor < len(p.bgItems) {
-			t := p.bgItems[p.cursor]
-			if t.Status == tasks.StatusRunning {
-				p.runtime.Kill(t.ID)
-				p.refresh()
-			}
-		}
-		return nil, true
-	case "o":
-		if p.tab == tabBackground {
-			p.showOutput = !p.showOutput
-			if p.showOutput {
-				p.loadOutput()
-			}
-		}
-		return nil, true
-	case "r":
-		p.refresh()
-		if p.tab == tabBackground && p.showOutput {
-			p.loadOutput()
-		}
-		if p.tab == tabBackground && p.hasRunningBg() {
-			return tickCmd(), true
-		}
-		return nil, true
-	case "enter":
-		if p.tab == tabPlanning && p.cursor < len(p.planItems) {
-			t := p.planItems[p.cursor]
-			p.openDetail(t)
-		}
-		return nil, true
-	}
-	return nil, false
 }
 
-func (p *Panel) openDetail(t *tools.Task) {
-	p.showDetail = true
-	p.detailScroll = 0
-	p.detailTask = t
-
-	// Build markdown content
+func (p *Panel) buildPlanDetail(t *tools.Task) []string {
 	var md strings.Builder
 	statusLabel := map[string]string{
 		"pending":     "⬜ Pending",
@@ -363,8 +216,7 @@ func (p *Panel) openDetail(t *tools.Task) {
 		md.WriteString("*No description provided.*\n")
 	}
 
-	// Render markdown via glamour
-	contentWidth := p.width - 4
+	contentWidth := p.rightPaneWidth() - 4
 	if contentWidth < 10 {
 		contentWidth = 10
 	}
@@ -378,204 +230,439 @@ func (p *Panel) openDetail(t *tools.Task) {
 			rendered = out
 		}
 	}
-
-	// Split into lines for scrolling
-	p.detailLines = strings.Split(rendered, "\n")
+	return strings.Split(rendered, "\n")
 }
 
-func (p *Panel) renderDetail() string {
+func (p *Panel) buildBgDetail(t *tasks.TaskState) []string {
 	var b strings.Builder
 
-	// Header
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-	hintStyle := styles.PanelHint
+	// Header section
+	b.WriteString(tpPrimaryBold.Render(t.Description))
+	b.WriteString("\n\n")
 
-	b.WriteString(titleStyle.Render("  Task Detail"))
-	b.WriteString("\n")
-	b.WriteString(styles.SeparatorLine(p.width))
-	b.WriteString("\n")
+	// Metadata rows
+	typeLabel := map[tasks.TaskType]string{
+		tasks.TypeShell: "bash",
+		tasks.TypeAgent: "agent",
+		tasks.TypeDream: "dream",
+	}[t.Type]
+	if typeLabel == "" {
+		typeLabel = "task"
+	}
+	b.WriteString(tpMutedStyle.Render("Type:   ") + tpAquaStyle.Render(typeLabel) + "\n")
+	b.WriteString(tpMutedStyle.Render("ID:     ") + tpDimStyle.Render(t.ID) + "\n")
 
-	// Scrollable content area
-	contentH := p.height - 5 // header(1) + sep(1) + bottom_sep(1) + hint(1) + padding(1)
-	if contentH < 1 {
-		contentH = 1
+	statusColor := statusStyleBg(t.Status)
+	b.WriteString(tpMutedStyle.Render("Status: ") + statusColor.Render(string(t.Status)) + "\n")
+
+	dur := smartDuration(t.StartTime, t.EndTime)
+	b.WriteString(tpMutedStyle.Render("Time:   ") + tpDimStyle.Render(dur) + "\n")
+
+	if t.ExitCode != nil {
+		exitStr := fmt.Sprintf("%d", *t.ExitCode)
+		exitStyle := tpSuccessStyle
+		if *t.ExitCode != 0 {
+			exitStyle = tpErrorStyle
+		}
+		b.WriteString(tpMutedStyle.Render("Exit:   ") + exitStyle.Render(exitStr) + "\n")
+	}
+	if t.Error != "" {
+		b.WriteString("\n" + tpErrorStyle.Render("Error:") + "\n")
+		b.WriteString(tpDimStyle.Render(t.Error) + "\n")
+	}
+	if t.Command != "" {
+		b.WriteString("\n" + tpMutedItalic.Render("Command:") + "\n")
+		b.WriteString(tpDimStyle.Render(t.Command) + "\n")
 	}
 
-	start := p.detailScroll
-	end := start + contentH
-	if end > len(p.detailLines) {
-		end = len(p.detailLines)
-	}
+	// Output section
+	b.WriteString("\n" + tpMutedItalic.Render("Output:") + "\n")
+	b.WriteString(strings.Repeat("─", p.rightPaneWidth()-4) + "\n")
 
-	for i := start; i < end; i++ {
-		b.WriteString(p.detailLines[i])
-		b.WriteString("\n")
-	}
-
-	// Scroll indicator
-	totalLines := len(p.detailLines)
-	scrollPct := 0
-	if totalLines > contentH {
-		scrollPct = (p.detailScroll * 100) / (totalLines - contentH)
+	if t.OutputFile != "" {
+		f, err := os.Open(t.OutputFile)
+		if err == nil {
+			defer f.Close()
+			var lines []string
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				lines = append(lines, scanner.Text())
+			}
+			if len(lines) == 0 {
+				b.WriteString(tpMutedStyle.Render("(no output yet)") + "\n")
+			} else {
+				for _, ln := range lines {
+					if len(ln) > p.rightPaneWidth()-6 {
+						ln = ln[:p.rightPaneWidth()-9] + "..."
+					}
+					b.WriteString(tpDimStyle.Render("> "+ln) + "\n")
+				}
+			}
+		} else {
+			b.WriteString(tpMutedStyle.Render("(output unavailable)") + "\n")
+		}
 	} else {
-		scrollPct = 100
-	}
-	scrollInfo := fmt.Sprintf("%d%%", scrollPct)
-	if totalLines > contentH {
-		scrollInfo += fmt.Sprintf(" (%d/%d)", p.detailScroll+contentH, totalLines)
+		b.WriteString(tpMutedStyle.Render("(no output file)") + "\n")
 	}
 
-	b.WriteString(styles.SeparatorLine(p.width))
-	b.WriteString("\n")
-	hint := fmt.Sprintf("  j/k scroll · g/G top/bot · esc close   %s", scrollInfo)
-	b.WriteString(hintStyle.Render(hint))
-
-	return lipgloss.NewStyle().
-		Width(p.width).
-		Height(p.height).
-		Render(b.String())
+	return strings.Split(b.String(), "\n")
 }
+
+func statusStyleBg(s tasks.TaskStatus) lipgloss.Style {
+	switch s {
+	case tasks.StatusRunning:
+		return tpWarningStyle
+	case tasks.StatusCompleted:
+		return tpSuccessStyle
+	case tasks.StatusFailed:
+		return tpErrorStyle
+	case tasks.StatusKilled:
+		return tpMutedStyle
+	default:
+		return tpDimStyle
+	}
+}
+
+// ── Key handling ──────────────────────────────────────────────────────────────
+
+func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
+	if p.focus == paneDetail {
+		return p.updateDetail(msg)
+	}
+	return p.updateList(msg)
+}
+
+func (p *Panel) updateList(msg tea.KeyMsg) (tea.Cmd, bool) {
+	switch msg.String() {
+	case "1":
+		if p.tab != tabPlanning {
+			p.tab = tabPlanning
+			p.cursor = 0
+			p.detailScroll = 0
+			p.refresh()
+		}
+		return nil, true
+	case "2":
+		if p.tab != tabBackground {
+			p.tab = tabBackground
+			p.cursor = 0
+			p.detailScroll = 0
+			p.refresh()
+			if p.hasRunningBg() {
+				return tickCmd(), true
+			}
+		}
+		return nil, true
+	case "tab":
+		if p.tab == tabPlanning {
+			p.tab = tabBackground
+			p.refresh()
+			if p.hasRunningBg() {
+				return tickCmd(), true
+			}
+		} else {
+			p.tab = tabPlanning
+			p.refresh()
+		}
+		p.cursor = 0
+		p.detailScroll = 0
+		return nil, true
+
+	case "j", "down":
+		if p.cursor < p.itemCount()-1 {
+			p.cursor++
+			p.detailScroll = 0
+			p.buildDetailLines()
+		}
+		return nil, true
+	case "k", "up":
+		if p.cursor > 0 {
+			p.cursor--
+			p.detailScroll = 0
+			p.buildDetailLines()
+		}
+		return nil, true
+	case "g":
+		p.cursor = 0
+		p.detailScroll = 0
+		p.buildDetailLines()
+		return nil, true
+	case "G":
+		p.cursor = max(0, p.itemCount()-1)
+		p.detailScroll = 0
+		p.buildDetailLines()
+		return nil, true
+
+	case "l", "enter", "right":
+		// Move focus to detail pane
+		if p.itemCount() > 0 {
+			p.focus = paneDetail
+		}
+		return nil, true
+
+	case "x":
+		if p.tab == tabBackground && p.cursor < len(p.bgItems) {
+			t := p.bgItems[p.cursor]
+			if t.Status == tasks.StatusRunning {
+				p.runtime.Kill(t.ID)
+				p.refresh()
+			}
+		}
+		return nil, true
+	case "r":
+		p.refresh()
+		if p.tab == tabBackground && p.hasRunningBg() {
+			return tickCmd(), true
+		}
+		return nil, true
+	}
+	return nil, false
+}
+
+func (p *Panel) updateDetail(msg tea.KeyMsg) (tea.Cmd, bool) {
+	detailH := p.detailContentHeight()
+	maxScroll := len(p.detailLines) - detailH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	switch msg.String() {
+	case "esc", "q", "h", "left":
+		p.focus = paneList
+	case "j", "down":
+		if p.detailScroll < maxScroll {
+			p.detailScroll++
+		}
+	case "k", "up":
+		if p.detailScroll > 0 {
+			p.detailScroll--
+		}
+	case "ctrl+d":
+		p.detailScroll += detailH / 2
+		if p.detailScroll > maxScroll {
+			p.detailScroll = maxScroll
+		}
+	case "ctrl+u":
+		p.detailScroll -= detailH / 2
+		if p.detailScroll < 0 {
+			p.detailScroll = 0
+		}
+	case "g":
+		p.detailScroll = 0
+	case "G":
+		p.detailScroll = maxScroll
+	default:
+		return nil, false
+	}
+	return nil, true
+}
+
+// ── Layout helpers ────────────────────────────────────────────────────────────
+
+func (p *Panel) leftPaneWidth() int {
+	w := p.width * 30 / 100
+	if w < 22 {
+		w = 22
+	}
+	if w > p.width-40 {
+		w = p.width - 40
+	}
+	return w
+}
+
+func (p *Panel) rightPaneWidth() int {
+	// total = left(+2 border) + right(+2 border)
+	rw := p.width - p.leftPaneWidth() - 4
+	if rw < 20 {
+		rw = 20
+	}
+	return rw
+}
+
+func (p *Panel) innerHeight() int {
+	h := p.height - 2 // subtract border top+bottom
+	if h < 2 {
+		h = 2
+	}
+	return h
+}
+
+func (p *Panel) detailContentHeight() int {
+	// innerHeight minus title(1) + sep(1) + hint(1) rows
+	h := p.innerHeight() - 3
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+func (p *Panel) borderStyle(active bool) lipgloss.Style {
+	s := tpBorderBase
+	if active {
+		return s.BorderForeground(styles.Primary)
+	}
+	return s.BorderForeground(styles.Muted)
+}
+
+// ── View ──────────────────────────────────────────────────────────────────────
 
 func (p *Panel) View() string {
 	if !p.active {
 		return ""
 	}
 
-	if p.showDetail {
-		return p.renderDetail()
-	}
+	leftPane := p.renderLeftPane()
+	rightPane := p.renderRightPane()
 
-	var b strings.Builder
+	innerH := p.innerHeight()
+	leftStyled := p.borderStyle(p.focus == paneList).
+		Width(p.leftPaneWidth()).Height(innerH).Render(leftPane)
 
-	// ── Tab bar ──────────────────────────────────────────────
-	tab1Label := " 1 Planning "
-	tab2Label := " 2 Background "
-	activeTabStyle := lipgloss.NewStyle().
-		Foreground(styles.Primary).
-		Bold(true).
-		Underline(true)
-	inactiveTabStyle := lipgloss.NewStyle().
-		Foreground(styles.Muted)
+	rw := p.rightPaneWidth()
+	rightStyled := p.borderStyle(p.focus == paneDetail).
+		Width(rw).Height(innerH).Render(rightPane)
 
-	var tab1, tab2 string
-	if p.tab == tabPlanning {
-		tab1 = activeTabStyle.Render(tab1Label)
-		tab2 = inactiveTabStyle.Render(tab2Label)
-	} else {
-		tab1 = inactiveTabStyle.Render(tab1Label)
-		tab2 = activeTabStyle.Render(tab2Label)
-	}
-
-	titleRow := styles.PanelTitle.Render("Tasks") + "  " + tab1 + tab2
-	b.WriteString(titleRow)
-	b.WriteString("\n")
-	b.WriteString(styles.SeparatorLine(p.width))
-	b.WriteString("\n")
-
-	if p.tab == tabPlanning {
-		p.renderPlanning(&b)
-	} else {
-		p.renderBackground(&b)
-	}
-
-	return lipgloss.NewStyle().
-		Width(p.width).
-		Height(p.height).
-		Render(b.String())
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
 }
 
-// ── Planning tab ──────────────────────────────────────────────────────────────
+// renderLeftPane renders the task list pane.
+func (p *Panel) renderLeftPane() string {
+	w := p.leftPaneWidth() - 4 // subtract border
+	var b strings.Builder
 
-func (p *Panel) renderPlanning(b *strings.Builder) {
-	if len(p.planItems) == 0 {
-		b.WriteString(styles.PanelHint.Render("  No planning tasks"))
-		b.WriteString("\n")
-		p.writeHint(b, "  tab switch · esc close")
-		return
-	}
+	// Title + tab bar
+	titleStr := styles.PanelTitle.Render("TASKS")
+	b.WriteString(titleStr)
+	b.WriteString("\n")
+	b.WriteString(styles.SeparatorLine(w))
+	b.WriteString("\n")
 
-	// How much height to give the list vs detail pane
-	detailH := 0
-	listH := p.height - 5 // header + separator + hint rows
-	if listH < 3 {
-		listH = 3
+	// Tabs
+	activeTab := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Underline(true)
+	inactiveTab := lipgloss.NewStyle().Foreground(styles.Muted)
+	tab1, tab2 := inactiveTab.Render("1 Plan"), inactiveTab.Render("2 BG")
+	if p.tab == tabPlanning {
+		tab1 = activeTab.Render("1 Plan")
+	} else {
+		tab2 = activeTab.Render("2 BG")
 	}
+	b.WriteString(tab1 + "  " + tab2)
+	b.WriteString("\n")
+	b.WriteString(styles.SeparatorLine(w))
+	b.WriteString("\n")
 
-	// If a task with description is selected, show detail pane
-	var sel *tools.Task
-	if p.cursor < len(p.planItems) {
-		sel = p.planItems[p.cursor]
-	}
-	if sel != nil && sel.Description != "" {
-		detailH = 4
-		listH -= detailH + 1 // +1 for separator
-	}
+	// List
+	listH := p.innerHeight() - 5 // title + sep + tabs + sep + hint
 	if listH < 1 {
 		listH = 1
 	}
 
-	// Scrolling window
-	startIdx := 0
-	if p.cursor >= listH {
-		startIdx = p.cursor - listH + 1
-	}
-	endIdx := startIdx + listH
-	if endIdx > len(p.planItems) {
-		endIdx = len(p.planItems)
+	var items int
+	if p.tab == tabPlanning {
+		items = len(p.planItems)
+	} else {
+		items = len(p.bgItems)
 	}
 
-	for i := startIdx; i < endIdx; i++ {
-		t := p.planItems[i]
-		selected := i == p.cursor
-		b.WriteString(p.renderPlanRow(t, selected))
+	if items == 0 {
+		b.WriteString(tpMutedStyle.Render("  (empty)"))
 		b.WriteString("\n")
-	}
-
-	// Detail pane
-	if sel != nil && sel.Description != "" {
-		b.WriteString(styles.SeparatorLine(p.width))
-		b.WriteString("\n")
-		descTitle := lipgloss.NewStyle().Foreground(styles.Muted).Italic(true).Render("  Description:")
-		b.WriteString(descTitle)
-		b.WriteString("\n")
-		lines := wordWrap(sel.Description, p.width-4)
-		shown := 0
-		for _, ln := range lines {
-			if shown >= detailH-2 {
-				break
+	} else {
+		startIdx := 0
+		if p.cursor >= listH {
+			startIdx = p.cursor - listH + 1
+		}
+		endIdx := startIdx + listH
+		if endIdx > items {
+			endIdx = items
+		}
+		if p.tab == tabPlanning {
+			for i := startIdx; i < endIdx; i++ {
+				b.WriteString(p.renderPlanRow(p.planItems[i], i == p.cursor, w))
+				b.WriteString("\n")
 			}
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(4).Render(ln))
-			b.WriteString("\n")
-			shown++
+		} else {
+			for i := startIdx; i < endIdx; i++ {
+				b.WriteString(p.renderBgRow(p.bgItems[i], i == p.cursor, w))
+				b.WriteString("\n")
+			}
 		}
 	}
 
-	b.WriteString("\n")
-	p.writeHint(b, "  j/k nav · enter detail · tab switch · r refresh · esc close")
+	// Running count for BG tab
+	if p.tab == tabBackground {
+		running := 0
+		for _, t := range p.bgItems {
+			if t.Status == tasks.StatusRunning {
+				running++
+			}
+		}
+		if running > 0 {
+			b.WriteString("\n" + tpWarningStyle.Render(fmt.Sprintf("  %d running", running)) + "\n")
+		}
+	}
+
+	return b.String()
 }
 
-func (p *Panel) renderPlanRow(t *tools.Task, selected bool) string {
+// renderRightPane renders the detail pane for the selected item.
+func (p *Panel) renderRightPane() string {
+	w := p.rightPaneWidth() - 4 // subtract border
+	var b strings.Builder
+
+	// Header
+	b.WriteString(tpPrimaryBold.Render("  Detail"))
+	b.WriteString("\n")
+	b.WriteString(styles.SeparatorLine(w))
+	b.WriteString("\n")
+
+	if p.itemCount() == 0 || len(p.detailLines) == 0 {
+		b.WriteString(tpMutedStyle.Render("  Select a task"))
+		return b.String()
+	}
+
+	contentH := p.detailContentHeight()
+	start := p.detailScroll
+	end := start + contentH
+	if end > len(p.detailLines) {
+		end = len(p.detailLines)
+	}
+	for i := start; i < end; i++ {
+		b.WriteString(p.detailLines[i])
+		b.WriteString("\n")
+	}
+
+	// Scroll hint
+	totalLines := len(p.detailLines)
+	if totalLines > contentH {
+		pct := p.detailScroll * 100 / (totalLines - contentH)
+		b.WriteString("\n" + styles.SeparatorLine(w) + "\n")
+		b.WriteString(tpMutedStyle.Render(fmt.Sprintf("  j/k scroll · g/G top/bot   %d%%", pct)))
+	}
+
+	return b.String()
+}
+
+// ── Row renderers ─────────────────────────────────────────────────────────────
+
+func (p *Panel) renderPlanRow(t *tools.Task, selected bool, w int) string {
 	prefix := "  "
 	if selected {
 		prefix = styles.ViewportCursor.Render("▸ ")
 	}
 
-	// Status icon + color
 	var icon string
 	switch t.Status {
 	case "in_progress":
-		icon = lipgloss.NewStyle().Foreground(styles.Warning).Render("◐")
+		icon = tpWarningStyle.Render("◐")
 	case "completed":
-		icon = lipgloss.NewStyle().Foreground(styles.Success).Render("●")
-	default: // pending
-		icon = lipgloss.NewStyle().Foreground(styles.Dim).Render("○")
+		icon = tpSuccessStyle.Render("●")
+	default:
+		icon = tpDimStyle.Render("○")
 	}
 
-	// ID badge
-	idBadge := lipgloss.NewStyle().Foreground(styles.Muted).Render(fmt.Sprintf("#%s", t.ID))
+	idBadge := tpMutedStyle.Render(fmt.Sprintf("#%s", t.ID))
 
-	// Subject (truncated)
-	maxSubject := p.width - 14
+	maxSubject := w - 12
 	if maxSubject < 5 {
 		maxSubject = 5
 	}
@@ -587,134 +674,50 @@ func (p *Panel) renderPlanRow(t *tools.Task, selected bool) string {
 	if selected {
 		nameStyle = styles.PanelItemSelected
 	}
-	subjectStr := nameStyle.Render(subject)
 
-	// Assignee badge
-	ownerStr := ""
+	row := prefix + icon + " " + idBadge + " " + nameStyle.Render(subject)
 	if t.AssignedTo != "" {
-		ownerStr = " " + lipgloss.NewStyle().Foreground(styles.Aqua).Render("@"+t.AssignedTo)
+		assignee := tpAquaStyle.Render("@" + t.AssignedTo)
+		if len(row)+len(t.AssignedTo)+2 <= w {
+			row += " " + assignee
+		}
 	}
-
-	return prefix + icon + " " + idBadge + " " + subjectStr + ownerStr
+	return row
 }
 
-// ── Background tab ────────────────────────────────────────────────────────────
-
-func (p *Panel) renderBackground(b *strings.Builder) {
-	if len(p.bgItems) == 0 {
-		b.WriteString(styles.PanelHint.Render("  No background tasks"))
-		b.WriteString("\n")
-		p.writeHint(b, "  tab switch · esc close")
-		return
-	}
-
-	// Split height between list and output pane
-	outputPaneH := 0
-	listH := p.height - 5
-	if p.showOutput {
-		outputPaneH = 8
-		listH -= outputPaneH + 1
-	}
-	if listH < 2 {
-		listH = 2
-	}
-
-	// Scrolling window
-	startIdx := 0
-	if p.cursor >= listH {
-		startIdx = p.cursor - listH + 1
-	}
-	endIdx := startIdx + listH
-	if endIdx > len(p.bgItems) {
-		endIdx = len(p.bgItems)
-	}
-
-	for i := startIdx; i < endIdx; i++ {
-		t := p.bgItems[i]
-		selected := i == p.cursor
-		b.WriteString(p.renderBgRow(t, selected))
-		b.WriteString("\n")
-	}
-
-	// Output pane
-	if p.showOutput {
-		b.WriteString(styles.SeparatorLine(p.width))
-		b.WriteString("\n")
-		outTitle := lipgloss.NewStyle().Foreground(styles.Muted).Italic(true).Render("  Output:")
-		b.WriteString(outTitle)
-		b.WriteString("\n")
-		shown := 0
-		for _, ln := range p.outputLines {
-			if shown >= outputPaneH-2 {
-				break
-			}
-			if len(ln) > p.width-4 {
-				ln = ln[:p.width-7] + "..."
-			}
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Dim).PaddingLeft(2).Render("> " + ln))
-			b.WriteString("\n")
-			shown++
-		}
-		if len(p.outputLines) == 0 {
-			b.WriteString(styles.PanelHint.Render("    (no output yet)"))
-			b.WriteString("\n")
-		}
-	}
-
-	// Running count footer
-	running := 0
-	for _, t := range p.bgItems {
-		if t.Status == tasks.StatusRunning {
-			running++
-		}
-	}
-	b.WriteString("\n")
-	if running > 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Warning).PaddingLeft(2).
-			Render(fmt.Sprintf("%d running", running)))
-		b.WriteString("\n")
-	}
-
-	hint := "  j/k · x kill · o output · tab switch · esc close"
-	p.writeHint(b, hint)
-}
-
-func (p *Panel) renderBgRow(t *tasks.TaskState, selected bool) string {
+func (p *Panel) renderBgRow(t *tasks.TaskState, selected bool, w int) string {
 	prefix := "  "
 	if selected {
 		prefix = styles.ViewportCursor.Render("▸ ")
 	}
 
-	// Status icon — animated spinner for running
 	var icon string
 	switch t.Status {
 	case tasks.StatusRunning:
 		frame := spinFrames[p.tick%len(spinFrames)]
-		icon = lipgloss.NewStyle().Foreground(styles.Warning).Render(frame)
+		icon = tpWarningStyle.Render(frame)
 	case tasks.StatusCompleted:
-		icon = lipgloss.NewStyle().Foreground(styles.Success).Render("●")
+		icon = tpSuccessStyle.Render("●")
 	case tasks.StatusFailed:
-		icon = lipgloss.NewStyle().Foreground(styles.Error).Render("✗")
+		icon = tpErrorStyle.Render("✗")
 	case tasks.StatusKilled:
-		icon = lipgloss.NewStyle().Foreground(styles.Muted).Render("⊘")
+		icon = tpMutedStyle.Render("⊘")
 	default:
-		icon = lipgloss.NewStyle().Foreground(styles.Dim).Render("○")
+		icon = tpDimStyle.Render("○")
 	}
 
-	// Type badge
 	var typeBadge string
 	switch t.Type {
 	case tasks.TypeShell:
-		typeBadge = lipgloss.NewStyle().Foreground(styles.Aqua).Render("[bash]")
+		typeBadge = tpAquaStyle.Render("[sh]")
 	case tasks.TypeAgent:
-		typeBadge = lipgloss.NewStyle().Foreground(styles.Primary).Render("[agent]")
+		typeBadge = lipgloss.NewStyle().Foreground(styles.Primary).Render("[ag]")
 	case tasks.TypeDream:
-		typeBadge = lipgloss.NewStyle().Foreground(styles.Orange).Render("[dream]")
+		typeBadge = tpOrangeStyle.Render("[dr]")
 	default:
-		typeBadge = lipgloss.NewStyle().Foreground(styles.Dim).Render("[task]")
+		typeBadge = tpDimStyle.Render("[--]")
 	}
 
-	// Description
 	desc := t.Description
 	if desc == "" {
 		desc = t.Command
@@ -722,7 +725,7 @@ func (p *Panel) renderBgRow(t *tasks.TaskState, selected bool) string {
 	if desc == "" {
 		desc = t.ID
 	}
-	maxDesc := p.width - 22
+	maxDesc := w - 16
 	if maxDesc < 5 {
 		maxDesc = 5
 	}
@@ -733,36 +736,12 @@ func (p *Panel) renderBgRow(t *tasks.TaskState, selected bool) string {
 	if selected {
 		nameStyle = styles.PanelItemSelected
 	}
-	descStr := nameStyle.Render(desc)
 
-	// Duration — smarter format
 	dur := smartDuration(t.StartTime, t.EndTime)
-	durStr := lipgloss.NewStyle().Foreground(styles.Dim).Render(dur)
-
-	row := prefix + icon + " " + typeBadge + " " + descStr + " " + durStr
-
-	// Exit code for failed bash tasks
-	if selected && t.ExitCode != nil && t.Status == tasks.StatusFailed {
-		exitStr := lipgloss.NewStyle().Foreground(styles.Error).
-			Render(fmt.Sprintf(" (exit %d)", *t.ExitCode))
-		row += exitStr
-	}
-	// Error detail inline for selected
-	if selected && t.Error != "" {
-		errLine := "\n    " + styles.ErrorStyle.Render(truncate(t.Error, p.width-6))
-		row += errLine
-	}
-
-	return row
+	return prefix + icon + " " + typeBadge + " " + nameStyle.Render(desc) + " " + tpDimStyle.Render(dur)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-func (p *Panel) writeHint(b *strings.Builder, hint string) {
-	b.WriteString(styles.SeparatorLine(p.width))
-	b.WriteString("\n")
-	b.WriteString(styles.PanelHint.Render(hint))
-}
 
 func smartDuration(start time.Time, end *time.Time) string {
 	var d time.Duration
@@ -783,42 +762,6 @@ func smartDuration(start time.Time, end *time.Time) string {
 	return fmt.Sprintf("%dm%ds", mins, secs)
 }
 
-func wordWrap(text string, width int) []string {
-	if width <= 0 {
-		return []string{text}
-	}
-	var lines []string
-	for _, paragraph := range strings.Split(text, "\n") {
-		words := strings.Fields(paragraph)
-		if len(words) == 0 {
-			lines = append(lines, "")
-			continue
-		}
-		current := ""
-		for _, w := range words {
-			if current == "" {
-				current = w
-			} else if len(current)+1+len(w) <= width {
-				current += " " + w
-			} else {
-				lines = append(lines, current)
-				current = w
-			}
-		}
-		if current != "" {
-			lines = append(lines, current)
-		}
-	}
-	return lines
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n-1] + "…"
-}
-
 func max(a, b int) int {
 	if a > b {
 		return a
@@ -828,8 +771,11 @@ func max(a, b int) int {
 
 // Help returns a short keybinding hint line for the panel footer.
 func (p *Panel) Help() string {
-	if p.tab == tabPlanning {
-		return "j/k navigate · enter detail · tab switch · r refresh · esc close"
+	if p.focus == paneDetail {
+		return "j/k scroll · ctrl+d/u half-page · g/G top/bot · h/esc back"
 	}
-	return "j/k navigate · x kill · o output · tab switch · r refresh · esc close"
+	if p.tab == tabPlanning {
+		return "j/k nav · l/enter detail · 1/2 tab · r refresh · esc close"
+	}
+	return "j/k nav · l/enter detail · x kill · 1/2 tab · r refresh · esc close"
 }

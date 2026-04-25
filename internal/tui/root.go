@@ -3408,6 +3408,15 @@ func (m Model) planApprovalOffset() int {
 func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	numOptions := m.planApprovalOptionCount() - 1 // max cursor index
 
+	// Direct number shortcut: press 1-5 to select and confirm.
+	if s := msg.String(); len(s) == 1 && s >= "1" && s <= "5" {
+		idx := int(s[0] - '1')
+		if idx <= numOptions {
+			m.planApprovalCursor = idx
+			return m.handlePlanApprovalKey(tea.KeyMsg{Type: tea.KeyEnter})
+		}
+	}
+
 	// Map cursor position to logical action using offset.
 	// With clear-context: 0=clear+auto, 1=auto, 2=manual, 3=revise, 4=chat
 	// Without:            0=auto,        1=manual, 2=revise, 3=feedback
@@ -3537,11 +3546,13 @@ func (m Model) renderAskUserDialog(width int) string {
 			prefix = "▸ "
 		}
 		if q.MultiSelect {
-			check := "[ ]"
+			var check string
 			if d.multiSelected[i] {
-				check = "[x]"
+				check = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("◉")
+			} else {
+				check = lipgloss.NewStyle().Foreground(styles.Muted).Render("○")
 			}
-			line := prefix + check + " " + opt
+			line := prefix + check + "  " + opt
 			if i == d.optCursor && !d.typingOther {
 				b.WriteString(styles.AskUserSelected.Render(line))
 			} else {
@@ -3556,18 +3567,18 @@ func (m Model) renderAskUserDialog(width int) string {
 		}
 		b.WriteString("\n")
 	}
-	// "Other" inline-typing option.
+	// Separator before "Other"
+	b.WriteString(styles.AskUserDim.Render("  ─────────────────────────────"))
+	b.WriteString("\n")
+	// "Other" inline-typing option with pencil icon.
 	if d.typingOther {
 		inputText := d.freeText + "█"
-		b.WriteString(styles.AskUserSelected.Render("▸ Other: " + inputText))
+		b.WriteString(styles.AskUserSelected.Render("▸ ✎  " + inputText))
 	} else if d.optCursor == otherIdx {
-		b.WriteString(styles.AskUserSelected.Render("▸ Other (type your own...)"))
+		b.WriteString(styles.AskUserSelected.Render("▸ ✎  Other…"))
 	} else {
-		b.WriteString(styles.AskUserDim.Render("  Other (type your own...)"))
+		b.WriteString(styles.AskUserDim.Render("  ✎  Other…"))
 	}
-	b.WriteString("\n")
-	// Divider before footer option.
-	b.WriteString(styles.AskUserDim.Render("─────────────────────────"))
 	b.WriteString("\n")
 	// "Chat about this" footer option.
 	if !d.typingOther && d.optCursor == chatIdx {
@@ -3661,18 +3672,21 @@ func (m Model) renderPlanApprovalDialog(width int) string {
 	}
 	for i, opt := range options {
 		cursor := "  "
-		style := lipgloss.NewStyle()
+		numStyle := lipgloss.NewStyle().Foreground(styles.Muted)
+		optStyle := lipgloss.NewStyle()
 		if i == m.planApprovalCursor {
 			cursor = styles.PlanOptionCursor.Render("› ")
-			style = styles.PlanOptionStyle
+			numStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+			optStyle = styles.PlanOptionStyle
 		}
-		label := cursor + style.Render(opt)
+		num := numStyle.Render(fmt.Sprintf("%d", i+1))
+		label := cursor + num + "  " + optStyle.Render(opt)
 		rows = append(rows, label)
 	}
 
 	rows = append(rows, "")
 	hint := styles.PlanHintStyle.Render(
-		"j/k navigate · enter confirm · esc dismiss",
+		"j/k · 1-5 select · enter confirm · esc dismiss",
 	)
 	if m.planFilePath != "" {
 		planShort := m.planFilePath
@@ -6454,6 +6468,15 @@ func (m Model) View() string {
 			topArea = placeOverlayAt(topArea, panelView, 0, 0, mw, m.viewport.Height)
 		case OverlayFullscreen:
 			topArea = renderPanelWithHelp(m.activePanel, m.viewport.Width, m.viewport.Height)
+		case OverlayRightSplit:
+			splitW := m.viewport.Width / 2
+			if splitW < 40 {
+				splitW = 40
+			}
+			panelView := renderPanelWithHelp(m.activePanel, splitW, m.viewport.Height)
+			chatW := m.viewport.Width - splitW
+			chatView := lipgloss.NewStyle().Width(chatW).Height(m.viewport.Height).Render(vpView)
+			topArea = lipgloss.JoinHorizontal(lipgloss.Top, chatView, panelView)
 		}
 	} else if m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
 		// layout() already computed and applied filesPanel dimensions.

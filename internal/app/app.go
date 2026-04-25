@@ -571,6 +571,11 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 			ot.Runtime = taskRuntime
 		}
 	}
+	if list, err := registry.Get("BgTaskList"); err == nil {
+		if lt, ok := list.(*tools.BgTaskListTool); ok {
+			lt.Runtime = taskRuntime
+		}
+	}
 
 	// Start configured MCP servers and register their tools
 	var globalMCPMgr *mcp.Manager

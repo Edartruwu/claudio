@@ -405,6 +405,7 @@ func DefaultRegistry() *Registry {
 
 
 	// Background task management (Runtime injected later)
+	r.Register(&BgTaskListTool{deferrable: newDeferrable("list background tasks running shell server")})
 	r.Register(&TaskStopTool{deferrable: newDeferrable("stop cancel background task")})
 	r.Register(&TaskOutputTool{deferrable: newDeferrable("read background task output")})
 

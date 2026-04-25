@@ -39,6 +39,26 @@ const (
 	ScopeProject              // .claudio/settings.json
 )
 
+// Package-level styles for the config panel (avoids per-frame allocation).
+var (
+	cfgNoProject    = lipgloss.NewStyle().Foreground(styles.Dim).Italic(true)
+	cfgKeyStyle     = lipgloss.NewStyle().Foreground(styles.Aqua)
+	cfgValStyle     = lipgloss.NewStyle().Foreground(styles.Text)
+	cfgValDim       = lipgloss.NewStyle().Foreground(styles.Dim)
+	cfgEditHint     = lipgloss.NewStyle().Foreground(styles.Warning)
+	cfgProjBadge    = lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Orange)
+	cfgGlobalBadge  = lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Secondary)
+	cfgAllowBadge   = lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Success)
+	cfgDenyBadge    = lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Error)
+	cfgRuleTool     = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	cfgRulePattern  = lipgloss.NewStyle().Foreground(styles.Dim)
+	cfgSectionHeader = lipgloss.NewStyle().Foreground(styles.Muted).Bold(true)
+
+	cfgActivePill   = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	cfgInactivePill = lipgloss.NewStyle().Foreground(styles.Muted)
+	cfgTabHint      = lipgloss.NewStyle().Foreground(styles.Dim).Italic(true)
+)
+
 // configEntry represents a single setting for display.
 type configEntry struct {
 	Key       string
@@ -538,36 +558,28 @@ func (p *Panel) View() string {
 	b.WriteString(title)
 	b.WriteString("\n")
 
-	// Scope tabs
+	// Scope tabs (pill style)
 	if p.hasProject {
-		projTab := "  project  "
-		globalTab := "  global  "
-		activeTab := lipgloss.NewStyle().Foreground(styles.Text).Bold(true).Underline(true)
-		inactiveTab := lipgloss.NewStyle().Foreground(styles.Dim)
-
+		var pill1, pill2 string
 		if p.editScope == ScopeProject {
-			b.WriteString(activeTab.Render(projTab))
-			b.WriteString(inactiveTab.Render(globalTab))
+			pill1 = cfgActivePill.Render("● project")
+			pill2 = cfgInactivePill.Render("  ○ global")
 		} else {
-			b.WriteString(inactiveTab.Render(projTab))
-			b.WriteString(activeTab.Render(globalTab))
+			pill1 = cfgInactivePill.Render("○ project")
+			pill2 = cfgActivePill.Render("  ● global")
 		}
+		tabHint := cfgTabHint.Render("  tab to switch")
+		b.WriteString(pill1 + pill2 + tabHint)
 		b.WriteString("\n")
 	} else {
-		noProject := lipgloss.NewStyle().Foreground(styles.Dim).Italic(true)
-		b.WriteString(noProject.Render("  global only (run claudio init for project config)"))
+		b.WriteString(cfgNoProject.Render("  global only (run claudio init for project config)"))
 		b.WriteString("\n")
 	}
 
 	b.WriteString(styles.SeparatorLine(p.width))
 	b.WriteString("\n")
 
-	keyStyle := lipgloss.NewStyle().Foreground(styles.Aqua)
-	valStyle := lipgloss.NewStyle().Foreground(styles.Text)
-	valDimStyle := lipgloss.NewStyle().Foreground(styles.Dim)
-	editHint := lipgloss.NewStyle().Foreground(styles.Warning)
-	projBadge := lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Orange)
-	globalBadge := lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Secondary)
+
 
 	listH := p.height - 6
 	if listH < 3 {
@@ -582,11 +594,7 @@ func (p *Panel) View() string {
 		endIdx = len(p.entries)
 	}
 
-	allowBadge := lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Success)
-	denyBadge := lipgloss.NewStyle().Foreground(styles.Surface).Background(styles.Error)
-	ruleToolStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
-	rulePatternStyle := lipgloss.NewStyle().Foreground(styles.Dim)
-	sectionHeader := lipgloss.NewStyle().Foreground(styles.Muted).Bold(true)
+
 
 	for i := startIdx; i < endIdx; i++ {
 		e := p.entries[i]
@@ -600,8 +608,8 @@ func (p *Panel) View() string {
 		// Providers section header
 		if e.Key == "providers" {
 			b.WriteString("\n")
-			header := sectionHeader.Render("── Providers ──")
-			count := valDimStyle.Render(" " + e.Value)
+			header := cfgSectionHeader.Render("── Providers ──")
+			count := cfgValDim.Render(" " + e.Value)
 			b.WriteString(prefix + header + count)
 			b.WriteString("\n")
 			continue
@@ -610,8 +618,8 @@ func (p *Panel) View() string {
 		// Permission rules section header
 		if e.Key == "permissions" {
 			b.WriteString("\n")
-			header := sectionHeader.Render("── Permission Rules ──")
-			count := valDimStyle.Render(" " + e.Value)
+			header := cfgSectionHeader.Render("── Permission Rules ──")
+			count := cfgValDim.Render(" " + e.Value)
 			b.WriteString(prefix + header + count)
 			b.WriteString("\n")
 			continue
@@ -621,20 +629,20 @@ func (p *Panel) View() string {
 		if e.RuleIndex >= 0 {
 			var behaviorTag string
 			if e.EditType == "allow" {
-				behaviorTag = allowBadge.Render(" allow ")
+				behaviorTag = cfgAllowBadge.Render(" allow ")
 			} else {
-				behaviorTag = denyBadge.Render(" " + e.EditType + " ")
+				behaviorTag = cfgDenyBadge.Render(" " + e.EditType + " ")
 			}
-			tool := ruleToolStyle.Render(e.Key)
-			pattern := rulePatternStyle.Render(e.Value)
+			tool := cfgRuleTool.Render(e.Key)
+			pattern := cfgRulePattern.Render(e.Value)
 
 			// Source badge
 			var badge string
 			if p.hasProject {
 				if e.Source == ScopeProject {
-					badge = " " + projBadge.Render(" P ")
+					badge = " " + cfgProjBadge.Render(" P ")
 				} else {
-					badge = " " + globalBadge.Render(" G ")
+					badge = " " + cfgGlobalBadge.Render(" G ")
 				}
 			}
 
@@ -645,27 +653,27 @@ func (p *Panel) View() string {
 		}
 
 		// Regular config entries
-		key := keyStyle.Render(e.Key)
+		key := cfgKeyStyle.Render(e.Key)
 		var val string
 		if isDefault(e.Value) {
-			val = valDimStyle.Render(e.Value)
+			val = cfgValDim.Render(e.Value)
 		} else {
-			val = valStyle.Render(e.Value)
+			val = cfgValStyle.Render(e.Value)
 		}
 
 		// Source badge
 		var badge string
 		if p.hasProject {
 			if e.Source == ScopeProject {
-				badge = " " + projBadge.Render(" P ")
+				badge = " " + cfgProjBadge.Render(" P ")
 			} else {
-				badge = " " + globalBadge.Render(" G ")
+				badge = " " + cfgGlobalBadge.Render(" G ")
 			}
 		}
 
 		line := prefix + key + " " + val + badge
 		if e.Editable && selected {
-			line += " " + editHint.Render("⏎")
+			line += " " + cfgEditHint.Render("⏎")
 		}
 		b.WriteString(line)
 		b.WriteString("\n")
@@ -682,10 +690,7 @@ func (p *Panel) View() string {
 	}
 	b.WriteString(styles.PanelHint.Render(hint))
 
-	return lipgloss.NewStyle().
-		Width(p.width).
-		Height(p.height).
-		Render(b.String())
+	return b.String()
 }
 
 // cycleValue advances to the next value in the list, wrapping around.

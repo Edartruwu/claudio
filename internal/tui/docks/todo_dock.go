@@ -98,26 +98,30 @@ func (d *TodoDock) View() string {
 }
 
 func (d *TodoDock) collapsedView(items []*tools.Task, bg, label, hint lipgloss.Style) string {
-
-	var parts []string
-	shown := 0
+	var done, inProgress, pending int
 	for _, t := range items {
-		if shown >= 4 {
-			break
+		switch t.Status {
+		case "completed":
+			done++
+		case "in_progress":
+			inProgress++
+		default:
+			pending++
 		}
-		parts = append(parts, taskBadge(t))
-		shown++
 	}
 
-	extra := len(items) - shown
 	var sb strings.Builder
 	sb.WriteString("  ")
 	sb.WriteString(label.Render("Tasks:"))
-	sb.WriteString(" ")
-	sb.WriteString(strings.Join(parts, "  "))
-	if extra > 0 {
+	sb.WriteString("  ")
+	sb.WriteString(todoTextStyle.Render(fmt.Sprintf("%d/%d done", done, len(items))))
+	if inProgress > 0 {
 		sb.WriteString("  ")
-		sb.WriteString(label.Render(fmt.Sprintf("+%d more", extra)))
+		sb.WriteString(todoIconProgress + " " + todoDimStyle.Render(fmt.Sprintf("%d running", inProgress)))
+	}
+	if pending > 0 {
+		sb.WriteString("  ")
+		sb.WriteString(todoIconPending + " " + todoDimStyle.Render(fmt.Sprintf("%d pending", pending)))
 	}
 	sb.WriteString("  ")
 	sb.WriteString(hint.Render("<space>t expand"))
