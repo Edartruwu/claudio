@@ -5,11 +5,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 )
 
 // TestHandleSessionList_ReturnsHTMLFragment verifies GET /partials/sessions with HX-Request
@@ -239,5 +241,52 @@ func TestHandleSessionLookupByName_NotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d", w.Code)
+	}
+}
+
+// TestHandleCronList_WithEntries verifies GET /chat/{session_id}/crons with a real
+// seeded CronStore renders 200 HTML containing the cron entry data.
+func TestHandleCronList_WithEntries(t *testing.T) {
+	storage, ws, mux := newFullTestEnv(t)
+
+	const sessID = "cron-entries-sess-1"
+	if err := storage.UpsertSession(cc.Session{
+		ID:           sessID,
+		Name:         "CronEntryAgent",
+		Path:         "/tmp",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	// Build a CronStore backed by a temp file so Add/Save works.
+	cs := tasks.NewCronStore(filepath.Join(t.TempDir(), "crons.json"))
+	entry, err := cs.Add("@daily", "run daily backup", "", "inline", sessID)
+	if err != nil {
+		t.Fatalf("add cron entry: %v", err)
+	}
+	ws.SetCronStore(cs)
+
+	r := authedRequest(http.MethodGet, "/chat/"+sessID+"/crons")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d\nbody: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "Cron store not configured") {
+		t.Fatal("CronStore not attached: got 'not configured' response")
+	}
+	if strings.Contains(body, "No scheduled tasks") {
+		t.Fatal("cron entries not found in response: got 'no scheduled tasks'")
+	}
+	if !strings.Contains(body, entry.ID) {
+		t.Errorf("response missing cron entry ID %q\nbody: %s", entry.ID, body)
+	}
+	if !strings.Contains(body, "run daily backup") {
+		t.Errorf("response missing cron entry prompt\nbody: %s", body)
 	}
 }
