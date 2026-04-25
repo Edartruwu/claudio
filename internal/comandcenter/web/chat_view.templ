@@ -16,7 +16,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				<!-- Back button: mobile only -->
 				<button
 					type="button"
-					class="flex md:hidden items-center justify-center flex-shrink-0 w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textPrimary)]"
+					class="flex md:hidden items-center justify-center flex-shrink-0 w-11 h-11 min-w-[44px] bg-transparent border-none cursor-pointer text-[var(--color-textPrimary)]"
 					hx-get="/sessions"
 					hx-target="body"
 					hx-swap="innerHTML"
@@ -50,7 +50,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 					id="bell-btn"
 					type="button"
 					onclick="ccTogglePush()"
-					class="flex items-center justify-center flex-shrink-0 w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textMuted)]"
+					class="flex items-center justify-center flex-shrink-0 w-11 h-11 min-w-[44px] bg-transparent border-none cursor-pointer text-[var(--color-textMuted)]"
 					aria-label="Toggle push notifications"
 				>
 					<svg id="bell-outline" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -62,7 +62,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 				</button>
 				<button
 					type="button"
-					class="flex items-center justify-center flex-shrink-0 w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textMuted)]"
+					class="flex items-center justify-center flex-shrink-0 w-11 h-11 min-w-[44px] bg-transparent border-none cursor-pointer text-[var(--color-textMuted)]"
 					hx-get={ fmt.Sprintf("/chat/%s/info", sess.ID) }
 					hx-target="#info-panel"
 					hx-swap="innerHTML"
@@ -84,7 +84,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 			<!-- Messages -->
 			<div
 				id="messages"
-				class="flex-1 overflow-y-auto bg-[var(--color-bg)] [overflow-anchor:none] p-[16px_20px]"
+				class="flex-1 overflow-y-auto bg-[var(--color-bg)] [overflow-anchor:none] [overscroll-behavior-y:contain] p-[16px_20px]"
 				data-session={ sess.ID }
 				role="log"
 				aria-live="polite"
@@ -165,7 +165,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 					id="plus-btn"
 					type="button"
 					onclick="(function(){var p=document.getElementById('plus-popover');p.classList.toggle('hidden');})()"
-					class="flex md:hidden items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-[var(--color-surfaceHigh)] border-none cursor-pointer"
+					class="flex md:hidden items-center justify-center flex-shrink-0 w-11 h-11 rounded-full bg-[var(--color-surfaceHigh)] border-none cursor-pointer"
 					aria-label="Attach or browse files"
 				>
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-textMuted)" stroke-width="2.5"><path d="M12 4v16m8-8H4"></path></svg>
@@ -191,13 +191,17 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 						id="msg-input"
 						rows="1"
 						placeholder="Message"
+						autocorrect="off"
+						autocapitalize="off"
+						spellcheck="false"
+						inputmode="text"
 						class="w-full bg-transparent text-[var(--color-textPrimary)] border-none resize-none overflow-hidden leading-[1.4] max-h-[120px] min-h-[36px] px-4 py-[9px] text-base font-[inherit] outline-none"
 					></textarea>
 				</div>
 				<button
 					id="send-btn"
 					type="button"
-					class="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-[var(--color-brand)] border-none cursor-pointer"
+					class="flex items-center justify-center flex-shrink-0 w-11 h-11 rounded-full bg-[var(--color-brand)] border-none cursor-pointer"
 					onclick="ccSend()"
 				>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="#0B0E0F"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
@@ -221,7 +225,7 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string) {
 templ PushPrompt() {
 	<div
 		id="push-prompt"
-		class="fixed bottom-0 left-0 right-0 z-[200] bg-[var(--color-surface)] border-t border-t-[var(--color-border)] p-[20px_24px] flex-col gap-3 max-w-[480px] mx-auto"
+		class="fixed bottom-0 left-0 right-0 z-[200] bg-[var(--color-surface)] border-t border-t-[var(--color-border)] pt-[20px] px-[24px] pb-[calc(20px+env(safe-area-inset-bottom))] flex-col gap-3 max-w-[480px] mx-auto"
 		style="display:none;"
 	>
 		<div class="flex items-center gap-3">
@@ -301,8 +305,12 @@ templ chatViewScript(sessionID string) {
 			});
 			el.addEventListener('keydown', function(e) {
 				if (e.key === 'Enter' && !e.shiftKey) {
-					e.preventDefault();
-					document.getElementById('send-btn').click();
+					// Mobile: Enter = newline (default). Desktop: Enter = send.
+					var isMobile = navigator.maxTouchPoints > 0;
+					if (!isMobile) {
+						e.preventDefault();
+						document.getElementById('send-btn').click();
+					}
 				}
 			});
 
@@ -368,7 +376,8 @@ templ chatViewScript(sessionID string) {
 				var removeBtn = document.createElement('button');
 				removeBtn.type = 'button';
 				removeBtn.dataset.remove = idx;
-				removeBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#FF3B30;border:none;cursor:pointer;color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;z-index:1;padding:0;';
+				// Visual 18px dot with 44px min tap target via padding
+				removeBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#FF3B30;border:none;cursor:pointer;color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;z-index:1;padding:13px;box-sizing:content-box;';
 				removeBtn.textContent = '×';
 				removeBtn.setAttribute('aria-label', 'Remove file');
 				removeBtn.addEventListener('click', function() {
@@ -679,7 +688,7 @@ templ chatViewScript(sessionID string) {
 		function ccToast(msg, ok) {
 			var d = document.createElement('div');
 			d.textContent = msg;
-			d.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;transition:opacity .4s;background:' + (ok ? '#25D366' : '#FF3B30') + ';color:#fff';
+			d.style.cssText = 'position:fixed;bottom:calc(80px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;transition:opacity .4s;background:' + (ok ? '#25D366' : '#FF3B30') + ';color:#fff';
 			document.body.appendChild(d);
 			setTimeout(function() { d.style.opacity = '0'; setTimeout(function() { d.remove(); }, 400); }, 2500);
 		}

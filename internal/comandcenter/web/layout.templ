@@ -5,7 +5,7 @@ templ Layout(sessionID, csrfToken string) {
 	<html lang="en">
 	<head>
 		<meta charset="UTF-8"/>
-		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"/>
 		<meta name="theme-color" content="#161717"/>
 		<meta name="mobile-web-app-capable" content="yes"/>
 		<meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -18,16 +18,14 @@ templ Layout(sessionID, csrfToken string) {
 		<title>ComandCenter</title>
 		<!-- Self-hosted assets — no CDN dependencies -->
 		<link rel="stylesheet" href="/static/vendor/tailwind.min.css"/>
-		<link rel="preconnect" href="https://fonts.googleapis.com"/>
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
+		<!-- TODO: self-host JetBrains Mono for offline/CSP compliance -->
 		<script src="/static/vendor/htmx.min.js" defer></script>
 		<!-- CSRF token — value wired server-side by security middleware -->
 		<meta name="csrf-token" content={ csrfToken }/>
 		@layoutCSS()
 	</head>
 	<body
-		class="font-mono h-screen overflow-hidden"
+		class="font-mono h-[100dvh] overflow-hidden"
 		if sessionID != "" {
 			data-session-id={ sessionID }
 		}
@@ -91,6 +89,7 @@ templ layoutCSS() {
 		body {
 			max-width: 100%;
 			overflow-x: hidden;
+			height: 100dvh;
 		}
 		:root {
 			/* Surfaces */
@@ -154,7 +153,7 @@ templ layoutCSS() {
 			--radius-xl:   24px;
 			--radius-pill: 9999px;
 		}
-		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', monospace; padding-top: env(safe-area-inset-top); }
+		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace; padding-top: env(safe-area-inset-top); }
 		pre { max-width: 100%; box-sizing: border-box; }
 		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; }
 		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; }
@@ -191,7 +190,7 @@ templ layoutCSS() {
 		.md-content em { font-style: italic; }
 		.md-content a { color: #25D366; text-decoration: underline; }
 		.md-content h1, .md-content h2, .md-content h3 { font-weight: 600; margin: 0.5em 0 0.25em 0; }
-		.md-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+		.md-table-wrap { overflow-x: auto; max-width: 100%; }
 			.md-content table { border-collapse: collapse; min-width: max-content; margin: 0.5em 0; }
 		.md-content th, .md-content td { white-space: nowrap; padding: 6px 12px; border: 1px solid var(--color-border); font-size: 0.85em; text-align: left; }
 		.md-content thead tr { background: var(--color-surfaceHigh); }
@@ -267,6 +266,10 @@ templ layoutCSS() {
 		}
 		input, textarea, select {
 			touch-action: manipulation;
+		}
+		@media (orientation: landscape) and (max-height: 500px) {
+			.chat-header { padding-top: calc(env(safe-area-inset-top) + 4px) !important; }
+			.input-bar { padding-bottom: calc(env(safe-area-inset-bottom) + 4px) !important; }
 		}
 	</style>
 }

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Offline — ComandCenter</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0B0E0F;
+      color: #D4DDE8;
+      font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace;
+      padding: 40px 24px;
+      text-align: center;
+    }
+    .icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 20px;
+      background: #1C1C1E;
+      border: 1px solid #2C2C2E;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    p {
+      font-size: 14px;
+      color: #8E8E93;
+      line-height: 1.5;
+      max-width: 320px;
+    }
+    button {
+      margin-top: 24px;
+      padding: 12px 32px;
+      border-radius: 12px;
+      border: 1px solid #2C2C2E;
+      background: #1C1C1E;
+      color: #00C48C;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:active { opacity: 0.7; }
+  </style>
+</head>
+<body>
+  <div class="icon">
+    <svg width="36" height="36" fill="none" stroke="#8E8E93" stroke-width="1.5" viewBox="0 0 24 24">
+      <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0119 12.55M5 12.55a10.94 10.94 0 015.17-3.06M10.71 5.05A16 16 0 0122.56 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20h.01"/>
+    </svg>
+  </div>
+  <h1>You are offline</h1>
+  <p>Check your connection and try again. ComandCenter needs a network connection to work.</p>
+  <button onclick="location.reload()">Retry</button>
+</body>
+</html>
