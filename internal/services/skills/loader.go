@@ -2072,9 +2072,18 @@ Rules:
 
 ## Step 4 — Save Output
 
-Save the JSON to: ` + "`~/.claudio/designs/design-system.json`" + `
+First compute the project-scoped designs directory using Bash and capture the output as DESIGNS_BASE:
+` + "```" + `bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
+DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs"
+mkdir -p "$DESIGNS_BASE"
+echo "$DESIGNS_BASE"
+` + "```" + `
 
-Use the Write tool with that exact path.
+Save the JSON to: ` + "`{DESIGNS_BASE}/design-system.json`" + ` (substitute the path printed above).
+
+Use the Write tool with the resolved path.
 
 ## Step 5 — Confirm
 
@@ -2191,7 +2200,13 @@ $ARGUMENTS
 
 Ask the user for the mockup directory path (the directory containing ` + "`index.html`" + ` and ` + "`screen-*.html`" + ` files).
 
-If no path is provided, check for a recent mockup in ` + "`~/.claudio/designs/`" + ` and ask to confirm.
+If no path is provided, compute the project-scoped designs directory first:
+` + "```" + `bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
+echo "$HOME/.claudio/projects/$PROJECT_SLUG/designs"
+` + "```" + `
+Then check for a recent mockup in the printed path and ask the user to confirm.
 
 ## Step 2 — Inventory Components
 
@@ -2206,7 +2221,7 @@ For each component: note which screens use it, any props/variants visible, inter
 
 ## Step 3 — Token Audit
 
-If a ` + "`design-system.json`" + ` exists in the mockup directory or ` + "`~/.claudio/designs/`" + `:
+If a ` + "`design-system.json`" + ` exists in the mockup directory or in the project-scoped designs directory (computed above):
 - Read the full token set
 - Scan screen HTML files for token values (hex colors, font names, spacing values)
 - Build a map: token name → locations where it is used
@@ -2502,7 +2517,17 @@ At the top of ` + "`<style>`" + ` in ` + "`<head>`" + `, set default token value
 
 ## Step 6 — Render and Verify
 
-1. Save ` + "`hifi.html`" + ` to ` + "`~/.claudio/designs/{timestamp}/`" + ` using the Write tool (generate timestamp as YYYYMMDD-HHMMSS)
+First compute the project-scoped designs directory and generate a timestamp:
+` + "```" + `bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
+mkdir -p "$DESIGNS_BASE"
+echo "$DESIGNS_BASE"
+` + "```" + `
+
+1. Save ` + "`hifi.html`" + ` to ` + "`{DESIGNS_BASE}/`" + ` (the path printed above) using the Write tool
 2. Call ` + "`RenderMockup`" + ` with the path to ` + "`hifi.html`" + `
 3. Call ` + "`VerifyMockup`" + ` with the screenshot path returned by RenderMockup and ` + "`threshold: 75`" + `
 
@@ -2520,7 +2545,7 @@ Call ` + "`BundleMockup`" + ` with:
 - ` + "`indexPath`" + `: path to ` + "`hifi.html`" + `
 - ` + "`embedCDN`" + `: true
 
-Output path: ` + "`~/.claudio/designs/{timestamp}/bundle/hifi.html`" + `
+Output path: ` + "`{DESIGNS_BASE}/bundle/hifi.html`" + `
 
 ## Step 8 — Report
 
@@ -2618,11 +2643,21 @@ If the user described a multi-screen flow, add a simple ASCII or SVG storyboard 
 
 ## Step 3 — Output
 
-Call ` + "`BundleMockup`" + ` with:
+First compute the project-scoped designs directory and generate a timestamp:
+` + "```" + `bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
+mkdir -p "$DESIGNS_BASE"
+echo "$DESIGNS_BASE"
+` + "```" + `
+
+Save ` + "`wireframe.html`" + ` to ` + "`{DESIGNS_BASE}/wireframe.html`" + ` using the Write tool, then call ` + "`BundleMockup`" + ` with:
 - ` + "`indexPath`" + `: path to ` + "`wireframe.html`" + `
 - ` + "`embedCDN`" + `: false (wireframes don't need CDN, minimal HTML)
 
-Output path: ` + "`~/.claudio/designs/{timestamp}/bundle/wireframe.html`" + `
+Output path: ` + "`{DESIGNS_BASE}/bundle/wireframe.html`" + `
 
 **Do NOT call RenderMockup or VerifyMockup** — wireframes skip the render/verify loop entirely for speed.
 
@@ -2656,7 +2691,13 @@ Use AskUserQuestion to ask:
 
 ## Step 2 — Load or Define Design Tokens
 
-1. Check if ` + "`~/.claudio/designs/design-system.json`" + ` exists using Bash: ` + "`test -f ~/.claudio/designs/design-system.json && echo exists || echo notfound`" + `
+1. Compute the project-scoped designs directory and check for a design system file using Bash:
+` + "```" + `bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
+DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs"
+test -f "$DESIGNS_BASE/design-system.json" && echo "exists:$DESIGNS_BASE/design-system.json" || echo notfound
+` + "```" + `
 
 2. If exists: Read it with the Read tool. Extract:
    - Color palette (primary, secondary, accent, background, text, border, error, success, warning)
@@ -2976,11 +3017,19 @@ useEffect(() => {
 }, [hotspotMode]);
 ` + "```" + `
 
-## Step 6 — Save to Temp Location
+## Step 6 — Save to Disk
 
-1. Generate timestamp: ` + "`const ts = new Date().toISOString().replace(/[:-]/g, '').slice(0, 15)`" + `
-2. Create directory: ` + "``" + `mkdir -p ~/.claudio/designs/{timestamp}` + "``" + `
-3. Write the HTML file to ` + "`~/.claudio/designs/{timestamp}/prototype.html`" + ` using the Write tool
+Compute the project-scoped designs directory and generate a timestamp:
+` + "```" + `bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
+mkdir -p "$DESIGNS_BASE"
+echo "$DESIGNS_BASE"
+` + "```" + `
+
+Write the HTML file to ` + "`{DESIGNS_BASE}/prototype.html`" + ` using the Write tool
 
 ## Step 7 — Render and Verify
 
@@ -3001,7 +3050,7 @@ Call ` + "`BundleMockup`" + ` with:
 - ` + "`indexPath`" + `: path to ` + "`prototype.html`" + `
 - ` + "`embedCDN`" + `: true
 
-Output path: ` + "`~/.claudio/designs/{timestamp}/bundle/prototype.html`" + `
+Output path: ` + "`{DESIGNS_BASE}/bundle/prototype.html`" + `
 
 ## Step 9 — Report
 
