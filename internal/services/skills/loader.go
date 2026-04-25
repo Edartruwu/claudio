@@ -2098,6 +2098,18 @@ var mockupSkillContent = `You are generating a complete multi-screen HTML mockup
 ## Brief
 $ARGUMENTS
 
+## Design Session Management — Read Before Proceeding
+
+Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+
+**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
+- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
+- Read the existing HTML file(s) in that directory to understand the current state before making any changes
+- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+
+**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
+- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
+
 ## Step 1 — Brief Clarification
 
 Ask the user for:
@@ -2304,6 +2316,18 @@ var hifiSkillContent = `You are generating high-fidelity mockups with named desi
 
 ## Brief
 $ARGUMENTS
+
+## Design Session Management — Read Before Proceeding
+
+Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+
+**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
+- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
+- Read the existing HTML file(s) in that directory to understand the current state before making any changes
+- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+
+**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
+- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
 
 ## Step 1 — Clarification
 
@@ -2560,6 +2584,18 @@ var wireframeSkillContent = `You are generating fast lo-fi grayscale wireframes 
 ## Brief
 $ARGUMENTS
 
+## Design Session Management — Read Before Proceeding
+
+Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+
+**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
+- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
+- Read the existing HTML file(s) in that directory to understand the current state before making any changes
+- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+
+**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
+- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
+
 ## Step 1 — Clarification
 
 Ask the user ONE question only:
@@ -2675,6 +2711,18 @@ var prototypeSkillContent = `You are generating stateful interactive prototypes 
 
 ## Brief
 $ARGUMENTS
+
+## Design Session Management — Read Before Proceeding
+
+Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+
+**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
+- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
+- Read the existing HTML file(s) in that directory to understand the current state before making any changes
+- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+
+**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
+- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
 
 ## Step 1 — Ask About the Flow
 
