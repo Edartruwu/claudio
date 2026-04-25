@@ -79,10 +79,8 @@ func (ws *WebServer) ExpireSessionForTest(token string, expiresAt time.Time) {
 // Also applies CSP headers and CSRF validation for state-changing methods.
 func (ws *WebServer) uiAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// CSP on all responses.
-		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "+
-				"font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
+		// Minimal CSP — internal admin tool; only block framing.
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 
 		// Trust same-machine requests (e.g. Playwright fidelity tool)
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -126,9 +124,7 @@ func (ws *WebServer) validPassword(v string) bool {
 }
 
 func (ws *WebServer) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "+
-			"font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	templ.Handler(Login(LoginPageData{Error: ""})).ServeHTTP(w, r)
 }
 
