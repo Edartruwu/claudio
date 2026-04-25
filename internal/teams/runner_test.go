@@ -959,6 +959,46 @@ func TestTeammateRunner_TaskCompleter_Failure(t *testing.T) {
 	}
 }
 
+// --- Fix #6: finishTeammate wraps taskCompleter in defer/recover ---
+
+// TestTeammateRunner_TaskCompleter_PanicRecovery verifies that a panicking
+// taskCompleter does not kill the goroutine — the agent must still reach a
+// terminal state and WaitForOne must unblock.
+func TestTeammateRunner_TaskCompleter_PanicRecovery(t *testing.T) {
+	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
+		return "done", nil
+	})
+
+	// Wire a taskCompleter that always panics.
+	runner.SetTaskCompleter(func(taskIDs []string, status, sessionID string) {
+		panic("intentional panic from taskCompleter")
+	})
+
+	state, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "panic-agent",
+		Prompt:    "do work",
+		TaskIDs:   []string{"42"},
+	})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	// The goroutine must survive the panic and reach a terminal state.
+	if !runner.WaitForOne(state.Identity.AgentID, 5*time.Second) {
+		t.Fatal("timeout waiting for agent — goroutine may have died from unrecovered panic")
+	}
+
+	// State must be a terminal status (not still working).
+	got, ok := runner.GetState(state.Identity.AgentID)
+	if !ok {
+		t.Fatal("state not found after completion")
+	}
+	if got.Status == StatusWorking {
+		t.Errorf("agent still working after taskCompleter panic — expected terminal status, got %q", got.Status)
+	}
+}
+
 func TestTeammateRunner_CompletionMailboxMessage(t *testing.T) {
 	runner, _ := setupRunner(t, func(ctx context.Context, system, prompt string) (string, error) {
 		return "result text here", nil

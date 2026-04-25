@@ -680,3 +680,128 @@ func TestTaskUpdateTool_UsesCorrectSessionID(t *testing.T) {
 		t.Errorf("session_id in DB = %q, want %q", gotSession, wantSession)
 	}
 }
+
+// --- Fix #1 & #2: saveToDBWithSession returns error; saveToDB logs it ---
+
+func TestSaveToDBWithSession_ReturnsError_WhenDBClosed(t *testing.T) {
+	db := openTestDB(t)
+	// Close immediately — all subsequent DB operations must fail.
+	db.Close()
+
+	store := freshStore()
+	store.db = db
+
+	task := &Task{ID: "1", Title: "test", Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	err := store.saveToDBWithSession(task, "session-x")
+	if err == nil {
+		t.Error("expected error from saveToDBWithSession with closed DB, got nil")
+	}
+}
+
+func TestSaveToDB_DoesNotPanic_WhenDBClosed(t *testing.T) {
+	// saveToDB should log the error, never panic.
+	db := openTestDB(t)
+	db.Close()
+
+	store := freshStore()
+	store.db = db
+
+	task := &Task{ID: "1", Title: "test", Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	// Must not panic.
+	store.saveToDB(task)
+}
+
+// --- Fix #3: LoadForSession returns error ---
+
+func TestLoadForSession_ReturnsError_WhenDBClosed(t *testing.T) {
+	db := openTestDB(t)
+	db.Close()
+
+	store := freshStore()
+	store.db = db
+
+	err := store.LoadForSession("some-session")
+	if err == nil {
+		t.Error("expected error from LoadForSession with closed DB, got nil")
+	}
+}
+
+func TestLoadForSession_NoopOnEmptySessionID(t *testing.T) {
+	store := freshStore()
+	store.tasks["1"] = &Task{ID: "1", Title: "existing", Status: "pending"}
+	store.currentSession = "real-session"
+
+	// Empty sessionID → no-op, existing tasks must survive.
+	err := store.LoadForSession("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := store.tasks["1"]; !ok {
+		t.Error("task was wiped despite empty sessionID no-op")
+	}
+}
+
+// --- Fix #4: CompleteByIDs rolls back on partial DB failure ---
+
+func TestCompleteByIDs_RollsBackOnPartialFailure(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	// Trigger that forces any INSERT with id = '2' to fail.
+	// This simulates a mid-transaction write error.
+	_, err := db.Exec(`
+		CREATE TRIGGER fail_task_id_2
+		BEFORE INSERT ON team_tasks
+		WHEN NEW.id = '2'
+		BEGIN
+			SELECT RAISE(ABORT, 'forced failure for rollback test');
+		END
+	`)
+	if err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	store := freshStore()
+	store.db = db
+	store.tasks["1"] = &Task{ID: "1", Title: "task-one", Status: "pending"}
+	store.tasks["2"] = &Task{ID: "2", Title: "task-two", Status: "in_progress"}
+
+	// Call with both IDs; task "2" will cause DB error → rollback.
+	store.CompleteByIDs([]string{"1", "2"}, "completed", "sess-rollback")
+
+	// After rollback, DB must have 0 rows (no partial writes).
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM team_tasks`).Scan(&count); err != nil {
+		t.Fatalf("count query: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 rows after rollback, got %d — partial write leaked", count)
+	}
+}
+
+// --- Fix #5: CompleteByIDs falls back to currentSession when sessionID is empty ---
+
+func TestCompleteByIDs_EmptySessionIDFallback(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	store := freshStore()
+	store.db = db
+	store.currentSession = "fallback-session"
+	store.tasks["1"] = &Task{ID: "1", Title: "task", Status: "pending"}
+
+	// Pass empty sessionID → must fall back to store.currentSession.
+	affected := store.CompleteByIDs([]string{"1"}, "completed", "")
+	if len(affected) != 1 {
+		t.Fatalf("expected 1 affected, got %d", len(affected))
+	}
+
+	var gotSession string
+	err := db.QueryRow(`SELECT session_id FROM team_tasks WHERE id = '1'`).Scan(&gotSession)
+	if err != nil {
+		t.Fatalf("query team_tasks: %v", err)
+	}
+	if gotSession != "fallback-session" {
+		t.Errorf("session_id in DB = %q, want %q", gotSession, "fallback-session")
+	}
+}
