@@ -96,6 +96,10 @@ type AgentDefinition struct {
 	// Built-in agents set this in code; custom agents set it via frontmatter.
 	Capabilities []string
 
+	// AutoLoadSkills lists skill names to pre-load into this agent's system prompt
+	// automatically on spawn, without requiring a model invocation.
+	AutoLoadSkills []string `yaml:"autoLoadSkills,omitempty"`
+
 	// MaxTurns limits the number of agentic turns (API calls) for this agent.
 	// 0 means unlimited. Prevents runaway agents from consuming excessive tokens.
 	MaxTurns int
@@ -422,6 +426,7 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 					SourceSession:   fm.Get("sourceSession"),
 					SourceProject:   fm.Get("sourceProject"),
 					Capabilities:    fm.GetList("capabilities"),
+				AutoLoadSkills:  fm.GetList("autoLoadSkills"),
 				}
 
 				for _, cap := range def.Capabilities {

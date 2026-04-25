@@ -100,6 +100,17 @@ type Settings struct {
 
 	// Design configuration
 	Design DesignConfig `json:"design,omitempty"`
+
+	// AutoLoadSkills configures skills pre-loaded into agent system prompts on spawn.
+	AutoLoadSkills AutoLoadSkillsConfig `json:"autoLoadSkills,omitempty"`
+}
+
+// AutoLoadSkillsConfig specifies skills to inject automatically into agent prompts.
+// OnStart lists skills loaded into the main session agent at startup.
+// OnAgentSpawn lists skills loaded into every spawned sub-agent.
+type AutoLoadSkillsConfig struct {
+	OnStart      []string `json:"onStart"`
+	OnAgentSpawn []string `json:"onAgentSpawn"`
 }
 
 // DesignConfig holds configuration for the Claudio Design agent skills.
