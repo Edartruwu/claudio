@@ -430,28 +430,11 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 		return &Result{Content: result}, nil
 	}
 
-	// Background execution via task runtime
-	if in.RunInBackground && t.TaskRuntime != nil {
-		runFn := t.RunAgent
-		state, err := tasks.SpawnAgentTask(t.TaskRuntime, tasks.AgentTaskInput{
-			Prompt:      in.Prompt,
-			Description: desc,
-			AgentType:   agentDef.Type,
-			Model:       in.Model,
-			System:      agentDef.SystemPrompt,
-			SessionID:   t.SessionID,
-			EventBus:    t.EventBus,
-			RunAgent: func(ctx context.Context, system, prompt string) (string, error) {
-				if runFn != nil {
-					return runFn(ctx, system, prompt)
-				}
-				return "", fmt.Errorf("agent execution not configured")
-			},
-		})
-		if err != nil {
-			return &Result{Content: fmt.Sprintf("Failed to start background agent: %v", err), IsError: true}, nil
-		}
-		return &Result{Content: fmt.Sprintf("Background agent started: %s\nTask ID: %s\nAgent type: %s\nUse TaskOutput to check results.", desc, state.ID, agentDef.Type)}, nil
+	// Background sub-agent execution requires an active team — without one, the
+	// built-in agents are read-only investigators that must return results to the
+	// caller. Reject so the model retries in foreground mode.
+	if in.RunInBackground {
+		return &Result{Content: "Background agent execution requires an active team. Activate a team first, or call the Agent tool without run_in_background to get results inline.", IsError: true}, nil
 	}
 
 	// Foreground execution
