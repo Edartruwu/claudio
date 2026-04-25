@@ -24,3 +24,13 @@ Env(db credentials, server port, etc) variables in Makefile.
 ## Conventions
 
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, etc.
+
+## Agent Harnesses
+
+### claudio-feature
+**Invoke**: `/claudio-feature <feature description>`
+**Pattern**: Pipeline → Fan-out (Agent Team)
+**Agents**: `code-investigator` (scout), `backend-senior` (Go services/storage/events), `go-htmx-frontend-mid` (htmx web UI), `tui` (BubbleTea panels), `qa` (cross-validates all layers)
+**Output**: Committed code across all three layers + passing tests
+**Use when**: Implementing a new feature, fixing a cross-cutting bug, or refactoring that touches Go backend (`internal/`), web UI (`internal/web/`), or TUI (`internal/tui/`) — especially when 2+ layers are involved
+**Created**: 2026-04-25

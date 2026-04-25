@@ -1568,7 +1568,7 @@ Include the key nouns and verbs a user would naturally say when requesting this 
 
 ## Phase 5b: Generate team template
 
-Create ` + "`.claudio/team-templates/<harness-name>.json`" + ` with the roster from Phase 4:
+Create ` + "`.claudio/team-templates/<harness-name>.json`" + ` with **ALL agents** — every agent file you copied or created in Phase 5, including tier alternatives (e.g. both `backend-mid` and `backend-senior`) and utility/scout agents (e.g. `code-investigator`). Do NOT limit this to only the agents active in the primary harness flow. The template is the full palette Prab can draw from at runtime:
 
 ` + "```json" + `
 {
@@ -1773,6 +1773,7 @@ Before finishing, run these checks:
 
 ### 2. Team template and manifest integrity
 - Verify ` + "`.claudio/team-templates/<harness-name>.json`" + ` exists and contains valid JSON
+- **Count check**: the number of members in the template must equal the number of agent files in ` + "`.claudio/agents/`" + ` — if they differ, you missed an agent; add it now
 - Verify ` + "`.claudio/harness.json`" + ` exists and references correct directories
 - Confirm no ` + "`~/.claudio/`" + ` paths appear anywhere in generated files — all output must be project-scoped
 

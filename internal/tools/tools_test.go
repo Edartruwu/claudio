@@ -23,7 +23,7 @@ func TestRegistry(t *testing.T) {
 		"WebSearch", "WebFetch", "LSP", "NotebookEdit",
 		"TaskCreate", "TaskList", "TaskGet", "TaskUpdate",
 		"EnterWorktree", "ExitWorktree",
-		"TaskStop", "TaskOutput",
+		"BgTaskList", "TaskStop", "TaskOutput",
 		"SendMessage",
 		"SpawnTeammate", "InstantiateTeam", "PurgeTeammates",
 		"SendToSession", "SpawnSession",
