@@ -94,12 +94,47 @@ func HasPrefix(s, prefix string) bool {
 	return strings.HasPrefix(s, prefix)
 }
 
-// IsAgentStatusLine returns true for short agent status messages like
-// "⏳ explore-agent — done" that should render as compact status badges
-// instead of full chat bubbles.
+// IsAgentStatusLine returns true for messages composed entirely of agent
+// status lines (e.g. "⏳ agent — done", "✅agent — done") that should
+// render as compact status badges instead of full chat bubbles.
 func IsAgentStatusLine(content string) bool {
 	trimmed := strings.TrimSpace(content)
-	return len(trimmed) < 120 && strings.Contains(trimmed, " — done")
+	if trimmed == "" {
+		return false
+	}
+	lines := strings.Split(trimmed, "\n")
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		if !strings.Contains(l, "— done") {
+			return false
+		}
+	}
+	return true
+}
+
+// CountStatusLines counts non-empty lines in agent status content.
+func CountStatusLines(content string) int {
+	count := 0
+	for _, line := range strings.Split(strings.TrimSpace(content), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+// StatusLines splits agent status content into non-empty lines.
+func StatusLines(content string) []string {
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(content), "\n") {
+		if l := strings.TrimSpace(line); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	return lines
 }
 
 // ToolName extracts the tool name from "ToolName: {json}" content.
