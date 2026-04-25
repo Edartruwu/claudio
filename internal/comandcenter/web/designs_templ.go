@@ -78,7 +78,7 @@ func DesignsContent(data DesignGalleryData) templ.Component {
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col h-full overflow-auto\" style=\"background:#161717;\"><!-- Top nav bar --><header class=\"sticky top-0 z-10 flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-[#2C2C2E]\" style=\"background:#1C1C1E;\"><a href=\"/\" class=\"flex items-center justify-center rounded-full\" style=\"width:44px;height:44px;\" title=\"Back to sessions\"><svg class=\"w-5 h-5 text-white\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 19l-7-7 7-7\"></path></svg></a><h1 class=\"text-white font-bold text-xl flex-1\">Designs</h1><span class=\"text-sm\" style=\"color:#8E8E93;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col h-full overflow-auto\" style=\"background:var(--color-bg);\"><!-- Top nav bar --><header class=\"sticky top-0 z-10 flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b\" style=\"background:var(--color-surface);border-color:var(--color-border);\"><a href=\"/\" class=\"flex items-center justify-center rounded-full\" style=\"width:44px;height:44px;\" title=\"Back to sessions\"><svg class=\"w-5 h-5 text-white\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 19l-7-7 7-7\"></path></svg></a><h1 class=\"text-white font-bold text-xl flex-1\">Designs</h1><span class=\"text-sm\" style=\"color:var(--color-textSecondary);\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -111,7 +111,7 @@ func DesignsContent(data DesignGalleryData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if len(data.Sessions) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<!-- Empty state --> <div class=\"flex flex-col items-center justify-center py-24\"><div class=\"text-6xl mb-4\">🎨</div><p class=\"text-white font-semibold text-lg mb-2\">No designs yet</p><p class=\"text-sm text-center\" style=\"color:#8E8E93;max-width:320px;\">Start the Design Agent and run <code class=\"rounded px-1\" style=\"background:#2C2C2E;\">/mockup</code> to create your first mockup.</p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<!-- Empty state --> <div class=\"flex flex-col items-center justify-center py-24\"><div class=\"text-6xl mb-4\">🎨</div><p class=\"text-white font-semibold text-lg mb-2\">No designs yet</p><p class=\"text-sm text-center\" style=\"color:var(--color-textSecondary);max-width:320px;\">Start the Design Agent and run <code class=\"rounded px-1\" style=\"background:var(--color-border);\">/mockup</code> to create your first mockup.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -131,7 +131,7 @@ func DesignsContent(data DesignGalleryData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</main><!-- Lightbox --><div id=\"lightbox\" style=\"display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999;cursor:zoom-out;align-items:center;justify-content:center;\" onclick=\"if(event.target===this)this.style.display='none';\"><img id=\"lightbox-img\" style=\"max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain;\"></div><script>\n\t\t\tdocument.querySelectorAll('.screenshot-thumb').forEach(img => {\n\t\t\t\timg.addEventListener('click', e => {\n\t\t\t\t\te.stopPropagation();\n\t\t\t\t\tdocument.getElementById('lightbox-img').src = img.src;\n\t\t\t\t\tdocument.getElementById('lightbox').style.display = 'flex';\n\t\t\t\t});\n\t\t\t});\n\t\t\tdocument.addEventListener('keydown', e => {\n\t\t\t\tif (e.key === 'Escape') {\n\t\t\t\t\tdocument.getElementById('lightbox').style.display = 'none';\n\t\t\t\t}\n\t\t\t});\n\t\t</script></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</main><!-- Lightbox --><div id=\"lightbox\" role=\"dialog\" aria-label=\"Design preview\" aria-modal=\"true\" style=\"display:none;position:fixed;inset:0;background:color-mix(in srgb, black 85%, transparent);z-index:999;cursor:zoom-out;align-items:center;justify-content:center;\" onclick=\"if(event.target===this)this.style.display='none';\"><button onclick=\"this.closest('[role=dialog]').style.display='none'\" aria-label=\"Close\" style=\"position:absolute;top:16px;right:16px;background:var(--color-surface);color:var(--color-text);border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:8px 12px;font-size:14px;cursor:pointer;\">×</button> <img id=\"lightbox-img\" style=\"max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain;\"></div><script>\n\t\t\tdocument.querySelectorAll('.screenshot-thumb').forEach(img => {\n\t\t\t\timg.addEventListener('click', e => {\n\t\t\t\t\te.stopPropagation();\n\t\t\t\t\tdocument.getElementById('lightbox-img').src = img.src;\n\t\t\t\t\tdocument.getElementById('lightbox').style.display = 'flex';\n\t\t\t\t});\n\t\t\t});\n\t\t\tdocument.addEventListener('keydown', e => {\n\t\t\t\tif (e.key === 'Escape') {\n\t\t\t\t\tdocument.getElementById('lightbox').style.display = 'none';\n\t\t\t\t}\n\t\t\t});\n\t\t</script></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -160,7 +160,7 @@ func designCard(sess DesignSession, publicURL string) templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"rounded-xl overflow-hidden border border-[#2C2C2E] flex flex-col\" style=\"background:#1C1C1E;\"><!-- Thumbnail --><div class=\"relative w-full overflow-hidden flex items-center justify-center\" style=\"aspect-ratio:16/9;background:#0D1117;\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"rounded-xl overflow-hidden flex flex-col\" style=\"background:var(--color-surface);border:1px solid var(--color-border);\"><!-- Thumbnail --><div class=\"relative w-full overflow-hidden flex items-center justify-center\" style=\"aspect-ratio:16/9;background:var(--color-bg);\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -172,18 +172,18 @@ func designCard(sess DesignSession, publicURL string) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("/designs/project/%s/screenshots/%s", sess.ID, sess.Screenshots[0]))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 79, Col: 90}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 90, Col: 90}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" alt=\"Screenshot preview\" loading=\"lazy\" class=\"w-full h-full object-cover screenshot-thumb\" style=\"cursor:zoom-in;\" onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\"><div class=\"hidden absolute inset-0 items-center justify-center\" style=\"color:#3A3A3C;\"><svg class=\"w-12 h-12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" alt=\"Screenshot preview\" loading=\"lazy\" class=\"w-full h-full object-cover screenshot-thumb\" style=\"cursor:zoom-in;\" onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\"><div class=\"hidden absolute inset-0 items-center justify-center\" style=\"color:var(--color-border);\"><svg class=\"w-12 h-12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"flex flex-col items-center justify-center w-full h-full\" style=\"color:#3A3A3C;\"><svg class=\"w-12 h-12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg> <span class=\"mt-2 text-xs\">No screenshots</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"flex flex-col items-center justify-center w-full h-full\" style=\"color:var(--color-border);\"><svg class=\"w-12 h-12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg> <span class=\"mt-2 text-xs\">No screenshots</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -193,14 +193,14 @@ func designCard(sess DesignSession, publicURL string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if len(sess.Screenshots) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"absolute bottom-2 right-2 rounded-full px-2 py-0.5 text-xs font-medium\" style=\"background:rgba(0,0,0,0.6);color:#EBEBF5;\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"absolute bottom-2 right-2 rounded-full px-2 py-0.5 text-xs font-medium\" style=\"background:color-mix(in srgb, black 60%, transparent);color:var(--color-text);\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(sess.Screenshots)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 106, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 117, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -226,14 +226,14 @@ func designCard(sess DesignSession, publicURL string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div><!-- Card body --><div class=\"flex flex-col gap-3 p-4 flex-1\"><p class=\"text-sm font-medium truncate\" style=\"color:#EBEBF5;\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div><!-- Card body --><div class=\"flex flex-col gap-3 p-4 flex-1\"><p class=\"text-sm font-medium truncate\" style=\"color:var(--color-text);\" title=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(sess.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 117, Col: 81}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 128, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -246,7 +246,7 @@ func designCard(sess DesignSession, publicURL string) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(sess.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 117, Col: 93}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 128, Col: 103}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -280,13 +280,13 @@ func designCard(sess DesignSession, publicURL string) templ.Component {
 			var templ_7745c5c3_Var10 templ.SafeURL
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("%s/designs/project/%s/bundle/mockup.html", publicURL, sess.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 142, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 153, Col: 103}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" target=\"_blank\" rel=\"noopener\" class=\"flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80\" style=\"background:#25D366;color:#000;\"><svg class=\"w-3.5 h-3.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14\"></path></svg> Open Bundle</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" target=\"_blank\" rel=\"noopener\" class=\"flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80\" style=\"background:#25D366;color:var(--color-bg);\"><svg class=\"w-3.5 h-3.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14\"></path></svg> Open Bundle</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -299,19 +299,19 @@ func designCard(sess DesignSession, publicURL string) templ.Component {
 			var templ_7745c5c3_Var11 templ.SafeURL
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/designs/project/%s/handoff/spec.md", sess.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 156, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/designs.templ`, Line: 167, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" download class=\"flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80\" style=\"background:#2C2C2E;color:#EBEBF5;\"><svg class=\"w-3.5 h-3.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> Download</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" download class=\"flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80\" style=\"background:var(--color-border);color:var(--color-text);\"><svg class=\"w-3.5 h-3.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> Download</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if !sess.HasBundle && !sess.HasHandoff {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<span class=\"text-xs\" style=\"color:#636366;\">No assets yet</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<span class=\"text-xs\" style=\"color:var(--color-textMuted);\">No assets yet</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
