@@ -100,3 +100,86 @@ func TestErrorToast_Renders(t *testing.T) {
 		t.Errorf("ErrorToast: want message text in:\n%s", html)
 	}
 }
+
+func TestCardContainer_Renders(t *testing.T) {
+	var buf bytes.Buffer
+	err := CardContainer().Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, "rounded-xl") {
+		t.Errorf("CardContainer: want rounded-xl class in:\n%s", html)
+	}
+}
+
+func TestIconButton_HasAriaLabel(t *testing.T) {
+	var buf bytes.Buffer
+	err := IconButton("Delete session").Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, `aria-label="Delete session"`) {
+		t.Errorf("IconButton: want aria-label in:\n%s", html)
+	}
+	if !strings.Contains(html, `<button`) {
+		t.Errorf("IconButton: want button element in:\n%s", html)
+	}
+}
+
+func TestLoadingSpinner_HasHTMXIndicatorClass(t *testing.T) {
+	var buf bytes.Buffer
+	err := LoadingSpinner().Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, "htmx-indicator") {
+		t.Errorf("LoadingSpinner: want htmx-indicator class in:\n%s", html)
+	}
+}
+
+func TestChevronIcon_RendersSVG(t *testing.T) {
+	var buf bytes.Buffer
+	err := ChevronIcon().Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, "<svg") {
+		t.Errorf("ChevronIcon: want SVG element in:\n%s", html)
+	}
+}
+
+func TestDeleteIcon_RendersSVG(t *testing.T) {
+	var buf bytes.Buffer
+	err := DeleteIcon().Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, "<svg") {
+		t.Errorf("DeleteIcon: want SVG element in:\n%s", html)
+	}
+	// Trash icon has a polyline for the top bar.
+	if !strings.Contains(html, "polyline") {
+		t.Errorf("DeleteIcon: want polyline (trash icon) in:\n%s", html)
+	}
+}
+
+func TestArchiveIcon_RendersSVG(t *testing.T) {
+	var buf bytes.Buffer
+	err := ArchiveIcon().Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, "<svg") {
+		t.Errorf("ArchiveIcon: want SVG element in:\n%s", html)
+	}
+	// Archive icon has a rect for the lid.
+	if !strings.Contains(html, "rect") {
+		t.Errorf("ArchiveIcon: want rect element in:\n%s", html)
+	}
+}

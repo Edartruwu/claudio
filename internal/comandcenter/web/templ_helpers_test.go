@@ -71,3 +71,36 @@ func TestRenderMD_RendersMarkdown(t *testing.T) {
 		t.Errorf("RenderMD did not render markdown bold:\n%s", result)
 	}
 }
+
+// TestRenderMD_ScriptTagStripped verifies that raw <script> tags in markdown input
+// are stripped from the sanitized output (the script element, not its text content).
+func TestRenderMD_ScriptTagStripped(t *testing.T) {
+	input := "Hello <script>alert(1)</script> world"
+	result := string(RenderMD(input))
+	if strings.Contains(result, "<script>") {
+		t.Errorf("RenderMD: <script> opening tag not stripped:\n%s", result)
+	}
+	if strings.Contains(result, "</script>") {
+		t.Errorf("RenderMD: </script> closing tag not stripped:\n%s", result)
+	}
+}
+
+// TestRenderMD_XSSVectorStripped verifies that <img> tags with onerror event handlers
+// have the onerror attribute stripped by the sanitizer.
+func TestRenderMD_XSSVectorStripped(t *testing.T) {
+	input := `<img src="x" onerror="alert(1)">`
+	result := string(RenderMD(input))
+	if strings.Contains(result, "onerror") {
+		t.Errorf("RenderMD: onerror attribute not stripped:\n%s", result)
+	}
+}
+
+// TestRelTime_FutureDate verifies RelTime handles future timestamps without panicking
+// and returns a non-empty string.
+func TestRelTime_FutureDate(t *testing.T) {
+	future := time.Now().Add(1 * time.Hour)
+	result := RelTime(future)
+	if result == "" {
+		t.Error("RelTime with future date returned empty string")
+	}
+}
