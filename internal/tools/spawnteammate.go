@@ -30,7 +30,23 @@ type spawnTeammateInput struct {
 	TaskIDs            json.RawMessage `json:"task_ids,omitempty"`
 	MaxTurns           int             `json:"max_turns,omitempty"`
 	Background         json.RawMessage `json:"run_in_background,omitempty"`
-	MergeWhenFinished  bool            `json:"merge_when_finished,omitempty"`
+	MergeWhenFinished  json.RawMessage `json:"merge_when_finished,omitempty"`
+}
+
+// mergeWhenFinishedBool coerces merge_when_finished from bool, string "true"/"false", or absent (defaults false).
+func (in *spawnTeammateInput) mergeWhenFinishedBool() bool {
+	if len(in.MergeWhenFinished) == 0 {
+		return false // default
+	}
+	var b bool
+	if err := json.Unmarshal(in.MergeWhenFinished, &b); err == nil {
+		return b
+	}
+	var s string
+	if err := json.Unmarshal(in.MergeWhenFinished, &s); err == nil {
+		return s == "true" || s == "1"
+	}
+	return false
 }
 
 // backgroundBool coerces run_in_background from bool, string "true"/"false", or absent (defaults true).
@@ -277,7 +293,7 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		Foreground:        !background,
 		TaskIDs:           taskIDs,
 		ParentAgentID:     parentAgentID,
-		MergeWhenFinished: in.MergeWhenFinished,
+		MergeWhenFinished: in.mergeWhenFinishedBool(),
 	})
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to spawn teammate %q: %v", resolvedName, err), IsError: true}, nil
