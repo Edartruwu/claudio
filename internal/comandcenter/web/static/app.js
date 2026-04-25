@@ -465,6 +465,13 @@
       }
     });
 
+    // iOS PWA bfcache restore — close info panel on mobile so user sees chat.
+    window.addEventListener('pageshow', function(e) {
+      if (e.persisted && window.innerWidth < 1024 && typeof ccCloseInfoPanel === 'function') {
+        ccCloseInfoPanel();
+      }
+    });
+
     // Reconnect immediately when network comes back online.
     window.addEventListener('online', function() {
       if (!wsConnected && !isConnecting) {

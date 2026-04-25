@@ -296,14 +296,14 @@ templ chatViewScript(sessionID string) {
 				if (backdrop) backdrop.classList.remove('hidden');
 			} else {
 				panel.classList.remove('hidden');
-				panel.classList.add('flex');
+				panel.classList.add('flex', 'lg:flex');
 				panel.style.cssText = 'width:300px;background:var(--color-bg);border-left:1px solid var(--color-border);flex-direction:column;flex-shrink:0;overflow-y:auto;';
 			}
 		}
 		function ccCloseInfoPanel() {
 			var panel = document.getElementById('info-panel');
 			var backdrop = document.getElementById('info-panel-backdrop');
-			if (panel) { panel.classList.add('hidden'); panel.classList.remove('flex'); panel.style.cssText = ''; }
+			if (panel) { panel.classList.add('hidden'); panel.classList.remove('flex', 'lg:flex'); panel.style.cssText = ''; }
 			if (backdrop) backdrop.classList.add('hidden');
 		}
 

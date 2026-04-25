@@ -52,15 +52,11 @@ templ agentDetailHeader(data AgentDetailData) {
 	<header
 		class="flex items-center flex-shrink-0 bg-[var(--color-surface)] border-b border-b-[var(--color-border)] pt-[calc(env(safe-area-inset-top)+12px)] px-4 pb-3 gap-3"
 	>
-		<!-- back arrow → team tab -->
+		<!-- back arrow → chat view -->
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/chat/%s/info", data.SessionID)) }
-			hx-get={ fmt.Sprintf("/chat/%s/info?tab=team", data.SessionID) }
-			hx-target="#main"
-			hx-swap="innerHTML"
-			hx-push-url={ fmt.Sprintf("/chat/%s/info", data.SessionID) }
+			href={ templ.SafeURL(fmt.Sprintf("/chat/%s", data.SessionID)) }
 			class="flex items-center justify-center w-10 h-10 min-w-[40px] bg-transparent border-none cursor-pointer text-[var(--color-textPrimary)] no-underline shrink-0"
-			aria-label="Back to team"
+			aria-label="Back to chat"
 		>
 			@BackChevronIcon()
 		</a>
