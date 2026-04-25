@@ -241,8 +241,12 @@
       // Only reload on true reconnects (not initial page load — server already rendered).
       // Delay 600ms so any WS messages that arrive right after reconnect are processed first.
       if (isReconnect) {
+        // Don't reload full history on reconnect — it re-injects old tool results as if they're new.
+        // Only reload if the container is empty (e.g. navigated away and back).
         if (_reloadTimer) clearTimeout(_reloadTimer);
-        _reloadTimer = setTimeout(reloadMessages, 600);
+        if (msgs && msgs.children.length === 0) {
+          _reloadTimer = setTimeout(reloadMessages, 600);
+        }
         // Refresh team list to catch any agent-status events missed while disconnected.
         if (window.htmx) {
           htmx.ajax('GET', '/api/sessions/' + sessionId + '/team', {
