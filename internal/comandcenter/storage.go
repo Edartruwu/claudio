@@ -29,11 +29,10 @@ func Open(path string) (*Storage, error) {
 		return nil, fmt.Errorf("comandcenter: open db: %w", err)
 	}
 
-	// In-memory SQLite DBs are per-connection; with a pool each connection
-	// sees an empty DB. Force single-connection so migrations apply globally.
-	if path == ":memory:" {
-		conn.SetMaxOpenConns(1)
-	}
+	// Serialize all writes at the driver level. For :memory: this also ensures
+	// all connections see the same DB. For on-disk DBs, combined with WAL +
+	// busy_timeout this is the production-standard SQLite concurrency pattern.
+	conn.SetMaxOpenConns(1)
 
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		conn.Close()
