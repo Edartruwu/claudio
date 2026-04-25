@@ -106,7 +106,12 @@ func (h *Hub) Send(sessionID string, env attach.Envelope) error {
 	if !ok {
 		return fmt.Errorf("hub: session %s not connected", sessionID)
 	}
-	return conn.writeEnvelope(env)
+	if err := conn.setWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return fmt.Errorf("hub: session %s set write deadline: %w", sessionID, err)
+	}
+	err := conn.writeEnvelope(env)
+	_ = conn.setWriteDeadline(time.Time{}) // clear deadline
+	return err
 }
 
 // SessionCount returns the number of connected sessions (for testing).
@@ -297,7 +302,17 @@ func (h *Hub) startSessionWorker(sessionID string) {
 
 	go func() {
 		for ev := range ch {
-			h.processEvent(sessionID, ev)
+			// Cap per-event processing to prevent worker stall on slow DB.
+			eventDone := make(chan struct{})
+			go func(e attach.Envelope) {
+				defer close(eventDone)
+				h.processEvent(sessionID, e)
+			}(ev)
+			select {
+			case <-eventDone:
+			case <-time.After(10 * time.Second):
+				log.Printf("hub: session %s processEvent timeout for type=%s", sessionID, ev.Type)
+			}
 		}
 		// Signal exit and clean up done-channel entry.
 		h.mu.Lock()
@@ -386,19 +401,25 @@ func (h *Hub) handleConn(conn wsConn) {
 	h.startSessionWorker(sessionID)
 	// Register interrupt fn: sends EventInterrupt envelope to the attached Claudio process.
 	h.RegisterInterrupt(sessionID, func() {
+		_ = conn.setWriteDeadline(time.Now().Add(10 * time.Second))
 		_ = conn.writeEnvelope(attach.Envelope{Type: attach.EventInterrupt})
+		_ = conn.setWriteDeadline(time.Time{})
 	})
 	// Register set-agent/set-team fns: send envelopes to the attached Claudio process.
 	h.RegisterSetAgentFn(sessionID, func(agentType string) {
 		env, err := attach.NewEnvelope(attach.EventSetAgent, attach.SetAgentPayload{AgentType: agentType})
 		if err == nil {
+			_ = conn.setWriteDeadline(time.Now().Add(10 * time.Second))
 			_ = conn.writeEnvelope(env)
+			_ = conn.setWriteDeadline(time.Time{})
 		}
 	})
 	h.RegisterSetTeamFn(sessionID, func(teamName string) {
 		env, err := attach.NewEnvelope(attach.EventSetTeam, attach.SetTeamPayload{TeamName: teamName})
 		if err == nil {
+			_ = conn.setWriteDeadline(time.Now().Add(10 * time.Second))
 			_ = conn.writeEnvelope(env)
+			_ = conn.setWriteDeadline(time.Time{})
 		}
 	})
 	h.Broadcast(sessionID, env)
@@ -437,7 +458,11 @@ func (h *Hub) handleConn(conn wsConn) {
 		h.mu.RLock()
 		ch := h.eventQueues[sessionID]
 		h.mu.RUnlock()
-		ch <- ev
+		select {
+		case ch <- ev:
+		default:
+			log.Printf("hub: session %s event queue full, dropping event type=%s", sessionID, ev.Type)
+		}
 		h.Broadcast(sessionID, ev)
 	}
 }

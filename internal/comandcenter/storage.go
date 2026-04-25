@@ -40,6 +40,11 @@ func Open(path string) (*Storage, error) {
 		return nil, fmt.Errorf("comandcenter: WAL pragma: %w", err)
 	}
 
+	if _, err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("comandcenter: busy_timeout pragma: %w", err)
+	}
+
 	if _, err := conn.Exec("PRAGMA foreign_keys=ON"); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("comandcenter: foreign_keys pragma: %w", err)
