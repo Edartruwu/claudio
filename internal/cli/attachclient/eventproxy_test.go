@@ -108,23 +108,23 @@ func TestEventProxy_TextDelta_AccumulatesAndFlushes(t *testing.T) {
 	proxy.OnTextDelta("hello ")
 	proxy.OnTextDelta("world")
 
-	// No message sent yet
-	if len(capture.events) != 0 {
-		t.Errorf("expected 0 events before flush, got %d", len(capture.events))
+	// Each OnTextDelta emits a StreamDelta event live.
+	if len(capture.events) != 2 {
+		t.Errorf("expected 2 StreamDelta events before flush, got %d", len(capture.events))
 	}
 
-	// Flush on TurnComplete
+	// Flush on TurnComplete: AssistantMsg + TokenUsage added → 4 total.
 	proxy.OnTurnComplete(api.Usage{})
 
-	if len(capture.events) != 1 {
-		t.Errorf("expected 1 event after flush, got %d", len(capture.events))
+	if len(capture.events) != 4 {
+		t.Errorf("expected 4 events after flush, got %d", len(capture.events))
 	}
 
-	if capture.events[0].eventType != attach.EventMsgAssistant {
-		t.Errorf("expected EventMsgAssistant, got %s", capture.events[0].eventType)
+	if capture.events[2].eventType != attach.EventMsgAssistant {
+		t.Errorf("expected EventMsgAssistant at index 2, got %s", capture.events[2].eventType)
 	}
 
-	payload, ok := capture.events[0].payload.(attach.AssistantMsgPayload)
+	payload, ok := capture.events[2].payload.(attach.AssistantMsgPayload)
 	if !ok {
 		t.Fatalf("payload not AssistantMsgPayload: %T", capture.events[0].payload)
 	}
@@ -248,15 +248,16 @@ func TestEventProxy_TextDelta_FlushedOnError(t *testing.T) {
 	proxy.OnTextDelta("error text")
 	proxy.OnError(nil)
 
-	if len(capture.events) != 1 {
-		t.Errorf("expected 1 event on error, got %d", len(capture.events))
+	// OnTextDelta emits 1 StreamDelta; OnError flushes 1 AssistantMsg → 2 total.
+	if len(capture.events) != 2 {
+		t.Errorf("expected 2 events on error, got %d", len(capture.events))
 	}
 
-	if capture.events[0].eventType != attach.EventMsgAssistant {
-		t.Errorf("expected EventMsgAssistant, got %s", capture.events[0].eventType)
+	if capture.events[1].eventType != attach.EventMsgAssistant {
+		t.Errorf("expected EventMsgAssistant at index 1, got %s", capture.events[1].eventType)
 	}
 
-	payload := capture.events[0].payload.(attach.AssistantMsgPayload)
+	payload := capture.events[1].payload.(attach.AssistantMsgPayload)
 	if payload.Content != "error text" {
 		t.Errorf("expected 'error text', got %q", payload.Content)
 	}

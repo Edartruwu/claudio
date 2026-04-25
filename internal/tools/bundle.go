@@ -301,10 +301,15 @@ func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	_ = outJSON // suppress unused warning
-	// Return empty — the bundle card is pushed via PushBundleLink above.
-	// Returning the URL caused the AI to echo [Open bundle](url) markdown in its
-	// next response, which rendered as a plain link instead of the card widget.
-	return &Result{Content: ""}, nil
+	// Return warnings if any; otherwise empty — the bundle card is pushed via
+	// PushBundleLink above. Returning the URL caused the AI to echo
+	// [Open bundle](url) markdown in its next response, which rendered as a
+	// plain link instead of the card widget.
+	var content string
+	if len(warnings) > 0 {
+		content = "Warnings:\n" + strings.Join(warnings, "\n")
+	}
+	return &Result{Content: content}, nil
 }
 
 // injectInfiniteCanvas wraps the HTML body with a pan/zoom infinite canvas shell.
