@@ -36,8 +36,15 @@ var (
 	aguiSuccessStyle = lipgloss.NewStyle().Foreground(styles.Success)
 	aguiErrorStyle   = lipgloss.NewStyle().Foreground(styles.Error)
 	aguiAquaStyle    = lipgloss.NewStyle().Foreground(styles.Aqua)
-	aguiOrangeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e78a1f"))
+	aguiOrangeStyle  = lipgloss.NewStyle().Foreground(styles.Orange)
 	aguiSubtleBg     = lipgloss.NewStyle().Background(styles.Subtle)
+
+	// Base styles for dynamic-property copies (avoid per-frame allocation).
+	aguiToolNameBase    = lipgloss.NewStyle()
+	aguiContainerBase   = lipgloss.NewStyle()
+	aguiBorderBase      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	aguiCenterBase      = lipgloss.NewStyle().Align(lipgloss.Center)
+	aguiStatusColorBase = lipgloss.NewStyle()
 )
 
 // RefreshMsg triggers a panel refresh (auto-refresh for running agents).
@@ -704,7 +711,7 @@ func (p *Panel) buildToolsSection(state *teams.TeammateState, width int) string 
 		}
 
 		// Tool name with skill indicator
-		toolNameStyle := lipgloss.NewStyle()
+		toolNameStyle := aguiToolNameBase
 		if group.name == "Skill" {
 			toolNameStyle = aguiOrangeStyle
 			statusBadge = aguiOrangeStyle.Render("★")
@@ -1101,12 +1108,12 @@ func (p *Panel) renderSplitView() string {
 
 	// Join horizontally
 	joined := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
-	return lipgloss.NewStyle().Width(p.width).Height(p.height).Render(joined)
+	return aguiContainerBase.Copy().Width(p.width).Height(p.height).Render(joined)
 }
 
 // borderStyle returns a style with the appropriate border (active = primary, inactive = muted).
 func (p *Panel) borderStyle(active bool) lipgloss.Style {
-	s := lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	s := aguiBorderBase
 	if active {
 		s = s.BorderForeground(styles.Primary)
 	} else {
@@ -1156,7 +1163,7 @@ func (p *Panel) renderLeftPane() string {
 			b.WriteString(styles.PanelHint.Render("  No matching agents"))
 			b.WriteString("\n")
 		} else {
-			b.WriteString(lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
+			b.WriteString(aguiCenterBase.Copy().Width(w).Render(
 				styles.PanelHint.Render("No agents yet.")))
 			b.WriteString("\n")
 		}
@@ -1399,7 +1406,7 @@ func (p *Panel) renderRightPane() string {
 			default:
 				statusColor = styles.Muted
 			}
-			statusBadge := "  " + lipgloss.NewStyle().Foreground(statusColor).Render("["+string(state.Status)+"]")
+			statusBadge := "  " + aguiStatusColorBase.Copy().Foreground(statusColor).Render("["+string(state.Status)+"]")
 
 			headerContent := agentName + teamName + statusBadge
 			b.WriteString(headerContent)
@@ -1449,7 +1456,7 @@ func agentStatusLabel(s teams.MemberStatus) string {
 	default:
 		color = styles.Dim
 	}
-	return lipgloss.NewStyle().Foreground(color).Render(string(s)) // dynamic color, can't hoist
+	return aguiStatusColorBase.Copy().Foreground(color).Render(string(s)) // dynamic color, base hoisted
 }
 
 // smartDuration formats a duration concisely.

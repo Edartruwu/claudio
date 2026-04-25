@@ -35,6 +35,10 @@ var (
 	teamDimIconStyle   = lipgloss.NewStyle().Foreground(styles.Dim)
 	teamSubtleStyle    = lipgloss.NewStyle().Foreground(styles.Subtle)
 	teamMailStyle      = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).PaddingLeft(2)
+
+	// Base styles for dynamic-property copies (avoid per-frame allocation).
+	teamFromBaseStyle  = lipgloss.NewStyle().Bold(true)
+	teamPanelBaseStyle = lipgloss.NewStyle()
 )
 
 // Panel is the agent team side panel implementing panels.Panel.
@@ -525,7 +529,7 @@ func (p *Panel) renderMailMessage(b *strings.Builder, msg teams.Message) {
 	if msg.Color == "" {
 		fromColor = styles.Dim
 	}
-	fromStyle := lipgloss.NewStyle().Foreground(fromColor).Bold(true)
+	fromStyle := teamFromBaseStyle.Copy().Foreground(fromColor)
 	arrow := teamDimStyle.Render(" → ")
 	toStyle := teamSubtleStyle
 
@@ -628,7 +632,7 @@ func writeHint(b *strings.Builder, width int, hint string) {
 }
 
 func renderPanel(content string, width, height int) string {
-	return lipgloss.NewStyle().
+	return teamPanelBaseStyle.Copy().
 		Width(width).
 		Height(height).
 		Render(content)
