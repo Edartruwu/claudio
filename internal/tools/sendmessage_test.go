@@ -104,11 +104,12 @@ func TestSendMessageTool_Broadcast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", result.Content)
+	// Sub-agent broadcast is blocked by policy.
+	if !result.IsError {
+		t.Fatalf("expected error for sub-agent broadcast, got: %s", result.Content)
 	}
-	if result.Content != "Broadcast sent to all teammates from broadcaster" {
-		t.Errorf("unexpected result: %s", result.Content)
+	if !strings.Contains(result.Content, "not allowed") {
+		t.Errorf("expected 'not allowed' in error, got: %s", result.Content)
 	}
 }
 

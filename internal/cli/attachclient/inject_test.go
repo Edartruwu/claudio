@@ -46,7 +46,7 @@ func TestOnUserMessage_InjectsToSubmitChannel(t *testing.T) {
 	server := newTestServer(handler)
 	defer server.Close()
 
-	client := New(server.URL, "", "test", false)
+	client := New(server.URL, "", "test", false, "", "")
 	client.OnUserMessage(func(p attach.UserMsgPayload) {
 		mu.Lock()
 		received = append(received, p.Content)
@@ -109,7 +109,7 @@ func TestOnUserMessage_NonBlockingWhenNoCallback(t *testing.T) {
 	server := newTestServer(handler)
 	defer server.Close()
 
-	client := New(server.URL, "", "test", false)
+	client := New(server.URL, "", "test", false, "", "")
 	// Deliberately NOT setting OnUserMessage
 
 	if err := client.Connect(context.Background()); err != nil {
@@ -146,7 +146,7 @@ func TestOnUserMessage_CallbackReplaceable(t *testing.T) {
 	server := newTestServer(handler)
 	defer server.Close()
 
-	client := New(server.URL, "", "test", false)
+	client := New(server.URL, "", "test", false, "", "")
 	client.OnUserMessage(func(p attach.UserMsgPayload) {
 		firstCalled = true
 	})

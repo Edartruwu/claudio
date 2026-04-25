@@ -27,7 +27,7 @@ func TestClient_Connect_SendsHello(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	client := New(server.URL, "test-password", "test-session", true)
+	client := New(server.URL, "test-password", "test-session", true, "", "")
 	err := client.Connect(context.Background())
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
@@ -78,7 +78,7 @@ func TestClient_SendEvent_AssistantMsg(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	client := New(server.URL, "test-password", "test-session", false)
+	client := New(server.URL, "test-password", "test-session", false, "", "")
 	if err := client.Connect(context.Background()); err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestClient_OnUserMessage_FiresCallback(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	client := New(server.URL, "test-password", "test-session", false)
+	client := New(server.URL, "test-password", "test-session", false, "", "")
 	client.OnUserMessage(func(p attach.UserMsgPayload) {
 		callbackFired = true
 		callbackPayload = p
@@ -192,7 +192,7 @@ func TestClient_Close_SendsBye(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	client := New(server.URL, "test-password", "test-session", false)
+	client := New(server.URL, "test-password", "test-session", false, "", "")
 	if err := client.Connect(context.Background()); err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
