@@ -12,13 +12,13 @@ import (
 
 // Skill represents a loaded skill definition.
 type Skill struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Content     string     `json:"content"` // The prompt/instruction content
-	Source      string     `json:"source"`  // "bundled", "user", "project", "plugin"
-	FilePath    string     `json:"file_path,omitempty"`
-	SkillDir    string     `json:"skill_dir,omitempty"` // directory containing the skill file; empty for flat .md files
-	Paths       []string   `json:"paths,omitempty"`
+	Name         string      `json:"name"`
+	Description  string      `json:"description"`
+	Content      string      `json:"content"` // The prompt/instruction content
+	Source       string      `json:"source"`  // "bundled", "user", "project", "plugin"
+	FilePath     string      `json:"file_path,omitempty"`
+	SkillDir     string      `json:"skill_dir,omitempty"` // directory containing the skill file; empty for flat .md files
+	Paths        []string    `json:"paths,omitempty"`
 	Hooks        []SkillHook `json:"hooks,omitempty"`
 	Capabilities []string    `json:"capabilities,omitempty"`
 }
@@ -349,12 +349,6 @@ func bundledSkills() []*Skill {
 			Name:        "caveman",
 			Description: "Ultra-compressed communication mode. Cuts token usage ~75% by speaking like caveman while keeping full technical accuracy.",
 			Content:     cavemanSkillContent,
-			Source:      "bundled",
-		},
-		{
-			Name:        "caveman-commit",
-			Description: "Ultra-compressed commit message generator. Conventional Commits format. Subject ≤50 chars, body only when why isn't obvious.",
-			Content:     cavemanCommitSkillContent,
 			Source:      "bundled",
 		},
 		{
@@ -1173,7 +1167,7 @@ Create focused rules files under ` + "`.claudio/rules/`" + ` based on the Phase 
 - Use bullet points; one rule per bullet
 - No generic advice that applies to all codebases
 - Do not duplicate what's already in CLAUDIO.md
-- Add an ` + "`@`" + ` reference in CLAUDIO.md for every file you create (under the `+ "`## Rules`" + ` section)
+- Add an ` + "`@`" + ` reference in CLAUDIO.md for every file you create (under the ` + "`## Rules`" + ` section)
 
 ## Phase 4c: Seed Memory with architectural facts
 
@@ -1927,66 +1921,6 @@ Example — destructive op:
 ## Boundaries
 
 Code/commits/PRs: write normal. "stop caveman" or "normal mode" from human user: revert. Level persist until changed or session end.`
-
-var cavemanCommitSkillContent = `Write commit messages terse and exact. Conventional Commits format. No fluff. Why over what.
-
-## User Input
-$ARGUMENTS
-
-## Rules
-
-**Subject line:**
-- ` + "`<type>(<scope>): <imperative summary>`" + ` — ` + "`<scope>`" + ` optional
-- Types: ` + "`feat`" + `, ` + "`fix`" + `, ` + "`refactor`" + `, ` + "`perf`" + `, ` + "`docs`" + `, ` + "`test`" + `, ` + "`chore`" + `, ` + "`build`" + `, ` + "`ci`" + `, ` + "`style`" + `, ` + "`revert`" + `
-- Imperative mood: "add", "fix", "remove" — not "added", "adds", "adding"
-- ≤50 chars when possible, hard cap 72
-- No trailing period
-- Match project convention for capitalization after the colon
-
-**Body (only if needed):**
-- Skip entirely when subject is self-explanatory
-- Add body only for: non-obvious *why*, breaking changes, migration notes, linked issues
-- Wrap at 72 chars
-- Bullets ` + "`-`" + ` not ` + "`*`" + `
-- Reference issues/PRs at end: ` + "`Closes #42`" + `, ` + "`Refs #17`" + `
-
-**What NEVER goes in:**
-- "This commit does X", "I", "we", "now", "currently" — the diff says what
-- "As requested by..." — use Co-authored-by trailer
-- "Generated with Claude Code" or any AI attribution
-- Emoji (unless project convention requires)
-- Restating the file name when scope already says it
-
-## Examples
-
-Diff: new endpoint for user profile with body explaining the why
-- ❌ "feat: add a new endpoint to get user profile information from the database"
-- ✅
-  ` + "```" + `
-  feat(api): add GET /users/:id/profile
-
-  Mobile client needs profile data without the full user payload
-  to reduce LTE bandwidth on cold-launch screens.
-
-  Closes #128
-  ` + "```" + `
-
-Diff: breaking API change
-- ✅
-  ` + "```" + `
-  feat(api)!: rename /v1/orders to /v1/checkout
-
-  BREAKING CHANGE: clients on /v1/orders must migrate to /v1/checkout
-  before 2026-06-01. Old route returns 410 after that date.
-  ` + "```" + `
-
-## Auto-Clarity
-
-Always include body for: breaking changes, security fixes, data migrations, anything reverting a prior commit. Never compress these into subject-only — future debuggers need the context.
-
-## Boundaries
-
-Only generates the commit message. Does not run ` + "`git commit`" + `, does not stage files, does not amend. Output the message as a code block ready to paste. "stop caveman-commit" or "normal mode": revert to verbose commit style.`
 
 var cavemanReviewSkillContent = `Write code review comments terse and actionable. One line per finding. Location, problem, fix. No throat-clearing.
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -603,15 +604,71 @@ func (h *Hub) Broadcast(sessionID string, env attach.Envelope) {
 	if env.Type == attach.EventMsgAssistant {
 		var p attach.AssistantMsgPayload
 		if err := env.UnmarshalPayload(&p); err == nil {
+			// Skip push for short agent status lines (e.g. "⏳ agent — done").
+			if isAgentStatusContent(p.Content) {
+				return
+			}
 			go func() {
 				sess, err := h.storage.GetSession(sessionID)
 				if err != nil {
 					return
 				}
-				h.sendPushNotifications(sess.Name, sessionID, p.Content)
+				h.sendPushNotifications(sess.Name, sessionID, stripMarkdown(p.Content))
 			}()
 		}
 	}
+}
+
+// isAgentStatusContent returns true for short agent-status lines like "⏳ agent — done".
+func isAgentStatusContent(s string) bool {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(l), "done") {
+			return false
+		}
+	}
+	return len(strings.TrimSpace(s)) < 200
+}
+
+// stripMarkdown removes common markdown formatting for push notification previews.
+func stripMarkdown(s string) string {
+	// Remove code blocks.
+	for {
+		start := strings.Index(s, "```")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start+3:], "```")
+		if end < 0 {
+			s = s[:start]
+			break
+		}
+		s = s[:start] + s[start+3+end+3:]
+	}
+	// Remove inline code.
+	s = strings.ReplaceAll(s, "`", "")
+	// Remove bold/italic markers.
+	s = strings.ReplaceAll(s, "**", "")
+	s = strings.ReplaceAll(s, "__", "")
+	s = strings.ReplaceAll(s, "*", "")
+	// Remove headers.
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimLeft(l, "# ")
+	}
+	s = strings.Join(lines, " ")
+	// Collapse whitespace.
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
+	return strings.TrimSpace(s)
 }
 
 // broadcastAgentLog emits an EventAgentLog notification so the UI knows to
