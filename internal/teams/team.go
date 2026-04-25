@@ -331,6 +331,13 @@ func (m *Manager) GetTeam(name string) (*TeamConfig, bool) {
 	return team, ok
 }
 
+// HasActiveTeam returns true if at least one team is currently active.
+func (m *Manager) HasActiveTeam() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.active) > 0
+}
+
 // ListTeams returns all active teams.
 func (m *Manager) ListTeams() []*TeamConfig {
 	m.mu.RLock()

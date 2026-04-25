@@ -43,6 +43,7 @@ type SkillTool struct {
 	HooksManager   *hooks.Manager // nil-safe — skip if not wired
 	ProjectRoot    string         // for paths: filtering; empty = no filtering
 	ExcludedNames  []string       // skill names to hide from listings (e.g. "caveman" when already injected)
+	HasActiveTeam  func() bool    // when non-nil and returns true, team-gated skills are visible
 
 	registeredHooks   map[string]bool
 	registeredHooksMu sync.Mutex
@@ -168,17 +169,23 @@ func (t *SkillTool) Execute(_ context.Context, input json.RawMessage) (*Result, 
 }
 
 // findSkill looks up a skill by exact name, then falls back to case-insensitive match.
-// Returns nil for excluded skills so they cannot be invoked when already injected.
+// Returns nil for excluded skills and team-gated skills when no team is active.
 func (t *SkillTool) findSkill(name string) *skills.Skill {
 	if t.isExcluded(name) {
 		return nil
 	}
 	if s, ok := t.SkillsRegistry.Get(name); ok {
+		if t.isTeamGated(s) {
+			return nil
+		}
 		return s
 	}
 	for _, s := range t.SkillsRegistry.All() {
 		if strings.EqualFold(s.Name, name) {
 			if t.isExcluded(s.Name) {
+				return nil
+			}
+			if t.isTeamGated(s) {
 				return nil
 			}
 			return s
@@ -196,6 +203,18 @@ func (t *SkillTool) isExcluded(name string) bool {
 	return false
 }
 
+// isTeamGated returns true if the skill requires an active team and none is present.
+func (t *SkillTool) isTeamGated(s *skills.Skill) bool {
+	for _, cap := range s.Capabilities {
+		if cap == "team" {
+			if t.HasActiveTeam == nil || !t.HasActiveTeam() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (t *SkillTool) formatSkillList() string {
 	if t.SkillsRegistry == nil {
 		return "(no skills loaded)"
@@ -207,6 +226,9 @@ func (t *SkillTool) formatSkillList() string {
 	var lines []string
 	for _, s := range all {
 		if t.isExcluded(s.Name) {
+			continue
+		}
+		if t.isTeamGated(s) {
 			continue
 		}
 		if !skillMatchesPaths(t.ProjectRoot, s.Paths) {

@@ -409,6 +409,16 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		teamMgr = teams.NewManager(paths.Home+"/teams", templatesDirs...)
 	}
 
+	// Wire team-active check into SkillTool so team-gated skills (e.g. batch) only
+	// appear when a team is active.
+	if st, err := registry.Get("Skill"); err == nil {
+		if skillTool, ok := st.(*tools.SkillTool); ok {
+			skillTool.HasActiveTeam = func() bool {
+				return teamMgr != nil && teamMgr.HasActiveTeam()
+			}
+		}
+	}
+
 	// Message injection channel for headless mode
 	injectCh := make(chan attach.UserMsgPayload, 8)
 	interruptCh := make(chan struct{}, 1)
