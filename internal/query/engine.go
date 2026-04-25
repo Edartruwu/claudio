@@ -410,6 +410,12 @@ func (e *Engine) SetMaxTurns(n int) {
 	e.maxTurns = n
 }
 
+// SetModel updates the model used for hook-context reporting.
+// Call appInstance.API.SetModel separately to update the actual inference model.
+func (e *Engine) SetModel(model string) {
+	e.model = model
+}
+
 // SetCompactThreshold sets the context-usage percentage at which full auto-compaction
 // is triggered (overrides the default 95%). Only applied when t is between 1 and 100.
 func (e *Engine) SetCompactThreshold(t int) {

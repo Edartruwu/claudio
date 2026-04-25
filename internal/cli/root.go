@@ -556,6 +556,62 @@ func runHeadlessAttach(args []string) error {
 		engine.SetSystem(updatedSys)
 	})
 
+	// --- Wire OnSetAgent for dynamic agent persona changes in headless mode ---
+	// Placed after engine creation so the closure can capture engine, reg, and baseReg.
+	attachClient.OnSetAgent(func(payload attach.SetAgentPayload) {
+		flagAgent = payload.AgentType
+
+		// Rebuild registry from pristine base with new agent's overrides applied.
+		newReg := appInstance.Tools.Clone()
+		agentDef := agents.GetAgent(payload.AgentType)
+		for _, name := range agentDef.DisallowedTools {
+			newReg.Remove(name)
+		}
+		pluginSection := app.ApplyAgentExtras(newReg, agentDef.Type)
+		agentPluginSection2 = pluginSection
+
+		// Preserve team tools if a team is currently active.
+		if headlessTeamTemplate != nil {
+			for _, name := range tools.TeamToolNames {
+				if _, err := newReg.Get(name); err != nil {
+					if t, err2 := baseReg.Get(name); err2 == nil {
+						newReg.Register(t)
+					}
+				}
+			}
+		} else {
+			for _, name := range tools.TeamToolNames {
+				newReg.Remove(name)
+			}
+		}
+
+		// Update shared registry reference so future OnSetTeam picks up the new base.
+		reg = newReg
+		engine.SetRegistry(reg)
+
+		// Apply model override if the agent definition specifies one.
+		if agentDef.Model != "" {
+			newModel := agentDef.Model
+			if resolved, ok := appInstance.API.ResolveModelShortcut(newModel); ok {
+				newModel = resolved
+			}
+			appInstance.Config.Model = newModel
+			appInstance.API.SetModel(newModel)
+			engine.SetModel(newModel)
+		}
+
+		// Rebuild system prompt with updated agent context.
+		updatedSys := buildFullSystemPrompt()
+		if headlessTeamTemplate != nil {
+			updatedSys += "\n\n" + buildHeadlessTeamContextBlock(headlessTeamTemplate)
+			updatedSys += "\n\nWhen all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents."
+		}
+		if agentPluginSection2 != "" {
+			updatedSys += "\n\n" + agentPluginSection2
+		}
+		engine.SetSystem(updatedSys)
+	})
+
 	if len(initialMsgs) > 0 {
 		engine.SetMessages(initialMsgs)
 	}
