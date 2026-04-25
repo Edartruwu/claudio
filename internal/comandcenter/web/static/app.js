@@ -255,8 +255,10 @@
         if (msgs && msgs.children.length === 0) {
           _reloadTimer = setTimeout(reloadMessages, 600);
         }
-        // Refresh team list to catch any agent-status events missed while disconnected.
-        if (window.htmx) {
+        // Refresh team list only if team tab is currently active.
+        var teamTab = document.getElementById('tab-team');
+        teamTab = teamTab && teamTab.getAttribute('aria-selected') === 'true' ? teamTab : null;
+        if (teamTab && window.htmx) {
           htmx.ajax('GET', '/api/sessions/' + sessionId + '/team', {
             target: '#team-members-list',
             swap: 'innerHTML'
@@ -495,6 +497,17 @@ window.refreshSessionList = function() {
     if (el && window.htmx) htmx.trigger(el, 'refresh');
   }, 2000);
 };
+
+// --- Agent card click (delegated) ---
+document.addEventListener('click', function(e) {
+  var card = e.target.closest('[data-agent]');
+  if (!card) return;
+  var name = card.dataset.agent;
+  var sid = card.dataset.session;
+  if (name && sid && window.ccOpenAgentLogs) {
+    window.ccOpenAgentLogs(name, sid);
+  }
+});
 
 // --- Task detail toggle ---
 window.toggleTaskDetail = function(el) {

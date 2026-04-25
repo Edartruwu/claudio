@@ -14,7 +14,8 @@ templ TeamMembers(agents []cc.Agent, sessionID string) {
 			id={ fmt.Sprintf("agent-card-%s", agent.ID) }
 			data-agent-name={ agent.Name }
 			class="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-3 cursor-pointer flex items-center gap-3"
-			onclick={ templ.JSFuncCall("ccOpenAgentLogs", agent.Name, sessionID) }
+			data-agent={ agent.Name }
+			data-session={ sessionID }
 			onmouseover="this.style.background='var(--color-surfaceHigh)'"
 			onmouseout="this.style.background='var(--color-surface)'"
 		>
