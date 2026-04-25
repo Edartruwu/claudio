@@ -800,6 +800,18 @@ func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
 	return agents, rows.Err()
 }
 
+// DeleteAgentsBySession removes all agent records for a session (used by /clear).
+func (s *Storage) DeleteAgentsBySession(sessionID string) error {
+	_, err := s.db.Exec(`DELETE FROM cc_agents WHERE session_id=?`, sessionID)
+	return err
+}
+
+// DeleteAgentEventsBySession removes all agent events for a session (used by /clear).
+func (s *Storage) DeleteAgentEventsBySession(sessionID string) error {
+	_, err := s.db.Exec(`DELETE FROM cc_agent_events WHERE session_id=?`, sessionID)
+	return err
+}
+
 // InsertAgentEvent persists an agent status event for reconnect replay.
 func (s *Storage) InsertAgentEvent(sessionID, agentName, status, payload string) error {
 	_, err := s.db.Exec(`

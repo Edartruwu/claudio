@@ -448,6 +448,8 @@ func (ws *WebServer) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = ws.storage.DeleteNativeMessages(sessionID)
+		_ = ws.storage.DeleteAgentsBySession(sessionID)
+		_ = ws.storage.DeleteAgentEventsBySession(sessionID)
 		confirm := cc.Message{
 			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
 			SessionID: sessionID,
