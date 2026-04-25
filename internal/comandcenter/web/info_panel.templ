@@ -53,7 +53,7 @@ templ InfoPanel(data InfoPageData) {
 			}
 		</div>
 		<!-- Tab bar -->
-		<div id="info-tab-bar" class="flex bg-[var(--color-surface)] border-b border-b-[var(--color-border)] shrink-0">
+		<div id="info-tab-bar" role="tablist" aria-label="Session info tabs" class="flex bg-[var(--color-surface)] border-b border-b-[var(--color-border)] shrink-0">
 			@infoTab(data.Session.ID, "tasks", "Tasks", data.ActiveTab, infoTabIconTasks())
 			@infoTab(data.Session.ID, "team", "Team", data.ActiveTab, infoTabIconTeam())
 			@infoTab(data.Session.ID, "media", "Media", data.ActiveTab, infoTabIconMedia())
@@ -61,7 +61,7 @@ templ InfoPanel(data InfoPageData) {
 			@infoTab(data.Session.ID, "config", "Config", data.ActiveTab, infoTabIconConfig())
 		</div>
 		<!-- Tab content -->
-		<div id="tab-content" class="flex-1 overflow-y-auto px-4 py-3">
+		<div id="tab-content" role="tabpanel" aria-labelledby={ "tab-" + data.ActiveTab } class="flex-1 overflow-y-auto px-4 py-3">
 			if data.ActiveTab == "team" {
 				@TabTeam(data)
 			} else if data.ActiveTab == "media" {
@@ -103,8 +103,12 @@ templ InfoPanel(data InfoPageData) {
 		function setActiveTab(el) {
 			document.querySelectorAll('.info-tab').forEach(function(btn) {
 				btn.classList.remove('info-tab-active');
+				btn.setAttribute('aria-selected', 'false');
 			});
 			el.classList.add('info-tab-active');
+			el.setAttribute('aria-selected', 'true');
+			var panel = document.getElementById('tab-content');
+			if (panel) panel.setAttribute('aria-labelledby', el.id);
 		}
 		function _showFeedback(id, ok) {
 			var el = document.getElementById(id);
@@ -162,6 +166,10 @@ templ InfoPanel(data InfoPageData) {
 
 templ infoTab(sessID, tab, label, activeTab string, icon templ.Component) {
 	<button
+		id={ "tab-" + tab }
+		role="tab"
+		aria-selected={ fmt.Sprintf("%t", activeTab == tab) }
+		aria-controls="tab-content"
 		class={ "info-tab", templ.KV("info-tab-active", activeTab == tab) }
 		hx-get={ fmt.Sprintf("/chat/%s/info?tab=%s", sessID, tab) }
 		hx-target="#tab-content"

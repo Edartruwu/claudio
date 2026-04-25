@@ -114,9 +114,27 @@ templ ChatListSidebar(data ChatListData) {
 							btn.dataset.filterChip = f;
 							btn.dataset.projectChip = '1';
 							btn.style.cssText = 'padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surface);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:background 0.15s,color 0.15s;';
-							btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>'
-								+ '<span>' + p.name + '</span>'
-								+ '<span style="font-size:11px;opacity:.6;margin-left:2px;">' + p.count + '</span>';
+							// Safe DOM construction — no innerHTML
+							var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+							svg.setAttribute('width', '12');
+							svg.setAttribute('height', '12');
+							svg.setAttribute('fill', 'none');
+							svg.setAttribute('stroke', 'currentColor');
+							svg.setAttribute('stroke-width', '2');
+							svg.setAttribute('viewBox', '0 0 24 24');
+							var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+							path.setAttribute('stroke-linecap', 'round');
+							path.setAttribute('stroke-linejoin', 'round');
+							path.setAttribute('d', 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z');
+							svg.appendChild(path);
+							btn.appendChild(svg);
+							var nameSpan = document.createElement('span');
+							nameSpan.textContent = p.name;
+							btn.appendChild(nameSpan);
+							var countSpan = document.createElement('span');
+							countSpan.style.cssText = 'font-size:11px;opacity:.6;margin-left:2px;';
+							countSpan.textContent = p.count;
+							btn.appendChild(countSpan);
 							btn.onclick = function() {
 								ccSetFilter(f);
 								htmx.ajax('GET', '/partials/sessions?filter=' + encodeURIComponent(f), {target:'#session-list', swap:'innerHTML'});
@@ -125,8 +143,8 @@ templ ChatListSidebar(data ChatListData) {
 						});
 					}).catch(function(){});
 				}
+				window.refreshProjectChips = loadProjectChips;
 				loadProjectChips();
-				setInterval(loadProjectChips, 10000);
 			})();
 			</script>
 		</div>
@@ -135,7 +153,7 @@ templ ChatListSidebar(data ChatListData) {
 			<div
 				id="session-list"
 				hx-get="/partials/sessions"
-				hx-trigger="load, every 3s"
+				hx-trigger="load, refresh"
 				hx-swap="innerHTML show:no-scroll"
 				hx-indicator=".htmx-indicator"
 			>

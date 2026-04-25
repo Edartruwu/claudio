@@ -76,17 +76,7 @@ templ SessionRow(row sessionRow) {
 					<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-[var(--color-brand)] rounded-[0_4px_4px_0]"></div>
 				}
 				<!-- Avatar -->
-				<div class="relative shrink-0">
-					<div
-						class="w-[52px] h-[52px] rounded-full flex items-center justify-center font-[inherit] text-[19.76px] font-bold text-[#0B0E0F] shrink-0"
-						style={ fmt.Sprintf("background:%s;", AvatarColor(row.Session.Name)) }
-					>
-						{ FirstChar(row.Session.Name) }
-					</div>
-					if row.Session.Status == "active" {
-						<span class="absolute bottom-[1px] right-[1px] w-[13.52px] h-[13.52px] bg-[var(--color-brand)] border-2 border-[var(--color-bg)] rounded-full"></span>
-					}
-				</div>
+				@AvatarCircle(row.Session.Name, row.Session.Status == "active", "lg")
 				<!-- Text content -->
 				<div class="flex-1 min-w-0">
 					<div class="flex justify-between items-baseline mb-[3px]">

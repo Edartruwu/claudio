@@ -357,6 +357,7 @@
           showAgentToast(data.name, data.status);
           // Targeted card update — no full-list refresh needed for each event.
           updateAgentCard(data.name, data.status, data.current_tool || '');
+          if (window.refreshSessionList) window.refreshSessionList();
           if (msgs) {
             var agentIcon = data.status === 'complete' ? '✅' : data.status === 'failed' ? '❌' : data.status === 'working' ? '⚙️' : '⏳';
             var notifId = 'agent-status-' + data.name.replace(/[^a-z0-9]/gi, '-');
@@ -376,11 +377,11 @@
           if (window._ccLogAgent && data.agent_name === window._ccLogAgent.name && data.session_id === window._ccLogAgent.sessionID) {
             fetch('/chat/' + data.session_id + '/agents/' + encodeURIComponent(data.agent_name) + '/logs', {credentials:'include'})
               .then(function(r){return r.text();})
-              .then(function(html){
-                var body = document.getElementById('agent-log-body');
+              .then(function(text){
+                var body = document.getElementById('agent-log-content');
                 if (!body) return;
                 var near = body.scrollTop >= body.scrollHeight - body.clientHeight - 50;
-                body.innerHTML = html;
+                body.textContent = text;
                 if (near) body.scrollTop = body.scrollHeight;
               });
           }
@@ -413,6 +414,7 @@
             setTyping('typing...');
           }
           appendMessage(data.html);
+          if (window.refreshSessionList) window.refreshSessionList();
         }
       } catch (err) {
         console.error('[claudio-ws] message parse error:', err, e.data);
@@ -485,6 +487,13 @@
     if (el && el.dataset.sessionId) startChat(el.dataset.sessionId);
   });
 })();
+
+// --- Session list refresh (WS-gated, replaces polling) ---
+window.refreshSessionList = function() {
+  var el = document.getElementById('session-list');
+  if (el && window.htmx) htmx.trigger(el, 'refresh');
+  if (window.refreshProjectChips) window.refreshProjectChips();
+};
 
 // --- Task detail toggle ---
 window.toggleTaskDetail = function(el) {
