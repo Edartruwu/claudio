@@ -120,6 +120,13 @@ templ MessageBubble(msg MessageView) {
 			</div>
 			<p class="text-[var(--color-textMuted)] text-[11px] mt-1 pl-[2px]">{ RelTime(msg.CreatedAt) }</p>
 		</div>
+	} else if msg.AgentName != "" && IsAgentStatusLine(msg.Content) {
+		<!-- AGENT STATUS: compact inline badge -->
+		<div class="flex items-center gap-2 mb-1 px-2 py-1 opacity-60">
+			<span class="inline-block w-2 h-2 rounded-full bg-[var(--color-ai)]"></span>
+			<span class="text-[var(--color-textMuted)] text-[12px]">{ msg.Content }</span>
+			<span class="text-[var(--color-textMuted)] text-[10px]">{ RelTime(msg.CreatedAt) }</span>
+		</div>
 	} else {
 		<!-- ASSISTANT / CRON: left-aligned -->
 		<div class="flex flex-col items-start mb-1">

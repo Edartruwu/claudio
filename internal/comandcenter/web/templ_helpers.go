@@ -94,6 +94,14 @@ func HasPrefix(s, prefix string) bool {
 	return strings.HasPrefix(s, prefix)
 }
 
+// IsAgentStatusLine returns true for short agent status messages like
+// "⏳ explore-agent — done" that should render as compact status badges
+// instead of full chat bubbles.
+func IsAgentStatusLine(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	return len(trimmed) < 120 && strings.Contains(trimmed, " — done")
+}
+
 // ToolName extracts the tool name from "ToolName: {json}" content.
 func ToolName(s string) string {
 	if i := strings.Index(s, ": "); i > 0 {
