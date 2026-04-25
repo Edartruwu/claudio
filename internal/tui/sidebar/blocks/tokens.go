@@ -9,19 +9,33 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
-// TokensBlock shows token usage and estimated cost.
+var (
+	tokBarMutedStyle = lipgloss.NewStyle().Foreground(styles.Muted)
+	tokTextStyle     = lipgloss.NewStyle().Foreground(styles.Text)
+	tokMutedStyle    = lipgloss.NewStyle().Foreground(styles.Muted)
+	tokModelStyle    = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	tokPctStyle      = lipgloss.NewStyle().Foreground(styles.Muted)
+)
+
+// TokensBlock shows token usage, cost, model name, and context %.
 type TokensBlock struct {
-	GetTokens      func() int
-	GetCost        func() float64
-	GetMaxContext  func() int
+	GetTokens     func() int
+	GetCost       func() float64
+	GetMaxContext func() int
+	GetModel      func() string
 }
 
-func NewTokensBlock(getTokens func() int, getCost func() float64, getMaxContext func() int) *TokensBlock {
-	return &TokensBlock{GetTokens: getTokens, GetCost: getCost, GetMaxContext: getMaxContext}
+func NewTokensBlock(getTokens func() int, getCost func() float64, getMaxContext func() int, getModel func() string) *TokensBlock {
+	return &TokensBlock{
+		GetTokens:     getTokens,
+		GetCost:       getCost,
+		GetMaxContext: getMaxContext,
+		GetModel:      getModel,
+	}
 }
 
 func (b *TokensBlock) Title() string  { return "Usage" }
-func (b *TokensBlock) MinHeight() int { return 2 }
+func (b *TokensBlock) MinHeight() int { return 3 }
 func (b *TokensBlock) Weight() int    { return 1 }
 
 func (b *TokensBlock) Render(width, maxHeight int) string {
@@ -40,6 +54,12 @@ func (b *TokensBlock) Render(width, maxHeight int) string {
 			contextLimit = v
 		}
 	}
+
+	model := ""
+	if b.GetModel != nil {
+		model = b.GetModel()
+	}
+
 	pct := float64(tokens) / float64(contextLimit)
 	if pct > 1 {
 		pct = 1
@@ -58,25 +78,31 @@ func (b *TokensBlock) Render(width, maxHeight int) string {
 	if pct > 0.90 {
 		barColor = styles.Error
 	}
+	barFilledStyle := lipgloss.NewStyle().Foreground(barColor)
 
 	filledStr := strings.Repeat("█", filled)
 	emptyStr := strings.Repeat("░", barW-filled)
-	bar := lipgloss.NewStyle().Foreground(barColor).Render(filledStr) +
-		lipgloss.NewStyle().Foreground(styles.Muted).Render(emptyStr)
+	bar := barFilledStyle.Render(filledStr) + tokBarMutedStyle.Render(emptyStr)
 
-	tokenStr := lipgloss.NewStyle().Foreground(styles.Text).Render(
-		fmt.Sprintf(" %s / %s", formatTokens(tokens), formatTokens(contextLimit)),
-	)
-	costStr := lipgloss.NewStyle().Foreground(styles.Muted).Render(
-		fmt.Sprintf(" $%.4f", cost),
-	)
+	pctStr := tokPctStyle.Render(fmt.Sprintf("%.0f%%", pct*100))
+	tokenStr := tokTextStyle.Render(fmt.Sprintf(" %s / %s", formatTokens(tokens), formatTokens(contextLimit)))
+	costStr := tokMutedStyle.Render(fmt.Sprintf(" $%.4f", cost))
 
 	lines := []string{
-		" " + bar,
+		" " + bar + " " + pctStr,
 		tokenStr + "  " + costStr,
 	}
 
-	// Trim to maxHeight
+	// Model name line (only if there's room and model is known)
+	if model != "" && maxHeight >= 3 {
+		// Trim model name to fit
+		maxModelW := width - 3
+		if len(model) > maxModelW {
+			model = model[:maxModelW-1] + "…"
+		}
+		lines = append(lines, " "+tokModelStyle.Render(model))
+	}
+
 	if len(lines) > maxHeight {
 		lines = lines[:maxHeight]
 	}

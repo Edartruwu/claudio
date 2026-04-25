@@ -9,15 +9,19 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+var (
+	separatorStyle  = lipgloss.NewStyle().Foreground(styles.Muted)
+	panelFooterBase = lipgloss.NewStyle().Foreground(styles.Muted)
+)
+
 // buildSeparator creates a thin vertical line of the given height.
 func buildSeparator(height int) string {
 	if height <= 0 {
 		return ""
 	}
-	style := lipgloss.NewStyle().Foreground(styles.Muted)
 	lines := make([]string, height)
 	for i := range lines {
-		lines[i] = style.Render("│")
+		lines[i] = separatorStyle.Render("│")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -87,9 +91,6 @@ func renderPanelWithHelp(panel panels.Panel, w, h int) string {
 		return panelView
 	}
 
-	footer := lipgloss.NewStyle().
-		Width(w).
-		Foreground(styles.Muted).
-		Render(helpText)
+	footer := panelFooterBase.Width(w).Render(helpText)
 	return lipgloss.JoinVertical(lipgloss.Left, panelView, footer)
 }

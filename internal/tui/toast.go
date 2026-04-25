@@ -15,6 +15,14 @@ const ToastDuration = 1500 * time.Millisecond
 // ToastDismissMsg is sent when the toast should auto-dismiss.
 type ToastDismissMsg struct{}
 
+var (
+	toastContentStyle = lipgloss.NewStyle().Foreground(styles.Text).Padding(0, 2)
+	toastBoxStyle     = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(styles.SurfaceAlt).
+				Background(styles.Surface)
+)
+
 // Toast is a brief notification overlay that auto-dismisses.
 type Toast struct {
 	text   string
@@ -47,16 +55,8 @@ func (t Toast) View() string {
 		return ""
 	}
 
-	content := lipgloss.NewStyle().
-		Foreground(styles.Text).
-		Padding(0, 2).
-		Render(t.text)
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.SurfaceAlt).
-		Background(styles.Surface).
-		Render(content)
+	content := toastContentStyle.Render(t.text)
+	box := toastBoxStyle.Render(content)
 
 	return box
 }

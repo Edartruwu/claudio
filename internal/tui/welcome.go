@@ -11,6 +11,16 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+var (
+	welcomeLogoStyle     = lipgloss.NewStyle().Bold(true).Foreground(styles.Primary)
+	welcomeSubtitleStyle = lipgloss.NewStyle().Foreground(styles.Text).Italic(true)
+	welcomeKeyStyle      = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	welcomeLabelStyle    = lipgloss.NewStyle().Foreground(styles.Text)
+	welcomeMutedStyle    = lipgloss.NewStyle().Foreground(styles.Muted)
+	welcomeCwdStyle      = lipgloss.NewStyle().Foreground(styles.Subtle)
+	welcomeVerStyle      = lipgloss.NewStyle().Foreground(styles.Dim)
+)
+
 // renderWelcomeScreen renders a centered welcome screen.
 func (m *Model) renderWelcomeScreen() string {
 	w := m.viewport.Width
@@ -26,24 +36,14 @@ func (m *Model) renderWelcomeScreen() string {
 	}
 
 	// ── Logo ──────────────────────────────────────────────
-	logo := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(styles.Primary).
-		Render("claudio")
-
-	subtitle := lipgloss.NewStyle().
-		Foreground(styles.Text).
-		Italic(true).
-		Render("AI coding assistant")
+	logo := welcomeLogoStyle.Render("claudio")
+	subtitle := welcomeSubtitleStyle.Render("AI coding assistant")
 
 	// ── Hints row ─────────────────────────────────────────
 	kb := func(key, label string) string {
-		return lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).Render(key) +
-			" " +
-			lipgloss.NewStyle().Foreground(styles.Text).Render(label)
+		return welcomeKeyStyle.Render(key) + " " + welcomeLabelStyle.Render(label)
 	}
-	tagline := lipgloss.NewStyle().Foreground(styles.Muted).
-		Render("Type your message below, or use a shortcut:")
+	tagline := welcomeMutedStyle.Render("Type your message below, or use a shortcut:")
 	hints := kb("/", "commands") + "   " +
 		kb("@", "files") + "   " +
 		kb("ctrl+p", "palette")
@@ -56,11 +56,11 @@ func (m *Model) renderWelcomeScreen() string {
 			recent, _ = m.session.Search("", 3)
 		}
 		if len(recent) > 0 {
-			headerLine := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).Render("Recent") +
-				" " + lipgloss.NewStyle().Foreground(styles.Muted).Render(strings.Repeat("─", boxW-7))
+			headerLine := welcomeKeyStyle.Render("Recent") +
+				" " + welcomeMutedStyle.Render(strings.Repeat("─", boxW-7))
 			recentParts = append(recentParts, headerLine)
 			for i, s := range recent {
-				num := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true).Render(fmt.Sprintf("%d", i+1))
+				num := welcomeKeyStyle.Render(fmt.Sprintf("%d", i+1))
 				title := s.Title
 				if title == "" {
 					title = s.ID
@@ -68,11 +68,10 @@ func (m *Model) renderWelcomeScreen() string {
 				if len(title) > boxW-12 {
 					title = title[:boxW-15] + "…"
 				}
-				titleS := lipgloss.NewStyle().Foreground(styles.Text).Render(title)
+				titleS := welcomeLabelStyle.Render(title)
 				recentParts = append(recentParts, "  "+num+"  "+titleS)
 			}
-			recentParts = append(recentParts, lipgloss.NewStyle().Foreground(styles.Muted).
-				Render("[1-3] resume · <Space>. browse · type to chat"))
+			recentParts = append(recentParts, welcomeMutedStyle.Render("[1-3] resume · <Space>. browse · type to chat"))
 		}
 	}
 
@@ -113,8 +112,8 @@ func (m *Model) renderWelcomeScreen() string {
 		}
 	}
 	version := "claudio"
-	cwdS := lipgloss.NewStyle().Foreground(styles.Subtle).Render(cwd)
-	verS := lipgloss.NewStyle().Foreground(styles.Dim).Render(version)
+	cwdS := welcomeCwdStyle.Render(cwd)
+	verS := welcomeVerStyle.Render(version)
 	gap := w - lipgloss.Width(cwdS) - lipgloss.Width(verS) - 2
 	if gap < 1 {
 		gap = 1

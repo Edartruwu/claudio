@@ -13,6 +13,18 @@ import (
 )
 
 // TeamSelectedMsg is sent when the user picks a template or creates an ephemeral team.
+var (
+	tsSelectedPrefixStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	tsSelectedNameStyle   = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	tsDimNameStyle        = lipgloss.NewStyle().Foreground(styles.Dim)
+	tsTitleStyle          = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	tsLabelStyle          = lipgloss.NewStyle().Foreground(styles.Primary)
+	tsValueStyle          = lipgloss.NewStyle().Foreground(styles.Dim)
+	tsMemberKeyStyle      = lipgloss.NewStyle().Foreground(styles.Text)
+	tsSepStyle            = lipgloss.NewStyle().Foreground(styles.Dim)
+	tsHintStyle           = lipgloss.NewStyle().Foreground(styles.Warning).Italic(true)
+)
+
 type TeamSelectedMsg struct {
 	// TemplateName is non-empty when an existing template was chosen.
 	TemplateName string
@@ -39,6 +51,7 @@ type Model struct {
 	cursor  int
 	active  bool
 	width   int
+	height  int
 }
 
 // New creates a new team selector loaded from the given dirs.
@@ -67,8 +80,9 @@ func New(dirs ...string) Model {
 	}
 }
 
-func (m Model) IsActive() bool  { return m.active }
-func (m *Model) SetWidth(w int) { m.width = w }
+func (m Model) IsActive() bool   { return m.active }
+func (m *Model) SetWidth(w int)  { m.width = w }
+func (m *Model) SetHeight(h int) { m.height = h }
 
 // entryName returns the display name for a list entry.
 func entryName(e entry) string {
@@ -172,15 +186,22 @@ func (m Model) View() string {
 
 	// inner content area inside the border
 	innerW := totalW - 2
-	innerH := 18 // fixed height for the overlay content
+	innerH := 18 // default height for the overlay content
+	if m.height > 0 {
+		// border(2) + hint(1) + margin(3) = 6 overhead; clamp so total fits
+		if maxInnerH := m.height - 6; maxInnerH > 4 && maxInnerH < innerH {
+			innerH = maxInnerH
+		}
+	}
 
 	leftW := innerW * 2 / 5
 	rightW := innerW - leftW - 1 // 1 char for │ separator
 
-	// --- set textinput width ---
-	m.filter.Width = leftW - len(m.filter.Prompt) - 1
-	if m.filter.Width < 4 {
-		m.filter.Width = 4
+	// --- compute filter display width without mutating m.filter ---
+	filterCopy := m.filter
+	filterCopy.Width = leftW - len(m.filter.Prompt) - 1
+	if filterCopy.Width < 4 {
+		filterCopy.Width = 4
 	}
 
 	items := m.filtered()
@@ -203,7 +224,7 @@ func (m Model) View() string {
 	end := min(offset+listH, len(items))
 
 	var leftLines []string
-	leftLines = append(leftLines, m.filter.View())
+	leftLines = append(leftLines, filterCopy.View())
 	leftLines = append(leftLines, "") // blank
 
 	for i := offset; i < end; i++ {
@@ -213,11 +234,11 @@ func (m Model) View() string {
 		var prefix string
 		var nameStyle lipgloss.Style
 		if selected {
-			prefix = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("▶ ")
-			nameStyle = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+			prefix = tsSelectedPrefixStyle.Render("▶ ")
+			nameStyle = tsSelectedNameStyle
 		} else {
 			prefix = "  "
-			nameStyle = lipgloss.NewStyle().Foreground(styles.Dim)
+			nameStyle = tsDimNameStyle
 		}
 
 		name := entryName(e)
@@ -230,10 +251,10 @@ func (m Model) View() string {
 	// --- right pane lines ---
 	var rightLines []string
 
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
-	labelStyle := lipgloss.NewStyle().Foreground(styles.Primary)
-	valueStyle := lipgloss.NewStyle().Foreground(styles.Dim)
-	memberKeyStyle := lipgloss.NewStyle().Foreground(styles.Text)
+	titleStyle := tsTitleStyle
+	labelStyle := tsLabelStyle
+	valueStyle := tsValueStyle
+	memberKeyStyle := tsMemberKeyStyle
 
 	if len(items) > 0 {
 		e := items[cursor]
@@ -280,7 +301,7 @@ func (m Model) View() string {
 	// --- build rows ---
 	leftStyle := lipgloss.NewStyle().Width(leftW).MaxWidth(leftW)
 	rightStyle := lipgloss.NewStyle().Width(rightW).MaxWidth(rightW)
-	sepStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+	sepStyle := tsSepStyle
 
 	var rows []string
 	for i := 0; i < innerH; i++ {
@@ -299,8 +320,7 @@ func (m Model) View() string {
 		Width(innerW).
 		Render(body)
 
-	hint := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true).
-		Render("  type to filter · j/k navigate · enter select · esc cancel")
+	hint := tsHintStyle.Render("  type to filter · j/k navigate · enter select · esc cancel")
 
 	full := lipgloss.JoinVertical(lipgloss.Left, box, hint)
 

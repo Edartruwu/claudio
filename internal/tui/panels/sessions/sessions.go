@@ -217,14 +217,19 @@ func (p *Panel) View() string {
 	if p.width < 10 || p.height < 5 {
 		return ""
 	}
-	boxW := p.width
+	// Border adds +2 cols and +2 rows to the total. Padding(0,1) is INSIDE Width.
+	// So Width(boxW) total = boxW+2. Use boxW = p.width-2 so total = p.width.
+	// innerW = boxW - 2 (padding only; border is outside Width).
+	boxW := p.width - 2
 	boxH := p.height
 
-	innerW := boxW - 4 // border (1+1) + padding (1+1)
+	innerW := boxW - 2 // padding (1+1) is inside Width; content area = boxW - 2
 	leftW := innerW * 50 / 100
 	rightW := innerW - leftW - 3
 
-	listH := boxH - 3 // search bar + borders
+	// body(listH) + "\n"(1) + bottomBar(1) = listH+2 content rows.
+	// Border adds 2 rows → total = listH+4. Want total = boxH → listH = boxH-4.
+	listH := boxH - 4
 
 	// ── Left pane: results ──
 	leftContent := p.renderResults(leftW, listH)

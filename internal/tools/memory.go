@@ -74,7 +74,21 @@ Facts are discrete, one-sentence, specific statements — not prose. Each memory
 - Call Memory(append) to add a new fact to an existing entry (e.g., a new convention for a known topic).
 - Call Memory(read) before replace-fact or delete-fact to see current facts with their indices.
 - Facts should be discrete, one-sentence, specific. Good: "JWT tokens expire in 24h". Bad: "The JWT configuration is complex and involves many settings...".
-- Use the Recall tool for semantic/fuzzy search across memories.`
+- Use the Recall tool for semantic/fuzzy search across memories.
+
+## When NOT to Use
+
+Memory is for **durable facts only** — not task tracking or session state. Ask: "Would this fact still be true after a git clone tomorrow?" If no → do NOT save.
+
+**Never save:**
+- Task or subtask completion ("Phase X done", "implemented Y", "merged Z")
+- Which tasks are in progress, pending, or blocked
+- Worktree branch names, active agent IDs, session IDs
+- Open bugs, current sprint state, PR/branch status
+- Anything prefixed "currently", "right now", "this session", "in progress"
+- Things the user can see directly in the code
+
+Use TaskCreate/TaskUpdate for task tracking. Memory is for architectural knowledge that helps future agents avoid re-investigation.`
 }
 
 func (t *MemoryTool) InputSchema() json.RawMessage {

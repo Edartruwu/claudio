@@ -150,10 +150,11 @@ func (p *Panel) Deactivate() {
 func (p *Panel) SetSize(w, h int) {
 	p.width = w
 	p.height = h
-	// Calculate detail VP dimensions accounting for left pane, borders, and padding
+	// Calculate detail VP dimensions accounting for left pane and both borders.
+	// Each bordered pane costs +2 cols total (1 left + 1 right). With two panes:
+	// leftTotal = leftWidth+2, rightContent = p.width - (leftWidth+2) - 2 = p.width - leftWidth - 4.
 	leftWidth := p.leftPaneWidth()
-	// detailVP gets the remaining width, minus borders
-	p.detailVP.Width = p.width - leftWidth - 3 // account for separator and padding
+	p.detailVP.Width = p.width - leftWidth - 4
 	if p.detailVP.Width < 20 {
 		p.detailVP.Width = 20
 	}
@@ -251,9 +252,10 @@ func (p *Panel) HandleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 
 // ── private helpers ───────────────────────────────────────────────────────────
 
-// contentHeight is the viewport height for right pane: total minus title rows.
+// contentHeight is the viewport height for right pane: inner pane height minus title rows.
+// Border adds 2 to height, so inner = p.height-2. Title(1) + sep(1) = 2 more rows.
 func (p *Panel) contentHeight() int {
-	h := p.height - 3 // title (1) + separator (1) + hint (1)
+	h := p.height - 4 // border(2) + title(1) + separator(1)
 	if h < 2 {
 		h = 2
 	}
@@ -1010,7 +1012,7 @@ func (p *Panel) updateLeft(key string) (tea.Cmd, bool) {
 			e := fe[p.cursor]
 			agentName := e.name
 			return func() tea.Msg {
-				return panels.ActionMsg{Type: "send_to_agent", Payload: agentName}
+				return panels.ActionMsg{Type: "agent_message", Payload: agentName}
 			}, true
 		}
 		return nil, true
@@ -1099,16 +1101,19 @@ func (p *Panel) renderSplitView() string {
 	leftBorder := p.borderStyle(p.focusedPane == 0)
 	rightBorder := p.borderStyle(p.focusedPane == 1)
 
-	leftStyled := leftBorder.Width(p.leftPaneWidth()).Height(p.height).Render(leftPane)
-	rightWidth := p.width - p.leftPaneWidth() - 2
+	// Border adds 2 to each dimension. Use (dim - 2) as content size so total fits exactly.
+	innerH := p.height - 2
+	if innerH < 2 {
+		innerH = 2
+	}
+	leftStyled := leftBorder.Width(p.leftPaneWidth()).Height(innerH).Render(leftPane)
+	rightWidth := p.width - p.leftPaneWidth() - 4 // p.width - leftContent - leftBorder(2) - rightBorder(2)
 	if rightWidth < 20 {
 		rightWidth = 20
 	}
-	rightStyled := rightBorder.Width(rightWidth).Height(p.height).Render(rightPane)
+	rightStyled := rightBorder.Width(rightWidth).Height(innerH).Render(rightPane)
 
-	// Join horizontally
-	joined := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
-	return aguiContainerBase.Copy().Width(p.width).Height(p.height).Render(joined)
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
 }
 
 // borderStyle returns a style with the appropriate border (active = primary, inactive = muted).
@@ -1152,7 +1157,8 @@ func (p *Panel) renderLeftPane() string {
 	}
 
 	// 3. Agent list with scroll indicators.
-	availLines := p.height - fixedLines - 3 // account for border and padding
+	// Inner pane height = p.height - 2 (border). Subtract fixedLines for title/sep/filter.
+	availLines := p.height - fixedLines - 2
 	if availLines < 2 {
 		availLines = 2
 	}

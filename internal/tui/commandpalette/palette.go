@@ -10,6 +10,8 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+var paletteWrapStyle = lipgloss.NewStyle().Padding(0, 1)
+
 // Item represents a command in the palette.
 type Item struct {
 	Name        string
@@ -221,7 +223,11 @@ func (m Model) View() string {
 			line = rowStyle.Render(prefix + n + d)
 		} else {
 			n := styles.PaletteItem.Width(nameW + 2).Render("  " + name)
-			d := styles.PaletteDesc.Render(desc)
+			descW := m.width - 2 - nameW - 2
+			if descW < 0 {
+				descW = 0
+			}
+			d := styles.PaletteDesc.Width(descW).Render(desc)
 			line = n + d
 		}
 		lines = append(lines, line)
@@ -229,7 +235,5 @@ func (m Model) View() string {
 
 	content := strings.Join(lines, "\n")
 
-	return lipgloss.NewStyle().
-		Padding(0, 1).
-		Render(content)
+	return paletteWrapStyle.Render(content)
 }

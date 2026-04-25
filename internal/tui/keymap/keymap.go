@@ -60,7 +60,7 @@ func defaultBindings() map[string]ActionID {
 		"O":  ActionPanelTools,
 		"A":  ActionPanelAnalytics,
 		"f":  ActionPanelFiles,
-		"a":  ActionPanelAgents,
+		"a":  ActionPanelAgentGUI,
 
 		// Info panel sub-menu (i prefix)
 		"ic": ActionPanelConfig,

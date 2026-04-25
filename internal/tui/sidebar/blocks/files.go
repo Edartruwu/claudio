@@ -3,12 +3,22 @@ package blocks
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
+)
+
+var (
+	fileAddStyle  = lipgloss.NewStyle().Foreground(styles.Success)
+	fileModStyle  = lipgloss.NewStyle().Foreground(styles.Warning)
+	fileReadStyle = lipgloss.NewStyle().Foreground(styles.Muted)
+	fileDimStyle  = lipgloss.NewStyle().Foreground(styles.Muted)
+	fileNameStyle = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	fileDirStyle  = lipgloss.NewStyle().Foreground(styles.Muted)
 )
 
 // FilesBlock shows files touched during the session.
@@ -48,53 +58,81 @@ func (b *FilesBlock) Refresh(ops []filespanel.FileOp) {
 	}
 }
 
-func (b *FilesBlock) Title() string     { return fmt.Sprintf("Files (%d)", len(b.entries)) }
-func (b *FilesBlock) MinHeight() int    { return 1 }
-func (b *FilesBlock) Weight() int       { return 3 }
+func (b *FilesBlock) Title() string  { return fmt.Sprintf("Files (%d)", len(b.entries)) }
+func (b *FilesBlock) MinHeight() int { return 1 }
+func (b *FilesBlock) Weight() int    { return 3 }
 
 func (b *FilesBlock) Render(width, maxHeight int) string {
-	addStyle := lipgloss.NewStyle().Foreground(styles.Success)
-	modStyle := lipgloss.NewStyle().Foreground(styles.Warning)
-	readStyle := lipgloss.NewStyle().Foreground(styles.Muted)
-	dimStyle := lipgloss.NewStyle().Foreground(styles.Muted)
-
 	if len(b.entries) == 0 {
-		return dimStyle.Render("  No files yet")
+		return fileDimStyle.Render("  No files yet")
 	}
 
-	maxPathW := width - 5
-	if maxPathW < 8 {
-		maxPathW = 8
+	// Reserve: 1 icon + 1 space + 1 space indent = 3 chars prefix
+	maxLineW := width - 3
+	if maxLineW < 8 {
+		maxLineW = 8
 	}
 
 	var lines []string
 	for i, e := range b.entries {
 		if i >= maxHeight {
-			lines = append(lines, dimStyle.Render(fmt.Sprintf("  +%d more", len(b.entries)-i)))
+			lines = append(lines, fileDimStyle.Render(fmt.Sprintf("  +%d more", len(b.entries)-i)))
 			break
 		}
+
 		var icon string
 		var iconSt lipgloss.Style
 		switch e.Status {
 		case filespanel.FileAdded:
 			icon = "✚"
-			iconSt = addStyle
+			iconSt = fileAddStyle
 		case filespanel.FileModified:
 			icon = "✎"
-			iconSt = modStyle
+			iconSt = fileModStyle
 		default:
 			icon = "○"
-			iconSt = readStyle
+			iconSt = fileReadStyle
 		}
-		path := e.Path
-		if len(path) > maxPathW {
-			path = "…" + path[len(path)-maxPathW+1:]
+
+		base := filepath.Base(e.Path)
+		dir := filepath.Dir(e.Path)
+		if dir == "." {
+			dir = ""
 		}
+
 		count := ""
 		if e.Count > 1 {
-			count = dimStyle.Render(fmt.Sprintf(" (%d)", e.Count))
+			count = fileDimStyle.Render(fmt.Sprintf("×%d", e.Count))
 		}
-		lines = append(lines, " "+iconSt.Render(icon)+" "+path+count)
+
+		// Render basename bold + dir dimmed, truncating dir if needed
+		baseRendered := fileNameStyle.Render(base)
+		if dir != "" {
+			// Total visible length: base + "/" + dir
+			visibleLen := len(base) + 1 + len(dir)
+			if visibleLen > maxLineW {
+				// Truncate dir from the left
+				keep := maxLineW - len(base) - 2 // 2 = "/" + "…"
+				if keep > 0 {
+					dir = "…" + dir[len(dir)-keep:]
+				} else {
+					dir = ""
+				}
+			}
+			if dir != "" {
+				dirRendered := fileDirStyle.Render(dir + "/")
+				lines = append(lines, " "+iconSt.Render(icon)+" "+dirRendered+baseRendered+count)
+			} else {
+				lines = append(lines, " "+iconSt.Render(icon)+" "+baseRendered+count)
+			}
+		} else {
+			// Truncate base if needed
+			if len(base) > maxLineW {
+				base = base[:maxLineW-1] + "…"
+				baseRendered = fileNameStyle.Render(base)
+			}
+			lines = append(lines, " "+iconSt.Render(icon)+" "+baseRendered+count)
+		}
 	}
 	return strings.Join(lines, "\n")
 }

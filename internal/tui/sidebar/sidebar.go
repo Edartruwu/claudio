@@ -8,6 +8,11 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+var (
+	sidebarTitleStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	sidebarSepStyle   = lipgloss.NewStyle().Foreground(styles.SurfaceAlt)
+)
+
 // Sidebar stacks multiple Blocks vertically in a fixed-width column.
 type Sidebar struct {
 	blocks []Block
@@ -35,7 +40,7 @@ func (s *Sidebar) View() string {
 		return ""
 	}
 
-	// Filter out blocks that don't fit at all
+	// Filter out blocks that have no content (MinHeight == 0 would skip)
 	live := make([]Block, 0, len(s.blocks))
 	for _, b := range s.blocks {
 		if b.MinHeight() > 0 {
@@ -80,15 +85,15 @@ func (s *Sidebar) View() string {
 		}
 	}
 
-	titleStyle := lipgloss.NewStyle().
-		Foreground(styles.Primary).
-		Bold(true)
-	sepStyle := lipgloss.NewStyle().Foreground(styles.Muted)
-	sep := sepStyle.Render(strings.Repeat("─", s.width-1))
+	sepW := s.width - 1
+	if sepW < 1 {
+		sepW = 1
+	}
+	sep := sidebarSepStyle.Render(strings.Repeat("─", sepW))
 
 	var parts []string
 	for i, b := range live {
-		title := titleStyle.Render(" " + b.Title())
+		title := sidebarTitleStyle.Render(" " + b.Title())
 		parts = append(parts, title)
 		parts = append(parts, sep)
 		content := b.Render(s.width, heights[i])

@@ -28,7 +28,6 @@ const (
 	PanelMemory
 	PanelAnalytics
 	PanelTasks
-	PanelAgents
 	PanelTools
 	PanelConversation
 	PanelSessionTree // TODO: implemented in stree package
@@ -47,7 +46,7 @@ const (
 // panelOverlayMode returns the overlay rendering mode for a given panel.
 func panelOverlayMode(id PanelID) OverlayMode {
 	switch id {
-	case PanelAgents, PanelAgentGUI, PanelAnalytics, PanelSessionTree:
+	case PanelAgentGUI, PanelAnalytics, PanelSessionTree:
 		return OverlayFullscreen
 	case PanelSessions:
 		return OverlayDrawer

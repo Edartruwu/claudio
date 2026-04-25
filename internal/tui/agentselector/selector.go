@@ -13,6 +13,17 @@ import (
 )
 
 // AgentSelectedMsg is sent when the user picks an agent.
+var (
+	asSelectedPrefixStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	asSelectedNameStyle   = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	asDimNameStyle        = lipgloss.NewStyle().Foreground(styles.Dim)
+	asTitleStyle          = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	asLabelStyle          = lipgloss.NewStyle().Foreground(styles.Primary)
+	asValueStyle          = lipgloss.NewStyle().Foreground(styles.Dim)
+	asSepStyle            = lipgloss.NewStyle().Foreground(styles.Dim)
+	asHintStyle           = lipgloss.NewStyle().Foreground(styles.Warning).Italic(true)
+)
+
 type AgentSelectedMsg struct {
 	AgentType       string
 	DisplayName     string
@@ -229,10 +240,11 @@ func (m Model) View() string {
 	leftW := innerW * 2 / 5
 	rightW := innerW - leftW - 1 // 1 char for │ separator
 
-	// --- set textinput width ---
-	m.filter.Width = leftW - len(m.filter.Prompt) - 1
-	if m.filter.Width < 4 {
-		m.filter.Width = 4
+	// --- compute filter display width without mutating m.filter ---
+	filterCopy := m.filter
+	filterCopy.Width = leftW - len(m.filter.Prompt) - 1
+	if filterCopy.Width < 4 {
+		filterCopy.Width = 4
 	}
 
 	items := m.filtered()
@@ -260,7 +272,7 @@ func (m Model) View() string {
 	end := min(offset+listH, len(items))
 
 	var leftLines []string
-	leftLines = append(leftLines, m.filter.View())
+	leftLines = append(leftLines, filterCopy.View())
 	leftLines = append(leftLines, "") // blank
 
 	selectedRowStyle := lipgloss.NewStyle().
@@ -274,11 +286,11 @@ func (m Model) View() string {
 		var prefix string
 		var nameStyle lipgloss.Style
 		if selected {
-			prefix = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("▶ ")
-			nameStyle = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+			prefix = asSelectedPrefixStyle.Render("▶ ")
+			nameStyle = asSelectedNameStyle
 		} else {
 			prefix = "  "
-			nameStyle = lipgloss.NewStyle().Foreground(styles.Dim)
+			nameStyle = asDimNameStyle
 		}
 
 		name := a.Type
@@ -294,17 +306,16 @@ func (m Model) View() string {
 
 	// Position counter — only show when list is scrollable
 	if len(items) > listH {
-		counter := lipgloss.NewStyle().Foreground(styles.Dim).
-			Render("  " + fmt.Sprintf("%d / %d", cursor+1, len(items)))
+		counter := asDimNameStyle.Render("  " + fmt.Sprintf("%d / %d", cursor+1, len(items)))
 		leftLines = append(leftLines, counter)
 	}
 
 	// --- right pane lines ---
 	var rightLines []string
 
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
-	labelStyle := lipgloss.NewStyle().Foreground(styles.Primary)
-	valueStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+	titleStyle := asTitleStyle
+	labelStyle := asLabelStyle
+	valueStyle := asValueStyle
 
 	if len(items) > 0 {
 		sel := items[cursor]
@@ -360,7 +371,7 @@ func (m Model) View() string {
 	leftStyle := lipgloss.NewStyle().Width(leftW).MaxWidth(leftW)
 	rightStyle := lipgloss.NewStyle().Width(rightW).MaxWidth(rightW)
 
-	sepStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+	sepStyle := asSepStyle
 
 	var rows []string
 	for i := 0; i < innerH; i++ {
@@ -385,7 +396,7 @@ func (m Model) View() string {
 	} else {
 		hintText = "  type to filter · j/k navigate · enter select · esc cancel"
 	}
-	hint := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true).Render(hintText)
+	hint := asHintStyle.Render(hintText)
 
 	full := lipgloss.JoinVertical(lipgloss.Left, box, hint)
 

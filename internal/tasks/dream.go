@@ -189,7 +189,12 @@ Now review the session summary from the top. Extract new knowledge not already c
 - Anything already present in surviving entries (check before appending)
 - Things visible directly in the code
 - Standard practices every developer knows
-- Ephemeral state (would be stale next session)
+- Task or subtask completion ("implemented X", "Phase Y done", "fixed Z", "merged branch W")
+- Which tasks are/were in progress, pending, or blocked — use TaskCreate/TaskUpdate for that
+- Worktree branch names, active agent IDs, session IDs
+- Open bugs, PR status, deployment state, current sprint
+- Anything prefixed "currently", "right now", "this session", "in progress", "actively"
+- Any state that would be stale after a git clone tomorrow
 
 **Update existing entry** (prefer this):
   Memory(action="append", name="...", fact="one new discrete sentence")

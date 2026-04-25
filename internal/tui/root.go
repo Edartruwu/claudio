@@ -57,7 +57,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
 	sidebarblocks "github.com/Abraxas-365/claudio/internal/tui/sidebar/blocks"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
-	"github.com/Abraxas-365/claudio/internal/tui/teampanel"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
@@ -201,6 +200,8 @@ type Model struct {
 	// Welcome screen logo animation
 	logoFrame int // increments on each logoTickMsg to drive the color-wave animation
 
+	// busUnsub removes the EventBgTaskComplete subscription; called on quit.
+	busUnsub func()
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -378,7 +379,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 
 	// Subscribe to background task complete events
 	if m.appCtx != nil && m.appCtx.Bus != nil {
-		m.appCtx.Bus.Subscribe(bus.EventBgTaskComplete, func(event bus.Event) {
+		m.busUnsub = m.appCtx.Bus.Subscribe(bus.EventBgTaskComplete, func(event bus.Event) {
 			var payload bus.BgTaskCompletePayload
 			if err := json.Unmarshal(event.Payload, &payload); err != nil {
 				return
@@ -802,6 +803,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.appCtx.TeamRunner.KillAll()
 				m.appCtx.TeamRunner.WaitForAll(3 * time.Second)
 			}
+			m.cleanup()
 			return m, tea.Quit
 		case "ctrl+o":
 			// In viewport mode, let the viewport handler deal with cursor-aware expansion
@@ -844,9 +846,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, openExternalEditor(content)
 			}
 			return m, nil
-		case "ctrl+v":
-			// Try to paste image from clipboard
-			if m.focus == FocusPrompt && !m.streaming {
+		case "ctrl+v", "super+v":
+			// Try to paste image from clipboard (ctrl+v on Linux/Windows, super+v on Mac terminals that forward cmd+v)
+			if m.focus == FocusPrompt {
 				return m, func() tea.Msg {
 					// Quick check for image, then read if present
 					if !HasClipboardImage() {
@@ -1610,15 +1612,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case teampanel.RefreshMsg:
-		if m.activePanel != nil {
-			if ap, ok := m.activePanel.(*teampanel.Panel); ok {
-				cmd := ap.HandleRefresh()
-				return m, cmd
-			}
-		}
-		return m, nil
-
 	case agui.RefreshMsg:
 		if m.activePanel != nil {
 			if ap, ok := m.activePanel.(*agui.Panel); ok {
@@ -1822,6 +1815,10 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 			removeCfg = m.appCtx.Config
 		}
 		applySkillFiltering(m.registry, nil, removeCfg, m.skills)
+		// Persist the cleared agent type so the next session doesn't re-apply the old persona.
+		if m.db != nil && m.session != nil && m.session.Current() != nil {
+			_ = m.db.UpdateSessionAgentType(m.session.Current().ID, "")
+		}
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: "Agent persona removed — back to default Claudio"})
 		m.refreshViewport()
 		return m
@@ -2221,8 +2218,10 @@ func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (t
 		if m.streaming {
 			return m, m.toast.Show("Streaming in progress — use :q! to force quit")
 		}
+		m.cleanup()
 		return m, tea.Quit
 	case "/q!":
+		m.cleanup()
 		return m, tea.Quit
 	}
 
@@ -2833,6 +2832,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		allTemplateDirs := append([]string{m.teamTemplatesDir}, m.harnessTemplateDirs...)
 		m.teamSelector = teamselector.New(allTemplateDirs...)
 		m.teamSelector.SetWidth(m.width)
+		m.teamSelector.SetHeight(m.height)
 		m.focus = FocusTeamSelector
 		m.prompt.Blur()
 		return m, nil
@@ -3068,6 +3068,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 				m.appCtx.TeamRunner.KillAll()
 				m.appCtx.TeamRunner.WaitForAll(3 * time.Second)
 			}
+			m.cleanup()
 			return m, tea.Quit
 		}
 		m.addMessage(ChatMessage{Type: MsgError, Content: err.Error()})
@@ -4076,13 +4077,6 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 		m.togglePanel(PanelAnalytics)
 		return nil
 
-	case keymap.ActionPanelAgents:
-		m.openPanel(PanelAgents)
-		if _, ok := m.activePanel.(*teampanel.Panel); ok {
-			return teampanel.ScheduleRefresh()
-		}
-		return nil
-
 	case keymap.ActionPanelFiles:
 		if m.filesPanel != nil {
 			if m.filesPanel.IsActive() {
@@ -4964,17 +4958,12 @@ func (m *Model) handleTeammateEvent(event teams.TeammateEvent) tea.Cmd {
 			Type:    MsgSystem,
 			Content: fmt.Sprintf("◐ %s started — %s", name, task),
 		})
-		// Refresh both the team panel and the AGUI panel so the new agent appears immediately.
-		var cmds []tea.Cmd
-		cmds = append(cmds, teampanel.ScheduleRefresh())
+		// Refresh AGUI panel so the new agent appears immediately.
 		if m.activePanel != nil {
 			if ap, ok := m.activePanel.(*agui.Panel); ok {
 				ap.HandleRefresh()
-				cmds = append(cmds, agui.ScheduleRefresh())
+				return agui.ScheduleRefresh()
 			}
-		}
-		if len(cmds) > 0 {
-			return tea.Batch(cmds...)
 		}
 	case "complete":
 		result := event.Text
@@ -5623,11 +5612,6 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 		if m.appCtx != nil && m.appCtx.TaskRuntime != nil {
 			return taskspanel.New(m.appCtx.TaskRuntime)
 		}
-	case PanelAgents:
-		if m.appCtx != nil && m.appCtx.TeamManager != nil && m.appCtx.TeamRunner != nil {
-			p := teampanel.New(m.appCtx.TeamManager, m.appCtx.TeamRunner)
-			return p
-		}
 	case PanelTools:
 		if m.registry != nil {
 			return toolspanel.New(m.registry)
@@ -5941,17 +5925,19 @@ func (m *Model) updateStreamingMessage() {
 	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Type == MsgAssistant {
 		// Update in place — don't persist yet (finalize will do it)
 		m.messages[len(m.messages)-1].Content = text
+		m.messages[len(m.messages)-1].Streaming = true
 	} else {
 		// First chunk — append without persisting (finalize will do it)
-		m.messages = append(m.messages, ChatMessage{Type: MsgAssistant, Content: text})
+		m.messages = append(m.messages, ChatMessage{Type: MsgAssistant, Content: text, Streaming: true})
 	}
 }
 
 func (m *Model) finalizeStreamingMessage() {
 	if m.streamText.Len() > 0 {
 		m.updateStreamingMessage()
-		// Persist the final assistant message
+		// Mark as no longer streaming so glamour renders it properly
 		if len(m.messages) > 0 && m.messages[len(m.messages)-1].Type == MsgAssistant {
+			m.messages[len(m.messages)-1].Streaming = false
 			m.persistMessage(m.messages[len(m.messages)-1])
 		}
 		m.streamText.Reset()
@@ -5993,6 +5979,11 @@ func (m *Model) refreshViewport() {
 		}
 	}
 
+	// Track whether user was at the bottom before content update.
+	// Only auto-scroll if they were already following (at bottom).
+	oldMax := m.viewport.TotalLineCount() - m.viewport.Height
+	wasAtBottom := oldMax <= 0 || m.viewport.YOffset >= oldMax
+
 	m.viewport.SetContent(content)
 	// Sync content to the conversation mirror panel if it exists in the pool.
 	// When the right window has its own session, render from rightWindow.messages
@@ -6011,7 +6002,9 @@ func (m *Model) refreshViewport() {
 		contentLines := strings.Count(content, "\n") + 1
 		if contentLines <= m.viewport.Height {
 			m.viewport.GotoTop()
-		} else {
+		} else if wasAtBottom {
+			// Only follow-scroll if user was already at the bottom.
+			// If they scrolled up, preserve their position.
 			m.viewport.GotoBottom()
 		}
 	}
@@ -6202,7 +6195,7 @@ func (m *Model) buildSidebar() *sidebar.Sidebar {
 
 	blockNames := cfg.Blocks
 	if len(blockNames) == 0 {
-		blockNames = []string{"files", "todos", "tokens"}
+		blockNames = []string{"session", "files", "todos", "tokens"}
 	}
 
 	var blks []sidebar.Block
@@ -6217,6 +6210,23 @@ func (m *Model) buildSidebar() *sidebar.Sidebar {
 				func() int     { return m.totalTokens },
 				func() float64 { return m.totalCost },
 				func() int     { return utils.MaxContextForModel(m.model) },
+				func() string  { return m.model },
+			))
+		case "session":
+			blks = append(blks, sidebarblocks.NewSessionBlock(
+				func() string {
+					if m.session != nil && m.session.Current() != nil {
+						return m.session.Current().Title
+					}
+					return ""
+				},
+				func() int { return len(m.messages) },
+				func() time.Time {
+					if m.session != nil && m.session.Current() != nil {
+						return m.session.Current().CreatedAt
+					}
+					return time.Time{}
+				},
 			))
 		}
 	}
@@ -6260,6 +6270,14 @@ func (m *Model) sidebarWidth() int {
 	return w
 }
 
+// cleanup releases resources held by the model. Must be called before tea.Quit.
+func (m *Model) cleanup() {
+	if m.busUnsub != nil {
+		m.busUnsub()
+		m.busUnsub = nil
+	}
+}
+
 // ── Layout & View ────────────────────────────────────────
 
 func (m *Model) layout() {
@@ -6273,7 +6291,13 @@ func (m *Model) layout() {
 	helpFooterH := 1
 	statusLineH := 1 // nvim-style statusline above the prompt
 	const topPadding = 1
-	vpHeight := m.height - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1 - topPadding
+	dockH := 0
+	if m.permission.IsActive() {
+		dockH = m.permission.InlineHeight()
+	} else if m.todoDock != nil {
+		dockH = m.todoDock.Height()
+	}
+	vpHeight := m.height - promptH - paletteH - modeLineH - helpFooterH - statusLineH - 1 - topPadding - dockH
 	if vpHeight < 5 {
 		vpHeight = 5
 	}
@@ -6329,6 +6353,20 @@ func (m *Model) layout() {
 	m.viewport.Height = vpHeight
 	m.prompt.SetWidth(m.width) // prompt always full width
 	m.permission.SetWidth(mw)
+	if m.todoDock != nil {
+		m.todoDock.SetWidth(mw)
+	}
+	// Size pointer-backed overlay components so Update() and View() agree.
+	if m.filesPanel != nil && m.filesPanel.IsActive() {
+		filesW := m.width - mw - 1
+		if filesW < 10 {
+			filesW = 10
+		}
+		m.filesPanel.SetSize(filesW, vpHeight)
+	}
+	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
+		m.sessionPicker.SetSize(m.width, vpHeight)
+	}
 }
 
 func (m Model) View() string {
@@ -6372,7 +6410,6 @@ func (m Model) View() string {
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
 	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
-		m.sessionPicker.SetSize(m.width, m.viewport.Height)
 		overlay := m.sessionPicker.View()
 		vpView = placeOverlay(vpView, overlay, m.width, m.viewport.Height)
 	}
@@ -6417,12 +6454,7 @@ func (m Model) View() string {
 			topArea = renderPanelWithHelp(m.activePanel, m.viewport.Width, m.viewport.Height)
 		}
 	} else if m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
-		// layout() already sized the viewport; files panel takes the remainder
-		filesW := m.width - mw - 1
-		if filesW < 10 {
-			filesW = 10
-		}
-		m.filesPanel.SetSize(filesW, m.viewport.Height)
+		// layout() already computed and applied filesPanel dimensions.
 		topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, m.filesPanel.View())
 	} else if m.sidebar != nil && m.focus != FocusAgentDetail {
 		// Rebuild sidebar each frame so token/cost closures capture
@@ -6453,12 +6485,10 @@ func (m Model) View() string {
 
 	// 4. Dock slot — permission dock (highest priority) or todo dock
 	if m.permission.IsActive() {
-		m.permission.SetWidth(mw)
 		if dockView := m.permission.InlineView(); dockView != "" {
 			sections = append(sections, dockView)
 		}
 	} else if m.todoDock != nil {
-		m.todoDock.SetWidth(mw)
 		if dockView := m.todoDock.View(); dockView != "" {
 			sections = append(sections, dockView)
 		}

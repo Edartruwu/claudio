@@ -267,6 +267,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.textarea, cmd = m.textarea.Update(msg)
 	m.syncImagesFromText()
+	m.syncPastesFromText()
 	return m, cmd
 }
 
@@ -674,6 +675,21 @@ func (m *Model) syncImagesFromText() {
 		}
 	}
 	m.images = kept
+}
+
+// syncPastesFromText removes paste entries whose references no longer appear
+// in the textarea (e.g. user deleted the [Pasted text #N ...] token).
+func (m *Model) syncPastesFromText() {
+	if len(m.pastedContents) == 0 {
+		return
+	}
+	text := m.textarea.Value()
+	for id := range m.pastedContents {
+		ref := fmt.Sprintf("[Pasted text #%d", id)
+		if !strings.Contains(text, ref) {
+			delete(m.pastedContents, id)
+		}
+	}
 }
 
 // ImageCount returns the number of attached images.

@@ -14,6 +14,17 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+var (
+	todoLabelStyle   = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	todoHintStyle    = lipgloss.NewStyle().Foreground(styles.Warning)
+	todoTextStyle    = lipgloss.NewStyle().Foreground(styles.Text)
+	todoDimStyle     = lipgloss.NewStyle().Foreground(styles.Dim)
+	todoIconSuccess  = lipgloss.NewStyle().Foreground(styles.Success).Render("✓")
+	todoIconProgress = lipgloss.NewStyle().Foreground(styles.Warning).Render("◐")
+	todoIconPending  = lipgloss.NewStyle().Foreground(styles.Muted).Render("○")
+	todoIconFailed   = lipgloss.NewStyle().Foreground(styles.Error).Render("✗")
+)
+
 // TodoDock shows active planning tasks inline above the prompt.
 type TodoDock struct {
 	runtime  *tasks.Runtime
@@ -76,16 +87,9 @@ func (d *TodoDock) View() string {
 		return ""
 	}
 
-	bg := lipgloss.NewStyle().
-		Foreground(styles.Text).
-		Width(d.width)
-
-	label := lipgloss.NewStyle().
-		Foreground(styles.Text).
-		Bold(true)
-
-	hint := lipgloss.NewStyle().
-		Foreground(styles.Warning)
+	bg := todoTextStyle.Width(d.width)
+	label := todoLabelStyle
+	hint := todoHintStyle
 
 	if d.expanded {
 		return d.expandedView(items, bg, label, hint)
@@ -140,7 +144,7 @@ func (d *TodoDock) expandedView(items []*tools.Task, bg, label, hint lipgloss.St
 		if len(name) > maxName {
 			name = name[:maxName-1] + "…"
 		}
-		line := fmt.Sprintf("  %s  %s", icon, lipgloss.NewStyle().Foreground(styles.Text).Render(name))
+		line := fmt.Sprintf("  %s  %s", icon, todoTextStyle.Render(name))
 		lines = append(lines, bg.Render(line))
 	}
 
@@ -152,7 +156,7 @@ func (d *TodoDock) expandedView(items []*tools.Task, bg, label, hint lipgloss.St
 		lines[len(lines)-1] = bg.Render(
 			fmt.Sprintf("  %s  %s  %s",
 				taskStatusIcon(items[limit-1]),
-				lipgloss.NewStyle().Foreground(styles.Text).Render(items[limit-1].Title),
+				todoTextStyle.Render(items[limit-1].Title),
 				hint.Render("<space>t collapse"),
 			),
 		)
@@ -168,19 +172,19 @@ func taskBadge(t *tools.Task) string {
 	if len(name) > 12 {
 		name = name[:11] + "…"
 	}
-	return fmt.Sprintf("[%s] %s", icon, lipgloss.NewStyle().Foreground(styles.Dim).Render(name))
+	return fmt.Sprintf("[%s] %s", icon, todoDimStyle.Render(name))
 }
 
 func taskStatusIcon(t *tools.Task) string {
 	switch t.Status {
 	case "completed":
-		return lipgloss.NewStyle().Foreground(styles.Success).Render("✓")
+		return todoIconSuccess
 	case "in_progress":
-		return lipgloss.NewStyle().Foreground(styles.Warning).Render("◐")
+		return todoIconProgress
 	case "pending":
-		return lipgloss.NewStyle().Foreground(styles.Muted).Render("○")
+		return todoIconPending
 	default: // failed or unknown
-		return lipgloss.NewStyle().Foreground(styles.Error).Render("✗")
+		return todoIconFailed
 	}
 }
 

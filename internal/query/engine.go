@@ -922,15 +922,10 @@ func (e *Engine) streamOnce(ctx context.Context, req *api.MessagesRequest) (*str
 				}
 
 				if block.Type == "tool_use" {
-					// Clear the initial empty {} so input_json_delta can accumulate cleanly
+					// Clear the initial empty {} so input_json_delta can accumulate cleanly.
+					// OnToolUseStart is deferred to content_block_stop so the handler always
+					// receives the complete input JSON — never a partial/empty payload.
 					block.Input = nil
-					tu := tools.ToolUse{
-						ID:   block.ID,
-						Name: block.Name,
-					}
-					forwarded = true
-					response.EmittedToolStarts = append(response.EmittedToolStarts, tu)
-					e.handler.OnToolUseStart(tu)
 				}
 				currentBlocks[currentBlockIdx] = block
 
@@ -990,11 +985,17 @@ func (e *Engine) streamOnce(ctx context.Context, req *api.MessagesRequest) (*str
 							input = json.RawMessage("{}")
 							currentBlocks[stopIdx].Input = input
 						}
-						response.ToolUses = append(response.ToolUses, tools.ToolUse{
+						tu := tools.ToolUse{
 							ID:    block.ID,
 							Name:  block.Name,
 							Input: input,
-						})
+						}
+						// Fire OnToolUseStart here — after all input_json_delta events —
+						// so the handler always sees the complete input, never a partial.
+						forwarded = true
+						response.EmittedToolStarts = append(response.EmittedToolStarts, tu)
+						e.handler.OnToolUseStart(tu)
+						response.ToolUses = append(response.ToolUses, tu)
 					}
 				}
 

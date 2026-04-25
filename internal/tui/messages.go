@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
@@ -55,6 +56,7 @@ type ChatMessage struct {
 	Pinned       bool  // pinned messages survive compaction
 	IsSubagent   bool  // true if this is a sub-agent tool call
 	DurationMs   int64 // -1 = not tracked
+	Streaming    bool  // true while this is the actively-streamed assistant message
 
 	// SubagentTools holds nested tool calls made by a sub-agent.
 	// Only populated on MsgToolUse messages where ToolName == "Agent".
@@ -864,7 +866,15 @@ func renderMessage(msg ChatMessage, maxW int, thinkingExpanded bool) string {
 
 	case MsgAssistant:
 		prefix := styles.AssistantPrefix.Render("● ")
-		rendered := renderMarkdown(msg.Content, maxW-3)
+		var rendered string
+		if msg.Streaming {
+			// During streaming, skip glamour — partial markdown produces garbled
+			// output (unclosed code fences, word-order jumps, split words).
+			// Use plain word-wrap; glamour runs once on finalize.
+			rendered = wordwrap.String(msg.Content, maxW-3)
+		} else {
+			rendered = renderMarkdown(msg.Content, maxW-3)
+		}
 		// Indent continuation lines to align under prefix
 		indented := indentContinuation(rendered, indent)
 		return pinPrefix + prefix + indented

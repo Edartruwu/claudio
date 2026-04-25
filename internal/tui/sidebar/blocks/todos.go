@@ -10,6 +10,14 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+var (
+	todoDoneStyle   = lipgloss.NewStyle().Foreground(styles.Muted).Strikethrough(true)
+	todoActiveStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	todoPendStyle   = lipgloss.NewStyle().Foreground(styles.Text)
+	todoDimStyle    = lipgloss.NewStyle().Foreground(styles.Muted)
+	todoEmptyStyle  = lipgloss.NewStyle().Foreground(styles.Muted)
+)
+
 // TodosBlock shows the current task list from the global task store.
 type TodosBlock struct{}
 
@@ -22,13 +30,8 @@ func (b *TodosBlock) Weight() int    { return 2 }
 func (b *TodosBlock) Render(width, maxHeight int) string {
 	items := tools.GlobalTaskStore.List()
 	if len(items) == 0 {
-		return lipgloss.NewStyle().Foreground(styles.Muted).Render("  No tasks")
+		return todoEmptyStyle.Render("  No tasks")
 	}
-
-	doneStyle := lipgloss.NewStyle().Foreground(styles.Muted).Strikethrough(true)
-	activeStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-	pendStyle := lipgloss.NewStyle().Foreground(styles.Text)
-	dimStyle := lipgloss.NewStyle().Foreground(styles.Muted)
 
 	maxLabelW := width - 5
 	if maxLabelW < 8 {
@@ -38,7 +41,7 @@ func (b *TodosBlock) Render(width, maxHeight int) string {
 	var lines []string
 	for i, t := range items {
 		if i >= maxHeight {
-			lines = append(lines, dimStyle.Render(fmt.Sprintf("  +%d more", len(items)-i)))
+			lines = append(lines, todoDimStyle.Render(fmt.Sprintf("  +%d more", len(items)-i)))
 			break
 		}
 		label := t.Title
@@ -48,11 +51,11 @@ func (b *TodosBlock) Render(width, maxHeight int) string {
 		var row string
 		switch t.Status {
 		case "completed", "done":
-			row = " ✓ " + doneStyle.Render(label)
+			row = " ✓ " + todoDoneStyle.Render(label)
 		case "in_progress":
-			row = " ● " + activeStyle.Render(label)
+			row = " ● " + todoActiveStyle.Render(label)
 		default:
-			row = " ○ " + pendStyle.Render(label)
+			row = " ○ " + todoPendStyle.Render(label)
 		}
 		lines = append(lines, row)
 	}

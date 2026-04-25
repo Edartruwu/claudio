@@ -36,8 +36,6 @@ const (
 	ActionPanelTools       ActionID = "panel.tools"
 	ActionPanelAnalytics   ActionID = "panel.analytics"
 	ActionPanelFiles       ActionID = "panel.files"
-	ActionPanelAgents      ActionID = "panel.agents"
-
 	// Navigation
 	ActionSessionPicker  ActionID = "session.picker"
 	ActionSessionRecent  ActionID = "session.recent"
@@ -89,8 +87,6 @@ var Registry = map[ActionID]ActionMeta{
 	ActionPanelTools:       {ActionPanelTools, "Tools panel", "panel"},
 	ActionPanelAnalytics:   {ActionPanelAnalytics, "Analytics panel", "panel"},
 	ActionPanelFiles:       {ActionPanelFiles, "Files panel", "panel"},
-	ActionPanelAgents:      {ActionPanelAgents, "Agents panel", "panel"},
-
 	// Navigation
 	ActionSessionPicker:  {ActionSessionPicker, "Session picker", "navigation"},
 	ActionSessionRecent:  {ActionSessionRecent, "Recent sessions", "navigation"},

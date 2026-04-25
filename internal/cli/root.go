@@ -861,14 +861,6 @@ func buildFullSystemPrompt() string {
 		}
 	}
 
-	// Agent persona override (appended last so it has highest precedence over style/snippets)
-	if flagAgent != "" {
-		agentDef := agents.GetAgent(flagAgent)
-		if agentDef.SystemPrompt != "" {
-			sections = append(sections, agentDef.SystemPrompt)
-		}
-	}
-
 	// Advisor protocol section — tells the principal agent when/how to call the advisor
 	if appInstance.Config.Advisor != nil {
 		sections = append(sections, prompts.AdvisorProtocolSection())

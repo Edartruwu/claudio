@@ -11,6 +11,24 @@ import (
 )
 
 // Section identifies which section of the selector is focused.
+var (
+	msTitleStyle          = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	msSectionTitleStyle   = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	msSectionTitleDimStyle = lipgloss.NewStyle().Foreground(styles.Dim).Bold(true)
+	msHintStyle           = lipgloss.NewStyle().Foreground(styles.Warning).Italic(true)
+	msEffortStyle         = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	msEffortDotStyle      = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	msEffortDotDimStyle   = lipgloss.NewStyle().Foreground(styles.Dim)
+	msArrowStyle          = lipgloss.NewStyle().Foreground(styles.Dim)
+	msSelectedNumStyle    = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	msSelectedNameStyle   = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	msSelectedDescStyle   = lipgloss.NewStyle().Foreground(styles.Dim)
+	msDimNumStyle         = lipgloss.NewStyle().Foreground(styles.Dim)
+	msDimNameStyle        = lipgloss.NewStyle().Foreground(styles.Dim)
+	msDimDescStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#4B5563"))
+	msSelectedPrefixStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+)
+
 type Section int
 
 const (
@@ -329,10 +347,10 @@ func (m Model) View() string {
 		return ""
 	}
 
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
-	sectionTitle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-	sectionTitleDim := lipgloss.NewStyle().Foreground(styles.Dim).Bold(true)
-	hintStyle := lipgloss.NewStyle().Foreground(styles.Warning).Italic(true)
+	titleStyle := msTitleStyle
+	sectionTitle := msSectionTitleStyle
+	sectionTitleDim := msSectionTitleDimStyle
+	hintStyle := msHintStyle
 
 	var lines []string
 	lines = append(lines, titleStyle.Render("Model & Thinking Configuration"))
@@ -385,10 +403,10 @@ func (m Model) View() string {
 	lines = append(lines, "")
 
 	// --- Effort Slider (always visible, controlled by ←/→) ---
-	effortStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
-	effortDot := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("\u25CF")
-	effortDotDim := lipgloss.NewStyle().Foreground(styles.Dim).Render("\u25CB")
-	arrowStyle := lipgloss.NewStyle().Foreground(styles.Dim)
+	effortStyle := msEffortStyle
+	effortDot := msEffortDotStyle.Render("\u25CF")
+	effortDotDim := msEffortDotDimStyle.Render("\u25CB")
+	arrowStyle := msArrowStyle
 
 	var dots []string
 	for i := range effortLevels {
@@ -401,7 +419,7 @@ func (m Model) View() string {
 
 	effortLine := effortStyle.Render(effortLabel(effortLevels[m.effortIdx])+" effort") +
 		"  " + arrowStyle.Render("\u2190") + " " + strings.Join(dots, " ") + " " + arrowStyle.Render("\u2192") +
-		"  " + lipgloss.NewStyle().Foreground(styles.Dim).Render(effortDescription(effortLevels[m.effortIdx]))
+		"  " + msEffortDotDimStyle.Render(effortDescription(effortLevels[m.effortIdx]))
 
 	lines = append(lines, effortLine)
 
@@ -434,18 +452,18 @@ func (m Model) renderOption(idx int, label, description string, isCurrent, isFoc
 	var numStyle, nameStyle, descStyle lipgloss.Style
 
 	if selected {
-		numStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-		nameStyle = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
-		descStyle = lipgloss.NewStyle().Foreground(styles.Dim)
+		numStyle = msSelectedNumStyle
+		nameStyle = msSelectedNameStyle
+		descStyle = msSelectedDescStyle
 	} else {
-		numStyle = lipgloss.NewStyle().Foreground(styles.Dim)
-		nameStyle = lipgloss.NewStyle().Foreground(styles.Dim)
-		descStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#4B5563"))
+		numStyle = msDimNumStyle
+		nameStyle = msDimNameStyle
+		descStyle = msDimDescStyle
 	}
 
 	prefix := "  "
 	if selected {
-		prefix = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("\u203A ")
+		prefix = msSelectedPrefixStyle.Render("\u203A ")
 	}
 
 	num := fmt.Sprintf("%d. ", idx+1)
