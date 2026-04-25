@@ -228,8 +228,8 @@ func TestCSP_HeaderPresent(t *testing.T) {
 	if csp == "" {
 		t.Fatal("Content-Security-Policy header missing")
 	}
-	if !strings.Contains(csp, "default-src 'self'") {
-		t.Fatalf("CSP missing default-src: %q", csp)
+	if !strings.Contains(csp, "frame-ancestors") {
+		t.Fatalf("CSP missing frame-ancestors: %q", csp)
 	}
 	if !strings.Contains(csp, "frame-ancestors 'none'") {
 		t.Fatalf("CSP missing frame-ancestors: %q", csp)

@@ -102,6 +102,7 @@ func (ws *WebServer) handleWSUI(w http.ResponseWriter, r *http.Request) {
 							"type":   "agent_status",
 							"name":   a.Name,
 							"status": a.Status,
+							"replay": "true",
 						})
 						select {
 						case client.send <- payload:

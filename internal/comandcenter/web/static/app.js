@@ -143,11 +143,13 @@
     if (label) { label.textContent = status; label.style.color = color; }
   }
 
+  var _agentToast = null;
   function showAgentToast(name, status) {
-    var icons = { done: '✅', failed: '❌', working: '⚙️', waiting: '⏳' };
-    var icon = icons[status] || '🤖';
-    var label = name + ' — ' + status;
+    if (status !== 'complete' && status !== 'failed') return;
+    if (_agentToast) { _agentToast.remove(); _agentToast = null; }
+    var icon = status === 'complete' ? '✅' : '❌';
     var toast = document.createElement('div');
+    toast.id = 'agent-toast';
     toast.style.cssText = [
       'position:fixed', 'bottom:calc(80px + env(safe-area-inset-bottom, 0px))', 'left:50%', 'transform:translateX(-50%)',
       'z-index:600', 'background:#1C1C1E', 'border:1px solid #2C2C2E',
@@ -157,12 +159,18 @@
       'box-shadow:0 4px 20px rgba(0,0,0,0.6)', 'white-space:nowrap',
       'opacity:1', 'transition:opacity 0.4s'
     ].join(';');
-    toast.innerHTML = '<span>' + icon + '</span><span>' + label + '</span>';
+    var iconEl = document.createElement('span');
+    iconEl.textContent = icon;
+    var labelEl = document.createElement('span');
+    labelEl.textContent = name + ' — ' + status;
+    toast.appendChild(iconEl);
+    toast.appendChild(labelEl);
     document.body.appendChild(toast);
+    _agentToast = toast;
     setTimeout(function() {
       toast.style.opacity = '0';
-      setTimeout(function() { toast.remove(); }, 400);
-    }, 4000);
+      setTimeout(function() { if (_agentToast === toast) _agentToast = null; toast.remove(); }, 400);
+    }, 3000);
   }
 
   function appendMessage(html) {
@@ -358,23 +366,12 @@
           if (loader) loader.style.display = 'none';
 
         } else if (type === 'agent_status') {
-          showAgentToast(data.name, data.status);
-          // Targeted card update — no full-list refresh needed for each event.
+          // Targeted card update — always (live + replay).
           updateAgentCard(data.name, data.status, data.current_tool || '');
-          if (window.refreshSessionList) window.refreshSessionList();
-          if (msgs) {
-            var agentIcon = data.status === 'complete' ? '✅' : data.status === 'failed' ? '❌' : data.status === 'working' ? '⚙️' : '⏳';
-            var notifId = 'agent-status-' + data.name.replace(/[^a-z0-9]/gi, '-');
-            var agentNotif = document.getElementById(notifId);
-            if (!agentNotif) {
-              agentNotif = document.createElement('div');
-              agentNotif.id = notifId;
-              agentNotif.className = 'text-xs text-center py-1';
-              agentNotif.style.color = '#8E8E93';
-              msgs.appendChild(agentNotif);
-            }
-            agentNotif.textContent = agentIcon + ' ' + data.name + ' — ' + data.status;
-            if (isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
+          // Toast + session refresh only for live events, not replays on reconnect.
+          if (data.replay !== 'true') {
+            showAgentToast(data.name, data.status);
+            if (window.refreshSessionList) window.refreshSessionList();
           }
 
         } else if (type === 'agent.log') {
@@ -391,22 +388,18 @@
           }
 
         } else if (type === 'config.changed') {
-          // Update model display if present on the page.
           var modelEl = document.getElementById('current-model');
           if (modelEl && data.model) modelEl.textContent = data.model;
           var permEl = document.getElementById('current-permission-mode');
           if (permEl && data.permission_mode) permEl.textContent = data.permission_mode;
-          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
 
         } else if (type === 'agent.changed') {
           var agentEl = document.getElementById('current-agent');
           if (agentEl) agentEl.textContent = data.agent_type || 'default';
-          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
 
         } else if (type === 'team.changed') {
           var teamEl = document.getElementById('current-team');
           if (teamEl) teamEl.textContent = data.team_template || 'none';
-          if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
 
         } else if (type === 'new_message' && data.html) {
           var isToolUse  = data.html.indexOf('msg-bubble-tool') !== -1;
@@ -492,11 +485,15 @@
   });
 })();
 
-// --- Session list refresh (WS-gated, replaces polling) ---
+// --- Session list refresh (debounced, WS-gated) ---
+var _sessionRefreshTimer = null;
 window.refreshSessionList = function() {
-  var el = document.getElementById('session-list');
-  if (el && window.htmx) htmx.trigger(el, 'refresh');
-  if (window.refreshProjectChips) window.refreshProjectChips();
+  if (_sessionRefreshTimer) return; // already queued
+  _sessionRefreshTimer = setTimeout(function() {
+    _sessionRefreshTimer = null;
+    var el = document.getElementById('session-list');
+    if (el && window.htmx) htmx.trigger(el, 'refresh');
+  }, 2000);
 };
 
 // --- Task detail toggle ---
