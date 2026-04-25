@@ -126,7 +126,7 @@ func ChatList(data ChatListData) templ.Component {
 
 // ChatPage is used on hard refresh of /chat/:id — renders the full shell
 // (sidebar + chat view) so CSS/JS and the session list are all present.
-func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string) templ.Component {
+func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string, pag MessagePagination) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -215,7 +215,7 @@ func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessio
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = ChatView(sess, messages, sessionID).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = ChatView(sess, messages, sessionID, pag).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

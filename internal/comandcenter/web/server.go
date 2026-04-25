@@ -68,6 +68,13 @@ type MessageView struct {
 	Attachments []cc.Attachment
 }
 
+// MessagePagination carries pagination state for message lists.
+type MessagePagination struct {
+	HasMore        bool   // true when older messages exist
+	FirstMessageID string // ID of the oldest message in the current page
+	SessionID      string // session ID for building load-more URL
+}
+
 // sessionEntry holds a session token's metadata.
 type sessionEntry struct {
 	csrfToken string

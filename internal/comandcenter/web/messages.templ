@@ -1,6 +1,8 @@
 package web
 
-// MessagesPartial renders a flat list of message bubbles (used by htmx partial updates).
+import "fmt"
+
+// MessagesPartial renders a flat list of message bubbles (used by htmx partial updates, e.g. new messages via WS).
 templ MessagesPartial(messages []MessageView) {
 	for _, msg := range messages {
 		@MessageBubble(msg)
@@ -10,9 +12,39 @@ templ MessagesPartial(messages []MessageView) {
 	}
 }
 
+// MessagesOlderPage renders a page of older messages with a load-more sentinel if more exist.
+// Used when scrolling up to load history — prepended before existing messages.
+templ MessagesOlderPage(messages []MessageView, pag MessagePagination) {
+	if pag.HasMore && pag.FirstMessageID != "" {
+		@LoadMoreSentinel(pag)
+	}
+	for _, msg := range messages {
+		@MessageBubble(msg)
+	}
+}
+
+// LoadMoreSentinel renders the infinite-scroll sentinel that triggers loading of older messages.
+// On intersect, it fetches older messages and replaces itself (outerHTML) with the response,
+// which includes a new sentinel if more messages exist, followed by the message bubbles.
+templ LoadMoreSentinel(pag MessagePagination) {
+	<div
+		id="load-more-sentinel"
+		hx-get={ fmt.Sprintf("/partials/messages/%s?before=%s&limit=50", pag.SessionID, pag.FirstMessageID) }
+		hx-trigger="intersect once"
+		hx-swap="outerHTML"
+	>
+		<div class="flex justify-center py-3">
+			<span class="text-[var(--color-textMuted)] text-xs">Loading earlier messages…</span>
+		</div>
+	</div>
+}
+
 // MessagesContainer renders the full messages container with today badge (used inside chat_view).
-templ MessagesContainer(messages []MessageView) {
+templ MessagesContainer(messages []MessageView, pag MessagePagination) {
 	<div id="messages-inner">
+		if pag.HasMore && pag.FirstMessageID != "" {
+			@LoadMoreSentinel(pag)
+		}
 		if len(messages) > 0 {
 			<div class="flex justify-center my-2">
 				<span class="bg-[var(--color-surfaceHigh)] text-[var(--color-textMuted)] text-[11px] px-3 py-[3px] rounded-full tracking-[0.5px] border border-[var(--color-border)]">Today</span>

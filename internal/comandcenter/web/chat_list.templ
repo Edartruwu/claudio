@@ -32,7 +32,7 @@ templ ChatList(data ChatListData) {
 
 // ChatPage is used on hard refresh of /chat/:id — renders the full shell
 // (sidebar + chat view) so CSS/JS and the session list are all present.
-templ ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string) {
+templ ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string, pag MessagePagination) {
 	@Layout(sessionID, list.CsrfToken) {
 		<div class="flex h-full">
 			<div
@@ -45,7 +45,7 @@ templ ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessi
 				id="main"
 				class={ "flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)]" + mainHiddenClass(sessionID) }
 			>
-				@ChatView(sess, messages, sessionID)
+				@ChatView(sess, messages, sessionID, pag)
 			</div>
 		</div>
 	}
