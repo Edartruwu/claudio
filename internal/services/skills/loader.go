@@ -292,16 +292,33 @@ func bundledSkills() []*Skill {
 			Source:      "bundled",
 		},
 		{
-			Name:         "batch",
-			Description:  "Orchestrate parallel work across multiple worktrees for large-scale changes",
-			Content:      batchSkillContent,
-			Source:       "bundled",
-			Capabilities: []string{"team"},
+			Name:        "debug",
+			Description: "Diagnose issues with the current session — check logs, environment, and configuration",
+			Content:     debugSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "batch",
+			Description: "Orchestrate parallel work across multiple worktrees for large-scale changes",
+			Content:     batchSkillContent,
+			Source:      "bundled",
 		},
 		{
 			Name:        "pr",
 			Description: "Create a pull request with a well-structured description",
 			Content:     prSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "test",
+			Description: "Run tests and fix failures",
+			Content:     testSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "security-review",
+			Description: "OWASP Top 10 security review of code changes",
+			Content:     securityReviewSkillContent,
 			Source:      "bundled",
 		},
 		{
@@ -332,6 +349,12 @@ func bundledSkills() []*Skill {
 			Name:        "caveman",
 			Description: "Ultra-compressed communication mode. Cuts token usage ~75% by speaking like caveman while keeping full technical accuracy.",
 			Content:     cavemanSkillContent,
+			Source:      "bundled",
+		},
+		{
+			Name:        "caveman-commit",
+			Description: "Ultra-compressed commit message generator. Conventional Commits format. Subject ≤50 chars, body only when why isn't obvious.",
+			Content:     cavemanCommitSkillContent,
 			Source:      "bundled",
 		},
 		{
@@ -391,6 +414,9 @@ var commitSkillContent = `## Context
 - ` + "`git diff HEAD`" + `: !` + "`git diff HEAD`" + `
 - ` + "`git log --oneline -5`" + `: !` + "`git log --oneline -5`" + `
 
+## User Notes
+$ARGUMENTS
+
 ## Git Safety Protocol
 
 - NEVER update the git config
@@ -421,6 +447,9 @@ Important:
 - Do not commit files with secrets (.env, credentials.json, etc)`
 
 var reviewSkillContent = `You are being asked to review code changes. Follow this checklist:
+
+## User Input
+$ARGUMENTS
 
 ## Review Process
 
@@ -469,6 +498,9 @@ End with a summary: APPROVE, REQUEST CHANGES, or NEEDS DISCUSSION.`
 
 var simplifySkillContent = `You are being asked to review changed code for reuse, quality, and efficiency, then fix any issues found.
 
+## User Input
+$ARGUMENTS
+
 ## Process
 
 1. Run ` + "`git diff`" + ` to see what changed
@@ -498,292 +530,119 @@ After identifying issues, **fix them directly** using the Edit tool. Don't just 
 
 Report what you changed and why.`
 
-var updateConfigSkillContent = `Configure Claudio settings by editing the appropriate settings.json file.
+var updateConfigSkillContent = `You are being asked to configure Claudio settings. Help the user modify their settings.json file.
+
+## User Input
+$ARGUMENTS
 
 ## Configuration Locations
 
-- **User settings**: ~/.claudio/settings.json — applies to all projects
-- **Project settings**: .claudio/settings.json — this project only (commit to repo)
-- **Local settings**: ~/.claudio/local-settings.json — machine-specific overrides (not committed)
+- **User settings**: ~/.claudio/settings.json (applies to all projects)
+- **Project settings**: .claudio/settings.json (applies to this project only)
+- **Local settings**: ~/.claudio/local-settings.json (machine-specific overrides)
 
-Project settings override user settings; local settings override both.
+## Available Settings
 
-## Process
-
-1. Read the current settings file(s) to see what's already configured
-2. Identify which file to edit (user vs project)
-3. Edit or create the file using the Edit/Write tool
-4. Verify the resulting JSON is valid
-
-## All Settings Fields
-
-### Model selection
 ` + "```json" + `
 {
-  "model": "claude-sonnet-4-6",        // Main chat model
-  "smallModel": "claude-haiku-4-5",    // Fast model for background tasks
-  "toolModels": {                       // Per-tool model overrides
-    "Memory": "claude-haiku-4-5"
-  },
-  "thinkingMode": "",                  // "none" | "auto" | "aggressive" — extended thinking budget
-  "budgetTokens": 0,                   // Max thinking tokens (0 = provider default)
-  "effortLevel": ""                    // "low" | "medium" | "high" — maps to thinking budget shorthand
+  "model": "claude-sonnet-4-6",       // Default model
+  "permissionMode": "default",        // "default", "auto", "headless"
+  "autoCompact": false,               // Auto-compact conversation
+  "sessionPersist": true,             // Persist sessions to SQLite
+  "denyPaths": [],                    // Paths tools cannot access
+  "denyTools": [],                    // Tools to disable
+  "allowPaths": [],                   // Additional allowed paths
+  "mcpServers": {},                   // MCP server configurations
+  "apiBaseUrl": "https://api.anthropic.com",
+  "maxBudget": 0                      // Session cost limit in USD (0 = unlimited)
 }
 ` + "```" + `
 
-### Permissions
-` + "```json" + `
-{
-  "permissionMode": "default",         // "default" | "auto" | "headless"
-  "denyPaths": ["/etc", "~/.ssh"],     // Paths tools cannot read/write
-  "allowPaths": ["/tmp/workspace"],    // Extra paths tools are allowed
-  "denyTools": ["Bash"],               // Tool names to disable entirely
-  "permissionRules": [                 // Fine-grained tool content rules
-    {
-      "tool": "Bash",                  // Tool name; "*" matches all
-      "pattern": "rm -rf *",           // Glob matched against tool input
-      "behavior": "deny"               // "allow" | "deny" | "ask"
-    }
-  ]
-}
-` + "```" + `
+## MCP Server Configuration
 
-### Conversation & compaction
-` + "```json" + `
-{
-  "autoCompact": false,                // Auto-compact when context nears limit
-  "compactMode": "summary",           // "summary" | "truncate"
-  "compactKeepN": 10,                 // Messages to keep verbatim before summary (default 10)
-  "sessionPersist": true              // Persist sessions to SQLite
-}
-` + "```" + `
-
-### Memory
-` + "```json" + `
-{
-  "autoMemoryExtract": false,          // Auto-extract memories after each turn
-  "memorySelection": "none",           // "none" | "auto" | "all" — which memories to inject
-  "memoryIndexTTLDays": 30,            // Days before memory index entries expire (default 30)
-  "memoryRefreshOnCompact": true       // Re-inject memories after compaction (default true)
-}
-` + "```" + `
-
-### Editor & output
-` + "```json" + `
-{
-  "editorCmd": "code --wait",          // External editor launched by the editor tool
-  "outputStyle": "text",              // "text" | "json" — response format
-  "outputFilter": false,              // Strip verbose tool output from responses
-  "codeFilterLevel": "off"            // "off" | "low" | "high" — filter code blocks in output
-}
-` + "```" + `
-
-### Cost & budget
-` + "```json" + `
-{
-  "maxBudget": 0,                      // Session cost limit in USD (0 = unlimited)
-  "costConfirmThreshold": 0            // Ask before requests estimated above this USD amount (0 = off)
-}
-` + "```" + `
-
-### Hooks & profiles
-` + "```json" + `
-{
-  "hookProfile": "default"            // Named hook profile to activate (defined in hooks config)
-}
-` + "```" + `
-
-### MCP servers
 ` + "```json" + `
 {
   "mcpServers": {
-    "filesystem": {
+    "server-name": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
       "env": {},
-      "type": "stdio"                  // "stdio" | "sse" | "http"
-    },
-    "remote-server": {
-      "type": "sse",
-      "url": "https://example.com/mcp"
+      "type": "stdio"
     }
   }
 }
 ` + "```" + `
 
-### API & networking
-` + "```json" + `
-{
-  "apiBaseUrl": "https://api.anthropic.com",  // Anthropic API base URL
-  "proxyUrl": "http://proxy:8080",             // HTTP proxy for all API requests
-  "publicUrl": "https://myapp.example.com"    // Public URL (used by attach/headless mode)
-}
-` + "```" + `
+## Process
 
-### Providers (non-Anthropic models)
-` + "```json" + `
-{
-  "providers": {
-    "groq": {
-      "apiBase": "https://api.groq.com/openai/v1",
-      "apiKey": "$GROQ_API_KEY",       // literal value or "$ENV_VAR" reference
-      "type": "openai",               // "openai" | "anthropic" | "ollama"
-      "models": {
-        "llama": "llama-3.3-70b-versatile"
-      }
-    },
-    "local": {
-      "apiBase": "http://localhost:11434",
-      "type": "ollama",
-      "contextWindow": 8192,           // Override Ollama num_ctx (default 2048 is too small)
-      "noToolsModels": ["deepseek-r1*"] // Glob patterns for models that don't support tools
-    }
-  }
-}
-` + "```" + `
+1. Read the current settings file(s) to understand what's already configured
+2. Ask the user what they want to change if not clear
+3. Make the changes using the Edit or Write tool
+4. Verify the JSON is valid`
 
-### Model routing
-` + "```json" + `
-{
-  "modelRouting": {
-    "fast": "groq/llama",             // Alias -> provider/model shorthand
-    "powerful": "claude-opus-4-6"
-  }
-}
-` + "```" + `
+var debugSkillContent = `You are being asked to diagnose issues with the current Claudio session.
 
-### Snippets (boilerplate expansion)
-` + "```json" + `
-{
-  "snippets": {
-    "enabled": true,
-    "definitions": [
-      {
-        "name": "errw",
-        "params": ["call", "msg"],
-        "lang": "go",
-        "template": "{{.result}}, err := {{.call}}\nif err != nil {\n\treturn {{.ReturnZeros}}, fmt.Errorf(\"{{.msg}}: %w\", err)\n}"
-      }
-    ]
-  }
-}
-` + "```" + `
+## User Input
+$ARGUMENTS
 
-### LSP servers
-` + "```json" + `
-{
-  "lspServers": {
-    "go": {
-      "command": "gopls",
-      "args": [],
-      "extensions": [".go", ".mod"],
-      "env": {}
-    }
-  }
-}
-` + "```" + `
+## Diagnostic Steps
 
-### Sidebar
-` + "```json" + `
-{
-  "sidebar": {
-    "enabled": true,
-    "width": 32,                       // Column width (default 32)
-    "blocks": ["files", "todos", "tokens"]  // Panels to show
-  }
-}
-` + "```" + `
+1. **Check environment**:
+   - Run ` + "`which claudio`" + ` to verify installation
+   - Run ` + "`claudio version`" + ` to check version
+   - Check if required tools are available: git, rg (ripgrep), gopls, node
 
-### Advisor
-` + "```json" + `
-{
-  "advisor": {
-    "subagentType": "advisor-sr",     // Agent type for the advisor role
-    "model": "claude-opus-4-6",       // Model override
-    "maxUses": 0                       // Max advisor invocations per session (0 = unlimited)
-  }
-}
-` + "```" + `
+2. **Check configuration**:
+   - Read ~/.claudio/settings.json (user settings)
+   - Read .claudio/settings.json (project settings) if it exists
+   - Check for ANTHROPIC_API_KEY or auth status
 
-### Agent lifecycle
-` + "```json" + `
-{
-  "agent_auto_delete_after": -1        // Seconds after which idle agents are auto-deleted (-1 = never)
-}
-` + "```" + `
+3. **Check logs**:
+   - Look for debug logs in ~/.claudio/logs/
+   - Check for recent error patterns
 
-### Caveman mode
-` + "```json" + `
-{
-  "caveman": true                      // Enable ultra-compressed terse response style
-}
-` + "```" + `
+4. **Check connectivity**:
+   - Verify API endpoint is reachable
+   - Check for proxy configuration
 
-### Design capabilities
-` + "```json" + `
-{
-  "design": {
-    "enabledSkills": ["mockup", "hifi"],   // Explicitly enable specific design skills
-    "disabledSkills": ["wireframe"]        // Disable specific design skills
-  }
-}
-` + "```" + ``
+## Report
 
-var batchSkillContent = `You are orchestrating parallel work across multiple isolated git worktrees using the SpawnTeammate tool.
+Provide a structured diagnostic report:
+- Environment: OK / Issues found
+- Configuration: OK / Issues found
+- Authentication: OK / Issues found
+- Connectivity: OK / Issues found
 
-## Core concepts
+For each issue, suggest a fix.`
 
-- **SpawnTeammate** assigns a task to a named agent running in an isolated git worktree (branch: ` + "`claudio/team/<name>-<id>`" + `)
-- Each agent sees only their worktree — uncommitted changes are invisible to others
-- Parallel agents **must not touch the same files** — overlapping edits cause merge conflicts
-- Model tier: ` + "`haiku`" + ` = junior, ` + "`sonnet`" + ` = mid, ` + "`opus`" + ` = senior
-- ` + "`run_in_background: true`" + ` — fire and forget (parallel); ` + "`false`" + ` — wait for result before continuing (sequential)
-- Always tell agents to commit before returning: _"Commit your changes before returning your final response."_
-- Idle agents asking ` + "`QUESTION:`" + ` need a reply via **SendMessage**
+var batchSkillContent = `You are being asked to orchestrate parallel work across multiple worktrees.
 
-## Workflow
+## User Input
+$ARGUMENTS
 
-### Phase 1 — Plan
-1. Decompose the work into independent units (no shared files between parallel tasks)
-2. Identify sequential dependencies (task B needs task A output → sequential)
-3. Get user approval if scope is large
+## Process
 
-### Phase 2 — Spawn agents
-Parallel (no dependencies, different files):
-` + "```" + `
-SpawnTeammate(
-  name: "agent-a",
-  subagent_type: "backend-mid",
-  prompt: "...<full self-contained task>... Commit your changes before returning.",
-  run_in_background: true
-)
-SpawnTeammate(
-  name: "agent-b",
-  subagent_type: "backend-mid",
-  prompt: "...<full self-contained task>... Commit your changes before returning.",
-  run_in_background: true
-)
-` + "```" + `
+### Phase 1: Plan
+1. Enter plan mode to understand the scope of work
+2. Decompose the task into independent units of work
+3. Each unit should be independently testable and mergeable
+4. Get user approval on the plan
 
-Sequential (B needs A's output):
-` + "```" + `
-result_a = SpawnTeammate(name: "agent-a", ..., run_in_background: false)
-// use result_a in agent-b's prompt
-SpawnTeammate(name: "agent-b", prompt: "... (context from agent-a: " + result_a + ") ...", run_in_background: false)
-` + "```" + `
+### Phase 2: Execute
+1. For each unit of work, spawn an Agent with isolation: "worktree"
+2. Each agent works in its own worktree with its own branch
+3. Each agent should create a commit when done
+4. Run up to 5 agents in parallel
 
-### Phase 3 — Merge & verify
-After all agents finish:
-1. Merge each agent's worktree branch into main: ` + "`git merge claudio/team/<name>-<id>`" + `
-2. Resolve any conflicts (should be none if files were partitioned correctly)
-3. Run ` + "`go build ./...`" + ` (or project's build command) to verify
-4. Clean up worktrees: ` + "`git worktree remove <path>`" + `
+### Phase 3: Aggregate
+1. Track progress of all agents
+2. Report results: which succeeded, which failed
+3. List all branches/PRs created
 
-## Rules
-- Never split a logically atomic change across agents — one agent owns each file
-- Include exact file paths and specific instructions in every agent prompt
-- Never say "based on your findings, fix it" — write complete, self-contained prompts
-- If an agent returns a ` + "`QUESTION:`" + `, answer it with SendMessage before it can proceed`
+## Important
+- Each worktree agent gets a clear, self-contained task description
+- Include file paths and specific instructions in each agent prompt
+- Never delegate understanding — each prompt must be complete`
 
 var prSkillContent = `## Context
 
@@ -792,6 +651,9 @@ var prSkillContent = `## Context
 - ` + "`git diff HEAD`" + `: !` + "`git diff HEAD`" + `
 - ` + "`git log main...HEAD --oneline`" + `: !` + "`git log main...HEAD --oneline 2>/dev/null || git log master...HEAD --oneline 2>/dev/null || git log -10 --oneline`" + `
 - Existing PR: !` + "`gh pr view --json number,url 2>/dev/null || echo '(none)'`" + `
+
+## User Notes
+$ARGUMENTS
 
 ## Git Safety Protocol
 
@@ -819,7 +681,109 @@ EOF
 ` + "```" + `
 4. Return the PR URL when done`
 
+var testSkillContent = `You are being asked to run tests and fix any failures.
+
+## User Input
+$ARGUMENTS
+
+## Process
+
+1. **Discover test commands**: Check for:
+   - Go: ` + "`go test ./...`" + `
+   - Node: ` + "`npm test`" + ` or ` + "`npx jest`" + ` or ` + "`npx vitest`" + `
+   - Python: ` + "`pytest`" + ` or ` + "`python -m pytest`" + `
+   - Rust: ` + "`cargo test`" + `
+   - Look at package.json scripts, Makefile targets, or CI config for the canonical test command
+
+2. **Run the full test suite** using the appropriate command
+
+3. **Analyze failures**:
+   - Read the test file to understand what's being tested
+   - Read the implementation code that the test exercises
+   - Identify the root cause (not just the symptom)
+
+4. **Fix failures**:
+   - Fix the implementation, not the test (unless the test is wrong)
+   - Run the specific failing test to verify the fix
+   - Run the full suite again to check for regressions
+
+5. **Report results**: Which tests passed/failed, what you fixed, any remaining issues`
+
+var securityReviewSkillContent = `You are being asked to perform an OWASP Top 10 security review.
+
+## User Input
+$ARGUMENTS
+
+## Process
+
+1. Run ` + "`git diff`" + ` and ` + "`git diff --cached`" + ` to identify changes
+2. Read all changed files completely
+
+## OWASP Top 10 Checklist
+
+### A01: Broken Access Control
+- Are there authorization checks on all endpoints/routes?
+- Is there path traversal risk in file operations?
+- Are CORS policies properly configured?
+
+### A02: Cryptographic Failures
+- Are secrets hardcoded or stored in plaintext?
+- Is sensitive data encrypted at rest and in transit?
+- Are deprecated crypto algorithms used (MD5, SHA1 for security)?
+
+### A03: Injection
+- SQL injection: Are queries parameterized?
+- Command injection: Is user input passed to shell commands?
+- XSS: Is user input properly escaped in HTML output?
+- Template injection: Is user input used in template rendering?
+
+### A04: Insecure Design
+- Are rate limits in place for sensitive operations?
+- Are there proper input validation boundaries?
+
+### A05: Security Misconfiguration
+- Are debug modes disabled in production?
+- Are default credentials removed?
+- Are unnecessary features disabled?
+
+### A06: Vulnerable Components
+- Are there known CVEs in dependencies?
+- Are dependency versions pinned?
+
+### A07: Authentication Failures
+- Are passwords properly hashed (bcrypt, argon2)?
+- Is MFA supported for sensitive operations?
+- Are session tokens properly managed?
+
+### A08: Data Integrity Failures
+- Are CI/CD pipelines secure?
+- Is code signing in place?
+- Are software updates verified?
+
+### A09: Logging & Monitoring
+- Are security events logged?
+- Are logs sanitized (no secrets in logs)?
+- Is there alerting for suspicious patterns?
+
+### A10: Server-Side Request Forgery (SSRF)
+- Can user input control outbound requests?
+- Are internal endpoints protected from SSRF?
+
+## Output
+
+For each finding:
+- **Severity**: Critical / High / Medium / Low / Info
+- **Category**: OWASP A01-A10
+- **Location**: file:line
+- **Issue**: Description
+- **Remediation**: How to fix
+
+End with: SECURE / NEEDS FIXES / CRITICAL ISSUES`
+
 var setupSnippetsSkillContent = `You are being asked to analyze this project and configure snippet expansion.
+
+## User Input
+$ARGUMENTS
 
 Snippet expansion lets the AI write shorthand like ` + "`~errw(db.Query(ctx, id), \"fetch user\")`" + ` instead of full boilerplate. A deterministic expander replaces it before writing to disk.
 
@@ -1022,6 +986,9 @@ Usage: ` + "`~impl(UserService)`" + `
 
 var refactorSkillContent = `You are being asked to refactor code.
 
+## User Input
+$ARGUMENTS
+
 ## Process
 
 1. **Understand the scope**: Read the files to be refactored and their dependencies
@@ -1052,6 +1019,9 @@ var refactorSkillContent = `You are being asked to refactor code.
 - If tests don't exist, write them BEFORE refactoring`
 
 var initSkillContent = `Set up a minimal CLAUDIO.md (and optionally skills and hooks) for this repo. CLAUDIO.md is loaded into every Claudio session, so it must be concise — only include what Claudio would get wrong without it.
+
+## User Input
+$ARGUMENTS
 
 ## Phase 1: Ask what to set up
 
@@ -1345,6 +1315,9 @@ Then present a well-formatted to-do list of additional suggestions relevant to t
 - Always suggest: browse and customize ` + "`.claudio/skills/`" + ` to add project-specific workflows.`
 
 var harnessSkillContent = `You are building a domain-specific agent team harness for this project.
+
+## User Input
+$ARGUMENTS
 
 A harness is a reusable multi-agent architecture that decomposes complex, recurring tasks into coordinated specialist agents. It produces:
 - ` + "`.claudio/agents/<name>.md`" + ` — one file per specialist role
@@ -1955,7 +1928,70 @@ Example — destructive op:
 
 Code/commits/PRs: write normal. "stop caveman" or "normal mode" from human user: revert. Level persist until changed or session end.`
 
+var cavemanCommitSkillContent = `Write commit messages terse and exact. Conventional Commits format. No fluff. Why over what.
+
+## User Input
+$ARGUMENTS
+
+## Rules
+
+**Subject line:**
+- ` + "`<type>(<scope>): <imperative summary>`" + ` — ` + "`<scope>`" + ` optional
+- Types: ` + "`feat`" + `, ` + "`fix`" + `, ` + "`refactor`" + `, ` + "`perf`" + `, ` + "`docs`" + `, ` + "`test`" + `, ` + "`chore`" + `, ` + "`build`" + `, ` + "`ci`" + `, ` + "`style`" + `, ` + "`revert`" + `
+- Imperative mood: "add", "fix", "remove" — not "added", "adds", "adding"
+- ≤50 chars when possible, hard cap 72
+- No trailing period
+- Match project convention for capitalization after the colon
+
+**Body (only if needed):**
+- Skip entirely when subject is self-explanatory
+- Add body only for: non-obvious *why*, breaking changes, migration notes, linked issues
+- Wrap at 72 chars
+- Bullets ` + "`-`" + ` not ` + "`*`" + `
+- Reference issues/PRs at end: ` + "`Closes #42`" + `, ` + "`Refs #17`" + `
+
+**What NEVER goes in:**
+- "This commit does X", "I", "we", "now", "currently" — the diff says what
+- "As requested by..." — use Co-authored-by trailer
+- "Generated with Claude Code" or any AI attribution
+- Emoji (unless project convention requires)
+- Restating the file name when scope already says it
+
+## Examples
+
+Diff: new endpoint for user profile with body explaining the why
+- ❌ "feat: add a new endpoint to get user profile information from the database"
+- ✅
+  ` + "```" + `
+  feat(api): add GET /users/:id/profile
+
+  Mobile client needs profile data without the full user payload
+  to reduce LTE bandwidth on cold-launch screens.
+
+  Closes #128
+  ` + "```" + `
+
+Diff: breaking API change
+- ✅
+  ` + "```" + `
+  feat(api)!: rename /v1/orders to /v1/checkout
+
+  BREAKING CHANGE: clients on /v1/orders must migrate to /v1/checkout
+  before 2026-06-01. Old route returns 410 after that date.
+  ` + "```" + `
+
+## Auto-Clarity
+
+Always include body for: breaking changes, security fixes, data migrations, anything reverting a prior commit. Never compress these into subject-only — future debuggers need the context.
+
+## Boundaries
+
+Only generates the commit message. Does not run ` + "`git commit`" + `, does not stage files, does not amend. Output the message as a code block ready to paste. "stop caveman-commit" or "normal mode": revert to verbose commit style.`
+
 var cavemanReviewSkillContent = `Write code review comments terse and actionable. One line per finding. Location, problem, fix. No throat-clearing.
+
+## User Input
+$ARGUMENTS
 
 ## Rules
 
@@ -2003,6 +2039,9 @@ Drop terse mode for: security findings (CVE-class bugs need full explanation + r
 Reviews only — does not write the code fix, does not approve/request-changes, does not run linters. Output the comment(s) ready to paste into the PR. "stop caveman-review" or "normal mode": revert to verbose review style.`
 
 var designSystemSkillContent = `You are extracting a design token system from reference material. Follow this workflow exactly.
+
+## Brief
+$ARGUMENTS
 
 ## Step 1 — Gather Reference Material
 
@@ -2113,6 +2152,9 @@ Report:
 
 var mockupSkillContent = `You are generating a complete multi-screen HTML mockup. Follow this workflow exactly.
 
+## Brief
+$ARGUMENTS
+
 ## Step 1 — Brief Clarification
 
 Ask the user for:
@@ -2207,6 +2249,9 @@ Tell the user:
 - Any issues that could not be auto-fixed (if any)`
 
 var handoffSkillContent = `You are generating a developer handoff package from a completed mockup. Follow this workflow exactly.
+
+## Brief
+$ARGUMENTS
 
 ## Step 1 — Locate Mockup
 
@@ -2307,6 +2352,9 @@ Report:
 - Any accessibility or contrast issues flagged`
 
 var hifiSkillContent = `You are generating high-fidelity mockups with named design variations and a live Tweaks panel. Follow this workflow exactly.
+
+## Brief
+$ARGUMENTS
 
 ## Step 1 — Clarification
 
@@ -2550,6 +2598,9 @@ Tell the user:
 
 var wireframeSkillContent = `You are generating fast lo-fi grayscale wireframes for early-stage ideation. Follow this workflow exactly.
 
+## Brief
+$ARGUMENTS
+
 ## Step 1 — Clarification
 
 Ask the user ONE question only:
@@ -2652,6 +2703,9 @@ Tell the user:
 Done. Wireframe is intentionally rough — move fast.`
 
 var prototypeSkillContent = `You are generating stateful interactive prototypes with multi-screen flows. Follow this workflow exactly.
+
+## Brief
+$ARGUMENTS
 
 ## Step 1 — Ask About the Flow
 
