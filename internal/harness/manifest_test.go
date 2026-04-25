@@ -112,7 +112,7 @@ func TestManifest_DirResolvers_Defaults(t *testing.T) {
 	check("AgentDirs", m.AgentDirs(base), "agents")
 	check("SkillDirs", m.SkillDirs(base), "skills")
 	check("PluginDirs", m.PluginDirs(base), "plugins")
-	check("TemplateDirs", m.TemplateDirs(base), "templates")
+	check("TemplateDirs", m.TemplateDirs(base), "team-templates")
 	check("RulePaths", m.RulePaths(base), "rules")
 }
 

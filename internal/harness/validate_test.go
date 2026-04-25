@@ -17,7 +17,7 @@ func buildValidHarness(t *testing.T) *Harness {
 	writeManifest(t, dir, Manifest{Name: "test-harness", Version: "1.0.0"})
 
 	// Create default subdirs.
-	for _, sub := range []string{"agents", "skills", "plugins", "templates", "rules"} {
+	for _, sub := range []string{"agents", "skills", "plugins", "team-templates", "rules"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -30,7 +30,7 @@ func buildValidHarness(t *testing.T) *Harness {
 
 	// Write a valid template JSON file.
 	data, _ := json.Marshal(map[string]string{"name": "test"})
-	if err := os.WriteFile(filepath.Join(dir, "templates", "team.json"), data, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "team-templates", "team.json"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +105,7 @@ func TestValidateHarness_InvalidTemplateJSON(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, Manifest{Name: "test-harness", Version: "1.0.0"})
 
-	tmplDir := filepath.Join(dir, "templates")
+	tmplDir := filepath.Join(dir, "team-templates")
 	if err := os.MkdirAll(tmplDir, 0755); err != nil {
 		t.Fatal(err)
 	}
