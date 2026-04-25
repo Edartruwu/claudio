@@ -928,13 +928,16 @@ func (s *Storage) ListAttachments(sessionID string) ([]Attachment, error) {
 
 // SavePushSubscription inserts or replaces a push subscription.
 func (s *Storage) SavePushSubscription(sub PushSubscription) error {
+	if sub.ID == "" {
+		sub.ID = newID()
+	}
 	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_push_subscriptions (id, endpoint, p256dh, auth, created_at)
-		VALUES (?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(endpoint) DO UPDATE SET
 			p256dh=excluded.p256dh,
 			auth=excluded.auth
-	`, sub.ID, sub.Endpoint, sub.P256dh, sub.Auth, sub.CreatedAt)
+	`, sub.ID, sub.Endpoint, sub.P256dh, sub.Auth)
 	if err != nil {
 		return fmt.Errorf("save push subscription: %w", err)
 	}

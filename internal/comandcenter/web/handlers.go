@@ -1013,9 +1013,11 @@ func (ws *WebServer) handlePushSubscribe(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := ws.storage.SavePushSubscription(cc.PushSubscription{Endpoint: body.Endpoint, P256dh: body.Keys.P256dh, Auth: body.Keys.Auth}); err != nil {
+		log.Printf("[push] save subscription error: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("[push] subscription saved: %s", body.Endpoint[:min(len(body.Endpoint), 60)])
 	w.WriteHeader(http.StatusNoContent)
 }
 
