@@ -69,6 +69,14 @@ type DesignGalleryData struct {
 	CsrfToken string
 }
 
+// SettingsData holds data for the /settings page.
+type SettingsData struct {
+	SessionID    string
+	CsrfToken    string
+	Version      string
+	SessionCount int
+}
+
 // browseItem is a single directory entry for the file browser JSON response.
 type browseItem struct {
 	Name     string    `json:"name"`
@@ -92,6 +100,20 @@ func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := ws.buildSessionRows(sessions)
 	templ.Handler(ChatList(ChatListData{Rows: rows, SessionID: "", CsrfToken: ws.CSRFToken(r)})).ServeHTTP(w, r)
+}
+
+func (ws *WebServer) handleSettings(w http.ResponseWriter, r *http.Request) {
+	ws.sessionMu.RLock()
+	sessionCount := len(ws.sessions)
+	ws.sessionMu.RUnlock()
+
+	data := SettingsData{
+		SessionID:    "",
+		CsrfToken:    ws.CSRFToken(r),
+		Version:      ws.version,
+		SessionCount: sessionCount,
+	}
+	templ.Handler(SettingsPage(data)).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {

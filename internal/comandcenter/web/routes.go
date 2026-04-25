@@ -26,6 +26,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 
 	// Auth-gated routes.
 	mux.Handle("GET /", ws.uiAuth(http.HandlerFunc(ws.handleChatList)))
+	mux.Handle("GET /settings", ws.uiAuth(http.HandlerFunc(ws.handleSettings)))
 	mux.Handle("GET /chat/{session_id}", ws.uiAuth(http.HandlerFunc(ws.handleChatView)))
 	mux.Handle("GET /chat/{session_id}/info", ws.uiAuth(http.HandlerFunc(ws.handleSessionInfo)))
 	mux.Handle("GET /chat/{session_id}/tasks", ws.uiAuth(http.HandlerFunc(ws.handleTaskList)))
@@ -90,3 +91,6 @@ func (ws *WebServer) SetTeamTemplatesDir(dir string) { ws.teamTemplatesDir = dir
 
 // SetPublicURL sets the externally accessible URL for bundle link construction.
 func (ws *WebServer) SetPublicURL(url string) { ws.publicURL = url }
+
+// SetVersion stores the build version shown on the settings page.
+func (ws *WebServer) SetVersion(v string) { ws.version = v }
