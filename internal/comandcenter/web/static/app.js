@@ -452,10 +452,16 @@
 
     // On app resume (phone unlock / tab focus), reconnect immediately.
     document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'visible' && !wsConnected && !isConnecting) {
-        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-        reconnectAttempt = 0;
-        if (_initWSFn) _initWSFn();
+      if (document.visibilityState === 'visible') {
+        // On mobile PWA resume, close info panel so user sees chat, not stale panel.
+        if (window.innerWidth < 1024 && typeof ccCloseInfoPanel === 'function') {
+          ccCloseInfoPanel();
+        }
+        if (!wsConnected && !isConnecting) {
+          if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+          reconnectAttempt = 0;
+          if (_initWSFn) _initWSFn();
+        }
       }
     });
 
