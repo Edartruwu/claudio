@@ -680,7 +680,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 		CronRunner:  cronRunner,
 		LSP:         lspManager,
 		MCPManager:          globalMCPMgr,
-		HarnessTemplateDirs: harness.CollectTemplateDirs(harnesses),
+		HarnessTemplateDirs: append([]string{filepath.Join(cwd, ".claudio", "team-templates")}, harness.CollectTemplateDirs(harnesses)...),
 		InjectCh:            injectCh,
 		InterruptCh:         interruptCh,
 		ccSend:              ccSend,
