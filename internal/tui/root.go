@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	ansitruncate "github.com/muesli/reflow/truncate"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/app"
@@ -3206,6 +3207,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 3. Spawn one agent per task using the Agent tool with run_in_background=true. Include the task ID in the agent's prompt so it knows which task it owns.
 4. Tasks are auto-completed when agents finish — no manual status updates needed.
 5. You will be notified when agents complete. Summarize results for the user.
+6. When the full sequence of team work is done and you no longer need to query agents, call PurgeTeammates to clean up worktrees and remove completed/failed agents.
 
 Task:
 ` + userPrompt
@@ -6707,10 +6709,21 @@ func (m Model) renderStatusLine() string {
 
 	gap := m.width - leftW - rightW - sepW - 1
 	if gap < 1 {
-		gap = 1
+		// Right side doesn't fit — drop it.
+		rightStyled = ""
+		gap = m.width - leftW - 1
+		if gap < 1 {
+			gap = 1
+		}
 	}
 
 	line := left + strings.Repeat(" ", gap) + sep + rightStyled + " "
+
+	// ANSI-aware truncation: lipgloss Width() is a minimum, not a maximum.
+	// Without this, overlong lines wrap to 2 rows and break the layout budget.
+	if lipgloss.Width(line) > m.width {
+		line = ansitruncate.String(line, uint(m.width))
+	}
 
 	return lipgloss.NewStyle().
 		Background(styles.SurfaceAlt).

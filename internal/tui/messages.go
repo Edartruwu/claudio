@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	ansitruncate "github.com/muesli/reflow/truncate"
 	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
@@ -1041,10 +1042,23 @@ func renderStatusBar(width int, s StatusBarState) string {
 
 	gap := width - lipgloss.Width(left) - lipgloss.Width(right) - 2
 	if gap < 1 {
-		gap = 1
+		// Right side doesn't fit — drop it and recalculate with just left.
+		right = ""
+		gap = width - lipgloss.Width(left) - 2
+		if gap < 1 {
+			gap = 1
+		}
 	}
 
 	content := " " + left + strings.Repeat(" ", gap) + right + " "
+
+	// Guard: ANSI-aware truncation so the content never wraps to a second line.
+	// lipgloss Width() sets a minimum, not a maximum — without this, overlong
+	// content causes the status bar to render as 2 lines, throwing off the
+	// layout height and leaving ghost rows from prior frames.
+	if lipgloss.Width(content) > width {
+		content = ansitruncate.String(content, uint(width))
+	}
 
 	// Full-width background
 	_ = sep // used in left join
@@ -1189,7 +1203,12 @@ func renderAssistantContinuation(msg ChatMessage, maxW int) string {
 		pinPrefix = styles.PinIcon.Render("📌 ")
 	}
 	prefix := styles.AssistantPrefix.Render("  ")
-	rendered := renderMarkdown(msg.Content, maxW-3)
+	var rendered string
+	if msg.Streaming {
+		rendered = wordwrap.String(msg.Content, maxW-3)
+	} else {
+		rendered = renderMarkdown(msg.Content, maxW-3)
+	}
 	indented := indentContinuation(rendered, indent)
 	return pinPrefix + prefix + indented
 }

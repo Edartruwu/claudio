@@ -292,41 +292,45 @@ func (p *Panel) refresh() {
 		if p.runner != nil {
 			activeTeam = p.runner.ActiveTeamName()
 		}
-		allTeams := p.manager.ListTeams()
-		entries := make([]*agentEntry, 0)
-		for _, team := range allTeams {
-			if activeTeam != "" && team.Name != activeTeam {
-				continue
-			}
-			for _, mem := range team.Members {
-				if mem.Identity.IsLead {
-					continue // skip the synthetic team-lead placeholder
+		// Only show manager state when there is an active team.
+		// Without one, fall through to runner-only so stale historical agents are hidden.
+		if activeTeam != "" {
+			allTeams := p.manager.ListTeams()
+			entries := make([]*agentEntry, 0)
+			for _, team := range allTeams {
+				if team.Name != activeTeam {
+					continue
 				}
-				e := &agentEntry{
-					id:     mem.Identity.AgentID,
-					name:   mem.Identity.AgentName,
-					team:   team.Name,
-					status: mem.Status,
-				}
-				// Enrich with live runner state when available.
-				if p.runner != nil {
-					if state, ok := p.runner.GetState(mem.Identity.AgentID); ok {
-						e.state = state
-						e.status = state.GetStatus()
+				for _, mem := range team.Members {
+					if mem.Identity.IsLead {
+						continue // skip the synthetic team-lead placeholder
 					}
+					e := &agentEntry{
+						id:     mem.Identity.AgentID,
+						name:   mem.Identity.AgentName,
+						team:   team.Name,
+						status: mem.Status,
+					}
+					// Enrich with live runner state when available.
+					if p.runner != nil {
+						if state, ok := p.runner.GetState(mem.Identity.AgentID); ok {
+							e.state = state
+							e.status = state.GetStatus()
+						}
+					}
+					entries = append(entries, e)
 				}
-				entries = append(entries, e)
 			}
+			p.entries = entries
+			p.clampCursor()
+			if p.selectedID != "" && p.ready {
+				p.loadConversation()
+			}
+			return
 		}
-		p.entries = entries
-		p.clampCursor()
-		if p.selectedID != "" && p.ready {
-			p.loadConversation()
-		}
-		return
 	}
 
-	// Fallback: no manager, use runner directly.
+	// Fallback: no manager, or no active team — use runner directly.
 	states := p.runner.AllStates()
 	entries := make([]*agentEntry, 0, len(states))
 	for _, s := range states {
