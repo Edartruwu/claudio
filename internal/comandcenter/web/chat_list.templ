@@ -210,6 +210,12 @@ templ ChatListSidebar(data ChatListData) {
 	<div id="modal"></div>
 }
 
+// ChatListMain renders just the #main content (welcome screen) for htmx partial swaps.
+// No Layout, no sidebar — used when HX-Request header is present on GET /.
+templ ChatListMain() {
+	@WelcomeScreen()
+}
+
 templ WelcomeScreen() {
 	<div class="flex-1 flex flex-col items-center justify-center gap-[40px] p-16 bg-[var(--color-bg)]">
 		<div class="w-24 h-24 rounded-[24px] bg-[rgba(0,61,46,1)] border-[1.5px] border-[rgba(0,196,140,0.2)] flex items-center justify-center">

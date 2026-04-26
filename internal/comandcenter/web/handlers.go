@@ -101,6 +101,11 @@ func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := ws.buildSessionRows(sessions)
 	projects, _ := ws.storage.ListProjects() // best-effort; empty list on error
+	if r.Header.Get("HX-Request") == "true" {
+		// htmx partial: return only #main content (welcome screen), no Layout shell
+		templ.Handler(ChatListMain()).ServeHTTP(w, r)
+		return
+	}
 	templ.Handler(ChatList(ChatListData{Rows: rows, SessionID: "", CsrfToken: ws.CSRFToken(r), Projects: projects})).ServeHTTP(w, r)
 }
 
