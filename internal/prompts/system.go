@@ -165,11 +165,9 @@ func memoryPolicySection() string {
 	return `## Memory Tool Policy
 
 Memory is for durable architectural facts only — not session state, task progress, or transient findings.
-
+No need to save memory before context compacts.
 Staleness test: "Would this fact still be true after a git clone tomorrow?" If no → do NOT save.
-
 Save: package structure, architectural decisions + rationale, non-obvious constraints, hard-won gotchas per-package.
-
 Never save: task/phase completion ("Phase X done"), merged commit lists, worktree branch names, active bugs, anything prefixed "currently"/"right now"/"in progress", session state of any kind.`
 }
 
@@ -355,13 +353,11 @@ Single-writer rule:
 When Recall returns STALE:
 - Re-read only the listed changed files, update your understanding, then Memory(action="append") the new facts.
 
-**Never save to Memory:**
-- Task completion or progress ("implemented X", "Phase Y done", "task Z finished")
-- Which tasks are in progress, pending, or blocked — use TaskCreate/TaskUpdate for that
-- Worktree branch names, active agent IDs, session IDs
-- Open bugs, current sprint state, PR/branch status, deployment state
-- Anything prefixed "currently", "right now", "this session", "in progress"
-- Things visible directly in the code
+Memory is for durable architectural facts only — not session state, task progress, or transient findings.
+No need to save memory before context compacts.
+Staleness test: "Would this fact still be true after a git clone tomorrow?" If no → do NOT save.
+Save: package structure, architectural decisions + rationale, non-obvious constraints, hard-won gotchas per-package.
+Never save: task/phase completion ("Phase X done"), merged commit lists, worktree branch names, active bugs, anything prefixed "currently"/"right now"/"in progress", session state of any kind.
 
 Staleness test: "Would this fact still be true after a git clone tomorrow?" If no → do NOT save.
 
