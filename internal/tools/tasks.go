@@ -36,6 +36,7 @@ type Task struct {
 	Blocks      []string          `json:"blocks,omitempty"`
 	BlockedBy   []string          `json:"blocked_by,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
+	ActiveForm  string            `json:"active_form,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 }

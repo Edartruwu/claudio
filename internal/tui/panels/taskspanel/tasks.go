@@ -218,6 +218,20 @@ func (p *Panel) buildPlanDetail(t *tools.Task) []string {
 		md.WriteString(fmt.Sprintf("  **Assigned to:** `@%s`", t.AssignedTo))
 	}
 	md.WriteString(fmt.Sprintf("  **Status:** %s\n\n", statusLabel))
+	if len(t.Blocks) > 0 {
+		ids := make([]string, len(t.Blocks))
+		for i, id := range t.Blocks {
+			ids[i] = "#" + id
+		}
+		md.WriteString(fmt.Sprintf("**Blocks:** %s\n\n", strings.Join(ids, ", ")))
+	}
+	if len(t.BlockedBy) > 0 {
+		ids := make([]string, len(t.BlockedBy))
+		for i, id := range t.BlockedBy {
+			ids[i] = "#" + id
+		}
+		md.WriteString(fmt.Sprintf("**Blocked by:** %s\n\n", strings.Join(ids, ", ")))
+	}
 	if t.Description != "" {
 		md.WriteString("---\n\n")
 		md.WriteString(t.Description)
@@ -691,6 +705,12 @@ func (p *Panel) renderPlanRow(t *tools.Task, selected bool, w int) string {
 		if len(row)+len(t.AssignedTo)+2 <= w {
 			row += " " + assignee
 		}
+	}
+	if len(t.BlockedBy) > 0 {
+		row += " " + tpWarningStyle.Render("[blocked]")
+	}
+	if t.Status == "in_progress" && t.ActiveForm != "" {
+		row += " " + tpDimStyle.Render(t.ActiveForm)
 	}
 	return row
 }
