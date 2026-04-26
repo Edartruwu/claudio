@@ -276,7 +276,7 @@ func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 	// In headless+attach mode runSinglePrompt is called in a loop — the WS
 	// connection must stay open across turns. runHeadlessAttach owns the close.
 
-	reg, modelOverride, agentPluginSection := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
+	reg, modelOverride, agentPluginSection, agentPersonaPrompt := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
@@ -330,6 +330,9 @@ func runSinglePromptWithCtx(parent context.Context, prompt string) error {
 	sys := buildFullSystemPrompt()
 	if agentPluginSection != "" {
 		sys += "\n\n" + agentPluginSection
+	}
+	if agentPersonaPrompt != "" {
+		sys += "\n\n" + agentPersonaPrompt
 	}
 	engine.SetSystem(sys)
 	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
@@ -433,7 +436,7 @@ func runHeadlessAttach(args []string) error {
 	}
 
 	// --- Build ONE persistent engine for the session lifetime ---
-	reg, modelOverride, agentPluginSection2 := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
+	reg, modelOverride, agentPluginSection2, agentPersonaPrompt2 := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 
 	// Wire capability-gated tools (e.g. design tools) for headless+attach mode.
 	// In TUI mode this happens in applyAgentPersona; here we do it once at startup.
@@ -517,6 +520,9 @@ func runHeadlessAttach(args []string) error {
 	if agentPluginSection2 != "" {
 		sys += "\n\n" + agentPluginSection2
 	}
+	if agentPersonaPrompt2 != "" {
+		sys += "\n\n" + agentPersonaPrompt2
+	}
 	engine.SetSystem(sys)
 	engine.SetUserContext(prompts.FormatUserContextMessage(buildUserContext(), ""))
 	engine.SetSystemContext(buildSystemContext())
@@ -569,6 +575,7 @@ func runHeadlessAttach(args []string) error {
 		}
 		pluginSection := app.ApplyAgentExtras(newReg, agentDef.Type)
 		agentPluginSection2 = pluginSection
+		agentPersonaPrompt2 = agentDef.SystemPrompt
 
 		// Preserve team tools if a team is currently active.
 		if headlessTeamTemplate != nil {
@@ -608,6 +615,9 @@ func runHeadlessAttach(args []string) error {
 		}
 		if agentPluginSection2 != "" {
 			updatedSys += "\n\n" + agentPluginSection2
+		}
+		if agentPersonaPrompt2 != "" {
+			updatedSys += "\n\n" + agentPersonaPrompt2
 		}
 		engine.SetSystem(updatedSys)
 	})
@@ -821,9 +831,9 @@ func matchesAnyGlob(name string, patterns []string) bool {
 // applyAgentOverrides clones the registry filtered by the --agent flag's DisallowedTools,
 // and returns the model override string ("" if no agent or no model override) plus any
 // extra plugin infos that should be appended to the system prompt.
-func applyAgentOverrides(registry *tools.Registry, mcpMgr mcpManager) (*tools.Registry, string, string) {
+func applyAgentOverrides(registry *tools.Registry, mcpMgr mcpManager) (*tools.Registry, string, string, string) {
 	if flagAgent == "" {
-		return registry, "", ""
+		return registry, "", "", ""
 	}
 	agentDef := agents.GetAgent(flagAgent)
 	filtered := registry.Clone()
@@ -848,7 +858,7 @@ func applyAgentOverrides(registry *tools.Registry, mcpMgr mcpManager) (*tools.Re
 	if resolved, ok := appInstance.API.ResolveModelShortcut(model); ok {
 		model = resolved
 	}
-	return filtered, model, pluginSection
+	return filtered, model, pluginSection, agentDef.SystemPrompt
 }
 
 // buildFullSystemPrompt gathers all context (rules, context profiles, memory, output style)
@@ -1102,7 +1112,7 @@ func runInteractive() error {
 		// This avoids polluting the session list with empty sessions.
 	}
 
-	reg, modelOverride, agentPluginSection3 := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
+	reg, modelOverride, agentPluginSection3, _ := applyAgentOverrides(appInstance.Tools, appInstance.MCPManager)
 	if modelOverride != "" {
 		appInstance.Config.Model = modelOverride
 		appInstance.API.SetModel(modelOverride)
