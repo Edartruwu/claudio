@@ -15,18 +15,16 @@ type ChatListData struct {
 
 templ ChatList(data ChatListData) {
 	@Layout(data.SessionID, data.CsrfToken) {
-		<div class="flex h-full">
-			<!-- Sidebar: full width mobile, 320px fixed desktop -->
+		<div id="app-shell" class="flex h-full">
 			<div
 				id="sidebar"
-				class={ "w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]" + sidebarHiddenClass(data.SessionID) }
+				class="flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]"
 			>
 				@ChatListSidebar(data)
 			</div>
-			<!-- Main: hidden mobile when no session, always visible desktop -->
 			<div
 				id="main"
-				class={ "flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)]" + mainHiddenClass(data.SessionID) }
+				class="flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)] min-w-0"
 			>
 				@WelcomeScreen()
 			</div>
@@ -38,16 +36,16 @@ templ ChatList(data ChatListData) {
 // (sidebar + chat view) so CSS/JS and the session list are all present.
 templ ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessionID string, pag MessagePagination) {
 	@Layout(sessionID, list.CsrfToken) {
-		<div class="flex h-full">
+		<div id="app-shell" class="flex h-full chat-active">
 			<div
 				id="sidebar"
-				class={ "w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]" + sidebarHiddenClass(sessionID) }
+				class="flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]"
 			>
 				@ChatListSidebar(list)
 			</div>
 			<div
 				id="main"
-				class={ "flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)]" + mainHiddenClass(sessionID) }
+				class="flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)] min-w-0"
 			>
 				@ChatView(sess, messages, sessionID, pag)
 			</div>
@@ -176,8 +174,8 @@ templ ChatListSidebar(data ChatListData) {
 			</div>
 			<span class="htmx-indicator block text-center text-xs py-1 text-[var(--color-textMuted)]">&#8635;</span>
 		</main>
-		<!-- Bottom tab bar — mobile only (hx-boost for SPA nav) -->
-		<nav hx-boost="true" class="md:hidden flex shrink-0 bg-[var(--color-surfaceHigh)] border-t border-t-[var(--color-border)] pb-[env(safe-area-inset-bottom)]">
+		<!-- Bottom tab bar — mobile only (full page nav — no hx-boost to preserve #app-shell structure) -->
+		<nav class="lg:hidden flex shrink-0 bg-[var(--color-surfaceHigh)] border-t border-t-[var(--color-border)] pb-[env(safe-area-inset-bottom)]">
 			<a href="/" class="flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-brand)]">
 				<div class="text-inherit">
 					<svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
@@ -212,23 +210,13 @@ templ ChatListSidebar(data ChatListData) {
 
 // ChatListMain renders just the #main content (welcome screen) for htmx partial swaps.
 // No Layout, no sidebar — used when HX-Request header is present on GET /.
-// Includes an OOB swap to restore #sidebar visibility on mobile after back navigation
-// (ChatPage sets "hidden md:flex" on mobile; this clears it when returning to session list).
+// The triggering element (back button) handles removing 'chat-active' via hx-on:htmx:after-swap.
 templ ChatListMain() {
-	// OOB: restore #sidebar to fully visible state (no hidden class) and re-render its content.
-	// #session-list inside has hx-trigger="load" so it auto-reloads sessions after swap.
-	<div
-		id="sidebar"
-		hx-swap-oob="outerHTML"
-		class="w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]"
-	>
-		@ChatListSidebar(ChatListData{})
-	</div>
 	@WelcomeScreen()
 }
 
 templ WelcomeScreen() {
-	<div class="flex-1 flex flex-col items-center justify-center gap-[40px] p-16 bg-[var(--color-bg)]">
+	<div class="flex-1 flex flex-col items-center justify-center gap-[40px] p-6 md:p-16 bg-[var(--color-bg)]">
 		<div class="w-24 h-24 rounded-[24px] bg-[rgba(0,61,46,1)] border-[1.5px] border-[rgba(0,196,140,0.2)] flex items-center justify-center">
 			<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand)" stroke-width="1.5">
 				<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"></path>
@@ -239,7 +227,7 @@ templ WelcomeScreen() {
 			<h2 class="text-[28px] font-bold text-[var(--color-textPrimary)] font-[inherit] m-0 mb-2">Select a session</h2>
 			<p class="text-[var(--color-textMuted)] text-[15px] font-[inherit] leading-[1.6] m-0">Pick a session from the sidebar to start chatting.<br/>Or launch a new agent from your terminal.</p>
 		</div>
-		<div class="flex flex-col gap-2 w-[360px]">
+		<div class="flex flex-col gap-2 w-full max-w-[360px] px-4">
 			<p class="text-[var(--color-textMuted)] text-[11px] font-[inherit] font-semibold tracking-[0.8px] m-0">QUICK START</p>
 			<div class="bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4">
 				<code class="text-[var(--color-brand)] text-[13px] font-[inherit] flex-1">claudio</code>

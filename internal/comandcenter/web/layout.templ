@@ -6,7 +6,7 @@ templ Layout(sessionID, csrfToken string) {
 	<head>
 		<meta charset="UTF-8"/>
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"/>
-		<meta name="theme-color" content="#161717"/>
+		<meta name="theme-color" content="#0B0E0F"/>
 		<meta name="mobile-web-app-capable" content="yes"/>
 		<meta name="apple-mobile-web-app-capable" content="yes"/>
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -20,8 +20,8 @@ templ Layout(sessionID, csrfToken string) {
 		<link rel="stylesheet" href="/static/vendor/tailwind.min.css"/>
 		<!-- TODO: self-host JetBrains Mono for offline/CSP compliance -->
 		<script src="/static/vendor/htmx.min.js" defer></script>
-		<!-- htmx config: enable View Transitions API for smooth swaps -->
-		<meta name="htmx-config" content='{"globalViewTransitions":true}'/>
+		<!-- htmx config -->
+		<meta name="htmx-config" content='{}'/>
 		<!-- CSRF token — value wired server-side by security middleware -->
 		<meta name="csrf-token" content={ csrfToken }/>
 		@layoutCSS()
@@ -34,9 +34,16 @@ templ Layout(sessionID, csrfToken string) {
 	>
 		{ children... }
 		<!-- Global a11y live regions -->
-		<div id="error-toast-region" aria-live="assertive" aria-atomic="true" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+		<div id="error-toast-region" aria-live="assertive" aria-atomic="true" class="fixed right-4 z-50 flex flex-col gap-2 pointer-events-none" style="top: calc(env(safe-area-inset-top, 0px) + 16px)"></div>
 		@annotatorOverlay()
 		@annotatorScript()
+		<!-- Message action sheet (mobile long-press) -->
+		<div id="msg-action-overlay" class="hidden fixed inset-0 z-[200] bg-black/40 flex items-end justify-center" style="padding-bottom: env(safe-area-inset-bottom, 0px)">
+			<div id="msg-action-sheet" class="translate-y-full transition-transform duration-200 w-full max-w-md bg-[var(--color-surface)] rounded-t-2xl p-4 pb-6 flex flex-col gap-2">
+				<button onclick="ccDeleteSheetMsg()" class="w-full py-3 rounded-xl text-red-400 font-semibold bg-[var(--color-bg)] hover:bg-red-500/10 active:bg-red-500/20 transition-colors text-sm">Delete Message</button>
+				<button onclick="ccCancelSheet()" class="w-full py-3 rounded-xl text-[var(--color-text-secondary)] font-medium bg-[var(--color-bg)] hover:bg-[var(--color-border)] active:bg-[var(--color-border)] transition-colors text-sm">Cancel</button>
+			</div>
+		</div>
 		<script src="/static/app.js" defer></script>
 		<script>
 		if ('serviceWorker' in navigator) {
@@ -168,7 +175,7 @@ templ layoutCSS() {
 			--radius-xl:   24px;
 			--radius-pill: 9999px;
 		}
-		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace; padding-top: env(safe-area-inset-top); }
+		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace; overscroll-behavior: none; -webkit-user-select: none; user-select: text; }
 		pre { max-width: 100%; box-sizing: border-box; }
 		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; }
 		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; }
@@ -177,10 +184,23 @@ templ layoutCSS() {
 		.msg-bubble-tool details .tool-chevron { transition: transform 0.2s ease; }
 		.msg-bubble-tool details[open] .tool-chevron { transform: rotate(90deg); }
 		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 2px solid var(--color-cron); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; }
-		#messages { scroll-behavior: smooth; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+		#messages { scroll-behavior: smooth; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+		/* Mobile/desktop navigation: CSS-driven sidebar/main toggle */
+		#sidebar { display: flex; }
+		#main { display: none; }
+		@media (min-width: 1024px) { #main { display: flex; } }
+		.chat-active #sidebar { display: none; }
+		.chat-active #main { display: flex; }
+		@media (min-width: 1024px) { .chat-active #sidebar { display: flex; } }
+		/* Desktop sidebar fixed width — Tailwind arbitrary classes (lg:w-[320px] etc.)
+		   are not in the vendored pre-built tailwind.min.css, so set via ID rules */
+		@media (min-width: 1024px) {
+			#sidebar { width: 320px; min-width: 320px; flex-shrink: 0; }
+			#main { flex: 1 1 0%; min-width: 0; }
+		}
 		.chat-header { padding-top: calc(env(safe-area-inset-top) + 12px); }
-		@media (min-width: 768px) {
-			.chat-header { padding: 16px 20px !important; gap: 16px !important; }
+		@media (min-width: 1024px) {
+			.chat-header { padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px 16px !important; gap: 16px !important; }
 			.input-bar { padding: 12px 16px !important; padding-bottom: 12px !important; }
 		}
 		/* sidebar header top padding on mobile */
@@ -214,7 +234,7 @@ templ layoutCSS() {
 		.md-content del { text-decoration: line-through; opacity: 0.6; }
 		.md-content input[type=checkbox] { margin-right: 4px; }
 		@media (min-width: 768px) {
-			.msg-bubble-user, .msg-bubble-assistant { max-width: min(640px, 72vw) !important; }
+			.msg-bubble-user, .msg-bubble-assistant { max-width: min(640px, 85%) !important; }
 		}
 		.typing-dots { display: inline-flex; align-items: center; gap: 3px; margin-left: 2px; }
 		.typing-dots span {
@@ -291,6 +311,23 @@ templ layoutCSS() {
 		@media (orientation: landscape) and (max-height: 500px) {
 			.chat-header { padding-top: calc(env(safe-area-inset-top) + 4px) !important; }
 			.input-bar { padding-bottom: calc(env(safe-area-inset-bottom) + 4px) !important; }
+		}
+		/* Expand small action buttons to 44px min touch target (Apple HIG) */
+		.input-bar button[class*="w-[30px]"] {
+			position: relative;
+		}
+		.input-bar button[class*="w-[30px]"]::after {
+			content: "";
+			position: absolute;
+			inset: -7px;
+		}
+		/* Message delete hover button */
+		.msg-delete-btn {
+			transition: opacity .15s;
+		}
+		/* Disable hover delete on touch devices — they use long-press */
+		@media (hover: none) {
+			.msg-delete-btn { display: none !important; }
 		}
 	</style>
 }
@@ -658,8 +695,11 @@ templ filterAndSwipeScript() {
 	window.ccOpenSession = function(id) {
 		if (!id) { ccShowToast('Session not available'); return; }
 		var main = document.getElementById('main');
-		if (main && window.innerWidth >= 768) {
-			htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true});
+		if (main && window.htmx) {
+			htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true}).then(function(){
+				var shell = document.getElementById('app-shell');
+				if (shell) shell.classList.add('chat-active');
+			});
 		} else {
 			window.location.href = '/chat/' + id;
 		}
@@ -817,9 +857,12 @@ templ filterAndSwipeScript() {
 			if (link.hasAttribute('hx-get') || link.hasAttribute('data-hx-get')) return;
 			var id = link.dataset.sessionId;
 			var main = document.getElementById('main');
-			if (main && window.innerWidth >= 768) {
+			if (main && window.htmx) {
 				e.preventDefault();
-				htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true});
+				htmx.ajax('GET', '/chat/' + id, {target: '#main', swap: 'innerHTML', pushUrl: true}).then(function(){
+					var shell = document.getElementById('app-shell');
+					if (shell) shell.classList.add('chat-active');
+				});
 			}
 			// mobile: let href navigate naturally
 		});

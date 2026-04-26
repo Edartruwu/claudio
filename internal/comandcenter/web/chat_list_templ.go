@@ -54,29 +54,7 @@ func ChatList(data ChatListData) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex h-full\"><!-- Sidebar: full width mobile, 320px fixed desktop -->")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var3 = []any{"w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]" + sidebarHiddenClass(data.SessionID)}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var3...)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div id=\"sidebar\" class=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var4 string
-			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var3).String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 1, Col: 0}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"app-shell\" class=\"flex h-full\"><div id=\"sidebar\" class=\"flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -84,29 +62,7 @@ func ChatList(data ChatListData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div><!-- Main: hidden mobile when no session, always visible desktop -->")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var5 = []any{"flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)]" + mainHiddenClass(data.SessionID)}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var5...)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div id=\"main\" class=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var6 string
-			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var5).String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 1, Col: 0}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div><div id=\"main\" class=\"flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)] min-w-0\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -114,7 +70,7 @@ func ChatList(data ChatListData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -146,12 +102,12 @@ func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessio
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var7 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var7 == nil {
-			templ_7745c5c3_Var7 = templ.NopComponent
+		templ_7745c5c3_Var3 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var3 == nil {
+			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var8 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var4 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -163,29 +119,7 @@ func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessio
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"flex h-full\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var9 = []any{"w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]" + sidebarHiddenClass(sessionID)}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var9...)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div id=\"sidebar\" class=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var10 string
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var9).String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 1, Col: 0}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"app-shell\" class=\"flex h-full chat-active\"><div id=\"sidebar\" class=\"flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -193,29 +127,7 @@ func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessio
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var11 = []any{"flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)]" + mainHiddenClass(sessionID)}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var11...)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<div id=\"main\" class=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var12 string
-			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var11).String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 1, Col: 0}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><div id=\"main\" class=\"flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-bg)] min-w-0\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -223,13 +135,13 @@ func ChatPage(list ChatListData, sess cc.Session, messages []MessageView, sessio
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Layout(sessionID, list.CsrfToken).Render(templ.WithChildren(ctx, templ_7745c5c3_Var8), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Layout(sessionID, list.CsrfToken).Render(templ.WithChildren(ctx, templ_7745c5c3_Var4), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -253,74 +165,74 @@ func ChatListSidebar(data ChatListData) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var13 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var13 == nil {
-			templ_7745c5c3_Var13 = templ.NopComponent
+		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var5 == nil {
+			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"flex flex-col h-full bg-[var(--color-bg)]\"><!-- Header --><div class=\"chat-header sidebar-header flex-shrink-0 bg-[var(--color-surfaceHigh)] pt-5 px-4 pb-[10px]\"><div class=\"flex justify-between items-center mb-2\"><h1 class=\"text-[28px] font-bold text-[var(--color-textPrimary)] font-[inherit] m-0 leading-[1.05] tracking-[-1px]\">ComandCenter</h1><div class=\"flex items-center gap-2\"><a href=\"/designs\" class=\"flex items-center justify-center rounded-full w-9 h-9 bg-[var(--color-surfaceHigh)]\" title=\"Designs\"><svg width=\"18\" height=\"18\" fill=\"none\" stroke=\"#8A9BA0\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"#8A9BA0\" stroke=\"none\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg></a> <button hx-get=\"/sessions/new\" hx-target=\"#modal\" hx-swap=\"innerHTML\" class=\"flex items-center justify-center rounded-full w-9 h-9 bg-[var(--color-brand)] border-none cursor-pointer\"><svg width=\"18\" height=\"18\" fill=\"none\" stroke=\"#0B0E0F\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path d=\"M12 4v16m8-8H4\"></path></svg></button></div></div><!-- Search bar --><div class=\"flex items-center bg-[var(--color-surface)] rounded-xl px-3 h-9 gap-2\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"#4E6268\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"M21 21l-4.35-4.35\"></path></svg> <input type=\"text\" name=\"q\" placeholder=\"Search\" aria-label=\"Search sessions\" autocomplete=\"off\" hx-get=\"/partials/sessions\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-include=\"this\" class=\"bg-transparent border-none outline-none text-[var(--color-textPrimary)] text-[15px] font-[inherit] flex-1 min-w-0\"></div><!-- Filter chips — rendered server-side, htmx declarative (m2: hx-sync prevents race) --><div id=\"filter-chips\" class=\"flex overflow-x-auto no-scrollbar gap-2 pb-2 mt-2\"><button data-filter-chip=\"\" hx-get=\"/partials/sessions?filter=\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" onclick=\"ccSetFilter('')\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-brand)] text-[#0B0E0F] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150\">All</button> <button data-filter-chip=\"active\" hx-get=\"/partials/sessions?filter=active\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" onclick=\"ccSetFilter('active')\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150\">Active</button> <button data-filter-chip=\"inactive\" hx-get=\"/partials/sessions?filter=inactive\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" onclick=\"ccSetFilter('inactive')\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150\">Inactive</button> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"flex flex-col h-full bg-[var(--color-bg)]\"><!-- Header --><div class=\"chat-header sidebar-header flex-shrink-0 bg-[var(--color-surfaceHigh)] pt-5 px-4 pb-[10px]\"><div class=\"flex justify-between items-center mb-2\"><h1 class=\"text-[28px] font-bold text-[var(--color-textPrimary)] font-[inherit] m-0 leading-[1.05] tracking-[-1px]\">ComandCenter</h1><div class=\"flex items-center gap-2\"><a href=\"/designs\" class=\"flex items-center justify-center rounded-full w-9 h-9 bg-[var(--color-surfaceHigh)]\" title=\"Designs\"><svg width=\"18\" height=\"18\" fill=\"none\" stroke=\"#8A9BA0\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"#8A9BA0\" stroke=\"none\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg></a> <button hx-get=\"/sessions/new\" hx-target=\"#modal\" hx-swap=\"innerHTML\" class=\"flex items-center justify-center rounded-full w-9 h-9 bg-[var(--color-brand)] border-none cursor-pointer\"><svg width=\"18\" height=\"18\" fill=\"none\" stroke=\"#0B0E0F\" stroke-width=\"2.5\" viewBox=\"0 0 24 24\"><path d=\"M12 4v16m8-8H4\"></path></svg></button></div></div><!-- Search bar --><div class=\"flex items-center bg-[var(--color-surface)] rounded-xl px-3 h-9 gap-2\"><svg width=\"16\" height=\"16\" fill=\"none\" stroke=\"#4E6268\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"M21 21l-4.35-4.35\"></path></svg> <input type=\"text\" name=\"q\" placeholder=\"Search\" aria-label=\"Search sessions\" autocomplete=\"off\" hx-get=\"/partials/sessions\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-include=\"this\" class=\"bg-transparent border-none outline-none text-[var(--color-textPrimary)] text-[15px] font-[inherit] flex-1 min-w-0\"></div><!-- Filter chips — rendered server-side, htmx declarative (m2: hx-sync prevents race) --><div id=\"filter-chips\" class=\"flex overflow-x-auto no-scrollbar gap-2 pb-2 mt-2\"><button data-filter-chip=\"\" hx-get=\"/partials/sessions?filter=\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" onclick=\"ccSetFilter('')\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-brand)] text-[#0B0E0F] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150\">All</button> <button data-filter-chip=\"active\" hx-get=\"/partials/sessions?filter=active\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" onclick=\"ccSetFilter('active')\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150\">Active</button> <button data-filter-chip=\"inactive\" hx-get=\"/partials/sessions?filter=inactive\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" onclick=\"ccSetFilter('inactive')\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150\">Inactive</button> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, p := range data.Projects {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<button data-filter-chip=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<button data-filter-chip=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var14 string
-			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs("project:" + p.Path)
+			var templ_7745c5c3_Var6 string
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs("project:" + p.Path)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 134, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 132, Col: 44}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" data-project-chip=\"1\" hx-get=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs("/partials/sessions?filter=project%3A" + p.Path)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 136, Col: 62}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" data-project-chip=\"1\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap flex items-center gap-1 transition-[background,color] duration-150\"><svg width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z\"></path></svg> <span>")
+			var templ_7745c5c3_Var7 string
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("/partials/sessions?filter=project%3A" + p.Path)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 134, Col: 62}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 146, Col: 20}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" hx-target=\"#session-list\" hx-swap=\"innerHTML\" hx-sync=\"#filter-chips button:replace\" class=\"px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap flex items-center gap-1 transition-[background,color] duration-150\"><svg width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z\"></path></svg> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</span> <span style=\"font-size:11px;opacity:.6;margin-left:2px;\">")
+			var templ_7745c5c3_Var8 string
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 144, Col: 20}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var17 string
-			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", p.Count))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 147, Col: 91}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</span> <span style=\"font-size:11px;opacity:.6;margin-left:2px;\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</span></button>")
+			var templ_7745c5c3_Var9 string
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", p.Count))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/comandcenter/web/chat_list.templ`, Line: 145, Col: 91}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></div><!-- Delegate chip visual state via htmx beforeRequest --><script>\n\t\t(function(){\n\t\t\tvar chips = document.getElementById('filter-chips');\n\t\t\tif (chips) {\n\t\t\t\tchips.addEventListener('htmx:beforeRequest', function(e) {\n\t\t\t\t\tvar btn = e.target.closest('[data-filter-chip]');\n\t\t\t\t\tif (btn && typeof window.ccSetFilter === 'function') {\n\t\t\t\t\t\twindow.ccSetFilter(btn.dataset.filterChip);\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t}\n\t\t})();\n\t\t</script><!-- Session List --><main class=\"flex-1 overflow-y-auto\"><div id=\"session-list\" hx-get=\"/partials/sessions\" hx-trigger=\"load, refresh\" hx-swap=\"innerHTML show:no-scroll\" hx-indicator=\".htmx-indicator\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div></div><!-- Delegate chip visual state via htmx beforeRequest --><script>\n\t\t(function(){\n\t\t\tvar chips = document.getElementById('filter-chips');\n\t\t\tif (chips) {\n\t\t\t\tchips.addEventListener('htmx:beforeRequest', function(e) {\n\t\t\t\t\tvar btn = e.target.closest('[data-filter-chip]');\n\t\t\t\t\tif (btn && typeof window.ccSetFilter === 'function') {\n\t\t\t\t\t\twindow.ccSetFilter(btn.dataset.filterChip);\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t}\n\t\t})();\n\t\t</script><!-- Session List --><main class=\"flex-1 overflow-y-auto\"><div id=\"session-list\" hx-get=\"/partials/sessions\" hx-trigger=\"load, refresh\" hx-swap=\"innerHTML show:no-scroll\" hx-indicator=\".htmx-indicator\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -328,7 +240,7 @@ func ChatListSidebar(data ChatListData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div><span class=\"htmx-indicator block text-center text-xs py-1 text-[var(--color-textMuted)]\">&#8635;</span></main><!-- Bottom tab bar — mobile only (hx-boost for SPA nav) --><nav hx-boost=\"true\" class=\"md:hidden flex shrink-0 bg-[var(--color-surfaceHigh)] border-t border-t-[var(--color-border)] pb-[env(safe-area-inset-bottom)]\"><a href=\"/\" class=\"flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-brand)]\"><div class=\"text-inherit\"><svg width=\"22\" height=\"22\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path></svg></div><span class=\"text-[11px] font-semibold tracking-[0.5px]\">Sessions</span></a> <a href=\"/designs\" class=\"flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-textMuted)]\"><div class=\"text-inherit\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"currentColor\" stroke=\"none\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg></div><span class=\"text-[11px] font-semibold tracking-[0.5px]\">Designs</span></a> <a href=\"/settings\" class=\"flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-textMuted)]\"><div class=\"text-inherit\"><svg width=\"22\" height=\"22\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84a.484.484 0 00-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87a.49.49 0 00.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z\"></path></svg></div><span class=\"text-[11px] font-semibold tracking-[0.5px]\">Settings</span></a></nav></div><!-- Modal target --><div id=\"modal\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div><span class=\"htmx-indicator block text-center text-xs py-1 text-[var(--color-textMuted)]\">&#8635;</span></main><!-- Bottom tab bar — mobile only (full page nav — no hx-boost to preserve #app-shell structure) --><nav class=\"lg:hidden flex shrink-0 bg-[var(--color-surfaceHigh)] border-t border-t-[var(--color-border)] pb-[env(safe-area-inset-bottom)]\"><a href=\"/\" class=\"flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-brand)]\"><div class=\"text-inherit\"><svg width=\"22\" height=\"22\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path></svg></div><span class=\"text-[11px] font-semibold tracking-[0.5px]\">Sessions</span></a> <a href=\"/designs\" class=\"flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-textMuted)]\"><div class=\"text-inherit\"><svg width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\" fill=\"currentColor\" stroke=\"none\"></circle> <path d=\"M21 15l-5-5L5 21\"></path></svg></div><span class=\"text-[11px] font-semibold tracking-[0.5px]\">Designs</span></a> <a href=\"/settings\" class=\"flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-textMuted)]\"><div class=\"text-inherit\"><svg width=\"22\" height=\"22\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84a.484.484 0 00-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87a.49.49 0 00.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z\"></path></svg></div><span class=\"text-[11px] font-semibold tracking-[0.5px]\">Settings</span></a></nav></div><!-- Modal target --><div id=\"modal\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -338,8 +250,7 @@ func ChatListSidebar(data ChatListData) templ.Component {
 
 // ChatListMain renders just the #main content (welcome screen) for htmx partial swaps.
 // No Layout, no sidebar — used when HX-Request header is present on GET /.
-// Includes an OOB swap to restore #sidebar visibility on mobile after back navigation
-// (ChatPage sets "hidden md:flex" on mobile; this clears it when returning to session list).
+// The triggering element (back button) handles removing 'chat-active' via hx-on:htmx:after-swap.
 func ChatListMain() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -356,23 +267,11 @@ func ChatListMain() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var18 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var18 == nil {
-			templ_7745c5c3_Var18 = templ.NopComponent
+		templ_7745c5c3_Var10 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var10 == nil {
+			templ_7745c5c3_Var10 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<div id=\"sidebar\" hx-swap-oob=\"outerHTML\" class=\"w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = ChatListSidebar(ChatListData{}).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
 		templ_7745c5c3_Err = WelcomeScreen().Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -397,12 +296,12 @@ func WelcomeScreen() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var19 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var19 == nil {
-			templ_7745c5c3_Var19 = templ.NopComponent
+		templ_7745c5c3_Var11 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var11 == nil {
+			templ_7745c5c3_Var11 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"flex-1 flex flex-col items-center justify-center gap-[40px] p-16 bg-[var(--color-bg)]\"><div class=\"w-24 h-24 rounded-[24px] bg-[rgba(0,61,46,1)] border-[1.5px] border-[rgba(0,196,140,0.2)] flex items-center justify-center\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--color-brand)\" stroke-width=\"1.5\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path> <path d=\"M8 10h8M8 14h5\" stroke-linecap=\"round\"></path></svg></div><div class=\"text-center\"><h2 class=\"text-[28px] font-bold text-[var(--color-textPrimary)] font-[inherit] m-0 mb-2\">Select a session</h2><p class=\"text-[var(--color-textMuted)] text-[15px] font-[inherit] leading-[1.6] m-0\">Pick a session from the sidebar to start chatting.<br>Or launch a new agent from your terminal.</p></div><div class=\"flex flex-col gap-2 w-[360px]\"><p class=\"text-[var(--color-textMuted)] text-[11px] font-[inherit] font-semibold tracking-[0.8px] m-0\">QUICK START</p><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start default session</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --agent backend-sr</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start with a specialist</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --team full-stack</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Spawn a team</span></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"flex-1 flex flex-col items-center justify-center gap-[40px] p-6 md:p-16 bg-[var(--color-bg)]\"><div class=\"w-24 h-24 rounded-[24px] bg-[rgba(0,61,46,1)] border-[1.5px] border-[rgba(0,196,140,0.2)] flex items-center justify-center\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--color-brand)\" stroke-width=\"1.5\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path> <path d=\"M8 10h8M8 14h5\" stroke-linecap=\"round\"></path></svg></div><div class=\"text-center\"><h2 class=\"text-[28px] font-bold text-[var(--color-textPrimary)] font-[inherit] m-0 mb-2\">Select a session</h2><p class=\"text-[var(--color-textMuted)] text-[15px] font-[inherit] leading-[1.6] m-0\">Pick a session from the sidebar to start chatting.<br>Or launch a new agent from your terminal.</p></div><div class=\"flex flex-col gap-2 w-full max-w-[360px] px-4\"><p class=\"text-[var(--color-textMuted)] text-[11px] font-[inherit] font-semibold tracking-[0.8px] m-0\">QUICK START</p><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start default session</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --agent backend-sr</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start with a specialist</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --team full-stack</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Spawn a team</span></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

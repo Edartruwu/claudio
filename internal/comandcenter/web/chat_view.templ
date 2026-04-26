@@ -16,7 +16,7 @@ templ ChatViewPartial(sess cc.Session, messages []MessageView, sessionID string,
 // Works as both full-page (wrapped in Layout) and HTMX partial.
 templ ChatView(sess cc.Session, messages []MessageView, sessionID string, pag MessagePagination) {
 	<div class="flex flex-1 min-h-0 min-w-0" id="chat-app" data-session-id={ sess.ID }>
-		<div class="flex-1 flex flex-col min-h-0 min-w-[300px] bg-[var(--color-bg)] relative">
+		<div class="flex-1 flex flex-col min-h-0 min-w-0 bg-[var(--color-bg)] relative">
 			<!-- Header -->
 			<header class="chat-header flex items-center flex-shrink-0 bg-[var(--color-surface)] border-b border-b-[var(--color-border)] p-[48px_8px_10px] gap-2">
 				<!-- Back button: mobile only -->
@@ -266,6 +266,12 @@ templ PushPrompt() {
 // chatViewScript renders all the JS for chat_view with the session ID injected.
 templ chatViewScript(sessionID string) {
 	<script>
+		// Abort any listeners registered by a previous chatViewScript execution
+		// (happens on every HTMX session switch — avoids duplicate handlers).
+		if (window._ccChatAC) { window._ccChatAC.abort(); }
+		window._ccChatAC = new AbortController();
+		var _ccSig = window._ccChatAC.signal;
+
 		// --- Init: scroll to bottom ---
 		(function() {
 			var msgs = document.getElementById('messages');
@@ -284,13 +290,13 @@ templ chatViewScript(sessionID string) {
 				if (trigger && trigger.id === 'load-more-sentinel') {
 					savedScrollBottom = msgs.scrollHeight - msgs.scrollTop;
 				}
-			});
+			}, { signal: _ccSig });
 			document.addEventListener('htmx:afterSwap', function(evt) {
 				if (savedScrollBottom !== null) {
 					msgs.scrollTop = msgs.scrollHeight - savedScrollBottom;
 					savedScrollBottom = null;
 				}
-			});
+			}, { signal: _ccSig });
 		})();
 
 		// --- Info panel: mobile overlay / desktop side panel ---
@@ -340,8 +346,9 @@ templ chatViewScript(sessionID string) {
 			});
 			el.addEventListener('keydown', function(e) {
 				if (e.key === 'Enter' && !e.shiftKey) {
-					// Mobile: Enter = newline (default). Desktop: Enter = send.
-					var isMobile = navigator.maxTouchPoints > 0;
+					// Mobile (touch-primary): Enter = newline. Desktop (hover+mouse): Enter = send.
+					// matchMedia check is reliable on Mac Safari where maxTouchPoints incorrectly returns 5.
+					var isMobile = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 					if (!isMobile) {
 						e.preventDefault();
 						document.getElementById('send-btn').click();
@@ -384,7 +391,7 @@ templ chatViewScript(sessionID string) {
 				if (popover && !popover.contains(e.target) && e.target !== plusBtn) {
 					popover.classList.add('hidden');
 				}
-			});
+			}, { signal: _ccSig });
 
 			function reindexCards() {
 				var thumbs = document.getElementById('staged-thumbs');
@@ -623,7 +630,7 @@ templ chatViewScript(sessionID string) {
 			});
 			document.addEventListener('click', function(e) {
 				if (!dropdown.contains(e.target) && e.target !== input) closeDrop();
-			});
+			}, { signal: _ccSig });
 		})();
 
 		// --- Interrupt ---
@@ -740,7 +747,7 @@ templ chatViewScript(sessionID string) {
 						}).then(function() { setBellState(true); });
 					});
 				}).catch(function() {});
-			});
+			}, { signal: _ccSig });
 			window.ccTogglePush = function() {
 				if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
 					showToast('Push notifications not supported');
