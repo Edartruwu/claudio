@@ -837,7 +837,7 @@ templ filterAndSwipeScript() {
 		var content = document.getElementById('agent-log-content');
 		if (!dialog || !content) return;
 		title.textContent = agentName;
-		content.textContent = 'Loading…';
+		content.innerHTML = 'Loading\u2026';
 		dialog.showModal();
 		// Fetch logs
 		fetch('/chat/' + sessionID + '/agents/' + encodeURIComponent(agentName) + '/logs', {credentials: 'include'})
@@ -845,11 +845,11 @@ templ filterAndSwipeScript() {
 			.then(function(text) {
 				var c = document.getElementById('agent-log-content');
 				if (!c) return;
-				c.textContent = text;
+				c.innerHTML = text;
 			})
 			.catch(function() {
 				var c = document.getElementById('agent-log-content');
-				if (c) c.textContent = 'Failed to load logs';
+				if (c) c.innerHTML = 'Failed to load logs';
 			});
 	};
 
