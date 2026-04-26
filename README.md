@@ -1163,6 +1163,60 @@ agents/
 
 `AGENT.md` uses the same front-matter schema as the flat file form. Plugins placed in `agents/<name>/plugins/` are injected into the agent's tool list automatically — they are **not** available to other agents. Skills placed in `agents/<name>/skills/<skill-name>/` are prepended to the agent's system prompt when a session starts.
 
+#### AGENT.md front-matter reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Display name for the agent |
+| `description` | string | When-to-use guidance shown in the agent selector |
+| `model` | string | `haiku`, `sonnet`, or `opus` |
+| `tools` | string or list | `"*"` for all tools, or an explicit allow-list |
+| `disallowedTools` | list | Tool names to block even when `tools: "*"` |
+| `allowedMCPTools` | list | MCP tool names this agent may call |
+| `capabilities` | list | Opt-in feature sets (e.g. `design` enables mockup tools) |
+| `autoLoadSkills` | list | Skill names pre-loaded into the system prompt **at spawn time** — no model invocation needed |
+| `maxTurns` | int | Max agentic turns before the agent stops (`0` = unlimited) |
+| `sourceSession` | string | Session ID to resume from |
+| `sourceProject` | string | Project context to attach |
+
+**`autoLoadSkills`** is the key field for giving an agent standing instructions without requiring it to call `Skill(name)` first. The named skills are resolved from the global registry (bundled + `~/.claudio/skills/` + `.claudio/skills/`) merged with the agent's own `skills/` directory:
+
+```yaml
+---
+name: frontend-senior
+description: Senior frontend engineer (opus). Deep expertise in React, performance, accessibility, and design systems.
+model: opus
+tools: "*"
+autoLoadSkills:
+  - ui-ux-pro-max
+  - commit
+---
+
+You are a senior frontend engineer...
+```
+
+Both skills are injected into the system prompt automatically — the agent starts every session already knowing the UI/UX guidelines and commit conventions.
+
+#### Global auto-load (`settings.json`)
+
+You can also pre-load skills globally for all agents without editing each `AGENT.md`:
+
+```json
+{
+  "autoLoadSkills": {
+    "onStart": ["caveman"],
+    "onAgentSpawn": ["commit"]
+  }
+}
+```
+
+| Key | When injected |
+|-----|--------------|
+| `onStart` | Into the **main session agent** at startup |
+| `onAgentSpawn` | Into **every spawned sub-agent** (teammates, background agents) |
+
+Per-agent `autoLoadSkills` in `AGENT.md` stack on top of `onAgentSpawn` — both are injected.
+
 #### Example: built-in agent roster (`~/.claudio/agents/`)
 
 Claudio ships with a ready-to-use set of agents in `~/.claudio/agents/`. There are **two roles** in the multi-agent workflow:
@@ -2963,6 +3017,79 @@ The `/ui-ux-pro-max` skill gives agents access to 50+ styles, 161 color palettes
 ```
 
 Pass threshold: `overall_score >= 75`. Results include per-screen gaps and suggestions.
+
+### Design capability and teams
+
+**`capabilities: ["design"]` belongs only on standalone (principal) agents — never on team sub-agents.**
+
+#### Why
+
+Design tools (`RenderMockup`, `BundleMockup`, `CreateDesignSession`, `ExportHandoff`) are *creation* tools. They write sessions to `~/.claudio/projects/{slug}/designs/`, render screenshots, and produce bundles for human review. This is inherently a human-in-the-loop workflow: the output is meant to be seen, critiqued, and approved before any implementation begins.
+
+Granting `design` capability to a team sub-agent breaks this in several ways:
+
+1. **No human review gate.** A sub-agent generating mockups autonomously inside a pipeline means the design is consumed by the next agent without ever being seen or approved by a human. Low-quality or wrong-direction output propagates silently.
+
+2. **Shared mutable state outside worktrees.** Design sessions live in `~/.claudio/projects/` — completely outside the isolated git worktrees that team agents run in. Two parallel sub-agents with `design` capability writing to the same designs directory will race and clobber each other's sessions.
+
+3. **Wrong tool for the job.** What a team implementation agent actually needs is `ReviewDesignFidelity` — to *verify* that the UI they built matches an already-approved design. That tool is available to all agents by default and is the correct integration point between design and implementation.
+
+#### The correct split
+
+```
+Phase 1 — Design (standalone principal agent, human in the loop)
+  human → /hifi or /mockup skill
+  agent → CreateDesignSession → RenderMockup → BundleMockup
+  human → reviews interactive canvas, requests iterations
+  human → approves session
+
+Phase 2 — Implementation (team, autonomous)
+  spawn team with approved session name/dir as context
+  → frontend agent implements UI
+  → QA agent calls ReviewDesignFidelity against live pages
+  → score ≥ 75 = pass
+```
+
+#### How to wire the handoff
+
+In your team task description, pass the approved session directory:
+
+```
+Design session: ~/.claudio/projects/myapp/designs/20260425-dashboard/
+Screens: Dashboard, Login, Settings
+Fidelity target: overall_score >= 75
+```
+
+QA agent calls `ReviewDesignFidelity` with that session name. No `design` capability needed anywhere in the team.
+
+#### Agent definition example
+
+```yaml
+# ✅ Correct — standalone design agent
+---
+name: design
+capabilities: ["design"]
+model: opus
+---
+You are a senior product designer...
+```
+
+```yaml
+# ❌ Wrong — team sub-agent with design capability
+---
+name: ui-designer
+capabilities: ["design"]   # Don't do this in a team member
+---
+```
+
+```yaml
+# ✅ Correct — team frontend agent, no design capability needed
+---
+name: frontend
+tools: "*"
+# ReviewDesignFidelity is available to all agents by default
+---
+```
 
 ### Manifest format (v2)
 
