@@ -205,21 +205,21 @@ templ TaskRows(tasks []cc.Task, sessionID string) {
 			>
 				if task.Status == "done" {
 					<span class="text-[var(--color-brand)] text-sm mt-px shrink-0 font-bold">&#10003;</span>
-					<div class="flex-1 min-w-0"><p class="text-[var(--color-textMuted)] text-[15px] line-through m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Title }</p></div>
+					<div class="flex-1 min-w-0"><p class="text-[var(--color-textMuted)] text-[15px] line-through m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Subject }</p></div>
 				} else if task.Status == "in_progress" {
 					<span class="text-[var(--color-ai)] text-sm mt-px shrink-0 font-bold">&#9679;</span>
 					<div class="flex-1 min-w-0">
-						<p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold">{ task.Title }</p>
+						<p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold">{ task.Subject }</p>
 						if task.AssignedTo != "" {
 							<p class="text-[var(--color-textMuted)] text-[13px] mt-[2px]">&rarr; { task.AssignedTo }</p>
 						}
 					</div>
 				} else if task.Status == "blocked" {
 					<span class="text-[var(--color-error)] text-sm mt-px shrink-0 font-bold">&#10005;</span>
-					<div class="flex-1 min-w-0"><p class="text-[var(--color-error)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Title }</p></div>
+					<div class="flex-1 min-w-0"><p class="text-[var(--color-error)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Subject }</p></div>
 				} else {
 					<span class="text-[var(--color-textMuted)] text-sm mt-px shrink-0 font-bold">&#9675;</span>
-					<div class="flex-1 min-w-0"><p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Title }</p></div>
+					<div class="flex-1 min-w-0"><p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Subject }</p></div>
 				}
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E6268" stroke-width="2" class="task-chevron shrink-0"><path d="M9 5l7 7-7 7"></path></svg>
 				<span id={ fmt.Sprintf("task-spinner-%s", task.ID) } class="htmx-indicator text-[9px] opacity-50 shrink-0">&#8635;</span>

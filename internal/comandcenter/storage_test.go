@@ -15,10 +15,13 @@ func newTestStorage(t *testing.T) *Storage {
 	if _, err := s.writeDB.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		title TEXT NOT NULL DEFAULT '',
+		subject TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
+		blocks TEXT NOT NULL DEFAULT '',
+		blocked_by TEXT NOT NULL DEFAULT '',
+		metadata TEXT NOT NULL DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (id, session_id)
@@ -33,9 +36,9 @@ func newTestStorage(t *testing.T) *Storage {
 func seedTask(t *testing.T, s *Storage, tk Task) {
 	t.Helper()
 	_, err := s.writeDB.Exec(`
-		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
+		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		tk.ID, tk.SessionID, tk.Title, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
+		tk.ID, tk.SessionID, tk.Subject, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
 	)
 	if err != nil {
 		t.Fatalf("seedTask %s: %v", tk.ID, err)
@@ -423,12 +426,12 @@ func TestStorage_ListTasks(t *testing.T) {
 	// Insert tasks.
 	now := time.Now()
 	t1 := Task{
-		ID: "task-1", SessionID: sess.ID, Title: "Fix bug",
+		ID: "task-1", SessionID: sess.ID, Subject: "Fix bug",
 		Status: "pending", AssignedTo: "agent-a",
 		CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour),
 	}
 	t2 := Task{
-		ID: "task-2", SessionID: sess.ID, Title: "Write tests",
+		ID: "task-2", SessionID: sess.ID, Subject: "Write tests",
 		Status: "done", AssignedTo: "",
 		CreatedAt: now.Add(-1 * time.Hour), UpdatedAt: now,
 	}
@@ -447,8 +450,8 @@ func TestStorage_ListTasks(t *testing.T) {
 	if tasks[0].ID != "task-2" {
 		t.Errorf("expected task-2 first, got %q", tasks[0].ID)
 	}
-	if tasks[0].Title != "Write tests" {
-		t.Errorf("Title: got %q, want %q", tasks[0].Title, "Write tests")
+	if tasks[0].Subject != "Write tests" {
+		t.Errorf("Subject: got %q, want %q", tasks[0].Subject, "Write tests")
 	}
 	if tasks[0].Status != "done" {
 		t.Errorf("Status: got %q, want %q", tasks[0].Status, "done")
@@ -468,7 +471,7 @@ func TestStorage_ListTasks_IsolatedBySession(t *testing.T) {
 	}
 
 	seedTask(t, s, Task{
-		ID: "task-a", SessionID: "sess-a", Title: "Task A",
+		ID: "task-a", SessionID: "sess-a", Subject: "Task A",
 		Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
 
@@ -493,7 +496,7 @@ func TestStorage_GetTask(t *testing.T) {
 	}
 
 	task := Task{
-		ID: "task-get-1", SessionID: sess.ID, Title: "Get me",
+		ID: "task-get-1", SessionID: sess.ID, Subject: "Get me",
 		Description: "**bold** description", Status: "pending",
 		AssignedTo: "agent-x",
 		CreatedAt:  time.Now(), UpdatedAt: time.Now(),
@@ -507,8 +510,8 @@ func TestStorage_GetTask(t *testing.T) {
 	if got.ID != task.ID {
 		t.Errorf("ID: got %q, want %q", got.ID, task.ID)
 	}
-	if got.Title != task.Title {
-		t.Errorf("Title: got %q, want %q", got.Title, task.Title)
+	if got.Subject != task.Subject {
+		t.Errorf("Subject: got %q, want %q", got.Subject, task.Subject)
 	}
 	if got.Description != task.Description {
 		t.Errorf("Description: got %q, want %q", got.Description, task.Description)

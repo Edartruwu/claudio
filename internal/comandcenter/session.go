@@ -39,10 +39,13 @@ type Message struct {
 type Task struct {
 	ID          string
 	SessionID   string
-	Title       string
+	Subject     string
 	Description string // optional markdown description
 	Status      string
 	AssignedTo  string
+	Blocks      []string          // task IDs this task is blocking
+	BlockedBy   []string          // task IDs blocking this task
+	Metadata    map[string]string // arbitrary KV metadata
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

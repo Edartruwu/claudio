@@ -316,6 +316,15 @@ func boolStr(b bool) string {
 	return "0"
 }
 
+// prefixIDs prepends "#" to each task ID for display (e.g. ["1","3"] → ["#1","#3"]).
+func prefixIDs(ids []string) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = "#" + id
+	}
+	return out
+}
+
 // --- Mention dropdown helpers ---
 
 // mentionSession is a minimal session for the mention dropdown.

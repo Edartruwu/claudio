@@ -2,6 +2,7 @@ package comandcenter
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -705,30 +706,42 @@ func (s *Storage) InsertNativeMessage(sessionID, role, content string, ts time.T
 // GetTask returns a single task by ID from team_tasks, filtered by sessionID.
 func (s *Storage) GetTask(id, sessionID string) (Task, error) {
 	var t Task
+	var blocksJSON, blockedByJSON, metadataJSON sql.NullString
 	err := s.readDB.QueryRow(`
-		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
+		SELECT id, session_id, subject, COALESCE(description,''), status, COALESCE(assigned_to,''),
+		       COALESCE(blocks,''), COALESCE(blocked_by,''), COALESCE(metadata,''),
+		       created_at, updated_at
 		FROM team_tasks WHERE id=? AND session_id=?
-	`, id, sessionID).Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
-		&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt)
+	`, id, sessionID).Scan(&t.ID, &t.SessionID, &t.Subject, &t.Description, &t.Status,
+		&t.AssignedTo, &blocksJSON, &blockedByJSON, &metadataJSON,
+		&t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return Task{}, fmt.Errorf("get task %q: %w", id, err)
 	}
+	parseTaskJSON(&t, blocksJSON, blockedByJSON, metadataJSON)
 	return t, nil
 }
 
 // UpsertTask inserts or updates a task record in team_tasks.
 func (s *Storage) UpsertTask(task Task) error {
+	blocksJSON, _ := json.Marshal(task.Blocks)
+	blockedByJSON, _ := json.Marshal(task.BlockedBy)
+	metadataJSON, _ := json.Marshal(task.Metadata)
 	_, err := s.writeDB.Exec(`
-		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, blocks, blocked_by, metadata, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id, session_id) DO UPDATE SET
-			title=excluded.title,
+			subject=excluded.subject,
 			description=excluded.description,
 			status=excluded.status,
 			assigned_to=excluded.assigned_to,
+			blocks=excluded.blocks,
+			blocked_by=excluded.blocked_by,
+			metadata=excluded.metadata,
 			updated_at=excluded.updated_at
-	`, task.ID, task.SessionID, task.Title, task.Description, task.Status,
-		task.AssignedTo, task.CreatedAt, task.UpdatedAt)
+	`, task.ID, task.SessionID, task.Subject, task.Description, task.Status,
+		task.AssignedTo, string(blocksJSON), string(blockedByJSON), string(metadataJSON),
+		task.CreatedAt, task.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upsert task: %w", err)
 	}
@@ -786,7 +799,9 @@ func (s *Storage) MarkRead(sessionID string) error {
 // ListTasks returns all tasks for a session from team_tasks.
 func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 	rows, err := s.readDB.Query(`
-		SELECT id, session_id, title, COALESCE(description,''), status, COALESCE(assigned_to,''), created_at, updated_at
+		SELECT id, session_id, subject, COALESCE(description,''), status, COALESCE(assigned_to,''),
+		       COALESCE(blocks,''), COALESCE(blocked_by,''), COALESCE(metadata,''),
+		       created_at, updated_at
 		FROM team_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
 	`, sessionID)
 	if err != nil {
@@ -797,13 +812,29 @@ func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 	var tasks []Task
 	for rows.Next() {
 		var t Task
-		if err := rows.Scan(&t.ID, &t.SessionID, &t.Title, &t.Description, &t.Status,
-			&t.AssignedTo, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		var blocksJSON, blockedByJSON, metadataJSON sql.NullString
+		if err := rows.Scan(&t.ID, &t.SessionID, &t.Subject, &t.Description, &t.Status,
+			&t.AssignedTo, &blocksJSON, &blockedByJSON, &metadataJSON,
+			&t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
 		}
+		parseTaskJSON(&t, blocksJSON, blockedByJSON, metadataJSON)
 		tasks = append(tasks, t)
 	}
 	return tasks, rows.Err()
+}
+
+// parseTaskJSON decodes JSON columns into Task slice/map fields.
+func parseTaskJSON(t *Task, blocksJSON, blockedByJSON, metadataJSON sql.NullString) {
+	if blocksJSON.Valid && blocksJSON.String != "" && blocksJSON.String != "null" {
+		_ = json.Unmarshal([]byte(blocksJSON.String), &t.Blocks)
+	}
+	if blockedByJSON.Valid && blockedByJSON.String != "" && blockedByJSON.String != "null" {
+		_ = json.Unmarshal([]byte(blockedByJSON.String), &t.BlockedBy)
+	}
+	if metadataJSON.Valid && metadataJSON.String != "" && metadataJSON.String != "null" {
+		_ = json.Unmarshal([]byte(metadataJSON.String), &t.Metadata)
+	}
 }
 
 // ListAgents returns all agents for a session.
