@@ -2270,109 +2270,75 @@ var handoffSkillContent = `You are generating a developer handoff package from a
 ## Brief
 $ARGUMENTS
 
-## Step 1 — Locate Mockup
+## Step 1 — Discover Design Sessions
 
-Ask the user for the mockup directory path (the directory containing ` + "`index.html`" + ` and ` + "`screen-*.html`" + ` files).
+Call ` + "`ListDesigns`" + ` (no parameters needed — it reads the current project automatically).
 
-If no path is provided, compute the project-scoped designs directory first:
-` + "```" + `bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
-echo "$HOME/.claudio/projects/$PROJECT_SLUG/designs"
-` + "```" + `
-Then check for a recent mockup in the printed path and ask the user to confirm.
+It returns all sessions for this project. Each session has:
+- ` + "`session_dir`" + ` — absolute path to the session directory
+- ` + "`session`" + ` — session name / timestamp
+- ` + "`screens[]`" + ` — list of screen names
+- ` + "`has_handoff`" + ` — true if handoff already exists
+- ` + "`bundle_path`" + ` — path to ` + "`bundle/mockup.html`" + ` if bundled
 
-## Step 2 — Inventory Components
+Pick the correct session (usually the most recent, or whichever the user specified). Use its ` + "`session_dir`" + ` as ` + "`SESSION_DIR`" + ` in all subsequent steps.
 
-Read each ` + "`screen-*.html`" + ` file and identify all UI components used:
-- Navigation elements (navbar, sidebar, breadcrumb, tabs)
-- Layout containers (card, panel, modal, drawer, section)
-- Form elements (input, select, checkbox, radio, toggle, button, form)
-- Data display (table, list, badge, tag, avatar, tooltip, chart placeholder)
-- Feedback elements (alert, toast, spinner, progress, empty state)
+If no sessions exist, tell the user to run a design skill first (` + "`/hifi`" + `, ` + "`/mockup`" + `, etc.).
 
-For each component: note which screens use it, any props/variants visible, interaction states visible (hover, active, disabled, error).
+## Step 2 — Generate Handoff Package
 
-## Step 3 — Token Audit
+Call ` + "`ExportHandoff`" + ` with:
+- ` + "`mockup_dir`" + ` — ` + "`{SESSION_DIR}/bundle`" + ` (contains ` + "`mockup.html`" + `)
+- ` + "`session_dir`" + ` — ` + "`SESSION_DIR`" + ` (so output lands in the same session)
+- ` + "`framework`" + ` — ask the user which framework they are implementing in (` + "`react`" + ` / ` + "`vue`" + ` / ` + "`svelte`" + ` / ` + "`vanilla`" + `); default ` + "`react`" + ` if not specified
+- ` + "`design_tokens`" + ` — pass path to ` + "`design-system.json`" + ` if it exists in ` + "`SESSION_DIR`" + ` or parent designs dir
+- ` + "`project_name`" + ` — use the git repo name or directory name
 
-If a ` + "`design-system.json`" + ` exists in the mockup directory or in the project-scoped designs directory (computed above):
-- Read the full token set
-- Scan screen HTML files for token values (hex colors, font names, spacing values)
-- Build a map: token name → locations where it is used
+` + "`ExportHandoff`" + ` automatically generates:
+- ` + "`handoff/spec.md`" + ` — component inventory, token usage, interaction spec, asset list
+- ` + "`handoff/tokens-used.json`" + ` — token → locations map
+- ` + "`handoff/tokens.json`" + ` — full token set (copied from session)
+- ` + "`handoff/tokens.css`" + ` — CSS custom properties ready to import
+- ` + "`handoff/tailwind.config.js`" + ` — Tailwind config derived from design tokens
 
-Output a ` + "`handoff/tokens-used.json`" + ` file:
-` + "```json" + `
-{
-  "colors": {
-    "primary": ["screen-landing.html: CTA button", "screen-dashboard.html: sidebar active state"],
-    "background": ["all screens: page background"]
-  },
-  "fonts": {
-    "heading": ["screen-landing.html: hero H1, H2", "screen-dashboard.html: section titles"]
-  }
-}
-` + "```" + `
+## Step 3 — Review Handoff Output
 
-## Step 4 — Interaction Spec
+Read ` + "`handoff/spec.md`" + ` and verify it contains:
+- Component inventory table (all major UI components listed)
+- Token usage map (colors, fonts, spacing referenced)
+- Interaction spec per screen (buttons, links, modals, form behavior)
+- Asset list (fonts, icons, images)
+- Implementation notes (responsive breakpoints, a11y flags)
 
-For each screen, identify interactive elements and specify expected behavior:
-- Buttons: what action do they trigger?
-- Links / nav items: where do they navigate?
-- Form inputs: validation rules visible, placeholder hints
-- Hover states: any visible state changes?
-- Modals / drawers: what triggers open/close?
+If any section is thin or missing, supplement it:
+- Read the screen HTML files from ` + "`SESSION_DIR/screenshots/`" + ` or ` + "`bundle/mockup.html`" + ` directly
+- Append missing detail to ` + "`handoff/spec.md`" + ` using the Write tool
 
-## Step 5 — Generate spec.md
+## Step 4 — Fidelity Verification (after implementation)
 
-Write ` + "`handoff/spec.md`" + ` with these sections:
+After the implementation agent builds the UI, verify it matches the design.
 
-` + "```markdown" + `
-# Developer Handoff Spec
+Call ` + "`ReviewDesignFidelity`" + ` with:
+- ` + "`session_name`" + ` — the session name from Step 1 (or omit to use newest)
+- ` + "`screens`" + ` — array mapping each design screen to its implemented counterpart:
+  - ` + "`name`" + ` — screen name exactly as returned by ` + "`ListDesigns`" + `
+  - ` + "`url`" + ` — live URL of the implemented page (preferred, e.g. ` + "`http://localhost:8080/dashboard`" + `)
+  - OR ` + "`template_path`" + ` — path to the HTML template file if no server is running
+  - ` + "`css_paths`" + ` — list any CSS files needed to render the template correctly
 
-## Component Inventory
+Pass threshold: ` + "`overall_score >= 75`" + `. If score is below 75, report which screens failed and what differs visually.
 
-| Component | Screens | Props / Variants | Notes |
-|-----------|---------|-----------------|-------|
-| ...       | ...     | ...             | ...   |
+**Note:** ` + "`ReviewDesignFidelity`" + ` requires Node.js and Playwright. If they are not installed, skip this step and note it in the report.
 
-## Design Token Usage
+## Step 5 — Confirm
 
-| Token | Value | Used In |
-|-------|-------|---------|
-| ...   | ...   | ...     |
-
-## Interaction Spec
-
-### [Screen Name]
-- [Element]: [Expected behavior]
-- ...
-
-## Asset List
-
-- Fonts: [list font families and suggested Google Fonts / system stack fallbacks]
-- Icons: [list icon sets referenced, e.g. Heroicons, Lucide]
-- Images: [list any image placeholders and recommended dimensions]
-
-## Implementation Notes
-
-- Framework: [framework-agnostic recommendations]
-- Responsive breakpoints: [from design tokens or inferred]
-- Accessibility notes: [ARIA roles, focus order, color contrast flags]
-` + "```" + `
-
-## Step 6 — Save Files
-
-Save both files using the Write tool:
-- ` + "`{mockup-dir}/handoff/spec.md`" + `
-- ` + "`{mockup-dir}/handoff/tokens-used.json`" + `
-
-## Step 7 — Confirm
-
-Report:
-- Handoff package location
-- Component count
-- Token count audited
-- Any accessibility or contrast issues flagged`
+Report to the user:
+- Session used (name + path)
+- Handoff package location (` + "`handoff/`" + ` dir)
+- Files generated (spec.md, tokens.css, tailwind.config.js, etc.)
+- Component count + token count from spec
+- Any accessibility or contrast issues flagged
+- Fidelity score (if Step 4 ran) — pass/fail per screen`
 
 var hifiSkillContent = `You are generating high-fidelity mockups with named design variations and a live Tweaks panel. Follow this workflow exactly.
 
