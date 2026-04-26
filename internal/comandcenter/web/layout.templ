@@ -182,14 +182,15 @@ templ layoutCSS() {
 		}
 		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace; overscroll-behavior: none; -webkit-user-select: none; user-select: text; }
 		pre { max-width: 100%; box-sizing: border-box; }
-		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; }
-		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; }
-		.msg-bubble-tool { background: var(--color-bubbleTool); border-left: 2px solid var(--color-tool); border-radius: 4px 12px 12px 12px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(320px, 90%); }
+		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; overflow: hidden; }
+		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; overflow: hidden; }
+		.msg-bubble-tool { background: var(--color-bubbleTool); border-left: 2px solid var(--color-tool); border-radius: 4px 12px 12px 12px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(320px, 90%); overflow: hidden; }
 		.msg-bubble-tool details summary { user-select: none; }
 		.msg-bubble-tool details .tool-chevron { transition: transform 0.2s ease; }
 		.msg-bubble-tool details[open] .tool-chevron { transform: rotate(90deg); }
-		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 2px solid var(--color-cron); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; }
-		#messages { scroll-behavior: smooth; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 2px solid var(--color-cron); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; overflow: hidden; }
+		#messages { scroll-behavior: smooth; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; overflow-x: hidden; }
+		.msg-row { min-width: 0; max-width: 100%; overflow: hidden; }
 		/* Mobile/desktop navigation: CSS-driven sidebar/main toggle */
 		#sidebar { display: flex; }
 		#main { display: none; }
