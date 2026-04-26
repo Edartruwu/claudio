@@ -311,7 +311,7 @@ templ chatViewScript(sessionID string) {
 			panel.classList.remove('hidden');
 			panel.classList.add('flex');
 			if (isMobile) {
-				panel.style.cssText = 'position:fixed;top:0;right:0;bottom:0;width:min(320px,100vw);z-index:50;';
+				panel.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;z-index:50;';
 				if (backdrop) backdrop.classList.remove('hidden');
 			}
 			panel.dataset.open = '1';
