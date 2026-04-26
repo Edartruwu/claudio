@@ -341,6 +341,7 @@ function DCArtboardFrame({ id, label, width, height, children, index, total, onF
     ref: frameRef,
     className: 'dc-frame-wrap',
     'data-artboard-id': id,
+    'data-artboard': id,  // alias — tools may query either attribute
   },
     // Label row above card
     React.createElement('div', { className: 'dc-frame-label' },
@@ -410,10 +411,16 @@ function DCSection({ id, title, subtitle, gap = 48, children }) {
     return order.filter(id => map[id]).map(id => map[id]);
   }, [artboards, order]);
 
-  // Persist on order change
+  // Keep a stable ref to saveSection so the persist effect never re-runs
+  // due to ctx identity changes (which would cause an infinite loop when
+  // saveSection triggers setState → new ctx → effect → saveSection → …)
+  const saveSectionRef = useRef(ctx?.saveSection);
+  useEffect(() => { saveSectionRef.current = ctx?.saveSection; });
+
+  // Persist on order change — depends only on order/id, not ctx
   useEffect(() => {
-    if (ctx?.saveSection) ctx.saveSection(id, { order });
-  }, [order, id, ctx]);
+    saveSectionRef.current?.(id, { order });
+  }, [order, id]);
 
   const handleReorder = useCallback((fromIdx, toIdx) => {
     setOrder(prev => {
