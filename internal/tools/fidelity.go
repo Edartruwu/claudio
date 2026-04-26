@@ -3,7 +3,6 @@ package tools
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/imageutil"
 )
 
 // ReviewDesignFidelityTool compares rendered HTML templates against saved
@@ -519,7 +519,7 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 
 		// 4d. Load design screenshot.
 		designPath := RemapPathForWorktree(ctx, res.DesignScreenshot)
-		designBytes, readErr := os.ReadFile(designPath)
+		designBase64, designMediaType, readErr := imageutil.ReadImageFile(designPath)
 		if readErr != nil {
 			os.RemoveAll(tmpOutDir)
 			res.Gaps = []string{"design screenshot not found for screen"}
@@ -528,8 +528,8 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			continue
 		}
 
-		// 4e. Read rendered screenshot, crop + base64 encode both images.
-		renderedBytes, readErr := os.ReadFile(renderedPath)
+		// 4e. Read rendered screenshot and base64 encode both images.
+		renderedBase64, renderedMediaType, readErr := imageutil.ReadImageFile(renderedPath)
 		if readErr != nil {
 			os.RemoveAll(tmpOutDir)
 			res.Gaps = []string{fmt.Sprintf("rendered screenshot unreadable: %s", readErr.Error())}
@@ -537,15 +537,11 @@ func (t *ReviewDesignFidelityTool) Execute(ctx context.Context, input json.RawMe
 			results = append(results, res)
 			continue
 		}
-		designBytes = cropImageIfNeeded(designBytes)
-		renderedBytes = cropImageIfNeeded(renderedBytes)
-		designBase64 := base64.StdEncoding.EncodeToString(designBytes)
-		renderedBase64 := base64.StdEncoding.EncodeToString(renderedBytes)
 
 		// 4f. Build vision message: two image blocks + text prompt.
 		contentBlocks := []api.UserContentBlock{
-			api.NewImageBlock("image/png", designBase64),
-			api.NewImageBlock("image/png", renderedBase64),
+			api.NewImageBlock(designMediaType, designBase64),
+			api.NewImageBlock(renderedMediaType, renderedBase64),
 			api.NewTextBlock(`Score the VISUAL DESIGN fidelity between Image 1 (design mockup) and Image 2 (implementation). Ignore all text content, usernames, session names, timestamps, and data values — these will differ and are not design issues. Only evaluate: color palette, typography (font family/size/weight), spacing and padding, layout structure, component shapes, border styles, shadows, icons, and visual hierarchy. Respond JSON only: {"fidelity_score": 0-100, "gaps": ["specific visual gap"], "suggestions": ["specific fix"]}`),
 		}
 		contentJSON, marshalErr := json.Marshal(contentBlocks)
