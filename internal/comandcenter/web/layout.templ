@@ -5,7 +5,7 @@ templ Layout(sessionID, csrfToken string) {
 	<html lang="en">
 	<head>
 		<meta charset="UTF-8"/>
-		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"/>
 		<meta name="theme-color" content="#0B0E0F"/>
 		<meta name="mobile-web-app-capable" content="yes"/>
 		<meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -27,11 +27,53 @@ templ Layout(sessionID, csrfToken string) {
 		@layoutCSS()
 	</head>
 	<body
-		class="font-mono h-[100dvh] overflow-hidden"
+		class="font-mono overflow-hidden"
+		style="height: var(--actual-vh, 100dvh)"
 		if sessionID != "" {
 			data-session-id={ sessionID }
 		}
 	>
+		<!-- Status bar blur — positioned above viewport; reveals blur as content scrolls under notch -->
+		<div class="statusbar-blur" aria-hidden="true"></div>
+		<!-- iOS PWA viewport height fix — must run before any layout -->
+		<script>
+		(function() {
+			var lastKnownHeight = 0;
+			function setVH() {
+				var h = window.innerHeight;
+				if (window.visualViewport && window.visualViewport.height) h = window.visualViewport.height;
+				// iOS PWA bug: subtracts safe-area-inset-top from innerHeight in portrait mode
+				var isPWA = (window.matchMedia && (
+					window.matchMedia('(display-mode: standalone)').matches ||
+					window.matchMedia('(display-mode: fullscreen)').matches
+				)) || window.navigator.standalone === true;
+				var isPortrait = window.innerHeight > window.innerWidth;
+				if (isPWA && isPortrait) {
+					var screenH = Math.max(window.screen.height, window.screen.width);
+					if (screenH - h > 15) {
+						var safeTopStr = getComputedStyle(document.documentElement).getPropertyValue('--safe-area-top').trim();
+						var safeTopPx = parseInt(safeTopStr) || 0;
+						if (safeTopPx > 0) h += safeTopPx;
+					}
+				}
+				document.documentElement.style.setProperty('--actual-vh', h + 'px');
+				if (lastKnownHeight > 0 && Math.abs(h - lastKnownHeight) > 30)
+					setTimeout(function() { window.dispatchEvent(new Event('resize')); }, 50);
+				lastKnownHeight = h;
+			}
+			// Run immediately — then staggered (iOS calculates safe-area lazily)
+			setVH();
+			[50,150,300,500,800,1200].forEach(function(ms) { setTimeout(setVH, ms); });
+			window.addEventListener('resize', setVH);
+			window.addEventListener('orientationchange', function() {
+				setTimeout(setVH, 100); setTimeout(setVH, 300);
+			});
+			if (window.visualViewport) window.visualViewport.addEventListener('resize', setVH);
+			document.addEventListener('visibilitychange', function() {
+				if (!document.hidden) { setTimeout(setVH, 50); setTimeout(setVH, 200); }
+			});
+		})();
+		</script>
 		{ children... }
 		<!-- Global a11y live regions -->
 		<div id="error-toast-region" aria-live="assertive" aria-atomic="true" class="fixed right-4 z-50 flex flex-col gap-2 pointer-events-none" style="top: calc(env(safe-area-inset-top, 0px) + 16px)"></div>
@@ -113,8 +155,23 @@ templ layoutCSS() {
 		/* Tap active feedback */
 		button:active, [role="button"]:active { opacity: 0.65; transition: opacity 0.08s; }
 		/* Arbitrary Tailwind classes not present in pre-built tailwind.min.css */
-		html { height: -webkit-fill-available; height: 100%; overflow: hidden; }
-		body { height: 100dvh; min-height: -webkit-fill-available; overflow: hidden; }
+		/* --actual-vh set by fixIOSViewportBug() JS; fallback = 100dvh */
+		html { height: var(--actual-vh, 100dvh); min-height: calc(100% + env(safe-area-inset-top)); overflow: hidden; }
+		body { height: var(--actual-vh, 100dvh); overflow: hidden; }
+		/* Status bar blur overlay — sits above viewport (top:-60px); only visible when
+		   content scrolls under notch in standalone PWA mode */
+		.statusbar-blur {
+			position: fixed; left: 0; right: 0;
+			top: calc(-1 * env(safe-area-inset-top, 44px));
+			height: env(safe-area-inset-top, 44px);
+			overflow: hidden; z-index: 9990; pointer-events: none;
+		}
+		.statusbar-blur::before {
+			content: ''; position: absolute; left: 0; right: 0; top: 0; height: 150%;
+			-webkit-backdrop-filter: blur(20px) saturate(180%);
+			backdrop-filter: blur(20px) saturate(180%);
+			background: rgba(11,14,15,0.72);
+		}
 		#info-panel { width: 300px; flex-shrink: 0; }
 		/* htmx view transition fade */
 		.htmx-swapping {
@@ -126,8 +183,13 @@ templ layoutCSS() {
 			overflow: hidden;
 			height: 100dvh;
 		}
-		#app-shell { overflow: hidden; max-width: 100vw; }
+		#app-shell { overflow: hidden; max-width: 100vw; height: var(--actual-vh, 100dvh); }
 		:root {
+			/* Safe area — read by fixIOSViewportBug() JS */
+			--safe-area-top:    env(safe-area-inset-top);
+			--safe-area-bottom: env(safe-area-inset-bottom);
+			--safe-area-left:   env(safe-area-inset-left);
+			--safe-area-right:  env(safe-area-inset-right);
 			/* Surfaces */
 			--color-bg:            #0B0E0F;
 			--color-surface:       #151A1B;
@@ -206,9 +268,10 @@ templ layoutCSS() {
 			#main { display: flex; flex: 1 1 0%; min-width: 0; }
 		}
 		@media (max-width: 1023px) {
-			#app-shell { position: relative; }
+			#app-shell { position: relative; height: var(--actual-vh, 100dvh); }
 			#sidebar {
-				position: absolute; inset: 0;
+				position: absolute; top: 0; left: 0; right: 0;
+				height: var(--actual-vh, 100dvh);
 				display: flex !important;
 				transform: translateX(0);
 				transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -216,7 +279,8 @@ templ layoutCSS() {
 				z-index: 1;
 			}
 			#main {
-				position: absolute; inset: 0;
+				position: absolute; top: 0; left: 0; right: 0;
+				height: var(--actual-vh, 100dvh);
 				display: flex !important;
 				transform: translateX(100%);
 				transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
