@@ -701,15 +701,7 @@ $ARGUMENTS
    - Run the specific failing test to verify the fix
    - Run the full suite again to check for regressions
 
-5. **Report results**: Which tests passed/failed, what you fixed, any remaining issues
-
-## Design Fidelity Check (if task came from a design handoff)
-
-If the task includes implementing a UI from a design handoff spec, after all tests pass call ` + "`ReviewDesignFidelity`" + ` to verify the implementation matches the original design:
-- Pass each screen name mapped to either a live URL (` + "`url`" + `) or a local template path (` + "`template_path`" + `)
-- Pass threshold is **score ≥ 75**
-- If score < 75: identify which screens failed, fix the implementation, re-run until passing
-- Include fidelity scores in your final report`
+5. **Report results**: Which tests passed/failed, what you fixed, any remaining issues`
 
 var securityReviewSkillContent = `You are being asked to perform an OWASP Top 10 security review.
 
