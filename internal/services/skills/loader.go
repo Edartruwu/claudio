@@ -2171,6 +2171,8 @@ mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
 
+**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
+
 Then immediately copy the starter files (from ` + "`## Starters`" + ` section above):
 ` + "```" + `bash
 cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
@@ -2606,6 +2608,8 @@ mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
 
+**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
+
 Then copy the starters (from ` + "`## Starters`" + ` section above):
 ` + "```" + `bash
 cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
@@ -2810,6 +2814,8 @@ DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
 mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
+
+**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
 
 Then copy the starters (from ` + "`## Starters`" + ` section above):
 ` + "```" + `bash
@@ -3257,6 +3263,8 @@ DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
 mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
+
+**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
 
 Then copy the starters (from ` + "`## Starters`" + ` section above):
 ` + "```" + `bash
