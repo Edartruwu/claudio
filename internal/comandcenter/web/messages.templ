@@ -56,5 +56,6 @@ templ MessagesContainer(messages []MessageView, pag MessagePagination) {
 		if len(messages) == 0 {
 			<div class="text-center text-sm mt-8 text-[var(--color-textMuted)]">No messages yet</div>
 		}
+		<div id="chat-bottom" style="height:1px;flex-shrink:0;"></div>
 	</div>
 }

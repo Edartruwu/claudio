@@ -179,13 +179,18 @@
     maybeInsertDateDivider();
     var near = isNearBottom();
     var bubble = document.getElementById('typing-bubble');
+    var anchor = document.getElementById('chat-bottom');
     if (bubble && !bubble.classList.contains('hidden')) {
       bubble.insertAdjacentHTML('beforebegin', html);
+    } else if (anchor) {
+      anchor.insertAdjacentHTML('beforebegin', html); // keep anchor always last
     } else {
       msgs.insertAdjacentHTML('beforeend', html);
     }
-    // Only auto-scroll if user was near bottom before the new message arrived
-    if (near) msgs.scrollTop = msgs.scrollHeight;
+    if (near) {
+      var a = document.getElementById('chat-bottom');
+      if (a) a.scrollIntoView(); else msgs.scrollTop = msgs.scrollHeight;
+    }
   }
 
   // Init: set lastMsgDate so maybeInsertDateDivider doesn't re-insert on first WS message.
@@ -194,8 +199,19 @@
     if (msgs && msgs.children.length > 0) {
       lastMsgDate = new Date().toDateString();
     }
-    // Always start at the bottom when entering a chat
-    if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    // Always start at the bottom. Use scrollIntoView on the anchor — more
+    // reliable than scrollTop=scrollHeight because it runs after layout settles.
+    function _scrollToBottom() {
+      var anchor = document.getElementById('chat-bottom');
+      if (anchor) { anchor.scrollIntoView(); return; }
+      if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    }
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        _scrollToBottom();
+        setTimeout(_scrollToBottom, 150); // fallback for slow/large layouts
+      });
+    });
   })();
 
   // --- WebSocket ---
