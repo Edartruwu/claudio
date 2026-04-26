@@ -103,6 +103,10 @@ templ layoutCSS() {
 		*, *::before, *::after {
 			box-sizing: border-box;
 		}
+		/* Arbitrary Tailwind classes not present in pre-built tailwind.min.css */
+		html { height: 100%; }
+		body { height: 100dvh; overflow: hidden; }
+		#info-panel { width: 300px; flex-shrink: 0; }
 		/* htmx view transition fade */
 		.htmx-swapping {
 			opacity: 0;
