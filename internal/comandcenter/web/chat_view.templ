@@ -273,9 +273,15 @@ templ chatViewScript(sessionID string) {
 		var _ccSig = window._ccChatAC.signal;
 
 		// --- Init: scroll to bottom ---
+		// Double-rAF: ensures browser completes layout before we read scrollHeight.
 		(function() {
 			var msgs = document.getElementById('messages');
-			if (msgs) msgs.scrollTop = msgs.scrollHeight;
+			if (!msgs) return;
+			requestAnimationFrame(function() {
+				requestAnimationFrame(function() {
+					msgs.scrollTop = msgs.scrollHeight;
+				});
+			});
 		})();
 
 		// --- Preserve scroll position when loading older messages ---
