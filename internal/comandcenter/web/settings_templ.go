@@ -94,7 +94,7 @@ func SettingsPage(data SettingsData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" hx-confirm=\"Clear all sessions? This cannot be undone.\" hx-swap=\"none\" class=\"text-xs font-semibold px-3 py-1.5 rounded-lg\" style=\"background:var(--color-errorDim);color:var(--color-error);border:1px solid var(--color-error);cursor:pointer;\">Clear all</button></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" hx-confirm=\"Clear all sessions? This cannot be undone.\" hx-disabled-elt=\"this\" class=\"text-xs font-semibold px-3 py-1.5 rounded-lg\" style=\"background:var(--color-errorDim);color:var(--color-error);border:1px solid var(--color-error);cursor:pointer;\">Clear all</button></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

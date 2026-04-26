@@ -32,7 +32,7 @@ templ SettingsPage(data SettingsData) {
 									hx-delete="/api/sessions/all"
 									hx-headers={ `{"X-CSRF-Token":"` + data.CsrfToken + `"}` }
 									hx-confirm="Clear all sessions? This cannot be undone."
-									hx-swap="none"
+									hx-disabled-elt="this"
 									class="text-xs font-semibold px-3 py-1.5 rounded-lg"
 									style="background:var(--color-errorDim);color:var(--color-error);border:1px solid var(--color-error);cursor:pointer;"
 								>

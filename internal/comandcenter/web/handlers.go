@@ -100,7 +100,8 @@ func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := ws.buildSessionRows(sessions)
-	templ.Handler(ChatList(ChatListData{Rows: rows, SessionID: "", CsrfToken: ws.CSRFToken(r)})).ServeHTTP(w, r)
+	projects, _ := ws.storage.ListProjects() // best-effort; empty list on error
+	templ.Handler(ChatList(ChatListData{Rows: rows, SessionID: "", CsrfToken: ws.CSRFToken(r), Projects: projects})).ServeHTTP(w, r)
 }
 
 func (ws *WebServer) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -850,10 +851,23 @@ func (ws *WebServer) handleDeleteSession(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleDeleteAllSessions is a stub endpoint for the settings page "Clear all sessions" button.
-// Full implementation is deferred; returns 501 Not Implemented.
+// handleDeleteAllSessions deletes all sessions and redirects to /.
 func (ws *WebServer) handleDeleteAllSessions(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	sessions, err := ws.storage.ListSessions("")
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	for _, sess := range sessions {
+		_ = ws.storage.DeleteSession(sess.ID)
+	}
+	// For htmx requests, redirect via HX-Redirect header.
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // handleInterruptSession sends an interrupt signal to the active engine turn for a session.
@@ -941,55 +955,71 @@ func (ws *WebServer) handleAPITeams(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSetAgent switches the active agent for a running session.
-// Body: {"agent_type": "string"} (empty = clear/default)
+// Accepts application/x-www-form-urlencoded (agent_type) or JSON {"agent_type": "string"}.
 func (ws *WebServer) handleSetAgent(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var body struct {
-		AgentType string `json:"agent_type"`
+	var agentType string
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/x-www-form-urlencoded") || strings.HasPrefix(ct, "multipart/form-data") {
+		_ = r.ParseForm()
+		agentType = r.FormValue("agent_type")
+	} else {
+		var body struct {
+			AgentType string `json:"agent_type"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		agentType = body.AgentType
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	if err := ws.hub.SetAgent(id, body.AgentType); err != nil {
+	if err := ws.hub.SetAgent(id, agentType); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	// Persist: read current team template then update both config fields.
 	sess, err := ws.storage.GetSession(id)
 	if err != nil {
-		// Session not in DB yet; best-effort persist using empty team.
-		_ = ws.storage.UpdateSessionConfig(id, body.AgentType, "")
+		_ = ws.storage.UpdateSessionConfig(id, agentType, "")
 	} else {
-		_ = ws.storage.UpdateSessionConfig(id, body.AgentType, sess.TeamTemplate)
+		_ = ws.storage.UpdateSessionConfig(id, agentType, sess.TeamTemplate)
 	}
+	w.Header().Set("HX-Trigger", `{"showToast":{"msg":"Agent saved!"}}`)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 // handleSetTeam switches the active team for a running session.
-// Body: {"team_name": "string"} (empty = clear/default)
+// Accepts application/x-www-form-urlencoded (team_name) or JSON {"team_name": "string"}.
 func (ws *WebServer) handleSetTeam(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var body struct {
-		TeamName string `json:"team_name"`
+	var teamName string
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/x-www-form-urlencoded") || strings.HasPrefix(ct, "multipart/form-data") {
+		_ = r.ParseForm()
+		teamName = r.FormValue("team_name")
+	} else {
+		var body struct {
+			TeamName string `json:"team_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		teamName = body.TeamName
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	if err := ws.hub.SetTeam(id, body.TeamName); err != nil {
+	if err := ws.hub.SetTeam(id, teamName); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	// Persist: read current agent type then update both config fields.
 	sess, err := ws.storage.GetSession(id)
 	if err != nil {
-		// Session not in DB yet; best-effort persist using empty agent.
-		_ = ws.storage.UpdateSessionConfig(id, "", body.TeamName)
+		_ = ws.storage.UpdateSessionConfig(id, "", teamName)
 	} else {
-		_ = ws.storage.UpdateSessionConfig(id, sess.AgentType, body.TeamName)
+		_ = ws.storage.UpdateSessionConfig(id, sess.AgentType, teamName)
 	}
+	w.Header().Set("HX-Trigger", `{"showToast":{"msg":"Team saved!"}}`)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }

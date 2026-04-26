@@ -135,7 +135,7 @@ func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 	pass := r.FormValue("password")
 	if !ws.validPassword(pass) {
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnprocessableEntity)
 		templ.Handler(Login(LoginPageData{Error: "Invalid password"})).ServeHTTP(w, r)
 		return
 	}
@@ -153,5 +153,11 @@ func (ws *WebServer) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+	// For htmx requests, use HX-Redirect so htmx handles it client-side.
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

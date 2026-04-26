@@ -1,12 +1,16 @@
 package web
 
-import cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+import (
+	"fmt"
+	cc "github.com/Abraxas-365/claudio/internal/comandcenter"
+)
 
 // ChatListData mirrors the map passed by server.go: {"Rows": rows, "SessionID": ""}
 type ChatListData struct {
 	Rows      []sessionRow
 	SessionID string
 	CsrfToken string
+	Projects  []cc.Project
 }
 
 templ ChatList(data ChatListData) {
@@ -96,59 +100,69 @@ templ ChatListSidebar(data ChatListData) {
 					class="bg-transparent border-none outline-none text-[var(--color-textPrimary)] text-[15px] font-[inherit] flex-1 min-w-0"
 				/>
 			</div>
-			<!-- Filter chips -->
+			<!-- Filter chips — rendered server-side, htmx declarative (m2: hx-sync prevents race) -->
 			<div id="filter-chips" class="flex overflow-x-auto no-scrollbar gap-2 pb-2 mt-2">
-				<button data-filter-chip="" onclick="ccSetFilter('');htmx.ajax('GET','/partials/sessions?filter=',{target:'#session-list',swap:'innerHTML'})" class="px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-brand)] text-[#0B0E0F] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150">All</button>
-				<button data-filter-chip="active" onclick="ccSetFilter('active');htmx.ajax('GET','/partials/sessions?filter=active',{target:'#session-list',swap:'innerHTML'})" class="px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150">Active</button>
-				<button data-filter-chip="inactive" onclick="ccSetFilter('inactive');htmx.ajax('GET','/partials/sessions?filter=inactive',{target:'#session-list',swap:'innerHTML'})" class="px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150">Inactive</button>
-			</div>
-			<script>
-			(function() {
-				function loadProjectChips() {
-					fetch('/api/projects', { credentials: 'include' }).then(function(r){ return r.json(); }).then(function(projects) {
-						var bar = document.getElementById('filter-chips');
-						if (!bar) return;
-						bar.querySelectorAll('[data-project-chip]').forEach(function(el){ el.remove(); });
-						projects.forEach(function(p) {
-							var f = 'project:' + p.path;
-							var btn = document.createElement('button');
-							btn.dataset.filterChip = f;
-							btn.dataset.projectChip = '1';
-							btn.style.cssText = 'padding:5px 14px;border-radius:9999px;font-size:13px;font-weight:600;font-family:inherit;background:var(--color-surface);color:var(--color-textSecondary);border:none;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:background 0.15s,color 0.15s;';
-							// Safe DOM construction — no innerHTML
-							var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-							svg.setAttribute('width', '12');
-							svg.setAttribute('height', '12');
-							svg.setAttribute('fill', 'none');
-							svg.setAttribute('stroke', 'currentColor');
-							svg.setAttribute('stroke-width', '2');
-							svg.setAttribute('viewBox', '0 0 24 24');
-							var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-							path.setAttribute('stroke-linecap', 'round');
-							path.setAttribute('stroke-linejoin', 'round');
-							path.setAttribute('d', 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z');
-							svg.appendChild(path);
-							btn.appendChild(svg);
-							var nameSpan = document.createElement('span');
-							nameSpan.textContent = p.name;
-							btn.appendChild(nameSpan);
-							var countSpan = document.createElement('span');
-							countSpan.style.cssText = 'font-size:11px;opacity:.6;margin-left:2px;';
-							countSpan.textContent = p.count;
-							btn.appendChild(countSpan);
-							btn.onclick = function() {
-								ccSetFilter(f);
-								htmx.ajax('GET', '/partials/sessions?filter=' + encodeURIComponent(f), {target:'#session-list', swap:'innerHTML'});
-							};
-							bar.appendChild(btn);
-						});
-					}).catch(function(){});
+				<button
+					data-filter-chip=""
+					hx-get="/partials/sessions?filter="
+					hx-target="#session-list"
+					hx-swap="innerHTML"
+					hx-sync="#filter-chips button:replace"
+					onclick="ccSetFilter('')"
+					class="px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-brand)] text-[#0B0E0F] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150"
+				>All</button>
+				<button
+					data-filter-chip="active"
+					hx-get="/partials/sessions?filter=active"
+					hx-target="#session-list"
+					hx-swap="innerHTML"
+					hx-sync="#filter-chips button:replace"
+					onclick="ccSetFilter('active')"
+					class="px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150"
+				>Active</button>
+				<button
+					data-filter-chip="inactive"
+					hx-get="/partials/sessions?filter=inactive"
+					hx-target="#session-list"
+					hx-swap="innerHTML"
+					hx-sync="#filter-chips button:replace"
+					onclick="ccSetFilter('inactive')"
+					class="px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap transition-[background,color] duration-150"
+				>Inactive</button>
+				for _, p := range data.Projects {
+					<button
+						data-filter-chip={ "project:" + p.Path }
+						data-project-chip="1"
+						hx-get={ "/partials/sessions?filter=project%3A" + p.Path }
+						hx-target="#session-list"
+						hx-swap="innerHTML"
+						hx-sync="#filter-chips button:replace"
+
+						class="px-[14px] py-[5px] rounded-full text-[13px] font-semibold font-[inherit] bg-[var(--color-surface)] text-[var(--color-textSecondary)] border-none cursor-pointer whitespace-nowrap flex items-center gap-1 transition-[background,color] duration-150"
+					>
+						<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"></path>
+						</svg>
+						<span>{ p.Name }</span>
+						<span style="font-size:11px;opacity:.6;margin-left:2px;">{ fmt.Sprintf("%d", p.Count) }</span>
+					</button>
 				}
-				window.refreshProjectChips = loadProjectChips;
-				loadProjectChips();
-			})();
-			</script>
+			</div>
 		</div>
+		<!-- Delegate chip visual state via htmx beforeRequest -->
+		<script>
+		(function(){
+			var chips = document.getElementById('filter-chips');
+			if (chips) {
+				chips.addEventListener('htmx:beforeRequest', function(e) {
+					var btn = e.target.closest('[data-filter-chip]');
+					if (btn && typeof window.ccSetFilter === 'function') {
+						window.ccSetFilter(btn.dataset.filterChip);
+					}
+				});
+			}
+		})();
+		</script>
 		<!-- Session List -->
 		<main class="flex-1 overflow-y-auto">
 			<div
@@ -162,8 +176,8 @@ templ ChatListSidebar(data ChatListData) {
 			</div>
 			<span class="htmx-indicator block text-center text-xs py-1 text-[var(--color-textMuted)]">&#8635;</span>
 		</main>
-		<!-- Bottom tab bar — mobile only -->
-		<nav class="md:hidden flex shrink-0 bg-[var(--color-surfaceHigh)] border-t border-t-[var(--color-border)] pb-[env(safe-area-inset-bottom)]">
+		<!-- Bottom tab bar — mobile only (hx-boost for SPA nav) -->
+		<nav hx-boost="true" class="md:hidden flex shrink-0 bg-[var(--color-surfaceHigh)] border-t border-t-[var(--color-border)] pb-[env(safe-area-inset-bottom)]">
 			<a href="/" class="flex-1 flex flex-col items-center justify-center gap-[3px] py-2 cursor-pointer no-underline text-[var(--color-brand)]">
 				<div class="text-inherit">
 					<svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">

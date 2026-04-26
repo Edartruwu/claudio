@@ -37,6 +37,7 @@ templ CronRow(data CronRowData) {
 					hx-confirm="Delete this cron?"
 					hx-target="closest .cron-row"
 					hx-swap="outerHTML swap:300ms"
+					hx-disabled-elt="this"
 					style="background:none;border:none;cursor:pointer;color:var(--color-error);border-radius:var(--radius-sm);min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;"
 					title="Delete cron"
 					aria-label="Delete cron"

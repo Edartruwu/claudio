@@ -183,7 +183,7 @@ func CronRow(data CronRowData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" hx-confirm=\"Delete this cron?\" hx-target=\"closest .cron-row\" hx-swap=\"outerHTML swap:300ms\" style=\"background:none;border:none;cursor:pointer;color:var(--color-error);border-radius:var(--radius-sm);min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;\" title=\"Delete cron\" aria-label=\"Delete cron\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" hx-confirm=\"Delete this cron?\" hx-target=\"closest .cron-row\" hx-swap=\"outerHTML swap:300ms\" hx-disabled-elt=\"this\" style=\"background:none;border:none;cursor:pointer;color:var(--color-error);border-radius:var(--radius-sm);min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;\" title=\"Delete cron\" aria-label=\"Delete cron\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

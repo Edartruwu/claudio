@@ -110,35 +110,7 @@ templ InfoPanel(data InfoPageData) {
 			var panel = document.getElementById('tab-content');
 			if (panel) panel.setAttribute('aria-labelledby', el.id);
 		}
-		function _showFeedback(id, ok) {
-			var el = document.getElementById(id);
-			if (!el) return;
-			el.textContent = ok ? 'Saved' : 'Error';
-			el.style.color  = ok ? 'var(--color-brand)' : 'var(--color-error)';
-			setTimeout(function() { el.textContent = ''; el.style.color = 'var(--color-textMuted)'; }, 3000);
-		}
-		function applyAgent(sessionId) {
-			var val = document.getElementById('agent-select').value;
-			fetch('/api/sessions/' + sessionId + '/set-agent', {
-				method: 'POST',
-				credentials: 'include',
-				headers: {'Content-Type': 'application/json'},
-				body: JSON.stringify({agent_type: val})
-			}).then(function(r){ return r.json(); })
-				.then(function(d){ _showFeedback('agent-feedback', d && d.ok); })
-				.catch(function(){ _showFeedback('agent-feedback', false); });
-		}
-		function applyTeam(sessionId) {
-			var val = document.getElementById('team-select').value;
-			fetch('/api/sessions/' + sessionId + '/set-team', {
-				method: 'POST',
-				credentials: 'include',
-				headers: {'Content-Type': 'application/json'},
-				body: JSON.stringify({team_name: val})
-			}).then(function(r){ return r.json(); })
-				.then(function(d){ _showFeedback('team-feedback', d && d.ok); })
-				.catch(function(){ _showFeedback('team-feedback', false); });
-		}
+		// applyAgent/applyTeam removed — replaced by hx-post forms (M1)
 		function toggleTaskDetail(rowEl) {
 			var detail = rowEl.parentElement.querySelector('.task-detail');
 			var chevron = rowEl.querySelector('.task-chevron');
@@ -176,10 +148,12 @@ templ infoTab(sessID, tab, label, activeTab string, icon templ.Component) {
 		hx-get={ fmt.Sprintf("/chat/%s/info?tab=%s", sessID, tab) }
 		hx-target="#tab-content"
 		hx-swap="innerHTML"
+		hx-indicator={ fmt.Sprintf("#tab-spinner-%s", tab) }
 		hx-on::after-request="setActiveTab(this)"
 	>
 		<span class="text-inherit">@icon</span>
 		<span>{ label }</span>
+		<span id={ fmt.Sprintf("tab-spinner-%s", tab) } class="htmx-indicator text-[9px] opacity-50">&#8635;</span>
 	</button>
 }
 
@@ -226,6 +200,7 @@ templ TaskRows(tasks []cc.Task, sessionID string) {
 				hx-trigger="open-detail"
 				hx-swap="innerHTML"
 				hx-target="next .task-detail"
+				hx-indicator={ fmt.Sprintf("#task-spinner-%s", task.ID) }
 				onclick="toggleTaskDetail(this)"
 			>
 				if task.Status == "done" {
@@ -247,6 +222,7 @@ templ TaskRows(tasks []cc.Task, sessionID string) {
 					<div class="flex-1 min-w-0"><p class="text-[var(--color-textPrimary)] text-[15px] m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal">{ task.Title }</p></div>
 				}
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E6268" stroke-width="2" class="task-chevron shrink-0"><path d="M9 5l7 7-7 7"></path></svg>
+				<span id={ fmt.Sprintf("task-spinner-%s", task.ID) } class="htmx-indicator text-[9px] opacity-50 shrink-0">&#8635;</span>
 			</div>
 			<div class="task-detail hidden"></div>
 		</div>
@@ -261,7 +237,7 @@ templ TabTeam(data InfoPageData) {
 		id="team-members-list"
 		class="flex flex-col gap-2"
 		hx-get={ fmt.Sprintf("/api/sessions/%s/team", data.Session.ID) }
-		hx-trigger="refresh from:body, every 30s"
+		hx-trigger="refresh from:body, every 30s[!window._wsConnected]"
 		hx-target="#team-members-list"
 		hx-swap="innerHTML"
 	>
@@ -363,44 +339,60 @@ templ TabCrons(data InfoPageData) {
 }
 
 templ TabConfig(data InfoPageData) {
-	<div class="flex flex-col gap-4" data-session-id={ data.Session.ID }>
+	<div class="flex flex-col gap-4">
+		<!-- Agent form — htmx (M1) -->
 		<div class="bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]">
-			<label for="agent-select" class="block text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Agent</label>
-			<select id="agent-select" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
-				<option value="">Default (no agent)</option>
-				for _, agent := range data.AvailableAgents {
-					<option
-						value={ agent.Type }
-						if agent.Type == data.Session.AgentType {
-							selected
-						}
-					>{ agent.Type }</option>
-				}
-			</select>
-			<button
-				onclick="applyAgent(this.closest('[data-session-id]').dataset.sessionId)"
-				class="w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2"
-			>Apply</button>
-			<div id="agent-feedback" class="text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1"></div>
+			<form
+				hx-post={ fmt.Sprintf("/api/sessions/%s/set-agent", data.Session.ID) }
+				hx-swap="none"
+				hx-indicator="#agent-feedback"
+			>
+				<label for="agent-select" class="block text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Agent</label>
+				<select id="agent-select" name="agent_type" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
+					<option value="">Default (no agent)</option>
+					for _, agent := range data.AvailableAgents {
+						<option
+							value={ agent.Type }
+							if agent.Type == data.Session.AgentType {
+								selected
+							}
+						>{ agent.Type }</option>
+					}
+				</select>
+				<button
+					type="submit"
+					hx-disabled-elt="this"
+					class="w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2"
+				>Apply</button>
+				<div id="agent-feedback" class="htmx-indicator text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1">Saving…</div>
+			</form>
 		</div>
+		<!-- Team form — htmx (M1) -->
 		<div class="bg-[var(--color-surfaceHigh)] rounded-xl py-3 px-[14px]">
-			<label for="team-select" class="block text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Team</label>
-			<select id="team-select" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
-				<option value="">Default (no team)</option>
-				for _, team := range data.AvailableTeams {
-					<option
-						value={ team }
-						if team == data.Session.TeamTemplate {
-							selected
-						}
-					>{ team }</option>
-				}
-			</select>
-			<button
-				onclick="applyTeam(this.closest('[data-session-id]').dataset.sessionId)"
-				class="w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2"
-			>Apply</button>
-			<div id="team-feedback" class="text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1"></div>
+			<form
+				hx-post={ fmt.Sprintf("/api/sessions/%s/set-team", data.Session.ID) }
+				hx-swap="none"
+				hx-indicator="#team-feedback"
+			>
+				<label for="team-select" class="block text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-textMuted)] mt-0 mb-2 mx-0">Team</label>
+				<select id="team-select" name="team_name" class="w-full rounded-lg py-2 px-3 text-[13px] appearance-none bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-textPrimary)] outline-none font-[inherit]">
+					<option value="">Default (no team)</option>
+					for _, team := range data.AvailableTeams {
+						<option
+							value={ team }
+							if team == data.Session.TeamTemplate {
+								selected
+							}
+						>{ team }</option>
+					}
+				</select>
+				<button
+					type="submit"
+					hx-disabled-elt="this"
+					class="w-full p-2 rounded-lg text-[13px] font-semibold bg-[var(--color-brand)] text-black border-none cursor-pointer mt-2"
+				>Apply</button>
+				<div id="team-feedback" class="htmx-indicator text-[11px] text-center text-[var(--color-textMuted)] min-h-[1.2em] mt-1">Saving…</div>
+			</form>
 		</div>
 	</div>
 }

@@ -10,8 +10,11 @@ templ SessionRow(row sessionRow) {
 				hx-patch={ fmt.Sprintf("/api/sessions/%s/archive", row.Session.ID) }
 				hx-target="closest .swipe-row"
 				hx-swap="outerHTML"
+				hx-disabled-elt="this"
+				hx-indicator={ fmt.Sprintf("#swipe-archive-spinner-%s", row.Session.ID) }
 				class="w-[80px] bg-[var(--color-brand)] border-none cursor-pointer flex flex-col items-center justify-center gap-1 p-0 font-[inherit]"
 			>
+				<span id={ fmt.Sprintf("swipe-archive-spinner-%s", row.Session.ID) } class="htmx-indicator text-[#0B0E0F] text-[11px]">&#8635;</span>
 				<svg width="22" height="22" fill="none" stroke="#0B0E0F" stroke-width="2" viewBox="0 0 24 24">
 					<path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8"></path>
 				</svg>
@@ -22,8 +25,11 @@ templ SessionRow(row sessionRow) {
 				hx-target="closest .swipe-row"
 				hx-swap="outerHTML"
 				hx-confirm="Delete this session and all messages?"
+				hx-disabled-elt="this"
+				hx-indicator={ fmt.Sprintf("#swipe-delete-spinner-%s", row.Session.ID) }
 				class="w-[80px] bg-[var(--color-error)] border-none cursor-pointer flex flex-col items-center justify-center gap-1 p-0 font-[inherit]"
 			>
+				<span id={ fmt.Sprintf("swipe-delete-spinner-%s", row.Session.ID) } class="htmx-indicator text-white text-[11px]">&#8635;</span>
 				<svg width="22" height="22" fill="none" stroke="#FFFFFF" stroke-width="2" viewBox="0 0 24 24">
 					<polyline points="3 6 5 6 21 6"></polyline>
 					<path d="M19 6l-1 14H6L5 6"></path>
@@ -48,6 +54,7 @@ templ SessionRow(row sessionRow) {
 						hx-patch={ fmt.Sprintf("/api/sessions/%s/archive", row.Session.ID) }
 						hx-target="closest .swipe-row"
 						hx-swap="outerHTML"
+						hx-disabled-elt="this"
 						class="w-full px-[14px] py-[11px] bg-transparent border-none border-b border-b-[var(--color-border)] cursor-pointer text-[var(--color-textPrimary)] text-left text-[15px] font-[inherit] flex items-center gap-2"
 					>
 						<svg width="14" height="14" fill="none" stroke="var(--color-textSecondary)" stroke-width="2" viewBox="0 0 24 24"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8"></path></svg>
@@ -58,6 +65,7 @@ templ SessionRow(row sessionRow) {
 						hx-target="closest .swipe-row"
 						hx-swap="outerHTML"
 						hx-confirm="Delete this session and all messages?"
+						hx-disabled-elt="this"
 						class="w-full px-[14px] py-[11px] bg-transparent border-none cursor-pointer text-[var(--color-error)] text-left text-[15px] font-[inherit] flex items-center gap-2"
 					>
 						<svg width="14" height="14" fill="none" stroke="var(--color-error)" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path></svg>
@@ -68,6 +76,10 @@ templ SessionRow(row sessionRow) {
 			<!-- Main clickable row -->
 			<a
 				href={ templ.SafeURL(fmt.Sprintf("/chat/%s", row.Session.ID)) }
+				hx-get={ fmt.Sprintf("/chat/%s", row.Session.ID) }
+				hx-target="#main"
+				hx-swap="innerHTML"
+				hx-push-url="true"
 				data-session-id={ row.Session.ID }
 				aria-label={ fmt.Sprintf("Open session %s", row.Session.Name) }
 				class="session-row-link flex items-center gap-4 px-4 py-3 no-underline cursor-pointer relative"

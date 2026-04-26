@@ -20,6 +20,8 @@ templ Layout(sessionID, csrfToken string) {
 		<link rel="stylesheet" href="/static/vendor/tailwind.min.css"/>
 		<!-- TODO: self-host JetBrains Mono for offline/CSP compliance -->
 		<script src="/static/vendor/htmx.min.js" defer></script>
+		<!-- htmx config: enable View Transitions API for smooth swaps -->
+		<meta name="htmx-config" content='{"globalViewTransitions":true}'/>
 		<!-- CSRF token — value wired server-side by security middleware -->
 		<meta name="csrf-token" content={ csrfToken }/>
 		@layoutCSS()
@@ -93,6 +95,11 @@ templ layoutCSS() {
 	<style>
 		*, *::before, *::after {
 			box-sizing: border-box;
+		}
+		/* htmx view transition fade */
+		.htmx-swapping {
+			opacity: 0;
+			transition: opacity 0.15s ease;
 		}
 		body {
 			max-width: 100%;
@@ -805,6 +812,9 @@ templ filterAndSwipeScript() {
 		document.addEventListener('click', function(e) {
 			var link = e.target.closest('.session-row-link');
 			if (!link) return;
+			// htmx handles navigation declaratively via hx-get on the <a> tag.
+			// Guard: only intercept if htmx is not already handling it (no hx-get attribute).
+			if (link.hasAttribute('hx-get') || link.hasAttribute('data-hx-get')) return;
 			var id = link.dataset.sessionId;
 			var main = document.getElementById('main');
 			if (main && window.innerWidth >= 768) {
