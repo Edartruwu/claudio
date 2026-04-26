@@ -2072,18 +2072,9 @@ Rules:
 
 ## Step 4 — Save Output
 
-First compute the project-scoped designs directory using Bash and capture the output as DESIGNS_BASE:
-` + "```" + `bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
-DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs"
-mkdir -p "$DESIGNS_BASE"
-echo "$DESIGNS_BASE"
-` + "```" + `
+Call ` + "`CreateDesignSession`" + ` with ` + "`name: \"design-system\"`" + ` to get the absolute ` + "`session_dir`" + `.
 
-Save the JSON to: ` + "`{DESIGNS_BASE}/design-system.json`" + ` (substitute the path printed above).
-
-Use the Write tool with the resolved path.
+Save the JSON to: ` + "`{session_dir}/design-system.json`" + ` using the Write tool with the full absolute path returned by the tool.
 
 ## Step 5 — Confirm
 
