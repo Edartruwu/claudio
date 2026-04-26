@@ -2110,6 +2110,22 @@ Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sess
 **Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
 - Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
 
+## Starters — Copy Before Writing Screens
+
+Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 3.5):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
+Your ` + "`screens.jsx`" + ` file MUST use these exports — do NOT reimplement them:
+- **design-canvas.jsx**: ` + "`DesignCanvas`" + `, ` + "`DCSection`" + `, ` + "`DCArtboard`" + ` — pan/zoom canvas
+- **device-frames.jsx**: device frames for all screens
+- **ui-kit.jsx**: all UI components — ` + "`Button`" + `, ` + "`Input`" + `, ` + "`NavBar`" + `, ` + "`Sidebar`" + `, ` + "`Card`" + `, ` + "`Badge`" + `, ` + "`Modal`" + `, ` + "`Tabs`" + `, ` + "`Toast`" + ` etc.
+- **chart-kit.jsx** (access via ` + "`window.ChartKit`" + `): ` + "`LineChart`" + `, ` + "`BarChart`" + `, ` + "`PieChart`" + `, ` + "`DonutChart`" + `, ` + "`AreaChart`" + `, ` + "`SparkLine`" + ` — use for any data visualisation
+
 ## Step 1 — Brief Clarification
 
 Ask the user for:
@@ -2155,38 +2171,68 @@ mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
 
+Then immediately copy the starter files (from ` + "`## Starters`" + ` section above):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
 All files in Steps 4–5 must be saved inside ` + "`DESIGNS_BASE`" + `. DESIGNS_BASE is also the ` + "`session_dir`" + ` for RenderMockup and BundleMockup.
 
-## Step 4 — Generate Screens
+## Step 4 — Generate Screens (screens.jsx)
 
-For each screen (most important first):
+Write a single ` + "`screens.jsx`" + ` file that renders all screens using the starter globals.
 
-1. Generate a self-contained HTML file: ` + "`screen-{name}.html`" + `
-   - Use Tailwind CSS via CDN: ` + "`<script src=\"https://cdn.tailwindcss.com\"></script>`" + `
-   - Apply design tokens as inline Tailwind config in a ` + "`<script>`" + ` block
-   - Include realistic placeholder content (not lorem ipsum — use actual product-relevant text)
-   - Include navigation, header, main content area, and footer as appropriate
-   - Make it visually complete — no "TODO" sections, no blank areas
+At the top of ` + "`screens.jsx`" + `, destructure what you need from the loaded starters:
+` + "```" + `jsx
+const { DesignCanvas, DCSection, DCArtboard } = window;
+const { IOSDevice, AndroidDevice, DesktopBrowser } = window;
+const { Button, Input, Select, NavBar, Sidebar, Card, Badge, Modal, Tabs, Toast, useToast, ToastContainer } = window;
+const { LineChart, BarChart, PieChart, DonutChart, AreaChart, SparkLine } = window.ChartKit;
+` + "```" + `
 
-2. Save the file using the Write tool
+Then write your screen components using these primitives. Do NOT redefine them.
 
-Screen naming convention:
-- Landing → ` + "`screen-landing.html`" + `
-- Dashboard → ` + "`screen-dashboard.html`" + `
-- Detail → ` + "`screen-detail.html`" + `
-- Settings → ` + "`screen-settings.html`" + `
+Structure your screens using ` + "`DesignCanvas`" + ` with ` + "`DCSection`" + ` and ` + "`DCArtboard`" + ` for layout:
+- Wrap mobile screens in ` + "`IOSDevice`" + ` or ` + "`AndroidDevice`"  + `
+- Wrap desktop screens in ` + "`DesktopBrowser`" + `
+- Use ` + "`Button`" + `, ` + "`Card`" + `, ` + "`NavBar`" + `, ` + "`Sidebar`" + ` etc. for UI components
+- Use ` + "`LineChart`" + `, ` + "`BarChart`" + ` etc. for any data visualisation
+- Include realistic placeholder content — not lorem ipsum
 
-## Step 5 — Generate Artboard Canvas
+Save as ` + "`screens.jsx`" + ` using the Write tool.
 
-After all screen files are written, generate ` + "`index.html`" + `:
+## Step 5 — Generate index.html
 
-- Single HTML file
-- Each screen embedded as: ` + "`<div data-artboard=\"{name}\" style=\"width:1440px; margin-bottom:80px;\">` + `<iframe src=\"screen-{name}.html\" ...></iframe></div>`" + `
-- Screens stacked vertically
-- Artboard labels above each screen
-- Light gray background (#f5f5f5) for the canvas
+Create ` + "`index.html`" + ` with this exact script load order:
 
-Save as ` + "`index.html`" + ` in the same directory as the screen files.
+` + "```" + `html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mockup</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body style="margin:0;background:#f5f5f5;">
+  <div id="root"></div>
+  <!-- Starters (local copies) -->
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="device-frames.jsx"></script>
+  <script type="text/babel" src="ui-kit.jsx"></script>
+  <script type="text/babel" src="chart-kit.jsx"></script>
+  <!-- Your screens (written by AI) -->
+  <script type="text/babel" src="screens.jsx"></script>
+</body>
+</html>
+` + "```" + `
+
+Save as ` + "`index.html`" + ` in the same directory as ` + "`screens.jsx`" + `.
 
 ## Step 6 — Render and Verify
 
@@ -2345,6 +2391,22 @@ Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sess
 **Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
 - Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
 
+## Starters — Copy Before Writing Screens
+
+Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 6):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
+Your ` + "`screens.jsx`" + ` file MUST use these exports — do NOT reimplement them:
+- **design-canvas.jsx**: ` + "`DesignCanvas`" + `, ` + "`DCSection`" + `, ` + "`DCArtboard`" + `, ` + "`DCPostIt`" + ` — wrap all screens in a pan/zoom canvas
+- **device-frames.jsx**: ` + "`IOSDevice`" + `, ` + "`AndroidDevice`" + `, ` + "`DesktopBrowser`" + ` — always wrap mobile/desktop screens in a device frame
+- **ui-kit.jsx**: ` + "`Button`" + `, ` + "`Input`" + `, ` + "`Select`" + `, ` + "`Modal`" + `, ` + "`NavBar`" + `, ` + "`Sidebar`" + `, ` + "`Card`" + `, ` + "`Badge`" + `, ` + "`Tabs`" + `, ` + "`Toast`" + ` etc — use for all UI components
+- **chart-kit.jsx** (access via ` + "`window.ChartKit`" + `): ` + "`LineChart`" + `, ` + "`BarChart`" + `, ` + "`PieChart`" + `, ` + "`DonutChart`" + `, ` + "`AreaChart`" + `, ` + "`SparkLine`" + ` — use for any data visualisation
+
 ## Step 1 — Clarification
 
 Ask the user:
@@ -2385,11 +2447,21 @@ Required token names (add more as needed):
 --shadow-lg
 ` + "```" + `
 
-## Step 3 — Generate Single HTML File with Tab Strip
+## Step 3 — Generate screens.jsx with Tab Strip and Variations
 
-Generate one file: ` + "`hifi.html`" + `
+Write ` + "`screens.jsx`" + ` — a React file that exports the full hi-fi UI with tab strip, variation containers, and tweaks panel. This file uses the starter globals loaded by ` + "`index.html`" + `.
 
-### Tab strip (top of ` + "`<body>`" + `)
+At the top of ` + "`screens.jsx`" + `, destructure what you need:
+` + "```" + `jsx
+const { DesignCanvas, DCSection, DCArtboard } = window;
+const { IOSDevice, AndroidDevice, DesktopBrowser } = window;
+const { Button, Input, Select, NavBar, Sidebar, Card, Badge, Modal, Tabs, Toast, useToast, ToastContainer } = window;
+const { LineChart, BarChart, PieChart, DonutChart, AreaChart, SparkLine } = window.ChartKit;
+` + "```" + `
+
+Then write your components using these primitives — do NOT redefine them.
+
+### Tab strip (inside the React render)
 
 ` + "```html" + `
 <nav id="variation-tabs" style="position:sticky;top:0;z-index:1000;display:flex;gap:0;background:var(--color-surface);border-bottom:1px solid var(--color-border);">
@@ -2555,7 +2627,7 @@ At the top of ` + "`<style>`" + ` in ` + "`<head>`" + `, set default token value
 </style>
 ` + "```" + `
 
-## Step 6 — Render and Verify
+## Step 6 — Save and Render
 
 First compute the project-scoped designs directory and generate a timestamp:
 ` + "```" + `bash
@@ -2567,13 +2639,55 @@ mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
 
-1. Save ` + "`hifi.html`" + ` to ` + "`{DESIGNS_BASE}/`" + ` (the path printed above) using the Write tool
-2. Call ` + "`RenderMockup`" + ` with ` + "`html_path`" + ` = path to ` + "`hifi.html`" + ` and ` + "`session_dir`" + ` = DESIGNS_BASE
-3. Call ` + "`VerifyMockup`" + ` with the screenshot path returned by RenderMockup and ` + "`threshold: 75`" + `
+Then copy the starters (from ` + "`## Starters`" + ` section above):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
+Save your two output files to ` + "`{DESIGNS_BASE}/`" + `:
+
+1. ` + "`screens.jsx`" + ` — the tab strip, variation containers, tweaks panel, and screen content (uses starter globals)
+2. ` + "`index.html`" + ` — shell with CDN scripts + CSS token block + starters + screens.jsx:
+
+` + "```" + `html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hi-Fi Mockup</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    /* CSS token block from Step 5 goes here */
+    :root { /* ... token values ... */ }
+    body { background: var(--color-bg); color: var(--color-text); font-family: var(--font-family); margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <!-- Starters (local copies) -->
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="device-frames.jsx"></script>
+  <script type="text/babel" src="ui-kit.jsx"></script>
+  <script type="text/babel" src="chart-kit.jsx"></script>
+  <!-- Your screens (written by AI) -->
+  <script type="text/babel" src="screens.jsx"></script>
+</body>
+</html>
+` + "```" + `
+
+Then:
+3. Call ` + "`RenderMockup`" + ` with ` + "`html_path`" + ` = path to ` + "`index.html`" + ` and ` + "`session_dir`" + ` = DESIGNS_BASE
+4. Call ` + "`VerifyMockup`" + ` with the screenshot path returned by RenderMockup and ` + "`threshold: 75`" + `
 
 If ` + "`pass: false`" + `:
 - Read the ` + "`issues`" + ` list
-- Fix each blocking issue in ` + "`hifi.html`" + `
+- Fix each blocking issue in ` + "`screens.jsx`" + `
 - Re-render and re-verify (pass ` + "`session_dir`" + ` = DESIGNS_BASE each time)
 - Repeat up to 3 cycles; after 3, report remaining issues and stop
 
@@ -2582,7 +2696,7 @@ If ` + "`pass: true`" + `: proceed to Step 7.
 ## Step 7 — Bundle
 
 Call ` + "`BundleMockup`" + ` with:
-- ` + "`entry_html`" + `: path to ` + "`hifi.html`" + `
+- ` + "`entry_html`" + `: path to ` + "`index.html`" + `
 - ` + "`session_dir`" + `: DESIGNS_BASE
 - ` + "`embed_cdn`" + `: true
 
@@ -2613,6 +2727,18 @@ Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sess
 **Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
 - Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
 
+## Starters — Copy Before Writing Screens
+
+Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 3):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
+Your ` + "`screens.jsx`" + ` file MUST use these exports:
+- **design-canvas.jsx**: ` + "`DesignCanvas`" + `, ` + "`DCSection`" + `, ` + "`DCArtboard`" + ` — canvas for artboard layout
+- **device-frames.jsx**: ` + "`IOSDevice`" + `, ` + "`AndroidDevice`" + `, ` + "`DesktopBrowser`" + ` — device frames for wireframes
+
 ## Step 1 — Clarification
 
 Ask the user ONE question only:
@@ -2624,9 +2750,21 @@ Do NOT ask about brand, colors, typography, or visual polish — wireframes are 
 
 If the user has already answered this, proceed immediately to Step 2.
 
-## Step 2 — Generate Wireframe HTML
+## Step 2 — Generate screens.jsx
 
-Create a single ` + "`wireframe.html`" + ` file with:
+Write ` + "`screens.jsx`" + ` — a React file with all wireframe screens. This file uses the starter globals loaded by ` + "`index.html`" + `.
+
+At the top of ` + "`screens.jsx`" + `, destructure what you need:
+` + "```" + `jsx
+const { DesignCanvas, DCSection, DCArtboard } = window;
+const { IOSDevice, AndroidDevice, DesktopBrowser } = window;
+` + "```" + `
+
+Then write your wireframe screen components using ` + "`DesignCanvas`" + ` / ` + "`DCArtboard`" + ` for layout and ` + "`IOSDevice`" + ` / ` + "`DesktopBrowser`" + ` to wrap mobile/desktop frames.
+
+### Wireframe style rules
+
+Keep the intentionally lo-fi, grayscale aesthetic inside each artboard:
 
 ### Structure
 - **Vertical scroll layout** — all screens stacked top-to-bottom, no tabs or JS navigation needed
@@ -2706,10 +2844,43 @@ mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
 
-Save ` + "`wireframe.html`" + ` to ` + "`{DESIGNS_BASE}/wireframe.html`" + ` using the Write tool, then call ` + "`BundleMockup`" + ` with:
-- ` + "`entry_html`" + `: path to ` + "`wireframe.html`" + `
+Then copy the starters (from ` + "`## Starters`" + ` section above):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
+Save your two output files to ` + "`{DESIGNS_BASE}/`" + `:
+
+1. ` + "`screens.jsx`" + ` — all wireframe screen components (uses ` + "`DesignCanvas`" + `, ` + "`DCArtboard`" + `, device frames)
+2. ` + "`index.html`" + ` — shell with CDN + starters + screens.jsx:
+
+` + "```" + `html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wireframe</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body style="margin:0;background:#fff;">
+  <div id="root"></div>
+  <!-- Starters (local copies) -->
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="device-frames.jsx"></script>
+  <!-- Your screens (written by AI) -->
+  <script type="text/babel" src="screens.jsx"></script>
+</body>
+</html>
+` + "```" + `
+
+Then call ` + "`BundleMockup`" + ` with:
+- ` + "`entry_html`" + `: path to ` + "`index.html`" + `
 - ` + "`session_dir`" + `: DESIGNS_BASE
-- ` + "`embed_cdn`" + `: false (wireframes don't need CDN, minimal HTML)
+- ` + "`embed_cdn`" + `: true
 
 The tool writes ` + "`{DESIGNS_BASE}/bundle/mockup.html`" + ` and pushes a clickable link. Do NOT specify ` + "`output_path`" + ` — let ` + "`session_dir`" + ` control it.
 
@@ -2741,6 +2912,20 @@ Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sess
 
 **Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
 - Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
+
+## Starters — Copy Before Writing Screens
+
+Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 6):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/stage.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/motion.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
+Your ` + "`screens.jsx`" + ` file MUST use these exports:
+- **stage.jsx**: ` + "`Stage`" + `, ` + "`Sprite`" + `, ` + "`useSprite`" + `, ` + "`Easing`" + `, ` + "`interpolate`" + `, ` + "`clamp`" + `, ` + "`PlaybackBar`" + ` — animation engine with timeline scrubber
+- **device-frames.jsx**: ` + "`IOSDevice`" + `, ` + "`AndroidDevice`" + `, ` + "`DesktopBrowser`" + ` — wrap screens in device frames
+- **motion.jsx**: ` + "`Particles`" + `, ` + "`Confetti`" + `, ` + "`useSpring`" + `, ` + "`CountUp`" + `, ` + "`TypeWriter`" + ` — animation primitives for rich motion
 
 ## Step 1 — Ask About the Flow
 
@@ -2836,9 +3021,20 @@ Map each screen with:
 - ` + "`next`" + ` — default forward flow (for primary button)
 - ` + "`actions`" + ` — { actionLabel: targetScreen } map (forms, nav, etc.)
 
-## Step 4 — Generate Multi-Screen React App
+## Step 4 — Generate screens.jsx
 
-Create a single HTML file with React from CDN. Structure:
+Write ` + "`screens.jsx`" + ` — the React app with all screens and interactions. This file uses the starter globals loaded by ` + "`index.html`" + ` (stage.jsx for animation, device-frames.jsx for device chrome, motion.jsx for effects).
+
+At the top of ` + "`screens.jsx`" + `, destructure what you need:
+` + "```" + `jsx
+const { Stage, Sprite, useSprite, Easing, interpolate, clamp, PlaybackBar } = window;
+const { IOSDevice, AndroidDevice, DesktopBrowser } = window;
+const { Particles, Confetti, useSpring, CountUp, TypeWriter } = window;
+` + "```" + `
+
+Then write your screen components using these primitives — do NOT redefine them. Use ` + "`Stage`" + ` + ` + "`Sprite`" + ` for animated flows, ` + "`IOSDevice`" + ` / ` + "`DesktopBrowser`" + ` to wrap screens in device frames, ` + "`useSpring`" + ` / ` + "`CountUp`" + ` for rich motion.
+
+The ` + "`screens.jsx`" + ` React app structure:
 
 ` + "```html" + `
 <!DOCTYPE html>
@@ -3095,16 +3291,61 @@ mkdir -p "$DESIGNS_BASE"
 echo "$DESIGNS_BASE"
 ` + "```" + `
 
-Write the HTML file to ` + "`{DESIGNS_BASE}/prototype.html`" + ` using the Write tool
+Then copy the starters (from ` + "`## Starters`" + ` section above):
+` + "```" + `bash
+cp ~/.claudio/designs/starters/stage.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
+cp ~/.claudio/designs/starters/motion.jsx "$DESIGNS_BASE/"
+` + "```" + `
+
+Save your two output files to ` + "`{DESIGNS_BASE}/`" + `:
+
+1. ` + "`screens.jsx`" + ` — the React app with all screens and interactions (uses starter globals)
+2. ` + "`index.html`" + ` — shell with CDN + starters + screens.jsx:
+
+` + "```" + `html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interactive Prototype</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root {
+      --color-primary: #3b82f6;
+      --color-bg: #ffffff;
+      --color-text: #1f2937;
+      --spacing-md: 16px;
+      --radius-md: 8px;
+      --transition: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--font-family, system-ui); background: var(--color-bg); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <!-- Starters (local copies) -->
+  <script type="text/babel" src="stage.jsx"></script>
+  <script type="text/babel" src="device-frames.jsx"></script>
+  <script type="text/babel" src="motion.jsx"></script>
+  <!-- Your screens (written by AI) -->
+  <script type="text/babel" src="screens.jsx"></script>
+</body>
+</html>
+` + "```" + `
 
 ## Step 7 — Render and Verify
 
-1. Call ` + "`RenderMockup`" + ` with ` + "`html_path`" + ` = path to ` + "`prototype.html`" + ` and ` + "`session_dir`" + ` = DESIGNS_BASE
+1. Call ` + "`RenderMockup`" + ` with ` + "`html_path`" + ` = path to ` + "`index.html`" + ` and ` + "`session_dir`" + ` = DESIGNS_BASE
 2. Call ` + "`VerifyMockup`" + ` with the screenshot path and ` + "`threshold: 75`" + `
 
 If ` + "`pass: false`" + `:
 - Read the ` + "`issues`" + ` list
-- Fix each blocking issue in the HTML
+- Fix each blocking issue in ` + "`screens.jsx`" + `
 - Re-render and re-verify (pass ` + "`session_dir`" + ` = DESIGNS_BASE each time)
 - Repeat up to 3 cycles; after 3, report remaining issues and stop
 
@@ -3113,7 +3354,7 @@ If ` + "`pass: true`" + `: proceed to Step 8.
 ## Step 8 — Bundle
 
 Call ` + "`BundleMockup`" + ` with:
-- ` + "`entry_html`" + `: path to ` + "`prototype.html`" + `
+- ` + "`entry_html`" + `: path to ` + "`index.html`" + `
 - ` + "`session_dir`" + `: DESIGNS_BASE
 - ` + "`embed_cdn`" + `: true
 
