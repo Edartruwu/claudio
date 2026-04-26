@@ -2143,6 +2143,20 @@ If no file provided, define inline tokens matching your stated direction:
 }
 ` + "```" + `
 
+## Step 3.5 — Set Output Directory
+
+If no existing session was found in the Design Session Management check above, compute DESIGNS_BASE now:
+` + "```" + `bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
+mkdir -p "$DESIGNS_BASE"
+echo "$DESIGNS_BASE"
+` + "```" + `
+
+All files in Steps 4–5 must be saved inside ` + "`DESIGNS_BASE`" + `. DESIGNS_BASE is also the ` + "`session_dir`" + ` for RenderMockup and BundleMockup.
+
 ## Step 4 — Generate Screens
 
 For each screen (most important first):
@@ -2176,13 +2190,13 @@ Save as ` + "`index.html`" + ` in the same directory as the screen files.
 
 ## Step 6 — Render and Verify
 
-1. Call ` + "`RenderMockup`" + ` with the path to ` + "`index.html`" + `
+1. Call ` + "`RenderMockup`" + ` with ` + "`html_path`" + ` = path to ` + "`index.html`" + ` and ` + "`session_dir`" + ` = DESIGNS_BASE
 2. Call ` + "`VerifyMockup`" + ` with the full-canvas screenshot path returned by RenderMockup
 
 If ` + "`pass: false`" + `:
 - Read the ` + "`issues`" + ` list from VerifyMockup output
 - Fix each blocking issue in the relevant screen HTML file(s)
-- Re-render and re-verify
+- Re-render and re-verify (pass ` + "`session_dir`" + ` = DESIGNS_BASE each time)
 - Repeat up to 3 cycles maximum
 - After 3 cycles, report remaining issues to the user and stop
 
@@ -2191,15 +2205,17 @@ If ` + "`pass: true`" + `: proceed to Step 7.
 ## Step 7 — Bundle
 
 Call ` + "`BundleMockup`" + ` with:
-- ` + "`indexPath`" + `: path to ` + "`index.html`" + `
-- ` + "`embedCDN`" + `: true
+- ` + "`entry_html`" + `: path to ` + "`index.html`" + `
+- ` + "`session_dir`" + `: DESIGNS_BASE
+- ` + "`embed_cdn`" + `: true
+
+The tool writes ` + "`{DESIGNS_BASE}/bundle/mockup.html`" + ` and pushes a clickable link to the chat. Do NOT show the raw file path — only show the URL returned by the tool.
 
 ## Step 8 — Report
 
 Tell the user:
-- Final output directory path
 - List of all screen files generated
-- Bundle path
+- The bundle URL (from BundleMockup tool output — show this, not the file path)
 - Overall VerifyMockup score
 - Any issues that could not be auto-fixed (if any)`
 
@@ -2552,13 +2568,13 @@ echo "$DESIGNS_BASE"
 ` + "```" + `
 
 1. Save ` + "`hifi.html`" + ` to ` + "`{DESIGNS_BASE}/`" + ` (the path printed above) using the Write tool
-2. Call ` + "`RenderMockup`" + ` with the path to ` + "`hifi.html`" + `
+2. Call ` + "`RenderMockup`" + ` with ` + "`html_path`" + ` = path to ` + "`hifi.html`" + ` and ` + "`session_dir`" + ` = DESIGNS_BASE
 3. Call ` + "`VerifyMockup`" + ` with the screenshot path returned by RenderMockup and ` + "`threshold: 75`" + `
 
 If ` + "`pass: false`" + `:
 - Read the ` + "`issues`" + ` list
 - Fix each blocking issue in ` + "`hifi.html`" + `
-- Re-render and re-verify
+- Re-render and re-verify (pass ` + "`session_dir`" + ` = DESIGNS_BASE each time)
 - Repeat up to 3 cycles; after 3, report remaining issues and stop
 
 If ` + "`pass: true`" + `: proceed to Step 7.
@@ -2566,15 +2582,16 @@ If ` + "`pass: true`" + `: proceed to Step 7.
 ## Step 7 — Bundle
 
 Call ` + "`BundleMockup`" + ` with:
-- ` + "`indexPath`" + `: path to ` + "`hifi.html`" + `
-- ` + "`embedCDN`" + `: true
+- ` + "`entry_html`" + `: path to ` + "`hifi.html`" + `
+- ` + "`session_dir`" + `: DESIGNS_BASE
+- ` + "`embed_cdn`" + `: true
 
-Output path: ` + "`{DESIGNS_BASE}/bundle/hifi.html`" + `
+The tool writes ` + "`{DESIGNS_BASE}/bundle/mockup.html`" + ` and pushes a clickable link to the chat. Do NOT show the raw file path — only show the URL returned by the tool.
 
 ## Step 8 — Report
 
 Tell the user:
-- Bundle path
+- The bundle URL (from BundleMockup tool output — show this, not the file path)
 - Variation names and their design directions
 - VerifyMockup score
 - Any unfixed issues`
@@ -2690,10 +2707,11 @@ echo "$DESIGNS_BASE"
 ` + "```" + `
 
 Save ` + "`wireframe.html`" + ` to ` + "`{DESIGNS_BASE}/wireframe.html`" + ` using the Write tool, then call ` + "`BundleMockup`" + ` with:
-- ` + "`indexPath`" + `: path to ` + "`wireframe.html`" + `
-- ` + "`embedCDN`" + `: false (wireframes don't need CDN, minimal HTML)
+- ` + "`entry_html`" + `: path to ` + "`wireframe.html`" + `
+- ` + "`session_dir`" + `: DESIGNS_BASE
+- ` + "`embed_cdn`" + `: false (wireframes don't need CDN, minimal HTML)
 
-Output path: ` + "`{DESIGNS_BASE}/bundle/wireframe.html`" + `
+The tool writes ` + "`{DESIGNS_BASE}/bundle/mockup.html`" + ` and pushes a clickable link. Do NOT specify ` + "`output_path`" + ` — let ` + "`session_dir`" + ` control it.
 
 **Do NOT call RenderMockup or VerifyMockup** — wireframes skip the render/verify loop entirely for speed.
 
@@ -3081,13 +3099,13 @@ Write the HTML file to ` + "`{DESIGNS_BASE}/prototype.html`" + ` using the Write
 
 ## Step 7 — Render and Verify
 
-1. Call ` + "`RenderMockup`" + ` with the path to ` + "`prototype.html`" + `
+1. Call ` + "`RenderMockup`" + ` with ` + "`html_path`" + ` = path to ` + "`prototype.html`" + ` and ` + "`session_dir`" + ` = DESIGNS_BASE
 2. Call ` + "`VerifyMockup`" + ` with the screenshot path and ` + "`threshold: 75`" + `
 
 If ` + "`pass: false`" + `:
 - Read the ` + "`issues`" + ` list
 - Fix each blocking issue in the HTML
-- Re-render and re-verify
+- Re-render and re-verify (pass ` + "`session_dir`" + ` = DESIGNS_BASE each time)
 - Repeat up to 3 cycles; after 3, report remaining issues and stop
 
 If ` + "`pass: true`" + `: proceed to Step 8.
@@ -3095,15 +3113,16 @@ If ` + "`pass: true`" + `: proceed to Step 8.
 ## Step 8 — Bundle
 
 Call ` + "`BundleMockup`" + ` with:
-- ` + "`indexPath`" + `: path to ` + "`prototype.html`" + `
-- ` + "`embedCDN`" + `: true
+- ` + "`entry_html`" + `: path to ` + "`prototype.html`" + `
+- ` + "`session_dir`" + `: DESIGNS_BASE
+- ` + "`embed_cdn`" + `: true
 
-Output path: ` + "`{DESIGNS_BASE}/bundle/prototype.html`" + `
+The tool writes ` + "`{DESIGNS_BASE}/bundle/mockup.html`" + ` and pushes a clickable link to the chat. Do NOT show the raw file path — only show the URL returned by the tool.
 
 ## Step 9 — Report
 
 Tell the user:
-- Bundle path
+- The bundle URL (from BundleMockup tool output — show this, not the file path)
 - Screens covered in the flow
 - Interactions demonstrated (forms, loading states, navigation, etc.)
 - Hotspot mode usage note
