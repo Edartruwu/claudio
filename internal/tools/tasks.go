@@ -27,13 +27,17 @@ type TaskStore struct {
 
 // Task represents a tracked work item.
 type Task struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"` // pending, in_progress, completed, deleted
-	AssignedTo  string    `json:"assigned_to,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string            `json:"id"`
+	Subject     string            `json:"subject"`
+	Description string            `json:"description"`
+	Status      string            `json:"status"` // pending, in_progress, completed, deleted
+	AssignedTo  string            `json:"assigned_to,omitempty"`
+	Blocks      []string          `json:"blocks,omitempty"`
+	BlockedBy   []string          `json:"blocked_by,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	ActiveForm  string            `json:"active_form,omitempty"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 // GlobalTaskStore is the shared task store.
@@ -77,7 +81,7 @@ func (s *TaskStore) LoadForSession(sessionID string) error {
 	for rows.Next() {
 		var t Task
 		var assignedTo sql.NullString
-		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.Status, &assignedTo, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Subject, &t.Description, &t.Status, &assignedTo, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			continue
 		}
 		if assignedTo.Valid {
@@ -105,7 +109,7 @@ func (s *TaskStore) saveToDBWithSession(t *Task, sessionID string) error {
 		return nil
 	}
 	_, err := s.db.Exec(`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, sessionID, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt)
+		t.ID, sessionID, t.Subject, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("saveToDBWithSession task %s: %w", t.ID, err)
 	}
@@ -174,7 +178,7 @@ func (s *TaskStore) CompleteByIDs(ids []string, status, sessionID string) []*Tas
 			for _, t := range affected {
 				_, err := tx.Exec(
 					`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-					t.ID, sessionID, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt,
+					t.ID, sessionID, t.Subject, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt,
 				)
 				if err != nil {
 					log.Printf("[tasks] CompleteByIDs exec task %s: %v", t.ID, err)
@@ -197,7 +201,7 @@ func (s *TaskStore) CompleteByIDs(ids []string, status, sessionID string) []*Tas
 		if s.bus != nil {
 			payload, _ := json.Marshal(attach.TaskUpdatedPayload{
 				ID:          t.ID,
-				Title:       t.Title,
+				Title:       t.Subject,
 				Description: t.Description,
 				AssignedTo:  t.AssignedTo,
 				Status:      t.Status,
@@ -246,7 +250,7 @@ func (s *TaskStore) CompleteByAssignee(agentName, status, sessionID string) []*T
 			for _, t := range affected {
 				_, err := tx.Exec(
 					`INSERT OR REPLACE INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-					t.ID, sessionID, t.Title, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt,
+					t.ID, sessionID, t.Subject, t.Description, t.Status, t.AssignedTo, t.CreatedAt, t.UpdatedAt,
 				)
 				if err != nil {
 					log.Printf("[tasks] CompleteByAssignee exec task %s: %v", t.ID, err)
@@ -269,7 +273,7 @@ func (s *TaskStore) CompleteByAssignee(agentName, status, sessionID string) []*T
 		if s.bus != nil {
 			payload, _ := json.Marshal(attach.TaskUpdatedPayload{
 				ID:          t.ID,
-				Title:       t.Title,
+				Title:       t.Subject,
 				Description: t.Description,
 				AssignedTo:  t.AssignedTo,
 				Status:      t.Status,
@@ -308,9 +312,10 @@ type TaskCreateTool struct {
 }
 
 type taskCreateInput struct {
-	Title       string `json:"subject"`
+	Subject     string `json:"subject"`
 	Description string `json:"description"`
 	AssignedTo  string `json:"assigned_to,omitempty"`
+	ActiveForm  string `json:"activeForm,omitempty"`
 }
 
 func (t *TaskCreateTool) Name() string { return "TaskCreate" }
@@ -343,10 +348,11 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	id := fmt.Sprintf("%d", store.nextID)
 	task := &Task{
 		ID:          id,
-		Title:       in.Title,
+		Subject:     in.Subject,
 		Description: in.Description,
 		Status:      "pending",
 		AssignedTo:  in.AssignedTo,
+		ActiveForm:  in.ActiveForm,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -358,7 +364,7 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	if t.bus != nil {
 		payload, _ := json.Marshal(attach.TaskCreatedPayload{
 			ID:          id,
-			Title:       in.Title,
+			Title:       in.Subject,
 			Description: in.Description,
 			AssignedTo:  in.AssignedTo,
 			Status:      "pending",
@@ -371,7 +377,7 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		})
 	}
 
-	return &Result{Content: fmt.Sprintf("Task #%s created: %s", id, in.Title)}, nil
+	return &Result{Content: fmt.Sprintf("Task #%s created: %s", id, in.Subject)}, nil
 }
 
 // --- TaskListTool ---
@@ -415,7 +421,7 @@ func (t *TaskListTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 		if task.AssignedTo != "" {
 			assignee = fmt.Sprintf(" → %s", task.AssignedTo)
 		}
-		lines = append(lines, fmt.Sprintf("#%s %s [%s] %s%s", task.ID, icon, task.Status, task.Title, assignee))
+		lines = append(lines, fmt.Sprintf("#%s %s [%s] %s%s", task.ID, icon, task.Status, task.Subject, assignee))
 	}
 
 	return &Result{Content: strings.Join(lines, "\n")}, nil
@@ -432,8 +438,9 @@ type TaskUpdateTool struct {
 type taskUpdateInput struct {
 	TaskID      string `json:"taskId"`
 	Status      string `json:"status,omitempty"`
-	Title       string `json:"subject,omitempty"`
+	Subject     string `json:"subject,omitempty"`
 	Description string `json:"description,omitempty"`
+	ActiveForm  string `json:"activeForm,omitempty"`
 }
 
 func (t *TaskUpdateTool) Name() string { return "TaskUpdate" }
@@ -490,11 +497,14 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	if in.Status != "" {
 		task.Status = in.Status
 	}
-	if in.Title != "" {
-		task.Title = in.Title
+	if in.Subject != "" {
+		task.Subject = in.Subject
 	}
 	if in.Description != "" {
 		task.Description = in.Description
+	}
+	if in.ActiveForm != "" {
+		task.ActiveForm = in.ActiveForm
 	}
 	task.UpdatedAt = time.Now()
 	store.saveToDBWithSession(task, t.SessionID)
@@ -503,7 +513,7 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 	if t.bus != nil {
 		payload, _ := json.Marshal(attach.TaskUpdatedPayload{
 			ID:          in.TaskID,
-			Title:       task.Title,
+			Title:       task.Subject,
 			Description: task.Description,
 			AssignedTo:  task.AssignedTo,
 			Status:      task.Status,
