@@ -351,6 +351,24 @@ var TeamToolNames = []string{
 	"PurgeTeammates",
 }
 
+// TeamEagerToolNames lists all tools that should be force-eager (non-deferred)
+// when a team context is active. Includes team tools + task management + AskUser
+// so agents never need to ToolSearch for them during team workflows.
+var TeamEagerToolNames = []string{
+	"SendMessage",
+	"SpawnTeammate",
+	"InstantiateTeam",
+	"PurgeTeammates",
+	"TaskCreate",
+	"TaskList",
+	"TaskGet",
+	"TaskUpdate",
+	"BgTaskList",
+	"TaskStop",
+	"TaskOutput",
+	"AskUser",
+}
+
 // DefaultRegistry creates a registry with all core tools.
 func DefaultRegistry() *Registry {
 	r := NewRegistry()

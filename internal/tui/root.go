@@ -1925,6 +1925,11 @@ func (m Model) applyTeamContext(msg teamselector.TeamSelectedMsg) Model {
 				}
 			}
 		}
+		// Force all team-related tools to eager so agents never need ToolSearch
+		// to discover them — they are available immediately in the tools array.
+		for _, name := range tools.TeamEagerToolNames {
+			m.registry.SetDeferOverride(name, false)
+		}
 		if m.engine != nil {
 			m.engine.SetRegistry(m.registry)
 		}
@@ -2215,7 +2220,7 @@ Members:
 
 The team is ready. Use SpawnTeammate to assign tasks to each member.
 
-When all team work is complete, call PurgeTeammates to clean up agent worktrees and remove completed/failed agents.`,
+When a round of team work is complete,ALLWAYS **call PurgeTeammates** to clean up agent worktrees and remove completed/failed agents.`,
 			msg.TemplateName, desc, roster)
 	}
 
