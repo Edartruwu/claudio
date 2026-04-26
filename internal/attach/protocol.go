@@ -150,6 +150,7 @@ type StreamDeltaPayload struct {
 	SessionID   string `json:"session_id"`
 	Delta       string `json:"delta"`
 	Accumulated string `json:"accumulated"`
+	AgentName   string `json:"agent_name,omitempty"`
 }
 
 // DesignScreenshotPayload for EventDesignScreenshot.

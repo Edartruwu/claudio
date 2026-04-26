@@ -37,7 +37,7 @@ func AgentLogs(msgs []cc.Message) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(msgs) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"text-[var(--color-textMuted)] text-[13px] text-center py-6\">No activity yet</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"agent-log-empty\" class=\"text-[var(--color-textMuted)] text-[13px] text-center py-6\">No activity yet</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

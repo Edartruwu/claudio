@@ -9,7 +9,7 @@ import (
 // AgentLogs renders a compact log of agent activity for the drawer.
 templ AgentLogs(msgs []cc.Message) {
 	if len(msgs) == 0 {
-		<div class="text-[var(--color-textMuted)] text-[13px] text-center py-6">No activity yet</div>
+		<div id="agent-log-empty" class="text-[var(--color-textMuted)] text-[13px] text-center py-6">No activity yet</div>
 	}
 	for _, msg := range msgs {
 		if msg.Role == "tool_use" {

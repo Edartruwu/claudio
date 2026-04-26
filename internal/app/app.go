@@ -1078,6 +1078,16 @@ func (f *subAgentForwarder) OnTextDelta(text string) {
 	if f.observer != nil {
 		f.observer.OnSubAgentText(f.desc, text)
 	}
+	// Forward streaming delta to hub so the web UI agent log shows live text.
+	if f.ccSend != nil && f.ccAgentName != "" {
+		if c := f.ccSend.get(); c != nil {
+			_ = c.SendEvent(attach.EventMsgStreamDelta, attach.StreamDeltaPayload{
+				Delta:       text,
+				Accumulated: f.lastTurn.String(),
+				AgentName:   f.ccAgentName,
+			})
+		}
+	}
 }
 
 func (f *subAgentForwarder) OnThinkingDelta(text string) {}

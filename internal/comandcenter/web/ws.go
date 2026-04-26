@@ -361,6 +361,7 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 			"type":        "message.stream_delta",
 			"delta":       p.Delta,
 			"accumulated": p.Accumulated,
+			"agent_name":  p.AgentName,
 		})
 		if err != nil {
 			return

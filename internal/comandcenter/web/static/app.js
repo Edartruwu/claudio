@@ -71,6 +71,21 @@
     if (bubble) bubble.classList.add('hidden');
   }
 
+  function showThinkingBubble() {
+    var bubble = document.getElementById('typing-indicator-dots');
+    if (!bubble || !msgs) return;
+    var textEl = bubble.querySelector('.typing-text');
+    if (textEl) textEl.textContent = 'Thinking...';
+    bubble.classList.remove('hidden');
+    msgs.appendChild(bubble);
+    if (isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function hideThinkingBubble() {
+    var bubble = document.getElementById('typing-indicator-dots');
+    if (bubble) bubble.classList.add('hidden');
+  }
+
   function todayLabel() {
     var d = new Date();
     var opts = { month: 'short', day: 'numeric' };
@@ -295,10 +310,35 @@
           var sb = document.getElementById('streaming-bubble');
           if (sb) sb.remove();
           removeTypingBubble();
+          hideThinkingBubble();
           setTyping('● online');
           if (data.html) appendMessage(data.html);
 
         } else if (type === 'message.stream_delta') {
+          if (data.agent_name) {
+            // Sub-agent delta — route to agent log dialog if it's open for this agent.
+            if (window._ccLogAgent && data.agent_name === window._ccLogAgent.name) {
+              var logContent = document.getElementById('agent-log-content');
+              if (logContent) {
+                var agentBubble = logContent.querySelector('#agent-streaming-bubble');
+                if (!agentBubble) {
+                  var emptyEl = logContent.querySelector('#agent-log-empty');
+                  if (emptyEl) emptyEl.remove();
+                  agentBubble = document.createElement('div');
+                  agentBubble.id = 'agent-streaming-bubble';
+                  agentBubble.className = 'msg-bubble msg-bubble-assistant';
+                  agentBubble.style.cssText = 'opacity:0.8; white-space: pre-wrap; font-family: inherit; margin-bottom: 8px;';
+                  logContent.appendChild(agentBubble);
+                }
+                agentBubble.textContent = data.accumulated;
+                logContent.scrollTop = logContent.scrollHeight;
+              }
+            }
+            return; // Never show sub-agent deltas in main chat bubble.
+          }
+          hideThinkingBubble();
+          // Drop stale delta if message.assistant already finalized this turn.
+          if (!_streaming && !document.getElementById('streaming-bubble')) return;
           _streaming = true;
           var bubble = document.getElementById('streaming-bubble');
           if (!bubble) {
@@ -316,11 +356,13 @@
           scrollToBottom();
 
         } else if (type === 'typing') {
+          hideThinkingBubble();
           showTypingBubble(data.tool, data.agentName);
           setTyping((data.agentName || 'Agent') + ' is working...');
 
         } else if (type === 'message.user') {
           if (data.html) appendMessage(data.html);
+          showThinkingBubble();
 
         } else if (type === 'message.tool_use') {
           var sb = document.getElementById('streaming-bubble');
@@ -344,6 +386,7 @@
               }
             }
           }
+          showThinkingBubble();
 
         } else if (type === 'messages.cleared') {
           var msgsEl = document.getElementById('messages');
