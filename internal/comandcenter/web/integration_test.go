@@ -24,10 +24,13 @@ func newFullTestEnv(t *testing.T) (*cc.Storage, *web.WebServer, *http.ServeMux) 
 	if err := storage.ExecRaw(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		title TEXT NOT NULL DEFAULT '',
+		subject TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
+		blocks TEXT NOT NULL DEFAULT '',
+		blocked_by TEXT NOT NULL DEFAULT '',
+		metadata TEXT NOT NULL DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (id, session_id)

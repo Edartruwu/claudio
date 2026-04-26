@@ -1,5 +1,7 @@
 package web
 
+import "strings"
+
 templ TaskDetail(data TaskDetailData) {
 	<div style="margin-top:12px;padding-top:12px;font-size:13px;border-top:1px solid var(--color-border);">
 		<div class="flex items-center gap-2 flex-wrap" style="margin-bottom:8px;">
@@ -18,6 +20,35 @@ templ TaskDetail(data TaskDetailData) {
 			</div>
 		} else {
 			<p style="font-size:11px;font-style:italic;color:var(--color-textMuted);">No description.</p>
+		}
+		if len(data.Task.BlockedBy) > 0 || len(data.Task.Blocks) > 0 {
+			<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--color-border);">
+				if len(data.Task.BlockedBy) > 0 {
+					<div style="margin-bottom:4px;">
+						<span class="text-yellow-500" style="font-size:11px;font-weight:600;">Blocked by: </span>
+						<span class="text-yellow-500" style="font-size:11px;">{ strings.Join(prefixIDs(data.Task.BlockedBy), ", ") }</span>
+					</div>
+				}
+				if len(data.Task.Blocks) > 0 {
+					<div>
+						<span class="text-gray-400" style="font-size:11px;font-weight:600;">Blocks: </span>
+						<span class="text-gray-400" style="font-size:11px;">{ strings.Join(prefixIDs(data.Task.Blocks), ", ") }</span>
+					</div>
+				}
+			</div>
+		}
+		if len(data.Task.Metadata) > 0 {
+			<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--color-border);">
+				<p style="font-size:11px;font-weight:600;color:var(--color-textMuted);margin:0 0 6px 0;">Metadata</p>
+				<table style="width:100%;border-collapse:collapse;font-size:11px;">
+					for k, v := range data.Task.Metadata {
+						<tr>
+							<td style="color:var(--color-textMuted);padding:2px 8px 2px 0;vertical-align:top;white-space:nowrap;">{ k }</td>
+							<td style="color:var(--color-textPrimary);padding:2px 0;word-break:break-all;">{ v }</td>
+						</tr>
+					}
+				</table>
+			</div>
 		}
 	</div>
 }
