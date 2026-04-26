@@ -681,6 +681,9 @@ document.addEventListener('focusin', function (e) {
   function showSheet(msgId) {
     if (!sheet || !overlay) return;
     sheet.dataset.msgId = msgId;
+    var msgEl = document.querySelector('[data-msg-id="' + msgId + '"]');
+    var textEl = msgEl ? msgEl.querySelector('.md-content, .msg-bubble-assistant, .msg-bubble-user') : null;
+    window._sheetMsgText = textEl ? textEl.innerText : '';
     overlay.classList.remove('hidden');
     sheet.classList.remove('translate-y-full');
     document.body.style.overflow = 'hidden';
@@ -754,6 +757,12 @@ document.addEventListener('focusin', function (e) {
     var msgId = sheet ? sheet.dataset.msgId : null;
     hideSheet();
     if (msgId) deleteMsg(msgId);
+  };
+  window.ccCopySheetMsg = function() {
+    hideSheet();
+    if (navigator.clipboard && window._sheetMsgText) {
+      navigator.clipboard.writeText(window._sheetMsgText).catch(function() {});
+    }
   };
   window.ccCancelSheet = hideSheet;
 })();
