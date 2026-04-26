@@ -3,7 +3,6 @@ package cli
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -36,6 +35,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/agentselector"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
+	"github.com/Abraxas-365/claudio/internal/imageutil"
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
 
@@ -694,11 +694,11 @@ func runHeadlessAttach(args []string) error {
 			if len(payload.Attachments) > 0 {
 				images := make([]api.UserContentBlock, 0, len(payload.Attachments))
 				for _, att := range payload.Attachments {
-					data, readErr := os.ReadFile(att.FilePath)
+					data, mediaType, readErr := imageutil.ReadImageFile(att.FilePath)
 					if readErr != nil {
 						continue
 					}
-					images = append(images, api.NewImageBlock(att.MimeType, base64.StdEncoding.EncodeToString(data)))
+					images = append(images, api.NewImageBlock(mediaType, data))
 				}
 				err = engine.RunWithImages(turnCtx, payload.Content, images)
 			} else {
@@ -1253,11 +1253,11 @@ func runInteractive() error {
 		attachClient.OnUserMessage(func(payload attach.UserMsgPayload) {
 			var images []api.UserContentBlock
 			for _, att := range payload.Attachments {
-				data, err := os.ReadFile(att.FilePath)
+				data, mediaType, err := imageutil.ReadImageFile(att.FilePath)
 				if err != nil {
 					continue
 				}
-				images = append(images, api.NewImageBlock(att.MimeType, base64.StdEncoding.EncodeToString(data)))
+				images = append(images, api.NewImageBlock(mediaType, data))
 			}
 			p.Send(prompt.SubmitMsg{Text: payload.Content, Images: images})
 		})
