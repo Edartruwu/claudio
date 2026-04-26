@@ -265,7 +265,7 @@ func (t *SpawnTeammateTool) Execute(ctx context.Context, input json.RawMessage) 
 		block.WriteString("--- Assigned Tasks ---\n")
 		for _, id := range taskIDs {
 			if task, ok := GlobalTaskStore.Get(id); ok {
-				block.WriteString(fmt.Sprintf("[Task #%s] %s\n", task.ID, task.Title))
+				block.WriteString(fmt.Sprintf("[Task #%s] %s\n", task.ID, task.Subject))
 				if task.Description != "" {
 					block.WriteString(fmt.Sprintf("Description: %s\n", task.Description))
 				}

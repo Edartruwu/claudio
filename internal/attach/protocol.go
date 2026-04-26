@@ -96,23 +96,27 @@ type ClearHistoryPayload struct {
 
 // TaskCreatedPayload for EventTaskCreated.
 type TaskCreatedPayload struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	AssignedTo  string `json:"assigned_to,omitempty"`
-	Status      string `json:"status"`
-	SessionID   string `json:"session_id,omitempty"`
+	ID          string   `json:"id"`
+	Subject     string   `json:"subject"`
+	Description string   `json:"description,omitempty"`
+	AssignedTo  string   `json:"assigned_to,omitempty"`
+	Status      string   `json:"status"`
+	SessionID   string   `json:"session_id,omitempty"`
+	Blocks      []string `json:"blocks,omitempty"`
+	BlockedBy   []string `json:"blocked_by,omitempty"`
 }
 
 // TaskUpdatedPayload for EventTaskUpdated.
 type TaskUpdatedPayload struct {
-	ID          string `json:"id"`
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	AssignedTo  string `json:"assigned_to,omitempty"`
-	Status      string `json:"status"`
-	Output      string `json:"output,omitempty"`
-	SessionID   string `json:"session_id,omitempty"`
+	ID          string   `json:"id"`
+	Subject     string   `json:"subject,omitempty"`
+	Description string   `json:"description,omitempty"`
+	AssignedTo  string   `json:"assigned_to,omitempty"`
+	Status      string   `json:"status"`
+	Output      string   `json:"output,omitempty"`
+	SessionID   string   `json:"session_id,omitempty"`
+	Blocks      []string `json:"blocks,omitempty"`
+	BlockedBy   []string `json:"blocked_by,omitempty"`
 }
 
 // AgentStatusPayload for EventAgentStatus.

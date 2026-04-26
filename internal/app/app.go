@@ -255,6 +255,9 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 	// Inject event bus into task tools
 	registry.SetBus(eventBus)
 
+	// Inject SmallModel client into TaskUpdate for verification nudge
+	registry.SetSmallModelClient(apiClient, settings.SmallModel)
+
 	// Remove denied tools
 	for _, denied := range settings.DenyTools {
 		registry.Remove(denied)

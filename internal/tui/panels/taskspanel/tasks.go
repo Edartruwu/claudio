@@ -212,7 +212,7 @@ func (p *Panel) buildPlanDetail(t *tools.Task) []string {
 	if statusLabel == "" {
 		statusLabel = t.Status
 	}
-	md.WriteString(fmt.Sprintf("# %s\n\n", t.Title))
+	md.WriteString(fmt.Sprintf("# %s\n\n", t.Subject))
 	md.WriteString(fmt.Sprintf("**ID:** `#%s`", t.ID))
 	if t.AssignedTo != "" {
 		md.WriteString(fmt.Sprintf("  **Assigned to:** `@%s`", t.AssignedTo))
@@ -676,7 +676,7 @@ func (p *Panel) renderPlanRow(t *tools.Task, selected bool, w int) string {
 	if maxSubject < 5 {
 		maxSubject = 5
 	}
-	subject := t.Title
+	subject := t.Subject
 	if len(subject) > maxSubject {
 		subject = subject[:maxSubject-1] + "…"
 	}

@@ -30,10 +30,13 @@ func newTestEnv(t *testing.T) (*cc.Storage, *http.ServeMux) {
 	if err := storage.ExecRaw(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		title TEXT NOT NULL DEFAULT '',
+		subject TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
+		blocks TEXT NOT NULL DEFAULT '[]',
+		blocked_by TEXT NOT NULL DEFAULT '[]',
+		metadata TEXT NOT NULL DEFAULT '{}',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (id, session_id)
@@ -52,9 +55,9 @@ func newTestEnv(t *testing.T) (*cc.Storage, *http.ServeMux) {
 func seedTask(t *testing.T, s *cc.Storage, tk cc.Task) {
 	t.Helper()
 	if err := s.ExecRaw(`
-		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
+		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		tk.ID, tk.SessionID, tk.Title, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
+		tk.ID, tk.SessionID, tk.Subject, tk.Description, tk.Status, tk.AssignedTo, tk.CreatedAt, tk.UpdatedAt,
 	); err != nil {
 		t.Fatalf("seedTask %s: %v", tk.ID, err)
 	}
@@ -338,7 +341,7 @@ func TestWebServer_SessionInfo_Renders(t *testing.T) {
 	seedTask(t, storage, cc.Task{
 		ID:        "info-task-1",
 		SessionID: "info-sess-1",
-		Title:     "Build feature",
+		Subject:   "Build feature",
 		Status:    "in_progress",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -416,7 +419,7 @@ func TestWebServer_TaskDetail_Renders(t *testing.T) {
 	seedTask(t, storage, cc.Task{
 		ID:          "td-task-1",
 		SessionID:   "td-sess-1",
-		Title:       "Detail Task",
+		Subject:     "Detail Task",
 		Description: "**bold** description",
 		Status:      "in_progress",
 		AssignedTo:  "agent-a",
