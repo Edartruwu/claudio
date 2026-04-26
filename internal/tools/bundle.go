@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -117,10 +118,126 @@ var localScriptRe = regexp.MustCompile(`(?i)<script([^>]*)\bsrc="([^"]+)"([^>]*)
 // cdnScriptRe matches <script src="https://..."> or <script src="http://...">.
 var cdnScriptRe = regexp.MustCompile(`(?i)<script([^>]*)\bsrc="(https?://[^"]+)"([^>]*)>(\s*</script>)?`)
 
+// bundleManifest mirrors the subset of manifest.json we need.
+type bundleManifest struct {
+	ProjectPath string `json:"project_path"`
+	SessionDir  string `json:"session_dir"`
+	Screens     []struct {
+		Name string `json:"name"`
+	} `json:"screens"`
+}
+
+// buildGalleryHTML generates a self-contained gallery HTML from manifest PNGs.
+func buildGalleryHTML(manifest bundleManifest, sessionDir, entryFilename string) (string, error) {
+	projectSlug := filepath.Base(manifest.ProjectPath)
+	if projectSlug == "" || projectSlug == "." {
+		projectSlug = filepath.Base(filepath.Dir(sessionDir))
+	}
+	timestamp := filepath.Base(sessionDir)
+
+	var tabsHTML, imgsHTML strings.Builder
+	for _, screen := range manifest.Screens {
+		pngPath := filepath.Join(sessionDir, "screenshots", screen.Name+".png")
+		pngBytes, err := os.ReadFile(pngPath)
+		if err != nil {
+			return "", fmt.Errorf("read screenshot %q: %w", pngPath, err)
+		}
+		encoded := base64.StdEncoding.EncodeToString(pngBytes)
+		fmt.Fprintf(&tabsHTML, "  <button class=\"tab\">%s</button>\n", screen.Name)
+		fmt.Fprintf(&imgsHTML, "  <img src=\"data:image/png;base64,%s\" alt=\"%s\">\n", encoded, screen.Name)
+	}
+
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>` + projectSlug + ` — Design Preview</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #111; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+.toolbar { display: flex; align-items: center; gap: 6px; padding: 10px 16px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; overflow-x: auto; flex-shrink: 0; min-height: 52px; }
+.meta { font-size: 12px; color: #555; margin-right: 12px; white-space: nowrap; flex-shrink: 0; }
+.tab { padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; background: #2a2a2a; color: #888; border: 1px solid #333; white-space: nowrap; transition: all .15s; }
+.tab:hover { background: #333; color: #ccc; }
+.tab.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+.open-btn { margin-left: auto; padding: 5px 14px; border-radius: 6px; font-size: 12px; background: transparent; color: #666; border: 1px solid #333; cursor: pointer; text-decoration: none; white-space: nowrap; flex-shrink: 0; }
+.open-btn:hover { color: #fff; border-color: #555; }
+.frame { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 24px; }
+.frame img { max-width: 100%; max-height: calc(100vh - 100px); object-fit: contain; border-radius: 8px; box-shadow: 0 8px 48px rgba(0,0,0,.6); display: none; }
+.frame img.active { display: block; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <span class="meta">` + projectSlug + ` · ` + timestamp + `</span>
+` + tabsHTML.String() + `  <a class="open-btn" href="../` + entryFilename + `" target="_blank">Open interactive ↗</a>
+</div>
+<div class="frame" id="frame">
+` + imgsHTML.String() + `</div>
+<script>
+var tabs = document.querySelectorAll('.tab');
+var imgs = document.querySelectorAll('#frame img');
+function show(i) {
+  tabs.forEach(function(t,j){ t.classList.toggle('active', i===j); });
+  imgs.forEach(function(m,j){ m.classList.toggle('active', i===j); });
+}
+tabs.forEach(function(t,i){ t.addEventListener('click', function(){ show(i); }); });
+show(0);
+</script>
+</body>
+</html>`
+	return html, nil
+}
+
 func (t *BundleMockupTool) Execute(ctx context.Context, input json.RawMessage) (*Result, error) {
 	var in BundleMockupInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return &Result{Content: fmt.Sprintf("Invalid input: %v", err), IsError: true}, nil
+	}
+
+	// --- Gallery path: session_dir + manifest.json takes priority ---
+	if in.SessionDir != "" {
+		manifestPath := filepath.Join(in.SessionDir, "manifest.json")
+		if manifestBytes, err := os.ReadFile(manifestPath); err == nil {
+			var manifest bundleManifest
+			if jsonErr := json.Unmarshal(manifestBytes, &manifest); jsonErr == nil && len(manifest.Screens) > 0 {
+				entryFilename := filepath.Base(in.EntryHTML)
+				if entryFilename == "" || entryFilename == "." {
+					entryFilename = "index.html"
+				}
+				galleryHTML, buildErr := buildGalleryHTML(manifest, in.SessionDir, entryFilename)
+				if buildErr != nil {
+					return &Result{Content: fmt.Sprintf("Gallery build failed: %v", buildErr), IsError: true}, nil
+				}
+				outPath := filepath.Join(in.SessionDir, "bundle", "mockup.html")
+				if mkErr := os.MkdirAll(filepath.Dir(outPath), 0755); mkErr != nil {
+					return &Result{Content: fmt.Sprintf("Failed to create bundle dir: %v", mkErr), IsError: true}, nil
+				}
+				if writeErr := os.WriteFile(outPath, []byte(galleryHTML), 0644); writeErr != nil {
+					return &Result{Content: fmt.Sprintf("Failed to write gallery: %v", writeErr), IsError: true}, nil
+				}
+
+				// Compute bundle URL + push link (same logic as main path).
+				var bundleURL, sessionDirName string
+				if relPath, relErr := filepath.Rel(t.designsDir, outPath); relErr == nil && !strings.HasPrefix(relPath, "..") {
+					sessionDirName = strings.SplitN(relPath, string(filepath.Separator), 2)[0]
+					slug := filepath.Base(filepath.Dir(t.designsDir))
+					bundleURL = "/designs/project/" + slug + "/" + sessionDirName + "/bundle/mockup.html"
+				} else {
+					sessionDir2 := filepath.Dir(filepath.Dir(outPath))
+					sessionDirName = filepath.Base(sessionDir2)
+					bundleURL = "/designs/static/" + sessionDirName + "/bundle/mockup.html"
+				}
+				if t.publicURL != "" {
+					bundleURL = strings.TrimRight(t.publicURL, "/") + bundleURL
+				}
+				if t.pusher != nil {
+					_ = t.pusher.PushBundleLink(t.sessionID, bundleURL, sessionDirName, outPath)
+				}
+				return &Result{Content: ""}, nil
+			}
+		}
 	}
 
 	if in.EntryHTML == "" {

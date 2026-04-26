@@ -297,6 +297,140 @@ func TestInjectInfiniteCanvas_NoHeadFallback(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Execute — gallery path (manifest.json present)
+// ---------------------------------------------------------------------------
+
+func TestBundleMockupTool_GalleryPath_ManifestPresent(t *testing.T) {
+	sessionDir := t.TempDir()
+
+	// Create screenshots dir with a minimal 1×1 PNG.
+	screensDir := filepath.Join(sessionDir, "screenshots")
+	if err := os.MkdirAll(screensDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Minimal valid 1×1 red PNG (67 bytes).
+	minPNG := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, // IHDR chunk length + type
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // width=1, height=1
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, // bit depth, color type, ...
+		0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, // IDAT chunk
+		0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+		0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc,
+		0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, // IEND chunk
+		0x44, 0xae, 0x42, 0x60, 0x82,
+	}
+	if err := os.WriteFile(filepath.Join(screensDir, "01-dashboard.png"), minPNG, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write manifest.json.
+	manifest := `{
+		"project_path": "/Users/test/myapp",
+		"session_dir": "` + sessionDir + `",
+		"created_at": "2026-04-25T19:16:31Z",
+		"screens": [
+			{"name": "01-dashboard", "type": "screen", "breakpoint": "mobile", "viewport": {"width": 390, "height": 844}}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(sessionDir, "manifest.json"), []byte(manifest), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a dummy entry HTML (so entry_html param is valid).
+	entryPath := filepath.Join(sessionDir, "hifi.html")
+	if err := os.WriteFile(entryPath, []byte("<html><body>hi</body></html>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	falseVal := false
+	input, _ := json.Marshal(BundleMockupInput{
+		EntryHTML:  entryPath,
+		SessionDir: sessionDir,
+		EmbedCDN:   &falseVal,
+	})
+
+	tool := NewBundleMockupTool(t.TempDir())
+	result, err := tool.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("Execute returned IsError=true: %s", result.Content)
+	}
+
+	// Verify gallery file written.
+	outPath := filepath.Join(sessionDir, "bundle", "mockup.html")
+	bundled, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("gallery file not written: %v", err)
+	}
+	content := string(bundled)
+
+	// Must contain base64-encoded PNG data URI.
+	if !strings.Contains(content, "data:image/png;base64,") {
+		t.Error("expected data:image/png;base64, in gallery HTML")
+	}
+	// Must contain screen name as tab label.
+	if !strings.Contains(content, "01-dashboard") {
+		t.Error("expected screen name '01-dashboard' in gallery HTML")
+	}
+	// Must contain project slug.
+	if !strings.Contains(content, "myapp") {
+		t.Error("expected project slug 'myapp' in gallery HTML")
+	}
+	// Must contain link to original entry file.
+	if !strings.Contains(content, "hifi.html") {
+		t.Error("expected link to hifi.html in gallery HTML")
+	}
+	// Must NOT contain cc-canvas-root (no infinite canvas in gallery).
+	if strings.Contains(content, "cc-canvas-root") {
+		t.Error("gallery HTML should not contain infinite canvas shell")
+	}
+}
+
+func TestBundleMockupTool_NoManifest_FallsBackToExistingBehavior(t *testing.T) {
+	dir := t.TempDir()
+
+	// session_dir set but NO manifest.json → must fall through to normal path.
+	jsContent := `console.log("fallback");`
+	jsPath := filepath.Join(dir, "foo.js")
+	if err := os.WriteFile(jsPath, []byte(jsContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	htmlContent := `<html><body><script src="./foo.js"></script></body></html>`
+	htmlPath := filepath.Join(dir, "index.html")
+	if err := os.WriteFile(htmlPath, []byte(htmlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	falseVal := false
+	input, _ := json.Marshal(BundleMockupInput{
+		EntryHTML:  htmlPath,
+		SessionDir: dir,
+		EmbedCDN:   &falseVal,
+	})
+
+	tool := NewBundleMockupTool(dir)
+	result, err := tool.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("Execute returned IsError=true: %s", result.Content)
+	}
+
+	outPath := filepath.Join(dir, "bundle", "mockup.html")
+	bundled, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("bundle file not written: %v", err)
+	}
+	if !strings.Contains(string(bundled), `console.log("fallback")`) {
+		t.Error("expected inlined JS in fallback bundle")
+	}
+}
+
 func TestInjectInfiniteCanvas_NoBodyUnmodified(t *testing.T) {
 	// No <body> tag — canvas shell must not be injected.
 	input := `<p>no body tag here</p>`
