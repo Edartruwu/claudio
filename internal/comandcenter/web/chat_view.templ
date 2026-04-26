@@ -352,10 +352,9 @@ templ chatViewScript(sessionID string) {
 			});
 			el.addEventListener('keydown', function(e) {
 				if (e.key === 'Enter' && !e.shiftKey) {
-					// Mobile (touch-primary): Enter = newline. Desktop (hover+mouse): Enter = send.
-					// matchMedia check is reliable on Mac Safari where maxTouchPoints incorrectly returns 5.
-					var isMobile = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-					if (!isMobile) {
+					// Phone (< 768px): Enter = newline. iPad + Mac (>= 768px): Enter = send.
+					var isPhone = window.innerWidth < 768;
+					if (!isPhone) {
 						e.preventDefault();
 						document.getElementById('send-btn').click();
 					}
