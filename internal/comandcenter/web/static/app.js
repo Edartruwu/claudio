@@ -188,16 +188,10 @@
     if (near) msgs.scrollTop = msgs.scrollHeight;
   }
 
-  // Insert initial date divider if messages exist on page load.
+  // Init: set lastMsgDate so maybeInsertDateDivider doesn't re-insert on first WS message.
+  // Server already renders the "Today" badge via MessagesContainer — do NOT insert one here.
   (function () {
     if (msgs && msgs.children.length > 0) {
-      var first = msgs.firstElementChild;
-      if (first) {
-        var divider = document.createElement('div');
-        divider.className = 'flex justify-center my-2';
-        divider.innerHTML = '<span class="bg-black/20 text-white text-xs px-3 py-1 rounded-full">Today</span>';
-        msgs.insertBefore(divider, first);
-      }
       lastMsgDate = new Date().toDateString();
     }
     // Always start at the bottom when entering a chat
@@ -339,6 +333,16 @@
           var msgsEl = document.getElementById('messages');
           if (msgsEl) msgsEl.innerHTML = '';
 
+        } else if (type === 'message.deleted') {
+          var del = document.querySelector('[data-msg-id="' + data.message_id + '"]');
+          if (del) {
+            del.style.transition = 'opacity .3s, max-height .3s';
+            del.style.opacity = '0';
+            del.style.maxHeight = '0';
+            del.style.overflow = 'hidden';
+            setTimeout(function() { del.remove(); }, 300);
+          }
+
         } else if (type === 'task.created' || type === 'task.updated') {
           if (window.htmx) { htmx.trigger(document.body, 'refresh'); }
 
@@ -445,7 +449,7 @@
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') {
         // On mobile PWA resume, close info panel so user sees chat, not stale panel.
-        if (window.innerWidth < 1024 && typeof ccCloseInfoPanel === 'function') {
+        if (window.innerWidth < 1280 && typeof ccCloseInfoPanel === 'function') {
           ccCloseInfoPanel();
         }
         if (!wsConnected && !isConnecting) {
@@ -458,7 +462,7 @@
 
     // iOS PWA bfcache restore — close info panel on mobile so user sees chat.
     window.addEventListener('pageshow', function(e) {
-      if (e.persisted && window.innerWidth < 1024 && typeof ccCloseInfoPanel === 'function') {
+      if (e.persisted && window.innerWidth < 1280 && typeof ccCloseInfoPanel === 'function') {
         ccCloseInfoPanel();
       }
     });
@@ -641,3 +645,99 @@ document.addEventListener('focusin', function (e) {
     }, 300);
   }
 });
+
+// --- Message delete (WhatsApp-style) ---
+(function() {
+  var sheet = document.getElementById('msg-action-sheet');
+  var overlay = document.getElementById('msg-action-overlay');
+  var longPressTimer = null;
+  var LONG_PRESS_MS = 500;
+
+  function getRow(el) {
+    return el ? el.closest('[data-msg-id]') : null;
+  }
+
+  function getSessionId() {
+    var el = document.getElementById('chat-app');
+    return el ? el.dataset.sessionId : null;
+  }
+
+  function showSheet(msgId) {
+    if (!sheet || !overlay) return;
+    sheet.dataset.msgId = msgId;
+    overlay.classList.remove('hidden');
+    sheet.classList.remove('translate-y-full');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function hideSheet() {
+    if (!sheet || !overlay) return;
+    sheet.classList.add('translate-y-full');
+    setTimeout(function() {
+      overlay.classList.add('hidden');
+      document.body.style.overflow = '';
+    }, 200);
+  }
+
+  function deleteMsg(msgId) {
+    var sid = getSessionId();
+    if (!sid || !msgId) return;
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var headers = {};
+    if (csrfMeta) headers['X-CSRF-Token'] = csrfMeta.content;
+    fetch('/api/sessions/' + sid + '/messages/' + msgId, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: headers
+    });
+  }
+
+  // Touch: long-press opens action sheet
+  document.addEventListener('touchstart', function(e) {
+    var row = getRow(e.target);
+    if (!row) return;
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      showSheet(row.dataset.msgId);
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+
+  document.addEventListener('touchend', function() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+  document.addEventListener('touchmove', function() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+
+  // Pointer: hover shows delete button, click triggers delete
+  document.addEventListener('mouseover', function(e) {
+    var row = getRow(e.target);
+    if (!row) return;
+    var btn = row.querySelector('.msg-delete-btn');
+    if (btn) btn.classList.remove('opacity-0', 'pointer-events-none');
+  });
+  document.addEventListener('mouseout', function(e) {
+    var row = getRow(e.target);
+    if (!row) return;
+    var btn = row.querySelector('.msg-delete-btn');
+    if (btn) btn.classList.add('opacity-0', 'pointer-events-none');
+  });
+
+  // Desktop hover-button click
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.msg-delete-btn');
+    if (!btn) return;
+    var row = getRow(btn);
+    if (!row) return;
+    deleteMsg(row.dataset.msgId);
+  });
+
+  // Action sheet buttons
+  if (overlay) overlay.addEventListener('click', hideSheet);
+  window.ccDeleteSheetMsg = function() {
+    var msgId = sheet ? sheet.dataset.msgId : null;
+    hideSheet();
+    if (msgId) deleteMsg(msgId);
+  };
+  window.ccCancelSheet = hideSheet;
+})();
