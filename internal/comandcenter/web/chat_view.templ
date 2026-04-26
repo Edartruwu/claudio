@@ -17,9 +17,8 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string, pag Me
 				<button
 					type="button"
 					class="flex md:hidden items-center justify-center flex-shrink-0 w-11 h-11 min-w-[44px] bg-transparent border-none cursor-pointer text-[var(--color-textPrimary)]"
-					hx-get="/sessions"
+					hx-get="/"
 					hx-target="body"
-					hx-swap="innerHTML"
 					hx-push-url="/"
 					aria-label="Back to sessions"
 				>
@@ -202,10 +201,14 @@ templ ChatView(sess cc.Session, messages []MessageView, sessionID string, pag Me
 				<button
 					id="send-btn"
 					type="button"
-					class="flex items-center justify-center flex-shrink-0 w-11 h-11 rounded-full bg-[var(--color-brand)] border-none cursor-pointer"
+					class="flex items-center justify-center flex-shrink-0 w-11 h-11 rounded-full bg-[var(--color-brand)] border-none cursor-pointer relative"
 					onclick="ccSend()"
 				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="#0B0E0F"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+					<svg id="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="#0B0E0F"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+					<svg id="send-spinner" class="hidden animate-spin absolute" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B0E0F" stroke-width="2.5">
+						<circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+						<path d="M12 2a10 10 0 019.5 6.5" stroke-opacity="1"></path>
+					</svg>
 				</button>
 			</form>
 		</div>
@@ -474,6 +477,7 @@ templ chatViewScript(sessionID string) {
 					progressBar.style.width = '0%';
 					pctLabel.textContent = '0%';
 					_sending = true;
+					setSendLoading(true);
 					var xhr = new XMLHttpRequest();
 					xhr.open('POST', '/api/sessions/' + sessionId + '/upload');
 					xhr.upload.addEventListener('progress', function(ev) {
@@ -485,12 +489,14 @@ templ chatViewScript(sessionID string) {
 					});
 					xhr.addEventListener('load', function() {
 						_sending = false;
+						setSendLoading(false);
 						progress.classList.add('hidden');
 						if (msgInput) { msgInput.value = ''; msgInput.dispatchEvent(new Event('input')); }
 						ccClearStagedFile();
 					});
 					xhr.addEventListener('error', function() {
 						_sending = false;
+						setSendLoading(false);
 						progress.classList.add('hidden');
 						ccClearStagedFile();
 					});
@@ -498,24 +504,20 @@ templ chatViewScript(sessionID string) {
 				} else {
 					if (!text) return;
 					_sending = true;
+					setSendLoading(true);
 					htmx.ajax('POST', '/api/sessions/' + sessionId + '/message', {
 						values: { content: text },
 						swap: 'none'
-					}).then(function() { _sending = false; }).catch(function() { _sending = false; });
+					}).then(function() { _sending = false; setSendLoading(false); }).catch(function() { _sending = false; setSendLoading(false); });
 					if (msgInput) { msgInput.value = ''; msgInput.dispatchEvent(new Event('input')); }
 				}
 			};
 		})();
 
-		// --- File browser ---
+		// --- File browser (htmx-powered) ---
 		(function() {
 			var sessionId = document.getElementById('chat-app').dataset.sessionId;
 			var modal     = document.getElementById('file-browser-modal');
-			var listEl    = document.getElementById('fb-list');
-			var breadEl   = document.getElementById('fb-breadcrumb');
-			var statusEl  = document.getElementById('fb-status');
-			var fbRoot    = '';
-			var fbCurrent = '';
 
 			window.ccOpenFileBrowser = function() {
 				if (!modal) return;
@@ -531,123 +533,54 @@ templ chatViewScript(sessionID string) {
 			});
 
 			window.ccBrowse = function(path) {
-				fbCurrent = path;
-				listEl.innerHTML = '';
-				statusEl.textContent = 'Loading…';
-				statusEl.classList.remove('hidden');
-				breadEl.innerHTML = '';
-				fetch('/api/sessions/' + sessionId + '/browse?path=' + encodeURIComponent(path || '/'), { credentials: 'include' })
-					.then(function(res) {
-						if (!res.ok) return res.text().then(function(t) { throw new Error(t || res.statusText); });
-						return res.json();
-					})
-					.then(function(data) {
-						fbRoot    = data.root    || '';
-						fbCurrent = data.current || '';
-						statusEl.classList.add('hidden');
-						renderBreadcrumb(data.current, data.root);
-						renderList(data.items || [], data.current);
-					})
-					.catch(function(err) {
-						statusEl.textContent = 'Error: ' + err.message;
-					});
+				var statusEl = document.getElementById('fb-status');
+				if (statusEl) { statusEl.textContent = 'Loading…'; statusEl.classList.remove('hidden'); }
+				htmx.ajax('GET', '/partials/sessions/' + sessionId + '/browse?path=' + encodeURIComponent(path || '/'), {
+					target: '#fb-list', swap: 'innerHTML'
+				});
 			};
 
-			function relPath(abs, root) {
-				if (!root || !abs.startsWith(root)) return abs;
-				var rel = abs.slice(root.length);
-				return rel || '/';
-			}
-			function renderBreadcrumb(current, root) {
-				var rel = relPath(current, root);
-				var parts = rel.replace(/^\//, '').split('/').filter(Boolean);
-				var html = '<span style="cursor:pointer;color:#25D366;" onclick="ccBrowse(\'\')">root</span>';
-				var acc  = '';
-				parts.forEach(function(p) {
-					acc += '/' + p;
-					var captured = acc;
-					html += '<span style="color:#8E8E93;"> / </span><span style="cursor:pointer;color:#25D366;" data-path="' + captured + '">' + p + '</span>';
-				});
-				breadEl.innerHTML = html;
-				breadEl.querySelectorAll('[data-path]').forEach(function(el) {
-					el.addEventListener('click', function() { ccBrowse(el.dataset.path); });
-				});
-			}
-			function renderList(items, currentAbs) {
-				if (!items.length) {
-					listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8E8E93;font-size:14px;">Empty directory</div>';
-					return;
+			// Click handler for items rendered by server partial.
+			window.ccBrowseClick = function(el) {
+				if (el.dataset.browseIsdir === '1') {
+					ccBrowse(el.dataset.browsePath);
+				} else {
+					ccInsertFilePath(el.dataset.browseAbs);
 				}
-				var dirs  = items.filter(function(i) { return i.is_dir; });
-				var files = items.filter(function(i) { return !i.is_dir; });
-				var sorted = dirs.concat(files);
-				var html = '';
-				sorted.forEach(function(item, idx) {
-					var border = idx > 0 ? 'border-top:1px solid #2C2C2E;' : '';
-					var icon   = item.is_dir ? '📁' : '📄';
-					var size   = item.is_dir ? '' : fmtSize(item.size);
-					html += '<div data-name="' + escAttr(item.name) + '" data-isdir="' + (item.is_dir ? '1' : '0') + '" data-current="' + escAttr(currentAbs) + '"' +
-						' style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer;' + border + '"' +
-						' onmouseenter="this.style.background=\'#2C2C2E\'" onmouseleave="this.style.background=\'transparent\'">' +
-						'<span style="font-size:20px;flex-shrink:0;">' + icon + '</span>' +
-						'<span style="flex:1;min-width:0;color:#fff;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(item.name) + '</span>' +
-						(size ? '<span style="color:#8E8E93;font-size:12px;flex-shrink:0;">' + size + '</span>' : '') +
-						'</div>';
-				});
-				listEl.innerHTML = html;
-				listEl.querySelectorAll('[data-name]').forEach(function(el) {
-					el.addEventListener('click', function() {
-						var name    = el.dataset.name;
-						var isDir   = el.dataset.isdir === '1';
-						var cur     = el.dataset.current;
-						var absPath = cur.replace(/\/+$/, '') + '/' + name;
-						var relToRoot = relPath(absPath, fbRoot);
-						if (isDir) {
-							ccBrowse(relToRoot);
-						} else {
-							var msgInput = document.getElementById('msg-input');
-							if (msgInput) {
-								var existing = msgInput.value;
-								msgInput.value = (existing ? existing.trimEnd() + ' ' : '') + '@' + absPath + ' ';
-								msgInput.focus();
-							}
-							ccCloseFileBrowser();
-						}
-					});
-				});
-			}
-			function fmtSize(bytes) {
-				if (bytes < 1024) return bytes + ' B';
-				if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-				return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-			}
-			function escHtml(s) {
-				return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-			}
-			function escAttr(s) {
-				return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-			}
+			};
+
+			window.ccInsertFilePath = function(absPath) {
+				var msgInput = document.getElementById('msg-input');
+				if (msgInput) {
+					var existing = msgInput.value;
+					msgInput.value = (existing ? existing.trimEnd() + ' ' : '') + '@' + absPath + ' ';
+					msgInput.focus();
+				}
+				ccCloseFileBrowser();
+			};
 		})();
 
-		// --- @mention autocomplete ---
+		// --- @mention autocomplete (htmx-powered) ---
 		(function() {
 			var input    = document.getElementById('msg-input');
 			var dropdown = document.getElementById('mention-dropdown');
 			if (!input || !dropdown) return;
 			var debounceTimer = null;
-			var cachedSessions = null;
-			var cacheExpiry = 0;
+
 			function closeDrop() {
 				dropdown.classList.add('hidden');
 				dropdown.innerHTML = '';
 			}
+
 			function getMentionPrefix(val) {
 				var parts = val.split(/\s/);
 				var last = parts[parts.length - 1];
 				if (last.charAt(0) === '@') return last.slice(1);
 				return null;
 			}
-			function insertMention(name) {
+
+			// Insert selected mention into input.
+			window.ccInsertMention = function(name) {
 				var val = input.value;
 				var idx = val.lastIndexOf('@');
 				if (idx !== -1) {
@@ -655,44 +588,21 @@ templ chatViewScript(sessionID string) {
 				}
 				closeDrop();
 				input.focus();
-			}
-			function renderDrop(sessions, prefix) {
-				var pfx = prefix.toLowerCase();
-				var active = sessions.filter(function(s) {
-					return s.status === 'active' && s.name.toLowerCase().startsWith(pfx);
-				}).slice(0, 5);
-				if (active.length === 0) { closeDrop(); return; }
-				var colors = ['#25D366','#128C7E','#075E54','#34B7F1','#8E44AD'];
-				function avatarColor(name) { return colors[name.length % colors.length]; }
-				function firstChar(name)   { return name.charAt(0).toUpperCase(); }
-				dropdown.innerHTML = active.map(function(s, i) {
-					var borderTop = i > 0 ? 'border-top:1px solid #2C2C2E;' : '';
-					return '<button type="button" data-name="' + s.name.replace(/"/g,'&quot;') + '" ' +
-						'style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;background:transparent;border:none;cursor:pointer;' + borderTop + '"' +
-						' onmouseenter="this.style.background=\'#2C2C2E\'" onmouseleave="this.style.background=\'transparent\'">' +
-						'<div style="width:32px;height:32px;border-radius:50%;background:' + avatarColor(s.name) + ';display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;flex-shrink:0;">' + firstChar(s.name) + '</div>' +
-						'<span style="color:#fff;font-size:14px;">' + s.name.replace(/</g,'&lt;') + '</span>' +
-						'</button>';
-				}).join('');
-				dropdown.classList.remove('hidden');
-				dropdown.querySelectorAll('button').forEach(function(btn) {
-					btn.addEventListener('click', function(e) {
-						e.preventDefault();
-						insertMention(btn.dataset.name);
-					});
-				});
-			}
+			};
+
 			function doFetch(prefix) {
-				var now = Date.now();
-				if (cachedSessions && now < cacheExpiry) { renderDrop(cachedSessions, prefix); return; }
-				fetch('/api/sessions/list', { credentials: 'include' }).then(function(res) {
-					return res.json();
-				}).then(function(data) {
-					cachedSessions = data;
-					cacheExpiry = Date.now() + 10000;
-					renderDrop(data, prefix);
+				htmx.ajax('GET', '/partials/mentions?q=' + encodeURIComponent(prefix), {
+					target: '#mention-dropdown', swap: 'innerHTML'
+				}).then(function() {
+					// Show dropdown if it has children, hide if empty.
+					if (dropdown.children.length > 0) {
+						dropdown.classList.remove('hidden');
+					} else {
+						closeDrop();
+					}
 				}).catch(function() { closeDrop(); });
 			}
+
 			input.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeDrop(); });
 			input.addEventListener('keyup', function(e) {
 				if (e.key === 'Escape') return;
@@ -707,6 +617,7 @@ templ chatViewScript(sessionID string) {
 		})();
 
 		// --- Interrupt ---
+		// --- Interrupt ---
 		function ccToast(msg, ok) {
 			var d = document.createElement('div');
 			d.textContent = msg;
@@ -714,7 +625,10 @@ templ chatViewScript(sessionID string) {
 			document.body.appendChild(d);
 			setTimeout(function() { d.style.opacity = '0'; setTimeout(function() { d.remove(); }, 400); }, 2500);
 		}
+		var _interrupting = false;
 		window.ccInterrupt = async function() {
+			if (_interrupting) return;
+			_interrupting = true;
 			document.getElementById('plus-popover').classList.add('hidden');
 			var sessionId = document.getElementById('chat-app').dataset.sessionId;
 			var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -729,32 +643,37 @@ templ chatViewScript(sessionID string) {
 				else if (res.status === 404) ccToast('Session not found', false);
 				else ccToast('Request failed', false);
 			} catch (e) { ccToast('Request failed', false); }
+			_interrupting = false;
 		};
 
+		// --- Send button loading state helpers ---
+		function setSendLoading(on) {
+			var btn = document.getElementById('send-btn');
+			var icon = document.getElementById('send-icon');
+			var spinner = document.getElementById('send-spinner');
+			if (btn) btn.disabled = on;
+			if (icon) icon.classList.toggle('hidden', on);
+			if (spinner) spinner.classList.toggle('hidden', !on);
+		}
+
 		// --- Send slash command ---
-		window.ccSendCommand = async function(cmd) {
+		window.ccSendCommand = function(cmd) {
 			document.getElementById('plus-popover').classList.add('hidden');
 			var sessionId = document.getElementById('chat-app').dataset.sessionId;
 			var isCompact = cmd === '/compact' || cmd.startsWith('/compact ');
 			var loader = document.getElementById('compact-loading');
 			if (isCompact && loader) loader.style.display = '';
-			try {
-				var params = new URLSearchParams();
-				params.append('content', cmd);
-				var res = await fetch('/api/sessions/' + sessionId + '/message', {
-					method: 'POST',
-					credentials: 'include',
-					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-					body: params.toString()
-				});
-				if (!res.ok) {
-					if (loader) loader.style.display = 'none';
-					ccToast('Failed', false);
-				}
-			} catch (e) {
+			setSendLoading(true);
+			htmx.ajax('POST', '/api/sessions/' + sessionId + '/message', {
+				values: { content: cmd },
+				swap: 'none'
+			}).then(function() {
+				setSendLoading(false);
+			}).catch(function() {
+				setSendLoading(false);
 				if (loader) loader.style.display = 'none';
 				ccToast('Request failed', false);
-			}
+			});
 		};
 
 		// --- Push notification bell ---

@@ -76,6 +76,10 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /designs/static/{id}/{rest...}", ws.uiAuth(http.HandlerFunc(ws.handleDesignStatic)))
 	// Project-scoped design assets: ~/.claudio/projects/{slug}/designs/{id}/{rest...}
 	mux.Handle("GET /designs/project/{slug}/{id}/{rest...}", ws.uiAuth(http.HandlerFunc(ws.handleDesignProject)))
+
+	// File browser + mention autocomplete partials.
+	mux.Handle("GET /partials/sessions/{session_id}/browse", ws.uiAuth(http.HandlerFunc(ws.handlePartialBrowse)))
+	mux.Handle("GET /partials/mentions", ws.uiAuth(http.HandlerFunc(ws.handlePartialMentions)))
 }
 
 // SetVAPIDPublicKey stores the VAPID public key for the browser subscription flow.

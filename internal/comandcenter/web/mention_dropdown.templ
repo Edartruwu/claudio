@@ -1,0 +1,27 @@
+package web
+
+// MentionDropdown renders the @mention autocomplete dropdown items.
+// Returned by GET /partials/mentions?q=<prefix>
+templ MentionDropdown(sessions []mentionSession) {
+	if len(sessions) == 0 {
+		<!-- empty: JS will hide the dropdown -->
+	} else {
+		for i, s := range sessions {
+			<button
+				type="button"
+				data-name={ s.Name }
+				onclick="ccInsertMention(this.dataset.name)"
+				class={ "flex items-center gap-[10px] w-full px-[14px] py-[10px] bg-transparent border-none cursor-pointer text-left hover:bg-[var(--color-surfaceHigh)]",
+					templ.KV("border-t border-t-[var(--color-border)]", i > 0) }
+			>
+				<div
+					class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-[13px] flex-shrink-0"
+					style={ "background:" + AvatarColor(s.Name) }
+				>
+					{ FirstChar(s.Name) }
+				</div>
+				<span class="text-[var(--color-textPrimary)] text-sm">{ s.Name }</span>
+			</button>
+		}
+	}
+}

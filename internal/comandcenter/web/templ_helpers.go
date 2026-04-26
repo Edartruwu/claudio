@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -249,6 +250,93 @@ func FilterNonImages(atts []cc.Attachment) []cc.Attachment {
 		}
 	}
 	return out
+}
+
+// --- File browser helpers ---
+
+// breadcrumbSegment is a single segment in the file browser breadcrumb.
+type breadcrumbSegment struct {
+	Name string
+	Path string
+}
+
+// breadcrumbSegments splits a path relative to root into clickable segments.
+func breadcrumbSegments(currentPath, rootPath string) []breadcrumbSegment {
+	rel := relBrowsePath(currentPath, rootPath)
+	rel = strings.TrimPrefix(rel, "/")
+	if rel == "" {
+		return nil
+	}
+	parts := strings.Split(rel, "/")
+	segs := make([]breadcrumbSegment, 0, len(parts))
+	acc := ""
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		acc += "/" + p
+		segs = append(segs, breadcrumbSegment{Name: p, Path: acc})
+	}
+	return segs
+}
+
+// relBrowsePath returns abs relative to root, or abs if not under root.
+func relBrowsePath(abs, root string) string {
+	if root == "" || !strings.HasPrefix(abs, root) {
+		return abs
+	}
+	rel := abs[len(root):]
+	if rel == "" {
+		return "/"
+	}
+	return rel
+}
+
+// joinPath joins a directory path and a filename.
+func joinPath(dir, name string) string {
+	dir = strings.TrimSuffix(dir, "/")
+	return dir + "/" + name
+}
+
+// sortedBrowseItems returns items sorted: directories first, then files.
+func sortedBrowseItems(items []browseItem) []browseItem {
+	sorted := make([]browseItem, len(items))
+	copy(sorted, items)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].IsDir != sorted[j].IsDir {
+			return sorted[i].IsDir
+		}
+		return strings.ToLower(sorted[i].Name) < strings.ToLower(sorted[j].Name)
+	})
+	return sorted
+}
+
+// fmtFileSize formats bytes as human-readable size.
+func fmtFileSize(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	}
+	return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+}
+
+// boolStr returns "1" for true, "0" for false (for data attributes).
+func boolStr(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}
+
+// --- Mention dropdown helpers ---
+
+// mentionSession is a minimal session for the mention dropdown.
+type mentionSession struct {
+	ID     string
+	Name   string
+	Status string
 }
 
 

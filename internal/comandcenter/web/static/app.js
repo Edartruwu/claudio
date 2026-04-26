@@ -215,19 +215,17 @@
   function reloadMessages() {
     if (!msgs || _streaming) return;
     _reloading = true;
-    fetch('/partials/messages/' + sessionId, { credentials: 'include' })
-      .then(function(res) { return res.text(); })
-      .then(function(html) {
-        if (_streaming) { _reloading = false; return; } // streaming started during fetch — don't clobber
-        var near = isNearBottom();
-        msgs.innerHTML = html;
-        _reloading = false;
-        var bubble = document.getElementById('typing-bubble');
-        if (bubble) msgs.appendChild(bubble);
-        if (near) msgs.scrollTop = msgs.scrollHeight;
-        lastMsgDate = new Date().toDateString();
-      })
-      .catch(function() { _reloading = false; });
+    var near = isNearBottom();
+    htmx.ajax('GET', '/partials/messages/' + sessionId, {
+      target: '#messages', swap: 'innerHTML'
+    }).then(function() {
+      _reloading = false;
+      if (_streaming) return;
+      var bubble = document.getElementById('typing-bubble');
+      if (bubble) msgs.appendChild(bubble);
+      if (near) msgs.scrollTop = msgs.scrollHeight;
+      lastMsgDate = new Date().toDateString();
+    }).catch(function() { _reloading = false; });
   }
 
   function initWS() {
@@ -346,23 +344,22 @@
 
         } else if (type === 'messages.reload') {
           if (_streaming) return;
-          var msgsEl = document.getElementById('messages');
-          if (msgsEl && sessionId) {
+          if (sessionId) {
             _reloading = true;
-            fetch('/partials/messages/' + sessionId, { credentials: 'include' })
-              .then(function(r) { return r.text(); })
-              .then(function(html) { var nb = msgsEl.scrollTop >= msgsEl.scrollHeight - msgsEl.clientHeight - 100; msgsEl.innerHTML = html; _reloading = false; if (nb) msgsEl.scrollTop = msgsEl.scrollHeight; })
+            var msgsEl = document.getElementById('messages');
+            var nb = msgsEl && msgsEl.scrollTop >= msgsEl.scrollHeight - msgsEl.clientHeight - 100;
+            htmx.ajax('GET', '/partials/messages/' + sessionId, {
+              target: '#messages', swap: 'innerHTML'
+            }).then(function() { _reloading = false; if (nb) { var m = document.getElementById('messages'); if (m) m.scrollTop = m.scrollHeight; } })
               .catch(function() { _reloading = false; });
           }
 
         } else if (type === 'messages.compacted') {
           if (_streaming) return;
-          var msgsEl = document.getElementById('messages');
-          if (msgsEl && sessionId) {
-            fetch('/partials/messages/' + sessionId, { credentials: 'include' })
-              .then(function(r) { return r.text(); })
-              .then(function(html) { msgsEl.innerHTML = html; msgsEl.scrollTop = msgsEl.scrollHeight; })
-              .catch(function() {});
+          if (sessionId) {
+            htmx.ajax('GET', '/partials/messages/' + sessionId, {
+              target: '#messages', swap: 'innerHTML'
+            }).then(function() { var m = document.getElementById('messages'); if (m) m.scrollTop = m.scrollHeight; });
           }
           var loader = document.getElementById('compact-loading');
           if (loader) loader.style.display = 'none';
@@ -378,15 +375,9 @@
 
         } else if (type === 'agent.log') {
           if (window._ccLogAgent && data.agent_name === window._ccLogAgent.name && data.session_id === window._ccLogAgent.sessionID) {
-            fetch('/chat/' + data.session_id + '/agents/' + encodeURIComponent(data.agent_name) + '/logs', {credentials:'include'})
-              .then(function(r){return r.text();})
-              .then(function(text){
-                var body = document.getElementById('agent-log-content');
-                if (!body) return;
-                var near = body.scrollTop >= body.scrollHeight - body.clientHeight - 50;
-                body.textContent = text;
-                if (near) body.scrollTop = body.scrollHeight;
-              });
+            htmx.ajax('GET', '/chat/' + data.session_id + '/agents/' + encodeURIComponent(data.agent_name) + '/logs', {
+              target: '#agent-log-content', swap: 'innerHTML'
+            });
           }
 
         } else if (type === 'config.changed') {

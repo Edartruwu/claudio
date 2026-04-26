@@ -1330,6 +1330,94 @@ func (ws *WebServer) handleBrowseSession(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// handlePartialBrowse renders the file browser as an HTML partial.
+// GET /partials/sessions/{session_id}/browse?path=<relative-path>
+func (ws *WebServer) handlePartialBrowse(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	sess, err := ws.storage.GetSession(sessionID)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if sess.Path == "" {
+		http.Error(w, "session has no path set", http.StatusBadRequest)
+		return
+	}
+
+	root, err := filepath.Abs(sess.Path)
+	if err != nil {
+		http.Error(w, "invalid session path", http.StatusInternalServerError)
+		return
+	}
+
+	subPath := r.URL.Query().Get("path")
+	var target string
+	if subPath == "" || subPath == "/" {
+		target = root
+	} else {
+		target = filepath.Join(root, filepath.FromSlash(subPath))
+		rel, err := filepath.Rel(root, target)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			http.Error(w, "path traversal not allowed", http.StatusForbidden)
+			return
+		}
+	}
+
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		http.Error(w, "cannot read directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]browseItem, 0, len(entries))
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		items = append(items, browseItem{
+			Name:     e.Name(),
+			IsDir:    e.IsDir(),
+			Size:     info.Size(),
+			Modified: info.ModTime(),
+		})
+	}
+
+	FileBrowserPartial(items, target, root, sessionID).Render(r.Context(), w)
+}
+
+// handlePartialMentions renders the @mention autocomplete dropdown as an HTML partial.
+// GET /partials/mentions?q=<prefix>
+func (ws *WebServer) handlePartialMentions(w http.ResponseWriter, r *http.Request) {
+	sessions, err := ws.storage.ListSessions("")
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+
+	prefix := strings.ToLower(r.URL.Query().Get("q"))
+	var filtered []mentionSession
+	for _, s := range sessions {
+		if s.Status != "active" {
+			continue
+		}
+		if prefix != "" && !strings.HasPrefix(strings.ToLower(s.Name), prefix) {
+			continue
+		}
+		filtered = append(filtered, mentionSession{
+			ID:     s.ID,
+			Name:   s.Name,
+			Status: s.Status,
+		})
+		if len(filtered) >= 5 {
+			break
+		}
+	}
+
+	w.Header().Set("Cache-Control", "max-age=10")
+	MentionDropdown(filtered).Render(r.Context(), w)
+}
+
 // handleDesignGallery lists all design sessions from project-scoped dirs.
 // Scans ~/.claudio/projects/*/designs/ for all projects.
 func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request) {
