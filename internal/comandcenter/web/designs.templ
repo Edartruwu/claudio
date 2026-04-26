@@ -150,7 +150,7 @@ templ designCard(sess DesignSession, publicURL string) {
 			<div class="flex gap-2 mt-auto pt-1">
 				if sess.HasBundle {
 					<a
-						href={ templ.SafeURL(fmt.Sprintf("%s/designs/project/%s/", publicURL, sess.ID)) }
+						href={ templ.SafeURL(fmt.Sprintf("%s/designs/project/%s/bundle/mockup.html", publicURL, sess.ID)) }
 						target="_blank"
 						rel="noopener"
 						class="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
