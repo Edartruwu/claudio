@@ -307,6 +307,7 @@ templ layoutCSS() {
 		/* Momentum scrolling on all scroll containers */
 		.overflow-y-auto, [class*="overflow-y"] { -webkit-overflow-scrolling: touch; }
 		/* Session row tap feedback */
+		.swipe-row { isolation: isolate; overflow: hidden; }
 		.swipe-content { transition: background-color 0.15s; }
 		.swipe-content:active { background-color: var(--color-surfaceHigh) !important; }
 		@media (hover: hover) {
@@ -885,27 +886,42 @@ templ filterAndSwipeScript() {
 		var THRESHOLD = 60;
 		var ACTION_W  = 160;
 
+		function closeOtherRows(except) {
+			document.querySelectorAll('.swipe-row').forEach(function(r) {
+				if (r === except) return;
+				var c = r.querySelector('.swipe-content');
+				if (c && c._swipeOpen) {
+					c.style.transition = 'transform 0.2s ease';
+					c.style.transform = 'translateX(0)';
+					c._swipeOpen = false;
+				}
+			});
+		}
+
 		function initSwipeRow(row) {
 			if (row.dataset.swipeInit) return;
 			row.dataset.swipeInit = '1';
 
 			var content = row.querySelector('.swipe-content');
 			if (!content) return;
+			content._swipeOpen = false;
 
-			var startX = 0, startY = 0, baseX = 0;
-			var isOpen = false, dragging = false;
+			var startX = 0, startY = 0, baseX = 0, lastX = 0, lastT = 0;
+			var dragging = false;
 
 			function snapTo(x, animate) {
-				content.style.transition = animate ? 'transform 0.2s ease' : 'none';
+				content.style.transition = animate ? 'transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)' : 'none';
 				content.style.transform = 'translateX(' + x + 'px)';
-				isOpen = x < 0;
+				content._swipeOpen = x < 0;
 			}
 
 			content.addEventListener('touchstart', function (e) {
 				var t = e.touches[0];
 				startX = t.clientX;
 				startY = t.clientY;
-				baseX  = isOpen ? -ACTION_W : 0;
+				lastX  = t.clientX;
+				lastT  = Date.now();
+				baseX  = content._swipeOpen ? -ACTION_W : 0;
 				dragging = false;
 				content.style.transition = 'none';
 			}, { passive: true });
@@ -914,20 +930,31 @@ templ filterAndSwipeScript() {
 				var t = e.touches[0];
 				var dx = t.clientX - startX;
 				var dy = t.clientY - startY;
-				if (!dragging && Math.abs(dy) > Math.abs(dx)) return;
-				dragging = true;
+				if (!dragging) {
+					if (Math.abs(dy) > Math.abs(dx)) return; // vertical scroll — bail
+					if (Math.abs(dx) < 4) return;            // not yet a swipe
+					dragging = true;
+					closeOtherRows(row);
+				}
 				e.preventDefault();
 				var nx = Math.max(-ACTION_W, Math.min(0, baseX + dx));
 				content.style.transform = 'translateX(' + nx + 'px)';
+				lastX = t.clientX;
+				lastT = Date.now();
 			}, { passive: false });
 
 			content.addEventListener('touchend', function (e) {
 				if (!dragging) return;
 				var dx = e.changedTouches[0].clientX - startX;
-				if (isOpen) {
-					snapTo(dx > THRESHOLD ? 0 : -ACTION_W, true);
+				var dt = Date.now() - lastT;
+				var velocity = dt > 0 ? (e.changedTouches[0].clientX - lastX) / dt : 0; // px/ms
+				var fastSwipe = Math.abs(velocity) > 0.4;
+				if (content._swipeOpen) {
+					// close: swipe right fast OR past threshold
+					snapTo((fastSwipe && velocity > 0) || dx > THRESHOLD ? 0 : -ACTION_W, true);
 				} else {
-					snapTo(dx < -THRESHOLD ? -ACTION_W : 0, true);
+					// open: swipe left fast OR past threshold
+					snapTo((fastSwipe && velocity < 0) || dx < -THRESHOLD ? -ACTION_W : 0, true);
 				}
 			}, { passive: true });
 		}
