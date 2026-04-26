@@ -1,0 +1,55 @@
+package web
+
+// FileBrowserPartial renders the file browser list + breadcrumb as an HTML partial.
+// Returned by GET /partials/sessions/{session_id}/browse?path=...
+templ FileBrowserPartial(items []browseItem, currentPath string, rootPath string, sessionID string) {
+	<!-- Breadcrumb (OOB swap into #fb-breadcrumb) -->
+	<div id="fb-breadcrumb" hx-swap-oob="innerHTML:#fb-breadcrumb">
+		@fileBreadcrumb(currentPath, rootPath)
+	</div>
+	<!-- Status hidden on success -->
+	<div id="fb-status" class="hidden" hx-swap-oob="outerHTML:#fb-status"></div>
+	<!-- File list -->
+	if len(items) == 0 {
+		<div class="text-center p-6 text-[var(--color-textMuted)] text-sm">Empty directory</div>
+	} else {
+		for i, item := range sortedBrowseItems(items) {
+			<div
+				data-browse-name={ item.Name }
+				data-browse-isdir={ boolStr(item.IsDir) }
+				data-browse-path={ relBrowsePath(joinPath(currentPath, item.Name), rootPath) }
+				data-browse-abs={ joinPath(currentPath, item.Name) }
+				onclick="ccBrowseClick(this)"
+				class={ "flex items-center gap-3 px-[18px] py-[13px] cursor-pointer hover:bg-[var(--color-surfaceHigh)]",
+					templ.KV("border-t border-t-[var(--color-border)]", i > 0) }
+			>
+				<span class="text-xl flex-shrink-0">
+					if item.IsDir {
+						📁
+					} else {
+						📄
+					}
+				</span>
+				<span class="flex-1 min-w-0 text-[var(--color-textPrimary)] text-sm overflow-hidden text-ellipsis whitespace-nowrap">
+					{ item.Name }
+				</span>
+				if !item.IsDir {
+					<span class="text-[var(--color-textMuted)] text-xs flex-shrink-0">
+						{ fmtFileSize(item.Size) }
+					</span>
+				}
+			</div>
+		}
+	}
+}
+
+// fileBreadcrumb renders clickable path segments.
+templ fileBreadcrumb(currentPath string, rootPath string) {
+	<span class="cursor-pointer text-[var(--color-brand)]" onclick="ccBrowse('')">root</span>
+	for _, seg := range breadcrumbSegments(currentPath, rootPath) {
+		<span class="text-[var(--color-textMuted)]"> / </span>
+		<span class="cursor-pointer text-[var(--color-brand)]" data-browse-nav={ seg.Path } onclick="ccBrowse(this.dataset.browseNav)">
+			{ seg.Name }
+		</span>
+	}
+}
