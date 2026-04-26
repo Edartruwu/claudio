@@ -701,7 +701,15 @@ $ARGUMENTS
    - Run the specific failing test to verify the fix
    - Run the full suite again to check for regressions
 
-5. **Report results**: Which tests passed/failed, what you fixed, any remaining issues`
+5. **Report results**: Which tests passed/failed, what you fixed, any remaining issues
+
+## Design Fidelity Check (if task came from a design handoff)
+
+If the task includes implementing a UI from a design handoff spec, after all tests pass call ` + "`ReviewDesignFidelity`" + ` to verify the implementation matches the original design:
+- Pass each screen name mapped to either a live URL (` + "`url`" + `) or a local template path (` + "`template_path`" + `)
+- Pass threshold is **score ≥ 75**
+- If score < 75: identify which screens failed, fix the implementation, re-run until passing
+- Include fidelity scores in your final report`
 
 var securityReviewSkillContent = `You are being asked to perform an OWASP Top 10 security review.
 
@@ -2328,9 +2336,7 @@ Call ` + "`ReviewDesignFidelity`" + ` with:
 
 Pass threshold: ` + "`overall_score >= 75`" + `. If score is below 75, report which screens failed and what differs visually.
 
-**Note:** ` + "`ReviewDesignFidelity`" + ` requires Node.js and Playwright. If they are not installed, skip this step and note it in the report.
-
-## Step 5 — Confirm
+## Step 4 — Confirm
 
 Report to the user:
 - Session used (name + path)
@@ -2338,7 +2344,10 @@ Report to the user:
 - Files generated (spec.md, tokens.css, tailwind.config.js, etc.)
 - Component count + token count from spec
 - Any accessibility or contrast issues flagged
-- Fidelity score (if Step 4 ran) — pass/fail per screen`
+
+## Next Steps (tell the user)
+
+Once the dev agent has implemented the UI, verify fidelity by running ` + "`/test`" + ` and asking it to call ` + "`ReviewDesignFidelity`" + ` against the live implementation. Pass threshold is score ≥ 75.`
 
 var hifiSkillContent = `You are generating high-fidelity mockups with named design variations and a live Tweaks panel. Follow this workflow exactly.
 
