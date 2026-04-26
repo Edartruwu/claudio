@@ -39,10 +39,13 @@ type Message struct {
 type Task struct {
 	ID          string
 	SessionID   string
-	Title       string
+	Subject     string
 	Description string // optional markdown description
 	Status      string
 	AssignedTo  string
+	Blocks      []string
+	BlockedBy   []string
+	Metadata    map[string]string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

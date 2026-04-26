@@ -44,7 +44,7 @@ func (b *TodosBlock) Render(width, maxHeight int) string {
 			lines = append(lines, todoDimStyle.Render(fmt.Sprintf("  +%d more", len(items)-i)))
 			break
 		}
-		label := t.Title
+		label := t.Subject
 		if len(label) > maxLabelW {
 			label = label[:maxLabelW-1] + "…"
 		}

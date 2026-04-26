@@ -181,10 +181,13 @@ func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		title TEXT NOT NULL DEFAULT '',
+		subject TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
+		blocks TEXT NOT NULL DEFAULT '[]',
+		blocked_by TEXT NOT NULL DEFAULT '[]',
+		metadata TEXT NOT NULL DEFAULT '{}',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (id, session_id)
@@ -194,7 +197,7 @@ func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 
 	now := time.Now()
 	_, err := raw.Exec(`
-		INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
+		INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"tt-1", "sess-native", "Implement auth middleware",
 		"**Details:**\n- JWT\n- 24h expiry", "in_progress", "prab", now, now)
@@ -222,8 +225,8 @@ func TestMigration_SharedDB_TasksFromNativeTable(t *testing.T) {
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task from team_tasks, got %d", len(tasks))
 	}
-	if tasks[0].Title != "Implement auth middleware" {
-		t.Errorf("Title: got %q, want %q", tasks[0].Title, "Implement auth middleware")
+	if tasks[0].Subject != "Implement auth middleware" {
+		t.Errorf("Subject: got %q, want %q", tasks[0].Subject, "Implement auth middleware")
 	}
 	if tasks[0].Description != "**Details:**\n- JWT\n- 24h expiry" {
 		t.Errorf("Description: got %q, want %q", tasks[0].Description, "**Details:**\n- JWT\n- 24h expiry")
@@ -251,10 +254,13 @@ func TestMigration_SharedDB_DeletedTasksFiltered(t *testing.T) {
 	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL,
-		title TEXT NOT NULL DEFAULT '',
+		subject TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT NOT NULL DEFAULT '',
+		blocks TEXT NOT NULL DEFAULT '[]',
+		blocked_by TEXT NOT NULL DEFAULT '[]',
+		metadata TEXT NOT NULL DEFAULT '{}',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (id, session_id)
@@ -269,7 +275,7 @@ func TestMigration_SharedDB_DeletedTasksFiltered(t *testing.T) {
 		{"t3", "done"},
 	} {
 		if _, err := raw.Exec(
-			`INSERT INTO team_tasks (id, session_id, title, status, created_at, updated_at)
+			`INSERT INTO team_tasks (id, session_id, subject, status, created_at, updated_at)
 			 VALUES (?, 'sess-del', ?, ?, ?, ?)`,
 			row.id, "task "+row.id, row.status, now, now,
 		); err != nil {

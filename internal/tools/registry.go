@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/services/lsp"
@@ -333,6 +334,17 @@ func (r *Registry) SetBus(b *bus.Bus) {
 	}
 	// Inject bus into TaskStore for task completion events
 	GlobalTaskStore.bus = b
+}
+
+// SetSmallModelClient injects the API client and small model name into TaskUpdateTool
+// for the verification nudge feature.
+func (r *Registry) SetSmallModelClient(client *api.Client, smallModel string) {
+	if t, err := r.Get("TaskUpdate"); err == nil {
+		if tu, ok := t.(*TaskUpdateTool); ok {
+			tu.APIClient = client
+			tu.SmallModel = smallModel
+		}
+	}
 }
 
 // Names returns the names of all registered tools.

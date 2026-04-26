@@ -193,6 +193,14 @@ func (db *DB) migrate() error {
 		`ALTER TABLE team_tasks RENAME COLUMN subject TO title`,
 		// 24 — drop cc_tasks; team_tasks is now the single source of truth
 		`DROP TABLE IF EXISTS cc_tasks`,
+		// 25 — dependency graph: blocks column (JSON array of task IDs)
+		`ALTER TABLE team_tasks ADD COLUMN blocks TEXT NOT NULL DEFAULT '[]'`,
+		// 26 — dependency graph: blocked_by column (JSON array of task IDs)
+		`ALTER TABLE team_tasks ADD COLUMN blocked_by TEXT NOT NULL DEFAULT '[]'`,
+		// 27 — arbitrary key-value metadata on tasks
+		`ALTER TABLE team_tasks ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'`,
+		// 28 — rename title back to subject (reverses migration #23)
+		`ALTER TABLE team_tasks RENAME COLUMN title TO subject`,
 	}
 
 	for i, m := range migrations {

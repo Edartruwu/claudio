@@ -117,7 +117,7 @@ func TestNewEnvelope_ToolUsePayload(t *testing.T) {
 func TestNewEnvelope_TaskCreatedPayload(t *testing.T) {
 	payload := TaskCreatedPayload{
 		ID:         "task-123",
-		Title:      "Fix bug",
+		Subject:    "Fix bug",
 		AssignedTo: "alice",
 		Status:     "in_progress",
 	}
@@ -146,7 +146,7 @@ func TestNewEnvelope_TaskCreatedPayload(t *testing.T) {
 		t.Fatalf("UnmarshalPayload failed: %v", err)
 	}
 
-	if got.ID != payload.ID || got.Title != payload.Title || got.AssignedTo != payload.AssignedTo || got.Status != payload.Status {
+	if got.ID != payload.ID || got.Subject != payload.Subject || got.AssignedTo != payload.AssignedTo || got.Status != payload.Status {
 		t.Errorf("Payload mismatch: got %+v, want %+v", got, payload)
 	}
 }

@@ -24,9 +24,9 @@ func freshStore() *TaskStore {
 
 func TestTaskStore_CompleteByAssignee(t *testing.T) {
 	store := freshStore()
-	store.tasks["1"] = &Task{ID: "1", Title: "task-a", Status: "pending", AssignedTo: "agent-x"}
-	store.tasks["2"] = &Task{ID: "2", Title: "task-b", Status: "in_progress", AssignedTo: "agent-x"}
-	store.tasks["3"] = &Task{ID: "3", Title: "task-c", Status: "pending", AssignedTo: "agent-y"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "task-a", Status: "pending", AssignedTo: "agent-x"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "task-b", Status: "in_progress", AssignedTo: "agent-x"}
+	store.tasks["3"] = &Task{ID: "3", Subject: "task-c", Status: "pending", AssignedTo: "agent-y"}
 
 	affected := store.CompleteByAssignee("agent-x", "completed", "")
 	if len(affected) != 2 {
@@ -96,7 +96,7 @@ func TestTaskUpdateTool_AcceptsSnakeCaseTaskID(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Title: "test", Status: "pending"}
+	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Subject: "test", Status: "pending"}
 
 	tool := &TaskUpdateTool{}
 	input := json.RawMessage(`{"task_id": "5", "status": "completed"}`)
@@ -118,7 +118,7 @@ func TestTaskUpdateTool_StripsHashPrefix(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["7"] = &Task{ID: "7", Title: "test", Status: "pending"}
+	GlobalTaskStore.tasks["7"] = &Task{ID: "7", Subject: "test", Status: "pending"}
 
 	tool := &TaskUpdateTool{}
 	input := json.RawMessage(`{"taskId": "#7", "status": "in_progress"}`)
@@ -140,8 +140,8 @@ func TestTaskUpdateTool_CamelCaseTakesPriority(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Title: "a", Status: "pending"}
-	GlobalTaskStore.tasks["2"] = &Task{ID: "2", Title: "b", Status: "pending"}
+	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Subject: "a", Status: "pending"}
+	GlobalTaskStore.tasks["2"] = &Task{ID: "2", Subject: "b", Status: "pending"}
 
 	tool := &TaskUpdateTool{}
 	// Both taskId and task_id present — camelCase should win
@@ -207,8 +207,8 @@ func TestTaskCreateTool_CreatesTask(t *testing.T) {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
 	task := tasks[0]
-	if task.Title != "Write tests" {
-		t.Errorf("subject = %q", task.Title)
+	if task.Subject != "Write tests" {
+		t.Errorf("subject = %q", task.Subject)
 	}
 	if task.AssignedTo != "agent-1" {
 		t.Errorf("assigned_to = %q, expected agent-1", task.AssignedTo)
@@ -241,7 +241,7 @@ func TestTaskListTool_ShowsAssignee(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Title: "do stuff", Status: "pending", AssignedTo: "bot"}
+	GlobalTaskStore.tasks["1"] = &Task{ID: "1", Subject: "do stuff", Status: "pending", AssignedTo: "bot"}
 
 	tool := &TaskListTool{}
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{}`))
@@ -260,7 +260,7 @@ func TestTaskGetTool_ReturnsJSON(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["10"] = &Task{ID: "10", Title: "get test", Status: "completed", AssignedTo: "x"}
+	GlobalTaskStore.tasks["10"] = &Task{ID: "10", Subject: "get test", Status: "completed", AssignedTo: "x"}
 
 	tool := &TaskGetTool{}
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"taskId": "10"}`))
@@ -275,8 +275,8 @@ func TestTaskGetTool_ReturnsJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Content), &task); err != nil {
 		t.Fatalf("expected valid JSON, got parse error: %v", err)
 	}
-	if task.Title != "get test" {
-		t.Errorf("subject = %q", task.Title)
+	if task.Subject != "get test" {
+		t.Errorf("subject = %q", task.Subject)
 	}
 }
 
@@ -354,8 +354,8 @@ func TestTaskCreateTool_PublishesEvent(t *testing.T) {
 		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 			t.Fatalf("failed to unmarshal payload: %v", err)
 		}
-		if payload.Title != "Test Task" {
-			t.Errorf("expected title 'Test Task', got %q", payload.Title)
+		if payload.Subject != "Test Task" {
+			t.Errorf("expected subject 'Test Task', got %q", payload.Subject)
 		}
 		if payload.Status != "pending" {
 			t.Errorf("expected status 'pending', got %q", payload.Status)
@@ -370,8 +370,8 @@ func TestTaskCreateTool_PublishesEvent(t *testing.T) {
 
 func TestTaskStore_CompleteByIDs_PublishesEvent(t *testing.T) {
 	store := freshStore()
-	store.tasks["1"] = &Task{ID: "1", Title: "t", Status: "pending"}
-	store.tasks["2"] = &Task{ID: "2", Title: "t", Status: "in_progress"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "t", Status: "pending"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "t", Status: "in_progress"}
 
 	b := bus.New()
 	store.bus = b
@@ -406,8 +406,8 @@ func TestTaskStore_CompleteByIDs_PublishesEvent(t *testing.T) {
 
 func TestTaskStore_CompleteByAssignee_PublishesEvent(t *testing.T) {
 	store := freshStore()
-	store.tasks["1"] = &Task{ID: "1", Title: "t", Status: "pending", AssignedTo: "agent-x"}
-	store.tasks["2"] = &Task{ID: "2", Title: "t", Status: "in_progress", AssignedTo: "agent-x"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "t", Status: "pending", AssignedTo: "agent-x"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "t", Status: "in_progress", AssignedTo: "agent-x"}
 
 	b := bus.New()
 	store.bus = b
@@ -457,10 +457,13 @@ func TestTaskCreateTool_UsesCorrectSessionID(t *testing.T) {
 	_, err = db.Exec(`CREATE TABLE team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL DEFAULT '',
-		title TEXT NOT NULL,
+		subject TEXT NOT NULL,
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT,
+		blocks TEXT NOT NULL DEFAULT '[]',
+		blocked_by TEXT NOT NULL DEFAULT '[]',
+		metadata TEXT NOT NULL DEFAULT '{}',
 		created_at DATETIME,
 		updated_at DATETIME,
 		PRIMARY KEY (id, session_id)
@@ -500,7 +503,7 @@ func TestTaskUpdateTool_PublishesEvent(t *testing.T) {
 	defer func() { GlobalTaskStore = orig }()
 
 	GlobalTaskStore = freshStore()
-	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Title: "test", Status: "pending"}
+	GlobalTaskStore.tasks["5"] = &Task{ID: "5", Subject: "test", Status: "pending"}
 
 	// Create event bus and subscribe
 	eventBus := bus.New()
@@ -554,10 +557,13 @@ func openTestDB(t *testing.T) *sql.DB {
 	_, err = db.Exec(`CREATE TABLE team_tasks (
 		id TEXT NOT NULL,
 		session_id TEXT NOT NULL DEFAULT '',
-		title TEXT NOT NULL,
+		subject TEXT NOT NULL,
 		description TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		assigned_to TEXT,
+		blocks TEXT NOT NULL DEFAULT '[]',
+		blocked_by TEXT NOT NULL DEFAULT '[]',
+		metadata TEXT NOT NULL DEFAULT '{}',
 		created_at DATETIME,
 		updated_at DATETIME,
 		PRIMARY KEY (id, session_id)
@@ -574,8 +580,8 @@ func TestCompleteByIDs_UsesCorrectSessionID(t *testing.T) {
 
 	store := freshStore()
 	store.db = db
-	store.tasks["1"] = &Task{ID: "1", Title: "task-one", Status: "pending"}
-	store.tasks["2"] = &Task{ID: "2", Title: "task-two", Status: "in_progress"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "task-one", Status: "pending"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "task-two", Status: "in_progress"}
 
 	const wantSession = "session-complete-ids-test"
 	affected := store.CompleteByIDs([]string{"1", "2"}, "completed", wantSession)
@@ -610,8 +616,8 @@ func TestCompleteByAssignee_UsesCorrectSessionID(t *testing.T) {
 
 	store := freshStore()
 	store.db = db
-	store.tasks["1"] = &Task{ID: "1", Title: "task-a", Status: "pending", AssignedTo: "agent-q"}
-	store.tasks["2"] = &Task{ID: "2", Title: "task-b", Status: "in_progress", AssignedTo: "agent-q"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "task-a", Status: "pending", AssignedTo: "agent-q"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "task-b", Status: "in_progress", AssignedTo: "agent-q"}
 
 	const wantSession = "session-complete-assignee-test"
 	affected := store.CompleteByAssignee("agent-q", "completed", wantSession)
@@ -651,12 +657,12 @@ func TestTaskUpdateTool_UsesCorrectSessionID(t *testing.T) {
 	GlobalTaskStore.db = db
 
 	// Pre-populate the DB row so UPDATE OR REPLACE can find it.
-	_, err := db.Exec(`INSERT INTO team_tasks (id, session_id, title, description, status, assigned_to, created_at, updated_at)
+	_, err := db.Exec(`INSERT INTO team_tasks (id, session_id, subject, description, status, assigned_to, created_at, updated_at)
 		VALUES ('10', '', 'original', '', 'pending', NULL, datetime('now'), datetime('now'))`)
 	if err != nil {
 		t.Fatalf("insert seed row: %v", err)
 	}
-	GlobalTaskStore.tasks["10"] = &Task{ID: "10", Title: "original", Status: "pending"}
+	GlobalTaskStore.tasks["10"] = &Task{ID: "10", Subject: "original", Status: "pending"}
 
 	const wantSession = "session-update-tool-test"
 	tool := &TaskUpdateTool{SessionID: wantSession}
@@ -691,7 +697,7 @@ func TestSaveToDBWithSession_ReturnsError_WhenDBClosed(t *testing.T) {
 	store := freshStore()
 	store.db = db
 
-	task := &Task{ID: "1", Title: "test", Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	task := &Task{ID: "1", Subject: "test", Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	err := store.saveToDBWithSession(task, "session-x")
 	if err == nil {
 		t.Error("expected error from saveToDBWithSession with closed DB, got nil")
@@ -706,7 +712,7 @@ func TestSaveToDB_DoesNotPanic_WhenDBClosed(t *testing.T) {
 	store := freshStore()
 	store.db = db
 
-	task := &Task{ID: "1", Title: "test", Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	task := &Task{ID: "1", Subject: "test", Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	// Must not panic.
 	store.saveToDB(task)
 }
@@ -728,7 +734,7 @@ func TestLoadForSession_ReturnsError_WhenDBClosed(t *testing.T) {
 
 func TestLoadForSession_NoopOnEmptySessionID(t *testing.T) {
 	store := freshStore()
-	store.tasks["1"] = &Task{ID: "1", Title: "existing", Status: "pending"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "existing", Status: "pending"}
 	store.currentSession = "real-session"
 
 	// Empty sessionID → no-op, existing tasks must survive.
@@ -762,8 +768,8 @@ func TestCompleteByAssignee_RollsBackOnPartialFailure(t *testing.T) {
 
 	store := freshStore()
 	store.db = db
-	store.tasks["1"] = &Task{ID: "1", Title: "task-one", Status: "pending", AssignedTo: "agent-r"}
-	store.tasks["2"] = &Task{ID: "2", Title: "task-two", Status: "in_progress", AssignedTo: "agent-r"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "task-one", Status: "pending", AssignedTo: "agent-r"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "task-two", Status: "in_progress", AssignedTo: "agent-r"}
 
 	// Call; task "2" triggers DB error → rollback.
 	store.CompleteByAssignee("agent-r", "completed", "sess-rollback")
@@ -787,7 +793,7 @@ func TestCompleteByAssignee_EmptySessionIDFallback(t *testing.T) {
 	store := freshStore()
 	store.db = db
 	store.currentSession = "fallback-session"
-	store.tasks["1"] = &Task{ID: "1", Title: "task", Status: "pending", AssignedTo: "agent-fb"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "task", Status: "pending", AssignedTo: "agent-fb"}
 
 	// Pass empty sessionID → must fall back to store.currentSession.
 	affected := store.CompleteByAssignee("agent-fb", "completed", "")
@@ -827,8 +833,8 @@ func TestCompleteByIDs_RollsBackOnPartialFailure(t *testing.T) {
 
 	store := freshStore()
 	store.db = db
-	store.tasks["1"] = &Task{ID: "1", Title: "task-one", Status: "pending"}
-	store.tasks["2"] = &Task{ID: "2", Title: "task-two", Status: "in_progress"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "task-one", Status: "pending"}
+	store.tasks["2"] = &Task{ID: "2", Subject: "task-two", Status: "in_progress"}
 
 	// Call with both IDs; task "2" will cause DB error → rollback.
 	store.CompleteByIDs([]string{"1", "2"}, "completed", "sess-rollback")
@@ -852,7 +858,7 @@ func TestCompleteByIDs_EmptySessionIDFallback(t *testing.T) {
 	store := freshStore()
 	store.db = db
 	store.currentSession = "fallback-session"
-	store.tasks["1"] = &Task{ID: "1", Title: "task", Status: "pending"}
+	store.tasks["1"] = &Task{ID: "1", Subject: "task", Status: "pending"}
 
 	// Pass empty sessionID → must fall back to store.currentSession.
 	affected := store.CompleteByIDs([]string{"1"}, "completed", "")
