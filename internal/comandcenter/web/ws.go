@@ -554,8 +554,10 @@ func (ws *WebServer) handleBundleLinkPush(sessionID string, p attach.DesignBundl
 	now := time.Now()
 	msgID := cc.NewID()
 
-	// Use the original /designs/project/ URL — that route is already registered and serves directly.
-	bundleURL := p.BundleURL
+	// Link directly to the interactive session root (index.html), not the gallery.
+	// BundleURL is .../bundle/mockup.html — strip to get the session root.
+	interactiveURL := strings.TrimSuffix(p.BundleURL, "bundle/mockup.html")
+	bundleURL := interactiveURL
 	if ws.publicURL != "" && strings.HasPrefix(bundleURL, "/") {
 		bundleURL = strings.TrimRight(ws.publicURL, "/") + bundleURL
 	}
