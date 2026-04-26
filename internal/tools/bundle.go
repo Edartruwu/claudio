@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Abraxas-365/claudio/internal/imageutil"
 )
 
 
@@ -138,13 +139,12 @@ func buildGalleryHTML(manifest bundleManifest, sessionDir, entryFilename string)
 	var tabsHTML, imgsHTML strings.Builder
 	for _, screen := range manifest.Screens {
 		pngPath := filepath.Join(sessionDir, "screenshots", screen.Name+".png")
-		pngBytes, err := os.ReadFile(pngPath)
+		encoded, mediaType, err := imageutil.ReadImageFile(pngPath)
 		if err != nil {
 			return "", fmt.Errorf("read screenshot %q: %w", pngPath, err)
 		}
-		encoded := base64.StdEncoding.EncodeToString(pngBytes)
 		fmt.Fprintf(&tabsHTML, "  <button class=\"tab\">%s</button>\n", screen.Name)
-		fmt.Fprintf(&imgsHTML, "  <img src=\"data:image/png;base64,%s\" alt=\"%s\">\n", encoded, screen.Name)
+		fmt.Fprintf(&imgsHTML, "  <img src=\"data:%s;base64,%s\" alt=\"%s\">\n", mediaType, encoded, screen.Name)
 	}
 
 	html := `<!DOCTYPE html>

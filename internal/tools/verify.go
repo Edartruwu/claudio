@@ -3,7 +3,6 @@ package tools
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -13,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Abraxas-365/claudio/internal/api"
+	"github.com/Abraxas-365/claudio/internal/imageutil"
 )
 
 // maxImageDimension is Claude's vision API limit per dimension.
@@ -162,12 +162,10 @@ func (t *VerifyMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	// 1. Read screenshot → base64.
-	imgBytes, err := os.ReadFile(screenshotPath)
+	imgBase64, imgMediaType, err := imageutil.ReadImageFile(screenshotPath)
 	if err != nil {
 		return &Result{Content: fmt.Sprintf("Failed to read screenshot %q: %v", screenshotPath, err), IsError: true}, nil
 	}
-	imgBytes = cropImageIfNeeded(imgBytes)
-	imgBase64 := base64.StdEncoding.EncodeToString(imgBytes)
 
 	// 2. Read HTML source for context (optional, truncated).
 	htmlContext := "(no HTML source provided)"
@@ -187,7 +185,7 @@ func (t *VerifyMockupTool) Execute(ctx context.Context, input json.RawMessage) (
 
 	// 4. Build user message with image + text.
 	contentBlocks := []api.UserContentBlock{
-		api.NewImageBlock("image/png", imgBase64),
+		api.NewImageBlock(imgMediaType, imgBase64),
 		api.NewTextBlock("Evaluate this mockup screenshot. Respond with JSON only."),
 	}
 	contentJSON, err := json.Marshal(contentBlocks)
