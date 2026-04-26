@@ -253,13 +253,13 @@ templ layoutCSS() {
 		}
 		body { background: var(--color-bg); color: var(--color-textPrimary); font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace; overscroll-behavior: none; -webkit-user-select: none; user-select: text; }
 		pre { max-width: 100%; box-sizing: border-box; }
-		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; overflow: hidden; }
-		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; overflow: hidden; }
-		.msg-bubble-tool { background: var(--color-bubbleTool); border-left: 2px solid var(--color-tool); border-radius: 4px 12px 12px 12px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(320px, 90%); overflow: hidden; }
+		.msg-bubble-assistant { background: var(--color-bubbleAI); border-left: 2px solid var(--color-ai); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85vw); padding: 10px 14px; overflow: hidden; }
+		.msg-bubble-user { background: var(--color-bubbleUser); border-radius: 16px 4px 16px 16px; color: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85vw); padding: 10px 14px; overflow: hidden; }
+		.msg-bubble-tool { background: var(--color-bubbleTool); border-left: 2px solid var(--color-tool); border-radius: 4px 12px 12px 12px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(92vw, 520px); overflow: hidden; }
 		.msg-bubble-tool details summary { user-select: none; }
 		.msg-bubble-tool details .tool-chevron { transition: transform 0.2s ease; }
 		.msg-bubble-tool details[open] .tool-chevron { transform: rotate(90deg); }
-		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 2px solid var(--color-cron); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85%); padding: 10px 14px; overflow: hidden; }
+		.msg-bubble-cron { background: var(--color-bubbleCron); border-left: 2px solid var(--color-cron); border-radius: 4px 16px 16px 16px; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; min-width: 0; max-width: min(480px, 85vw); padding: 10px 14px; overflow: hidden; }
 		#messages { scroll-behavior: smooth; font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; overflow-x: hidden; }
 		.msg-row { min-width: 0; max-width: 100%; overflow: hidden; }
 		/* Navigation — desktop: flex side-by-side; mobile: slide push animation */
@@ -313,7 +313,7 @@ templ layoutCSS() {
 		@media (hover: hover) {
 			.swipe-row:hover .row-menu-trigger { opacity: 1 !important; }
 		}
-		.md-content { font-family: ui-monospace, 'Cascadia Code', monospace; }
+		.md-content { font-family: ui-monospace, 'Cascadia Code', monospace; min-width: 0; max-width: 100%; overflow: hidden; }
 		.md-content p { margin: 0 0 0.5em 0; }
 		.md-content p:last-child { margin-bottom: 0; }
 		.md-content ul, .md-content ol { margin: 0.25em 0 0.5em 1.25em; }
@@ -325,7 +325,7 @@ templ layoutCSS() {
 		.md-content em { font-style: italic; }
 		.md-content a { color: #25D366; text-decoration: underline; }
 		.md-content h1, .md-content h2, .md-content h3 { font-weight: 600; margin: 0.5em 0 0.25em 0; }
-		.md-table-wrap { overflow-x: auto; max-width: 100%; }
+		.md-table-wrap { overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; }
 			.md-content table { border-collapse: collapse; min-width: max-content; margin: 0.5em 0; }
 		.md-content th, .md-content td { white-space: nowrap; padding: 6px 12px; border: 1px solid var(--color-border); font-size: 0.85em; text-align: left; }
 		.md-content thead tr { background: var(--color-surfaceHigh); }
@@ -334,7 +334,7 @@ templ layoutCSS() {
 		.md-content del { text-decoration: line-through; opacity: 0.6; }
 		.md-content input[type=checkbox] { margin-right: 4px; }
 		@media (min-width: 768px) {
-			.msg-bubble-user, .msg-bubble-assistant { max-width: min(640px, 80%); }
+			.msg-bubble-user, .msg-bubble-assistant { max-width: min(640px, 80vw); }
 		}
 		.typing-dots { display: inline-flex; align-items: center; gap: 3px; margin-left: 2px; }
 		.typing-dots span {

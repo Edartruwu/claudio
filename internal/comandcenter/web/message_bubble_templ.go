@@ -669,7 +669,7 @@ func MessageBubble(msg MessageView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div class=\"flex items-center gap-1\"><div class=\"msg-bubble-assistant shadow-sm min-w-0\" style=\"box-shadow:0 2px 8px rgba(0,0,0,0.4)\"><div class=\"md-content text-[var(--color-textPrimary)] text-[15px] leading-[1.5]\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div class=\"flex items-center gap-1 min-w-0 max-w-full\"><div class=\"msg-bubble-assistant shadow-sm min-w-0\" style=\"box-shadow:0 2px 8px rgba(0,0,0,0.4)\"><div class=\"md-content text-[var(--color-textPrimary)] text-[15px] leading-[1.5]\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
