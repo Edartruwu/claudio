@@ -11,7 +11,7 @@ templ InfoPanel(data InfoPageData) {
 		<!-- Header -->
 		<header class="info-panel-header shrink-0 bg-[var(--color-surface)] px-4 py-3 flex flex-row items-center gap-3 border-b border-b-[var(--color-border)]">
 			<!-- Back chevron -->
-			<button onclick="history.back()" class="bg-transparent border-none cursor-pointer p-1 shrink-0 flex items-center text-[var(--color-textMuted)]">
+			<button onclick="ccCloseInfoPanel()" class="bg-transparent border-none cursor-pointer p-1 shrink-0 flex items-center text-[var(--color-textMuted)]">
 				@BackChevronIcon()
 			</button>
 			<!-- Avatar with status dot -->
@@ -251,7 +251,7 @@ templ TabMedia(data InfoPageData) {
 			<p class="text-[11px] mb-2 text-[var(--color-textMuted)]">Images</p>
 			<div class="grid grid-cols-3 gap-1 mb-4">
 				for _, img := range data.Images {
-					<a href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", img.SessionID, img.Filename)) } target="_blank" class="block aspect-square overflow-hidden rounded-lg">
+					<a href={ templ.SafeURL(fmt.Sprintf("/uploads/%s/%s", img.SessionID, img.Filename)) } class="block aspect-square overflow-hidden rounded-lg">
 						<img
 							src={ fmt.Sprintf("/uploads/%s/%s", img.SessionID, img.Filename) }
 							alt={ img.OriginalName }

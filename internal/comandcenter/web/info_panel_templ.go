@@ -35,7 +35,7 @@ func InfoPanel(data InfoPageData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col h-full bg-[var(--color-bg)]\"><!-- Header --><header class=\"info-panel-header shrink-0 bg-[var(--color-surface)] px-4 py-3 flex flex-row items-center gap-3 border-b border-b-[var(--color-border)]\"><!-- Back chevron --><button onclick=\"history.back()\" class=\"bg-transparent border-none cursor-pointer p-1 shrink-0 flex items-center text-[var(--color-textMuted)]\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col h-full bg-[var(--color-bg)]\"><!-- Header --><header class=\"info-panel-header shrink-0 bg-[var(--color-surface)] px-4 py-3 flex flex-row items-center gap-3 border-b border-b-[var(--color-border)]\"><!-- Back chevron --><button onclick=\"ccCloseInfoPanel()\" class=\"bg-transparent border-none cursor-pointer p-1 shrink-0 flex items-center text-[var(--color-textMuted)]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -847,7 +847,7 @@ func TabMedia(data InfoPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\" target=\"_blank\" class=\"block aspect-square overflow-hidden rounded-lg\"><img src=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\" class=\"block aspect-square overflow-hidden rounded-lg\"><img src=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
