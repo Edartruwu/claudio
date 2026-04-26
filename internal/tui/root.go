@@ -2157,6 +2157,11 @@ func (m Model) ApplyTeamContextAtStartup(msg teamselector.TeamSelectedMsg, appCt
 				}
 			}
 		}
+		// Force all team-related tools to eager — same as applyTeamContext does
+		// for the TUI path. Covers --attach / headless sessions.
+		for _, name := range tools.TeamEagerToolNames {
+			m.registry.SetDeferOverride(name, false)
+		}
 		// No engine yet at startup — registry is picked up when the engine is created.
 	}
 	var block string
