@@ -212,7 +212,18 @@ templ ChatListSidebar(data ChatListData) {
 
 // ChatListMain renders just the #main content (welcome screen) for htmx partial swaps.
 // No Layout, no sidebar — used when HX-Request header is present on GET /.
+// Includes an OOB swap to restore #sidebar visibility on mobile after back navigation
+// (ChatPage sets "hidden md:flex" on mobile; this clears it when returning to session list).
 templ ChatListMain() {
+	// OOB: restore #sidebar to fully visible state (no hidden class) and re-render its content.
+	// #session-list inside has hx-trigger="load" so it auto-reloads sessions after swap.
+	<div
+		id="sidebar"
+		hx-swap-oob="outerHTML"
+		class="w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]"
+	>
+		@ChatListSidebar(ChatListData{})
+	</div>
 	@WelcomeScreen()
 }
 

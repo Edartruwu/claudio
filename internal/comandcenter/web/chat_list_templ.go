@@ -336,7 +336,11 @@ func ChatListSidebar(data ChatListData) templ.Component {
 	})
 }
 
-func WelcomeScreen() templ.Component {
+// ChatListMain renders just the #main content (welcome screen) for htmx partial swaps.
+// No Layout, no sidebar — used when HX-Request header is present on GET /.
+// Includes an OOB swap to restore #sidebar visibility on mobile after back navigation
+// (ChatPage sets "hidden md:flex" on mobile; this clears it when returning to session list).
+func ChatListMain() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -357,7 +361,48 @@ func WelcomeScreen() templ.Component {
 			templ_7745c5c3_Var18 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<div class=\"flex-1 flex flex-col items-center justify-center gap-[40px] p-16 bg-[var(--color-bg)]\"><div class=\"w-24 h-24 rounded-[24px] bg-[rgba(0,61,46,1)] border-[1.5px] border-[rgba(0,196,140,0.2)] flex items-center justify-center\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--color-brand)\" stroke-width=\"1.5\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path> <path d=\"M8 10h8M8 14h5\" stroke-linecap=\"round\"></path></svg></div><div class=\"text-center\"><h2 class=\"text-[28px] font-bold text-[var(--color-textPrimary)] font-[inherit] m-0 mb-2\">Select a session</h2><p class=\"text-[var(--color-textMuted)] text-[15px] font-[inherit] leading-[1.6] m-0\">Pick a session from the sidebar to start chatting.<br>Or launch a new agent from your terminal.</p></div><div class=\"flex flex-col gap-2 w-[360px]\"><p class=\"text-[var(--color-textMuted)] text-[11px] font-[inherit] font-semibold tracking-[0.8px] m-0\">QUICK START</p><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start default session</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --agent backend-sr</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start with a specialist</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --team full-stack</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Spawn a team</span></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<div id=\"sidebar\" hx-swap-oob=\"outerHTML\" class=\"w-full md:w-[320px] md:min-w-[320px] md:flex-shrink-0 flex flex-col h-full overflow-hidden border-r border-r-[var(--color-border)]\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = ChatListSidebar(ChatListData{}).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = WelcomeScreen().Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func WelcomeScreen() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var19 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var19 == nil {
+			templ_7745c5c3_Var19 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"flex-1 flex flex-col items-center justify-center gap-[40px] p-16 bg-[var(--color-bg)]\"><div class=\"w-24 h-24 rounded-[24px] bg-[rgba(0,61,46,1)] border-[1.5px] border-[rgba(0,196,140,0.2)] flex items-center justify-center\"><svg width=\"48\" height=\"48\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--color-brand)\" stroke-width=\"1.5\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z\"></path> <path d=\"M8 10h8M8 14h5\" stroke-linecap=\"round\"></path></svg></div><div class=\"text-center\"><h2 class=\"text-[28px] font-bold text-[var(--color-textPrimary)] font-[inherit] m-0 mb-2\">Select a session</h2><p class=\"text-[var(--color-textMuted)] text-[15px] font-[inherit] leading-[1.6] m-0\">Pick a session from the sidebar to start chatting.<br>Or launch a new agent from your terminal.</p></div><div class=\"flex flex-col gap-2 w-[360px]\"><p class=\"text-[var(--color-textMuted)] text-[11px] font-[inherit] font-semibold tracking-[0.8px] m-0\">QUICK START</p><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start default session</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --agent backend-sr</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Start with a specialist</span></div><div class=\"bg-[var(--color-surface)] rounded-xl px-4 py-3 border border-[var(--color-border)] flex items-center gap-4\"><code class=\"text-[var(--color-brand)] text-[13px] font-[inherit] flex-1\">claudio --team full-stack</code> <span class=\"text-[var(--color-textMuted)] text-[13px] font-[inherit]\">— Spawn a team</span></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
