@@ -3,7 +3,11 @@ LDFLAGS := -ldflags "-s -w -X github.com/Abraxas-365/claudio/internal/cli.Versio
 
 .PHONY: build run test clean install reload
 
+css:
+	node_modules/.bin/tailwindcss -c tailwind.comandcenter.config.js -i internal/comandcenter/web/static/input.css -o internal/comandcenter/web/static/vendor/tailwind.min.css --minify
+
 build:
+	node_modules/.bin/tailwindcss -c tailwind.comandcenter.config.js -i internal/comandcenter/web/static/input.css -o internal/comandcenter/web/static/vendor/tailwind.min.css --minify 2>/dev/null || true
 	templ generate ./internal/comandcenter/web/...
 	go build $(LDFLAGS) -o bin/claudio ./cmd/claudio
 	go build $(LDFLAGS) -o bin/claudio-server ./cmd/comandcenter

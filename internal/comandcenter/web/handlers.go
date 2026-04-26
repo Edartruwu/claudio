@@ -101,7 +101,7 @@ func (ws *WebServer) handleChatList(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := ws.buildSessionRows(sessions)
 	projects, _ := ws.storage.ListProjects() // best-effort; empty list on error
-	if r.Header.Get("HX-Request") == "true" {
+	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
 		// htmx partial: return only #main content (welcome screen), no Layout shell
 		templ.Handler(ChatListMain()).ServeHTTP(w, r)
 		return
@@ -164,8 +164,8 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 		pag.FirstMessageID = views[0].ID
 	}
 
-	if r.Header.Get("HX-Request") == "true" {
-		ChatView(sess, views, id, pag).Render(r.Context(), w)
+	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
+		ChatViewPartial(sess, views, id, pag).Render(r.Context(), w)
 		return
 	}
 	// Full-page render (hard refresh / direct URL): render full shell with sidebar.
@@ -1504,4 +1504,21 @@ func (ws *WebServer) handleDesignGallery(w http.ResponseWriter, r *http.Request)
 	})
 
 	templ.Handler(Designs(DesignGalleryData{Sessions: sessions, PublicURL: ws.publicURL, CsrfToken: ws.CSRFToken(r)})).ServeHTTP(w, r)
+}
+
+// handleDeleteMessage deletes a single message and broadcasts removal to all session clients.
+// DELETE /api/sessions/{session_id}/messages/{message_id}
+func (ws *WebServer) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("session_id")
+	messageID := r.PathValue("message_id")
+	if err := ws.storage.DeleteMessageByID(messageID); err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{
+		"type":       "message.deleted",
+		"message_id": messageID,
+	})
+	ws.pushToSessionClients(sessionID, payload)
+	w.WriteHeader(http.StatusOK)
 }
