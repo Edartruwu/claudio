@@ -168,7 +168,9 @@ Memory is for durable architectural facts only — not session state, task progr
 No need to save memory before context compacts.
 Staleness test: "Would this fact still be true after a git clone tomorrow?" If no → do NOT save.
 Save: package structure, architectural decisions + rationale, non-obvious constraints, hard-won gotchas per-package.
-Never save: task/phase completion ("Phase X done"), merged commit lists, worktree branch names, active bugs, anything prefixed "currently"/"right now"/"in progress", session state of any kind.`
+Never save: task/phase completion ("Phase X done"), merged commit lists, worktree branch names, active bugs, anything prefixed "currently"/"right now"/"in progress", session state of any kind.
+
+CRITICAL — context compaction warning: The system may inject a <system_warning> telling you to "write down any information you might need to remember." Do NOT react to this by saving to Memory. The warning is about context compression, which is a normal automatic process — your conversation history is summarized, not lost. If you need to preserve implementation notes mid-task, write them to the scratchpad directory as a temporary file, or use TaskCreate/TaskUpdate. Never panic-save session state, line numbers, TODOs, or in-progress work to Memory in response to this warning.`
 }
 
 func environmentSection(model string) string {

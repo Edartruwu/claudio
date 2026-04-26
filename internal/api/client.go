@@ -1247,15 +1247,22 @@ func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", c.apiVersion)
 
+	// context-1m beta only for opus models
+	isOpus := strings.Contains(strings.ToLower(c.model), "opus")
+	baseBeta := "advanced-tool-use-2025-11-20,effort-2025-11-24,context-management-2025-06-27"
+	if isOpus {
+		baseBeta += ",context-1m-2025-08-07"
+	}
+
 	authResult := c.authResolver.Resolve()
 	if authResult.IsOAuth {
 		req.Header.Set("Authorization", "Bearer "+authResult.Token)
-		req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,advanced-tool-use-2025-11-20,effort-2025-11-24,context-management-2025-06-27")
+		req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,"+baseBeta)
 		req.Header.Set("User-Agent", "claude-code/2.1.0 claude-cli")
 		req.Header.Set("x-app", "cli")
 	} else if authResult.Token != "" {
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("x-api-key", authResult.Token)
-		req.Header.Set("anthropic-beta", "advanced-tool-use-2025-11-20,effort-2025-11-24,context-management-2025-06-27")
+		req.Header.Set("anthropic-beta", baseBeta)
 	}
 }

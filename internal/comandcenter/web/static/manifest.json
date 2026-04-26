@@ -1,10 +1,13 @@
 {
   "name": "ComandCenter",
   "short_name": "ComandCenter",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0B0E0F",
-  "theme_color": "#075E54",
+  "theme_color": "#0B0E0F",
   "icons": [
     {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
     {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"}

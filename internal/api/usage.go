@@ -57,7 +57,8 @@ func (t *UsageTracker) Add(usage Usage) {
 	t.TurnCount++
 	// Track current context window size: the API echoes back how much of the
 	// context window this turn consumed. This is what the progress bar shows.
-	t.LastContextTokens = usage.InputTokens + usage.CacheRead + usage.CacheCreate
+	// Must include all four fields to match claude-code's getTokenCountFromUsage.
+	t.LastContextTokens = usage.InputTokens + usage.OutputTokens + usage.CacheRead + usage.CacheCreate
 
 	t.TotalCost = t.calculateCost()
 }

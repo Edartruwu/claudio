@@ -1,7 +1,7 @@
 // ComandCenter Service Worker — push notifications + offline support.
 'use strict';
 
-var CACHE_NAME = 'cc-static-v2';
+var CACHE_NAME = 'cc-static-v3';
 var PRECACHE_URLS = [
   '/static/vendor/htmx.min.js',
   '/static/app.js',

@@ -45,20 +45,20 @@ func (s *State) ShouldSuggest(strategy Strategy) bool {
 
 // ShouldPartialCompact returns true if partial compaction (clearing old tool results) is warranted.
 func (s *State) ShouldPartialCompact() bool {
-	return s.TotalTokens > s.MaxTokens*70/100
+	return s.TotalTokens > s.MaxTokens*60/100
 }
 
 // ShouldFullCompact returns true if a full compaction (API summarization) should be suggested.
 func (s *State) ShouldFullCompact() bool {
-	return s.TotalTokens > s.MaxTokens*90/100
+	return s.TotalTokens > s.MaxTokens*80/100
 }
 
 // ShouldForce returns true if compaction is mandatory (about to overflow).
-// Uses ForceThreshold if set (1-100), otherwise defaults to 95%.
+// Uses ForceThreshold if set (1-100), otherwise defaults to 90%.
 func (s *State) ShouldForce() bool {
 	threshold := s.ForceThreshold
 	if threshold <= 0 || threshold > 100 {
-		threshold = 95
+		threshold = 90
 	}
 	return s.TotalTokens > s.MaxTokens*threshold/100
 }

@@ -44,7 +44,7 @@ func SettingsPage(data SettingsData) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col min-h-screen\" style=\"background:var(--color-bg);\"><!-- Header --><header class=\"flex items-center gap-3 px-4 py-3 border-b\" style=\"border-color:var(--color-border);background:var(--color-surface);padding-top:calc(env(safe-area-inset-top) + 12px);\"><a href=\"/\" aria-label=\"Back\" class=\"flex items-center justify-center\" style=\"width:36px;height:36px;color:var(--color-textSecondary);\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col\" style=\"background:var(--color-bg);min-height:100dvh;\"><!-- Header --><header class=\"flex items-center gap-3 px-4 py-3 border-b\" style=\"border-color:var(--color-border);background:var(--color-surface);padding-top:calc(env(safe-area-inset-top) + 12px);\"><a href=\"/\" aria-label=\"Back\" class=\"flex items-center justify-center\" style=\"width:36px;height:36px;color:var(--color-textSecondary);\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

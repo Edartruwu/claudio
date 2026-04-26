@@ -170,7 +170,7 @@ type Engine struct {
 }
 
 // defaultContextWindow is the context window size for all current Claude models.
-const defaultContextWindow = 200_000
+const defaultContextWindow = 1_000_000
 
 // NewEngine creates a new query engine (basic constructor for backwards compatibility).
 func NewEngine(client *api.Client, registry *tools.Registry, handler EventHandler) *Engine {
@@ -558,8 +558,10 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 
 		// Auto-compact if approaching context limit (tiered)
 		if e.compactState != nil {
-			if e.compactState.ShouldForce() {
-				// Full compaction at 95%
+			if e.compactState.ShouldForce() || e.compactState.ShouldFullCompact() {
+				// Full compaction at 80% (full) or 90% (force) — runs BEFORE the
+				// Anthropic API injects its own <system_warning> at ~85-90%, which
+				// otherwise causes the model to panic-save to Memory.
 				e.fireHook(ctx, hooks.PreCompact, "", "")
 				compacted, summary, err := compact.Compact(ctx, e.client, e.messages, 10, "")
 				if err == nil && summary != "" {
@@ -590,7 +592,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 					}
 				}
 			} else if e.compactState.ShouldPartialCompact() {
-				// At 70% context usage, run an aggressive MicroCompact pass
+				// At 60% context usage, run an aggressive MicroCompact pass
 				// (lower target, fewer protected results) to free space.
 				e.messages = compact.MicroCompact(e.messages, 5, 512, e.registry.ReadCache())
 				e.handler.OnTextDelta("\n[Cleared old tool results to save context]\n")
@@ -677,18 +679,19 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 		if e.analytics != nil {
 			e.analytics.RecordUsage(response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.CacheRead, response.Usage.CacheCreate)
 		}
-		// Track compact state — use InputTokens directly as the current context size
-		// (not a running sum, which would trigger compaction prematurely).
-		if e.compactState != nil {
-			e.compactState.TotalTokens = response.Usage.InputTokens
-		}
+			// Track compact state — total context = input + output + cache_read + cache_create.
+			// Matches claude-code's getTokenCountFromUsage (tokens.ts:46-53) which sums
+			// all four usage fields to measure full context window occupancy.
+			if e.compactState != nil {
+				e.compactState.TotalTokens = response.Usage.InputTokens + response.Usage.OutputTokens + response.Usage.CacheRead + response.Usage.CacheCreate
+			}
 
-		// Special handling: if input tokens exceed 200K, trigger aggressive
-		// microcompact to avoid prompt bloat on the next turn.
-		if response.Usage.InputTokens > 200_000 && e.compactState != nil {
-			e.messages = compact.MicroCompact(e.messages, 5, 256, e.registry.ReadCache())
-		}
-
+			// Special handling: if total context exceeds 200K, trigger aggressive
+			// microcompact to avoid prompt bloat on the next turn.
+			totalCtx := response.Usage.InputTokens + response.Usage.OutputTokens + response.Usage.CacheRead + response.Usage.CacheCreate
+			if totalCtx > 200_000 && e.compactState != nil {
+				e.messages = compact.MicroCompact(e.messages, 5, 256, e.registry.ReadCache())
+			}
 		// Check cost threshold
 		if e.costConfirmThresh > 0 && e.analytics != nil {
 			currentCost := e.analytics.Cost()

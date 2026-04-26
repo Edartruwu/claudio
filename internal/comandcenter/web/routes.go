@@ -44,6 +44,7 @@ func (ws *WebServer) RegisterRoutes(mux *http.ServeMux) {
 	// Session management API.
 	mux.Handle("PATCH /api/sessions/{id}/archive", ws.uiAuth(http.HandlerFunc(ws.handleArchiveSession)))
 	mux.Handle("DELETE /api/sessions/{id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteSession)))
+	mux.Handle("DELETE /api/sessions/{session_id}/messages/{message_id}", ws.uiAuth(http.HandlerFunc(ws.handleDeleteMessage)))
 	mux.Handle("DELETE /api/sessions/all", ws.uiAuth(http.HandlerFunc(ws.handleDeleteAllSessions)))
 	mux.Handle("POST /api/sessions/{id}/interrupt", ws.uiAuth(http.HandlerFunc(ws.handleInterruptSession)))
 	mux.Handle("GET /api/sessions/{session_id}/browse", ws.uiAuth(http.HandlerFunc(ws.handleBrowseSession)))

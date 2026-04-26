@@ -209,21 +209,7 @@ func agentAvatarClass(status string) string {
 	return base
 }
 
-// sidebarHiddenClass returns CSS classes to hide sidebar on mobile when a session is active.
-func sidebarHiddenClass(sessionID string) string {
-	if sessionID != "" {
-		return " hidden md:flex"
-	}
-	return ""
-}
 
-// mainHiddenClass returns CSS classes to hide main area on mobile when no session is active.
-func mainHiddenClass(sessionID string) string {
-	if sessionID == "" {
-		return " hidden md:flex"
-	}
-	return ""
-}
 
 // imgURL returns the serving URL for an attachment.
 func imgURL(att cc.Attachment) string {

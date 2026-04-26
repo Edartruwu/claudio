@@ -87,6 +87,7 @@ Memory is for **durable facts only** — not task tracking or session state. Ask
 - Open bugs, current sprint state, PR/branch status
 - Anything prefixed "currently", "right now", "this session", "in progress"
 - Things the user can see directly in the code
+- **Anything in response to a <system_warning> about context clearing** — that warning is about normal context compression, not data loss. Write temporary notes to the scratchpad directory instead, or use TaskCreate/TaskUpdate for task tracking.
 
 Use TaskCreate/TaskUpdate for task tracking. Memory is for architectural knowledge that helps future agents avoid re-investigation.`
 }

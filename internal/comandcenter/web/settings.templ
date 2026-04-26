@@ -5,7 +5,7 @@ import "fmt"
 // SettingsPage renders the /settings page.
 templ SettingsPage(data SettingsData) {
 	@Layout(data.SessionID, data.CsrfToken) {
-		<div class="flex flex-col min-h-screen" style="background:var(--color-bg);">
+		<div class="flex flex-col" style="background:var(--color-bg);min-height:100dvh;">
 			<!-- Header -->
 			<header class="flex items-center gap-3 px-4 py-3 border-b" style="border-color:var(--color-border);background:var(--color-surface);padding-top:calc(env(safe-area-inset-top) + 12px);">
 				<a href="/" aria-label="Back" class="flex items-center justify-center" style="width:36px;height:36px;color:var(--color-textSecondary);">

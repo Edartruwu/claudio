@@ -80,6 +80,7 @@ templ SessionRow(row sessionRow) {
 				hx-target="#main"
 				hx-swap="innerHTML"
 				hx-push-url="true"
+				hx-on::after-request="var s=document.getElementById('app-shell');if(s)s.classList.add('chat-active')"
 				data-session-id={ row.Session.ID }
 				aria-label={ fmt.Sprintf("Open session %s", row.Session.Name) }
 				class="session-row-link flex items-center gap-4 px-4 py-3 no-underline cursor-pointer relative"
