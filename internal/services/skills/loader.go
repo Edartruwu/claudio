@@ -2098,27 +2098,13 @@ var mockupSkillContent = `You are generating a complete multi-screen HTML mockup
 ## Brief
 $ARGUMENTS
 
-## Design Session Management — Read Before Proceeding
+## Design Session Management
 
-Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+**Existing design (iterate/update):** Call ` + "`ListDesigns`" + ` first. If a session exists for this project, use its ` + "`session_dir`" + ` as your working directory for all file writes.
 
-**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
-- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
-- Read the existing HTML file(s) in that directory to understand the current state before making any changes
-- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+**New design:** Call ` + "`CreateDesignSession`" + ` with an optional ` + "`name`" + ` (e.g. ` + "`\"dashboard-mockup\"`" + `). Use the returned ` + "`session_dir`" + ` for ALL file writes. Never create a ` + "`designs/`" + ` folder in the project root.
 
-**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
-- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
-
-## Starters — Copy Before Writing Screens
-
-Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 3.5):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
-` + "```" + `
+> The tool creates the session dir and copies all starter JSX files into it automatically.
 
 Your ` + "`screens.jsx`" + ` file MUST use these exports — do NOT reimplement them:
 - **design-canvas.jsx**: ` + "`DesignCanvas`" + `, ` + "`DCSection`" + `, ` + "`DCArtboard`" + ` — pan/zoom canvas
@@ -2161,27 +2147,7 @@ If no file provided, define inline tokens matching your stated direction:
 
 ## Step 3.5 — Set Output Directory
 
-If no existing session was found in the Design Session Management check above, compute DESIGNS_BASE now:
-` + "```" + `bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
-mkdir -p "$DESIGNS_BASE"
-echo "$DESIGNS_BASE"
-` + "```" + `
-
-**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
-
-Then immediately copy the starter files (from ` + "`## Starters`" + ` section above):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
-` + "```" + `
-
-All files in Steps 4–5 must be saved inside ` + "`DESIGNS_BASE`" + `. DESIGNS_BASE is also the ` + "`session_dir`" + ` for RenderMockup and BundleMockup.
+If no existing session was found above, call ` + "`CreateDesignSession`" + ` with an optional ` + "`name`" + `. Use the returned ` + "`session_dir`" + ` for all file writes — this is also the ` + "`session_dir`" + ` argument for ` + "`RenderMockup`" + ` and ` + "`BundleMockup`" + `.
 
 ## Step 4 — Generate Screens (screens.jsx)
 
@@ -2348,27 +2314,13 @@ var hifiSkillContent = `You are generating high-fidelity mockups with named desi
 ## Brief
 $ARGUMENTS
 
-## Design Session Management — Read Before Proceeding
+## Design Session Management
 
-Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+**Existing design (iterate/update):** Call ` + "`ListDesigns`" + ` first. If a session exists for this project, use its ` + "`session_dir`" + ` as your working directory for all file writes.
 
-**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
-- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
-- Read the existing HTML file(s) in that directory to understand the current state before making any changes
-- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+**New design:** Call ` + "`CreateDesignSession`" + ` with an optional ` + "`name`" + ` (e.g. ` + "`\"dashboard-hifi\"`" + `). Use the returned ` + "`session_dir`" + ` for ALL file writes. Never create a ` + "`designs/`" + ` folder in the project root.
 
-**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
-- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
-
-## Starters — Copy Before Writing Screens
-
-Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 6):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
-` + "```" + `
+> The tool creates the session dir and copies all starter JSX files into it automatically.
 
 Your ` + "`screens.jsx`" + ` file MUST use these exports — do NOT reimplement them:
 - **design-canvas.jsx**: ` + "`DesignCanvas`" + `, ` + "`DCSection`" + `, ` + "`DCArtboard`" + `, ` + "`DCPostIt`" + ` — wrap all screens in a pan/zoom canvas
@@ -2598,27 +2550,9 @@ At the top of ` + "`<style>`" + ` in ` + "`<head>`" + `, set default token value
 
 ## Step 6 — Save and Render
 
-First compute the project-scoped designs directory and generate a timestamp:
-` + "```" + `bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
-mkdir -p "$DESIGNS_BASE"
-echo "$DESIGNS_BASE"
-` + "```" + `
+Use the ` + "`session_dir`" + ` returned by ` + "`CreateDesignSession`" + ` (or the existing session's ` + "`session_dir`" + ` from ` + "`ListDesigns`" + `) for all file writes. This is also the ` + "`session_dir`" + ` argument for ` + "`RenderMockup`" + ` and ` + "`BundleMockup`" + `.
 
-**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
-
-Then copy the starters (from ` + "`## Starters`" + ` section above):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/ui-kit.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/chart-kit.jsx "$DESIGNS_BASE/"
-` + "```" + `
-
-Save your two output files to ` + "`{DESIGNS_BASE}/`" + `:
+Save your two output files to ` + "`{session_dir}/`" + `:
 
 1. ` + "`screens.jsx`" + ` — the tab strip, variation containers, tweaks panel, and screen content (uses starter globals)
 2. ` + "`index.html`" + ` — shell with CDN scripts + CSS token block + starters + screens.jsx:
@@ -2686,25 +2620,13 @@ var wireframeSkillContent = `You are generating fast lo-fi grayscale wireframes 
 ## Brief
 $ARGUMENTS
 
-## Design Session Management — Read Before Proceeding
+## Design Session Management
 
-Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+**Existing design (iterate/update):** Call ` + "`ListDesigns`" + ` first. If a session exists for this project, use its ` + "`session_dir`" + ` as your working directory for all file writes.
 
-**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
-- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
-- Read the existing HTML file(s) in that directory to understand the current state before making any changes
-- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+**New design:** Call ` + "`CreateDesignSession`" + ` with an optional ` + "`name`" + ` (e.g. ` + "`\"dashboard-wireframe\"`" + `). Use the returned ` + "`session_dir`" + ` for ALL file writes. Never create a ` + "`designs/`" + ` folder in the project root.
 
-**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
-- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
-
-## Starters — Copy Before Writing Screens
-
-Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 3):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-` + "```" + `
+> The tool creates the session dir and copies all starter JSX files into it automatically.
 
 Your ` + "`screens.jsx`" + ` file MUST use these exports:
 - **design-canvas.jsx**: ` + "`DesignCanvas`" + `, ` + "`DCSection`" + `, ` + "`DCArtboard`" + ` — canvas for artboard layout
@@ -2805,25 +2727,9 @@ If the user described a multi-screen flow, add a simple ASCII or SVG storyboard 
 
 ## Step 3 — Output
 
-First compute the project-scoped designs directory and generate a timestamp:
-` + "```" + `bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
-mkdir -p "$DESIGNS_BASE"
-echo "$DESIGNS_BASE"
-` + "```" + `
+Use the ` + "`session_dir`" + ` returned by ` + "`CreateDesignSession`" + ` (or the existing session's ` + "`session_dir`" + ` from ` + "`ListDesigns`" + `) for all file writes.
 
-**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
-
-Then copy the starters (from ` + "`## Starters`" + ` section above):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/design-canvas.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-` + "```" + `
-
-Save your two output files to ` + "`{DESIGNS_BASE}/`" + `:
+Save your two output files to ` + "`{session_dir}/`" + `:
 
 1. ` + "`screens.jsx`" + ` — all wireframe screen components (uses ` + "`DesignCanvas`" + `, ` + "`DCArtboard`" + `, device frames)
 2. ` + "`index.html`" + ` — shell with CDN + starters + screens.jsx:
@@ -2874,26 +2780,13 @@ var prototypeSkillContent = `You are generating stateful interactive prototypes 
 ## Brief
 $ARGUMENTS
 
-## Design Session Management — Read Before Proceeding
+## Design Session Management
 
-Call the ` + "`ListDesigns`" + ` tool first. It returns all existing design sessions for this project.
+**Existing design (iterate/update):** Call ` + "`ListDesigns`" + ` first. If a session exists for this project, use its ` + "`session_dir`" + ` as your working directory for all file writes.
 
-**Iterating on an existing design** (user says: "update", "change", "iterate", "fix", "add a screen", "tweak", etc.):
-- Use the most recent session's ` + "`session_dir`" + ` as ` + "`DESIGNS_BASE`" + ` — do NOT generate a new timestamp
-- Read the existing HTML file(s) in that directory to understand the current state before making any changes
-- Write your changes back to the same ` + "`DESIGNS_BASE`" + ` directory
+**New design:** Call ` + "`CreateDesignSession`" + ` with an optional ` + "`name`" + ` (e.g. ` + "`\"dashboard-prototype\"`" + `). Use the returned ` + "`session_dir`" + ` for ALL file writes. Never create a ` + "`designs/`" + ` folder in the project root.
 
-**Fresh design** (no sessions exist, or user explicitly asks for "new", "from scratch", "different", "fresh"):
-- Proceed normally — the Bash timestamp step in the save step will create a new ` + "`DESIGNS_BASE`" + `
-
-## Starters — Copy Before Writing Screens
-
-Copy these starter files to DESIGNS_BASE using Bash (run this AFTER computing DESIGNS_BASE in Step 6):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/stage.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/motion.jsx "$DESIGNS_BASE/"
-` + "```" + `
+> The tool creates the session dir and copies all starter JSX files into it automatically.
 
 Your ` + "`screens.jsx`" + ` file MUST use these exports:
 - **stage.jsx**: ` + "`Stage`" + `, ` + "`Sprite`" + `, ` + "`useSprite`" + `, ` + "`Easing`" + `, ` + "`interpolate`" + `, ` + "`clamp`" + `, ` + "`PlaybackBar`" + ` — animation engine with timeline scrubber
@@ -2915,15 +2808,7 @@ Use AskUserQuestion to ask:
 
 ## Step 2 — Load or Define Design Tokens
 
-1. Compute the project-scoped designs directory and check for a design system file using Bash:
-` + "```" + `bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
-DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs"
-test -f "$DESIGNS_BASE/design-system.json" && echo "exists:$DESIGNS_BASE/design-system.json" || echo notfound
-` + "```" + `
-
-2. If exists: Read it with the Read tool. Extract:
+1. Call ` + "`ListDesigns`" + ` to discover existing sessions. If a ` + "`design-system.json`" + ` file exists inside any session dir, read it with the Read tool. Extract:
    - Color palette (primary, secondary, accent, background, text, border, error, success, warning)
    - Typography (font family, font sizes for body/heading, line heights, weights)
    - Spacing scale (base unit, then multiples: 8px, 16px, 24px, 32px, etc.)
@@ -3254,26 +3139,9 @@ useEffect(() => {
 
 ## Step 6 — Save to Disk
 
-Compute the project-scoped designs directory and generate a timestamp:
-` + "```" + `bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-PROJECT_SLUG=$(echo "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's|^/||; s|/|-|g' | sed 's/--*/-/g')
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-DESIGNS_BASE="$HOME/.claudio/projects/$PROJECT_SLUG/designs/$TIMESTAMP"
-mkdir -p "$DESIGNS_BASE"
-echo "$DESIGNS_BASE"
-` + "```" + `
+Use the ` + "`session_dir`" + ` returned by ` + "`CreateDesignSession`" + ` (or the existing session's ` + "`session_dir`" + ` from ` + "`ListDesigns`" + `) for all file writes. This is also the ` + "`session_dir`" + ` argument for ` + "`RenderMockup`" + ` and ` + "`BundleMockup`" + `.
 
-**CRITICAL: Every Write tool call must use the absolute path printed above — never a relative path like ` + "`designs/`" + ` or ` + "`./designs/`" + `. Do NOT create any folder inside the project root.**
-
-Then copy the starters (from ` + "`## Starters`" + ` section above):
-` + "```" + `bash
-cp ~/.claudio/designs/starters/stage.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/device-frames.jsx "$DESIGNS_BASE/"
-cp ~/.claudio/designs/starters/motion.jsx "$DESIGNS_BASE/"
-` + "```" + `
-
-Save your two output files to ` + "`{DESIGNS_BASE}/`" + `:
+Save your two output files to ` + "`{session_dir}/`" + `:
 
 1. ` + "`screens.jsx`" + ` — the React app with all screens and interactions (uses starter globals)
 2. ` + "`index.html`" + ` — shell with CDN + starters + screens.jsx:
