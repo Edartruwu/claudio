@@ -46,6 +46,7 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 			registry.Register(bundleTool)
 			registry.Register(NewVerifyMockupTool(designsDir, client, ResolveToolModel("VerifyMockup", cfg)))
 			registry.Register(NewExportHandoffTool(designsDir))
+			registry.Register(NewReviewDesignFidelityTool(designsDir, client, ResolveToolModel("ReviewDesignFidelity", cfg)))
 			return
 		}
 	}
