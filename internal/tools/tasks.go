@@ -39,6 +39,7 @@ type Task struct {
 	ActiveForm  string            `json:"active_form,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
+	SessionID   string            `json:"-"` // owning session — not exposed to LLM
 }
 
 // GlobalTaskStore is the shared task store.
@@ -92,6 +93,7 @@ func (s *TaskStore) LoadForSession(sessionID string) error {
 		_ = json.Unmarshal([]byte(blocksJSON), &t.Blocks)
 		_ = json.Unmarshal([]byte(blockedByJSON), &t.BlockedBy)
 		_ = json.Unmarshal([]byte(metadataJSON), &t.Metadata)
+		t.SessionID = sessionID
 		s.tasks[t.ID] = &t
 		var idNum int
 		fmt.Sscanf(t.ID, "%d", &idNum)
@@ -139,25 +141,32 @@ func (s *TaskStore) saveToDBWithSession(t *Task, sessionID string) error {
 	return nil
 }
 
-// List returns all non-deleted tasks sorted by numeric ID.
+// List returns all non-deleted tasks for the current session.
 func (s *TaskStore) List() []*Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var out []*Task
 	for _, t := range s.tasks {
-		if t.Status != "deleted" {
-			out = append(out, t)
+		if t.Status == "deleted" {
+			continue
 		}
+		if s.currentSession != "" && t.SessionID != "" && t.SessionID != s.currentSession {
+			continue
+		}
+		out = append(out, t)
 	}
 	return out
 }
 
-// Get returns a task by ID, or (nil, false) if not found or deleted.
+// Get returns a task by ID for the current session, or (nil, false) if not found or deleted.
 func (s *TaskStore) Get(id string) (*Task, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.tasks[strings.TrimPrefix(id, "#")]
 	if !ok || t.Status == "deleted" {
+		return nil, false
+	}
+	if s.currentSession != "" && t.SessionID != "" && t.SessionID != s.currentSession {
 		return nil, false
 	}
 	return t, true
@@ -428,6 +437,7 @@ func (t *TaskCreateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 		Status:      "pending",
 		AssignedTo:  in.AssignedTo,
 		Metadata:    in.Metadata,
+		SessionID:   t.SessionID,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -579,6 +589,10 @@ func (t *TaskUpdateTool) Execute(ctx context.Context, input json.RawMessage) (*R
 
 	task, ok := store.tasks[in.TaskID]
 	if !ok {
+		store.mu.Unlock()
+		return &Result{Content: fmt.Sprintf("Task #%s not found", in.TaskID), IsError: true}, nil
+	}
+	if t.SessionID != "" && task.SessionID != "" && task.SessionID != t.SessionID {
 		store.mu.Unlock()
 		return &Result{Content: fmt.Sprintf("Task #%s not found", in.TaskID), IsError: true}, nil
 	}
