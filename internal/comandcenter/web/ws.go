@@ -285,8 +285,8 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 		if msg == nil {
 			return
 		}
-		// Skip agent status noise (⏳ agent — done, ✅ agent — done).
-		if IsAgentStatusLine(msg.Content) {
+		// Skip agent status noise (⏳ agent — done, ✅ agent — done) and sub-agent messages.
+		if IsAgentStatusLine(msg.Content) || msg.AgentName != "" {
 			return
 		}
 		var buf bytes.Buffer
