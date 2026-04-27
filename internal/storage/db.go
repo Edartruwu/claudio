@@ -201,6 +201,10 @@ func (db *DB) migrate() error {
 		`ALTER TABLE team_tasks ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'`,
 		// 28 — rename title back to subject (reverses migration #23)
 		`ALTER TABLE team_tasks RENAME COLUMN title TO subject`,
+		// 29 — agent name for messages (which agent produced the message)
+		`ALTER TABLE messages ADD COLUMN agent_name TEXT`,
+		// 30 — output column for messages (structured agent output)
+		`ALTER TABLE messages ADD COLUMN output TEXT`,
 	}
 
 	for i, m := range migrations {

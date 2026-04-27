@@ -31,6 +31,8 @@ type MessageRecord struct {
 	ToolUseID string
 	ToolName  string
 	CreatedAt time.Time
+	AgentName string
+	Output    string
 }
 
 // CreateSession creates a new session.
@@ -282,7 +284,8 @@ func (db *DB) DeleteAllMessages(sessionID string) error {
 // GetMessages retrieves all messages for a session.
 func (db *DB) GetMessages(sessionID string) ([]MessageRecord, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, session_id, role, content, type, tool_use_id, tool_name, created_at
+		`SELECT id, session_id, role, content, type, tool_use_id, tool_name, created_at,
+		        COALESCE(agent_name,''), COALESCE(output,'')
 		 FROM messages WHERE session_id = ? ORDER BY id ASC`,
 		sessionID,
 	)
@@ -294,7 +297,7 @@ func (db *DB) GetMessages(sessionID string) ([]MessageRecord, error) {
 	var messages []MessageRecord
 	for rows.Next() {
 		var m MessageRecord
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.Type, &m.ToolUseID, &m.ToolName, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.Type, &m.ToolUseID, &m.ToolName, &m.CreatedAt, &m.AgentName, &m.Output); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
