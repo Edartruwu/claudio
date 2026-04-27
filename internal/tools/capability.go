@@ -47,6 +47,8 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 			registry.Register(NewVerifyMockupTool(designsDir, client, ResolveToolModel("VerifyMockup", cfg)))
 			registry.Register(NewExportHandoffTool(designsDir))
 			registry.Register(NewCreateDesignSessionTool())
+			registry.Register(&ExportVideoTool{})
+			registry.Register(&ExportDeckPPTXTool{})
 			return
 		}
 	}

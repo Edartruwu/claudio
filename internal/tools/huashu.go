@@ -1,0 +1,48 @@
+package tools
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// huashuDesignDir returns the path to the huashu-design directory.
+// Checks HUASHU_DESIGN_DIR env var first, then falls back to ~/Personal/huashu-design.
+func huashuDesignDir() string {
+	if dir := os.Getenv("HUASHU_DESIGN_DIR"); dir != "" {
+		return dir
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Personal", "huashu-design")
+}
+
+// checkNodeAvailable verifies that node is on PATH.
+func checkNodeAvailable() error {
+	if err := exec.Command("node", "--version").Run(); err != nil {
+		return fmt.Errorf(
+			"Node.js not found.\n" +
+				"Install Node.js >= 18: https://nodejs.org")
+	}
+	return nil
+}
+
+// checkFfmpegAvailable verifies that ffmpeg is on PATH.
+func checkFfmpegAvailable() error {
+	if err := exec.Command("ffmpeg", "-version").Run(); err != nil {
+		return fmt.Errorf(
+			"ffmpeg required for video export. Install via: brew install ffmpeg")
+	}
+	return nil
+}
+
+// nodeGlobalModulesDir returns the global node_modules path so scripts can
+// find globally-installed packages (e.g. playwright). Uses `npm root -g`.
+func nodeGlobalModulesDir() string {
+	out, err := exec.Command("npm", "root", "-g").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
