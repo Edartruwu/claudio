@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,6 +62,7 @@ func checkPlaywrightAvailable() error {
 func nodeGlobalModulesDir() string {
 	out, err := exec.Command("npm", "root", "-g").Output()
 	if err != nil {
+		log.Printf("[tools] could not determine Node.js global modules dir (npm not found or failed); module resolution may fail: %v", err)
 		return ""
 	}
 	return strings.TrimSpace(string(out))
