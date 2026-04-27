@@ -8,17 +8,18 @@ import (
 
 // Session represents a connected Claudio session.
 type Session struct {
-	ID           string
-	Name         string
-	Path         string
-	Model        string
-	Master       bool
-	Status       string // active|inactive
-	CreatedAt    time.Time
-	LastActiveAt time.Time
+	ID            string
+	Name          string
+	Path          string
+	Model         string
+	Master        bool
+	Status        string // active|inactive
+	CreatedAt     time.Time
+	LastActiveAt  time.Time
 	AgentType     string // active agent type override (empty = default)
 	TeamTemplate  string // active team template name (empty = none)
 	ContextTokens int    // latest context window token count (input tokens sent to Claude)
+	CliSessionID  string // CLI's internal session ID (used as team_tasks.session_id)
 }
 
 // Message is a stored conversation message for a session.

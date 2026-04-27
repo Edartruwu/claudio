@@ -476,6 +476,9 @@ func runHeadlessAttach(args []string) error {
 		currentSessionID = cur.ID
 	}
 	appInstance.TeamRunner.SetSessionID(currentSessionID)
+	if attachClient != nil && currentSessionID != "" {
+		attachClient.SetSessionID(currentSessionID)
+	}
 
 	engineCfg := query.EngineConfig{
 		Hooks:           appInstance.Hooks,

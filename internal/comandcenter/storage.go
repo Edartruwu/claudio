@@ -219,6 +219,8 @@ func (s *Storage) migrate() error {
 		)`,
 		// 23
 		`CREATE INDEX IF NOT EXISTS idx_cc_agent_events_session ON cc_agent_events(session_id, created_at)`,
+		// 24 — store the CLI's internal session ID so web UI can correlate team_tasks rows
+		`ALTER TABLE cc_sessions ADD COLUMN cli_session_id TEXT NOT NULL DEFAULT ''`,
 	}
 
 	for i, m := range migrations {
@@ -275,8 +277,8 @@ func (s *Storage) UpsertSession(sess Session) error {
 		master = 1
 	}
 	_, err := s.writeDB.Exec(`
-		INSERT INTO cc_sessions (id, name, path, model, master, status, created_at, last_active_at, agent_type, team_template)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO cc_sessions (id, name, path, model, master, status, created_at, last_active_at, agent_type, team_template, cli_session_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			path=excluded.path,
@@ -285,9 +287,10 @@ func (s *Storage) UpsertSession(sess Session) error {
 			status=excluded.status,
 			last_active_at=excluded.last_active_at,
 			agent_type=excluded.agent_type,
-			team_template=excluded.team_template
+			team_template=excluded.team_template,
+			cli_session_id=excluded.cli_session_id
 	`, sess.ID, sess.Name, sess.Path, sess.Model, master, sess.Status,
-		sess.CreatedAt, sess.LastActiveAt, sess.AgentType, sess.TeamTemplate)
+		sess.CreatedAt, sess.LastActiveAt, sess.AgentType, sess.TeamTemplate, sess.CliSessionID)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
 	}
@@ -403,7 +406,7 @@ func (s *Storage) ListProjects() ([]Project, error) {
 // filter: "" = all, "active" = status='active', "inactive" = status not 'active' and not 'archived',
 // "project:<path>" = sessions where path = <path>.
 func (s *Storage) ListSessions(filter string) ([]Session, error) {
-	const sel = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)`
+	const sel = `SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0), COALESCE(cli_session_id,'')`
 	var (
 		query string
 		args  []any
@@ -432,7 +435,7 @@ func (s *Storage) ListSessions(filter string) ([]Session, error) {
 		var master int
 		if err := rows.Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
 			&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
-			&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens); err != nil {
+			&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens, &sess.CliSessionID); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		sess.Master = master == 1
@@ -446,11 +449,11 @@ func (s *Storage) GetSession(id string) (Session, error) {
 	var sess Session
 	var master int
 	err := s.readDB.QueryRow(`
-		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)
+		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0), COALESCE(cli_session_id,'')
 		FROM cc_sessions WHERE id=?
 	`, id).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
 		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
-		&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens)
+		&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens, &sess.CliSessionID)
 	if err == sql.ErrNoRows {
 		return Session{}, fmt.Errorf("session %s not found", id)
 	}
@@ -466,11 +469,11 @@ func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 	var sess Session
 	var master int
 	err := s.readDB.QueryRow(`
-		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0)
+		SELECT id, name, path, COALESCE(model,''), master, status, created_at, last_active_at, COALESCE(agent_type,''), COALESCE(team_template,''), COALESCE(context_tokens,0), COALESCE(cli_session_id,'')
 		FROM cc_sessions WHERE name=? ORDER BY created_at DESC LIMIT 1
 	`, name).Scan(&sess.ID, &sess.Name, &sess.Path, &sess.Model,
 		&master, &sess.Status, &sess.CreatedAt, &sess.LastActiveAt,
-		&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens)
+		&sess.AgentType, &sess.TeamTemplate, &sess.ContextTokens, &sess.CliSessionID)
 	if err == sql.ErrNoRows {
 		return Session{}, false, nil
 	}
@@ -705,6 +708,7 @@ func (s *Storage) InsertNativeMessage(sessionID, role, content string, ts time.T
 
 // GetTask returns a single task by ID from team_tasks, filtered by sessionID.
 func (s *Storage) GetTask(id, sessionID string) (Task, error) {
+	sessionID = s.resolveTaskSessionID(sessionID)
 	var t Task
 	var blocksJSON, blockedByJSON, metadataJSON string
 	err := s.readDB.QueryRow(`
@@ -807,8 +811,20 @@ func (s *Storage) MarkRead(sessionID string) error {
 	return nil
 }
 
+// resolveTaskSessionID returns the cli_session_id for the given cc_sessions.id if set,
+// otherwise falls back to the cc_sessions.id itself (backwards compat / standalone use).
+func (s *Storage) resolveTaskSessionID(ccSessionID string) string {
+	var cliID string
+	s.readDB.QueryRow(`SELECT COALESCE(cli_session_id,'') FROM cc_sessions WHERE id=?`, ccSessionID).Scan(&cliID)
+	if cliID != "" {
+		return cliID
+	}
+	return ccSessionID
+}
+
 // ListTasks returns all tasks for a session from team_tasks.
 func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
+	sessionID = s.resolveTaskSessionID(sessionID)
 	rows, err := s.readDB.Query(`
 		SELECT id, session_id, subject, COALESCE(description,''), status, COALESCE(assigned_to,''),
 		       COALESCE(blocks,'[]'), COALESCE(blocked_by,'[]'), COALESCE(metadata,'{}'),

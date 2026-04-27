@@ -23,6 +23,7 @@ type Client struct {
 	master       bool
 	agentType    string
 	teamTemplate string
+	sessionID    string // CLI's internal session ID for task correlation
 	conn         *websocket.Conn
 	outbox       chan attach.Envelope
 	onUserMsg      func(attach.UserMsgPayload)
@@ -48,6 +49,14 @@ func New(serverURL, password, name string, master bool, agentType, teamTemplate 
 		teamTemplate: teamTemplate,
 		closedChan:   make(chan struct{}),
 	}
+}
+
+// SetSessionID sets the CLI session ID sent in the Hello handshake so the
+// web UI can correlate team_tasks rows (written with this ID) to the session.
+func (c *Client) SetSessionID(id string) {
+	c.mu.Lock()
+	c.sessionID = id
+	c.mu.Unlock()
 }
 
 // Connect opens WebSocket to <serverURL>/ws/attach with Authorization header.
@@ -94,6 +103,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		Master:       c.master,
 		AgentType:    c.agentType,
 		TeamTemplate: c.teamTemplate,
+		SessionID:    c.sessionID,
 	}
 	if err := c.sendEnvelopeUnlocked(attach.EventSessionHello, hello); err != nil {
 		conn.Close()

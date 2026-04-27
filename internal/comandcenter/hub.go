@@ -395,6 +395,7 @@ func (h *Hub) handleConn(conn wsConn) {
 		// On reconnect (found=true), UpsertSession does not update these columns.
 		AgentType:    hello.AgentType,
 		TeamTemplate: hello.TeamTemplate,
+		CliSessionID: hello.SessionID,
 	}
 	if err := h.storage.UpsertSession(sess); err != nil {
 		return

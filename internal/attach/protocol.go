@@ -66,6 +66,7 @@ type HelloPayload struct {
 	Master       bool   `json:"master,omitempty"`
 	AgentType    string `json:"agent_type,omitempty"`
 	TeamTemplate string `json:"team_template,omitempty"`
+	SessionID    string `json:"session_id,omitempty"` // CLI's internal session ID for task correlation
 }
 
 // AssistantMsgPayload for EventMsgAssistant.
