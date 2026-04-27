@@ -1703,3 +1703,116 @@ func TestTeammateRunner_CompletionNoDoubleEmit(t *testing.T) {
 		t.Errorf("terminal EventAgentStatus count = %d, want exactly 1 (double-emit detected)", got)
 	}
 }
+
+// TestOnAgentDone_PurgesGrandchildren verifies that when a parent agent
+// completes, cleanupDescendants removes children AND grandchildren
+// (not just 1 level deep) from the runner and r.children map.
+func TestOnAgentDone_PurgesGrandchildren(t *testing.T) {
+	var runner *TeammateRunner
+
+	var (
+		childID, grandchildID string
+		idMu                  sync.Mutex
+	)
+
+	runFn := func(ctx context.Context, system, prompt string) (string, error) {
+		agentID := TeammateAgentIDFromContext(ctx)
+		switch prompt {
+		case "parent":
+			// Spawn child as sub-agent of parent.
+			childState, err := runner.Spawn(SpawnConfig{
+				TeamName:      "test-team",
+				AgentName:     "child",
+				Prompt:        "child",
+				ParentAgentID: agentID,
+			})
+			if err != nil {
+				return "", fmt.Errorf("spawn child: %w", err)
+			}
+			idMu.Lock()
+			childID = childState.Identity.AgentID
+			idMu.Unlock()
+			runner.WaitForOne(childState.Identity.AgentID, 10*time.Second)
+			return "parent done", nil
+
+		case "child":
+			// Spawn grandchild as sub-agent of child.
+			gcState, err := runner.Spawn(SpawnConfig{
+				TeamName:      "test-team",
+				AgentName:     "grandchild",
+				Prompt:        "grandchild",
+				ParentAgentID: agentID,
+			})
+			if err != nil {
+				return "", fmt.Errorf("spawn grandchild: %w", err)
+			}
+			idMu.Lock()
+			grandchildID = gcState.Identity.AgentID
+			idMu.Unlock()
+			runner.WaitForOne(gcState.Identity.AgentID, 10*time.Second)
+			return "child done", nil
+
+		case "grandchild":
+			return "grandchild done", nil
+		}
+		return "done", nil
+	}
+
+	runner, _ = setupRunner(t, runFn)
+
+	parentState, err := runner.Spawn(SpawnConfig{
+		TeamName:  "test-team",
+		AgentName: "parent",
+		Prompt:    "parent",
+	})
+	if err != nil {
+		t.Fatalf("spawn parent: %v", err)
+	}
+
+	if !runner.WaitForOne(parentState.Identity.AgentID, 15*time.Second) {
+		t.Fatal("timed out waiting for parent to complete")
+	}
+
+	idMu.Lock()
+	cid, gcid := childID, grandchildID
+	idMu.Unlock()
+
+	if cid == "" || gcid == "" {
+		t.Fatal("child or grandchild was never spawned")
+	}
+
+	// Parent stays in teammates (StatusComplete) until PurgeDone/RemoveAgent.
+	// Child and grandchild must be removed by cleanupDescendants.
+	runner.mu.RLock()
+	_, parentExists := runner.teammates[parentState.Identity.AgentID]
+	_, childExists := runner.teammates[cid]
+	_, gcExists := runner.teammates[gcid]
+	runner.mu.RUnlock()
+
+	if !parentExists {
+		t.Error("parent should still be in teammates (cleaned by PurgeDone, not cleanup)")
+	}
+	if childExists {
+		t.Errorf("child %s should have been removed from teammates by cleanupDescendants", cid)
+	}
+	if gcExists {
+		t.Errorf("grandchild %s should have been removed from teammates by recursive cleanup", gcid)
+	}
+
+	// r.children must also be clean for all three.
+	runner.childrenMu.Lock()
+	_, parentInChildren := runner.children[parentState.Identity.AgentID]
+	_, childInChildren := runner.children[cid]
+	_, gcInChildren := runner.children[gcid]
+	runner.childrenMu.Unlock()
+
+	if parentInChildren {
+		t.Error("parent entry should be removed from r.children after completion")
+	}
+	if childInChildren {
+		t.Error("child entry should be removed from r.children")
+	}
+	if gcInChildren {
+		t.Error("grandchild entry should be removed from r.children")
+	}
+}

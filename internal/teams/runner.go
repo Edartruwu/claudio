@@ -880,31 +880,8 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 		}()
 	}
 
-	// Kill and remove any child agents spawned by this teammate.
-	r.childrenMu.Lock()
-	childIDs := r.children[state.Identity.AgentID]
-	delete(r.children, state.Identity.AgentID)
-	r.childrenMu.Unlock()
-	for _, childID := range childIDs {
-		_ = r.Kill(childID) // best-effort
-	}
-	if len(childIDs) > 0 {
-		// Give children a moment to stop.
-		deadline := time.Now().Add(5 * time.Second)
-		for _, childID := range childIDs {
-			remaining := time.Until(deadline)
-			if remaining <= 0 {
-				break
-			}
-			r.WaitForOne(childID, remaining)
-		}
-		// Remove child states from the runner.
-		r.mu.Lock()
-		for _, childID := range childIDs {
-			delete(r.teammates, childID)
-		}
-		r.mu.Unlock()
-	}
+	// Kill and remove all descendant agents spawned by this teammate (recursive).
+	r.cleanupDescendants(state.Identity.AgentID)
 
 	// Update team status
 	r.manager.UpdateMemberStatus(cfg.TeamName, state.Identity.AgentID, state.Status)
@@ -1101,6 +1078,95 @@ func (r *TeammateRunner) Kill(agentID string) error {
 	return nil
 }
 
+// cleanupDescendants kills and removes all descendant agents of parentID
+// recursively (children of children etc.) in post-order (deepest first).
+// The parent's own entry in r.children is also cleared.
+// Total wait cap: 5s across all descendants combined.
+func (r *TeammateRunner) cleanupDescendants(parentID string) {
+	// Snapshot children map and clear parent's entry atomically.
+	r.childrenMu.Lock()
+	childrenSnapshot := make(map[string][]string, len(r.children))
+	for k, v := range r.children {
+		childrenSnapshot[k] = v
+	}
+	delete(r.children, parentID)
+	r.childrenMu.Unlock()
+
+	// DFS post-order: collect all descendants, deepest first.
+	var ordered []string
+	visited := make(map[string]bool)
+	var dfs func(id string)
+	dfs = func(id string) {
+		if visited[id] {
+			return
+		}
+		visited[id] = true
+		for _, childID := range childrenSnapshot[id] {
+			dfs(childID)
+		}
+		ordered = append(ordered, id)
+	}
+	for _, childID := range childrenSnapshot[parentID] {
+		dfs(childID)
+	}
+
+	if len(ordered) == 0 {
+		return
+	}
+
+	// Kill all descendants (best-effort).
+	for _, id := range ordered {
+		_ = r.Kill(id)
+	}
+
+	// Wait up to 5s total across all descendants.
+	deadline := time.Now().Add(5 * time.Second)
+	for _, id := range ordered {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		r.WaitForOne(id, remaining)
+	}
+
+	// Worktree cleanup + remove each descendant.
+	for _, id := range ordered {
+		r.mu.RLock()
+		s, ok := r.teammates[id]
+		r.mu.RUnlock()
+		if !ok {
+			continue // already removed (e.g. by the descendant's own goroutine)
+		}
+
+		// Remove git worktree from disk (mirrors PurgeDone logic).
+		if s.WorktreePath != "" {
+			root := s.WorktreeMainRoot
+			if root == "" {
+				root, _ = os.Getwd()
+			}
+			cmd := exec.Command("git", "worktree", "remove", "--force", s.WorktreePath)
+			cmd.Dir = root
+			_ = cmd.Run()
+			if s.WorktreeBranch != "" {
+				bcmd := exec.Command("git", "branch", "-D", s.WorktreeBranch)
+				bcmd.Dir = root
+				_ = bcmd.Run()
+			}
+		}
+
+		if err := r.RemoveAgent(id); err != nil {
+			// Agent may still be transitioning (WaitForOne timed out).
+			// Force-remove so it doesn't linger in the map.
+			r.mu.Lock()
+			delete(r.teammates, id)
+			r.mu.Unlock()
+			r.childrenMu.Lock()
+			delete(r.children, id)
+			r.childrenMu.Unlock()
+		}
+	}
+}
+
 // RemoveAgent removes a finished/failed/shutdown agent from the runner and team config.
 // Returns an error if the agent is still running.
 func (r *TeammateRunner) RemoveAgent(agentID string) error {
@@ -1114,9 +1180,26 @@ func (r *TeammateRunner) RemoveAgent(agentID string) error {
 		r.mu.Unlock()
 		return fmt.Errorf("agent %q is still running", agentID)
 	}
+	parentID := s.ParentAgentID
 	teamName := s.TeamName
 	delete(r.teammates, agentID)
 	r.mu.Unlock()
+
+	// Clean up r.children: remove agent's own entry (as parent) and remove
+	// agent from its parent's children slice.
+	r.childrenMu.Lock()
+	delete(r.children, agentID)
+	if parentID != "" {
+		siblings := r.children[parentID]
+		for i, id := range siblings {
+			if id == agentID {
+				r.children[parentID] = append(siblings[:i], siblings[i+1:]...)
+				break
+			}
+		}
+	}
+	r.childrenMu.Unlock()
+
 	if r.manager != nil && teamName != "" {
 		_ = r.manager.RemoveMember(teamName, agentID)
 	}
