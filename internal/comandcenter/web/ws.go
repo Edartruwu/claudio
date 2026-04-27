@@ -308,6 +308,10 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 		if msg == nil {
 			return
 		}
+		// Skip sub-agent tool calls — they belong in the agent log, not the main chat.
+		if msg.AgentName != "" {
+			return
+		}
 		var buf bytes.Buffer
 		if err := MessageBubble(MessageView{Message: *msg}).Render(renderCtx, &buf); err != nil {
 			return
@@ -339,6 +343,10 @@ func (ws *WebServer) fanoutHandleEvent(ev cc.UIEvent) {
 	case attach.EventMsgToolResult:
 		var p attach.ToolResultPayload
 		if err := ev.Envelope.UnmarshalPayload(&p); err != nil {
+			return
+		}
+		// Skip sub-agent tool results — no matching bubble in main chat.
+		if p.AgentName != "" {
 			return
 		}
 		// Push updated bubble HTML with output filled in.
