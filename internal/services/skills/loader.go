@@ -399,6 +399,13 @@ func bundledSkills() []*Skill {
 			Source:       "bundled",
 			Capabilities: []string{"design"},
 		},
+		{
+			Name:         "design-direction-advisor",
+			Description:  "When brief is vague, generates 3 differentiated design directions from distinct philosophies. Outputs live HTML demos side-by-side. User picks one direction before proceeding to hifi/prototype.",
+			Content:      designDirectionAdvisorSkillContent,
+			Source:       "bundled",
+			Capabilities: []string{"design"},
+		},
 	}
 }
 
@@ -1977,6 +1984,107 @@ var designSystemSkillContent = `You are extracting a design token system from re
 ## Brief
 $ARGUMENTS
 
+## Brand Asset Protocol (run before token extraction when a specific brand is named)
+
+When the user names a specific brand, product, or company, execute this 5-step protocol before extracting any design tokens. Skip to Step 1 only for generic/abstract design systems with no named brand.
+
+### BA-1 · Ask Once — Collect All Assets Upfront
+
+Do not ask piecemeal. Ask once with the full checklist:
+
+` + "```" + `
+For <brand/product>, which of these do you have? (priority order):
+1. Logo (SVG / hi-res PNG) — required for any brand
+2. Product photos / official renders — required for physical products
+3. UI screenshots / interface assets — required for digital products (App/SaaS)
+4. Color values (HEX / RGB / brand palette)
+5. Typography list (Display / Body font names)
+6. Brand guidelines PDF / Figma design system / brand website URL
+
+Share what you have; I'll search/download the rest.
+` + "```" + `
+
+### BA-2 · Search Official Channels
+
+Search in this order per asset type:
+
+| Asset | Search path |
+|---|---|
+| Logo | ` + "`<brand>.com/brand`" + ` · ` + "`<brand>.com/press`" + ` · ` + "`<brand>.com/press-kit`" + ` · inline SVG in site ` + "`<head>`" + ` |
+| Product image | Brand product page hero · official press kit · YouTube launch film stills |
+| UI screenshots | App Store / Google Play product page · official demos · brand Twitter/X posts |
+| Colors | Site inline CSS / Tailwind config · brand guidelines PDF |
+| Fonts | Site ` + "`<link rel=stylesheet>`" + ` · Google Fonts reference · brand guidelines |
+
+If logo is not found on official channels, stop and ask the user — do not proceed without a logo.
+
+### BA-3 · Quality Gate: "5-10-2-8" Rule
+
+For all assets except logo (logo: use if found, no quality gate needed):
+
+- **5 sources**: search across at least 5 channels before picking
+- **10 candidates**: collect at least 10 candidate images before curating
+- **2 finals**: pick the 2 best for use in the design
+- **8/10 minimum**: each asset must score ≥ 8/10 on:
+  1. Resolution (≥ 2000px for print/large screen)
+  2. Source legitimacy (official > public domain > free stock)
+  3. Brand alignment (matches known brand aesthetic)
+  4. Composition quality (clean background, good angle)
+  5. Narrative clarity (image tells one clear story)
+
+Assets scoring < 8/10: use an honest placeholder (gray block + "Asset pending" label) or AI-generate using official reference as base. Never use substandard assets to meet a deadline.
+
+### BA-4 · Write brand-spec.md
+
+Write ` + "`brand-spec.md`" + ` alongside ` + "`design-system.json`" + ` in the session dir:
+
+` + "```markdown" + `
+# <Brand> · Brand Spec
+> Date: YYYY-MM-DD
+> Asset sources: <list download sources>
+> Completeness: complete / partial / inferred
+
+## Core Assets
+
+### Logo
+- Primary: assets/<brand>/logo.svg
+- Reversed (light-on-dark): assets/<brand>/logo-white.svg
+- Usage: <where it appears>
+
+### Product Images (physical products)
+- Hero: assets/<brand>/product-hero.png (score: X/10)
+- Detail: assets/<brand>/product-detail.png (score: X/10)
+
+### UI Screenshots (digital products)
+- Home: assets/<brand>/ui-home.png
+- Feature: assets/<brand>/ui-feature.png
+
+## Design Tokens
+- Primary: #XXXXXX (source: <where extracted from>)
+- Background: #XXXXXX
+- Ink: #XXXXXX
+- Accent: #XXXXXX
+- Display font: <name>
+- Body font: <name>
+
+## Prohibited
+- <colors or patterns explicitly forbidden by brand guidelines>
+
+## Brand voice keywords
+- <3-5 adjectives>
+` + "```" + `
+
+### BA-5 · Fallback Handling
+
+| Missing asset | Action |
+|---|---|
+| Logo not found | Stop — ask user before proceeding |
+| Product image not found | AI-generate using official reference as base; label "AI-generated placeholder" |
+| UI screenshots not found | Ask user to share their own account screenshot |
+| Colors not found | Infer from 3 design directions; label as "inferred — confirm with brand team" |
+
+Never silently fill missing assets with generic gradients or CSS silhouettes — they strip brand identity. An honest placeholder beats a fake asset.
+
 ## Step 1 — Gather Reference Material
 
 Ask the user for one or more of:
@@ -2305,6 +2413,43 @@ var hifiSkillContent = `You are generating high-fidelity mockups with named desi
 ## Brief
 $ARGUMENTS
 
+## Anti-AI-Slop Doctrine (read before generating anything)
+
+AI slop = the visual "maximum common denominator" baked into training data. Using it makes every design look like every other AI output — stripping brand identity. Avoid the following patterns. The only legitimate exception is when the brand itself uses this element (documented in brand-spec.md).
+
+### 20 Tropes to Avoid
+
+| # | Trope | Why it's slop | When it's OK |
+|---|---|---|---|
+| 1 | Aggressive purple/violet gradients | Default "tech/AI/SaaS" shorthand — appears on thousands of landing pages | Brand spec explicitly uses it (e.g. Linear) |
+| 2 | Emoji as icons | "Not professional enough, add emoji to pad" pattern | Brand targets children, or brand style is emoji-native (Notion) |
+| 3 | Rounded card + left colored border accent | 2020-2024 Material/Tailwind era cliché, now visual noise | User explicitly requests it, or it's in brand spec |
+| 4 | SVG-drawn human faces / scenes | AI-drawn SVG figures have broken proportions and uncanny valley feel | Almost never — use real photos or honest placeholder |
+| 5 | CSS silhouette replacing real product image | Results in "generic tech animation" — any brand looks identical | Almost never — run Brand Asset Protocol first |
+| 6 | Inter/Roboto/Arial as display (headline) font | Too ubiquitous to signal "designed product" | Brand spec explicitly specifies these (e.g. Stripe uses tuned Inter) |
+| 7 | Cyber neon / "#0D1117" dark background | GitHub dark mode clone — ubiquitous in developer tool imitators | Developer tool brand that deliberately adopts this direction |
+| 8 | Glassmorphism blur cards everywhere | 2021 trend, now overused in every AI demo | Used sparingly as a single accent element, not the whole UI |
+| 9 | Gradient hero banners with centered white text | Default "make it look premium" move that screams template | Part of documented brand direction |
+| 10 | Decorative data slop (fake stats, random icons) | Numbers and icons without meaning dilute trust | Real data is provided by user |
+| 11 | Icon for every bullet / heading | "Padding the design with visual weight" anti-pattern | Design system explicitly uses icon-label pattern |
+| 12 | Generic world map or globe graphic | AI placeholder for "global/international" | Content is literally geographic |
+| 13 | Three-column feature grid with icon + title + body | Default SaaS landing page template, no differentiation | Brief explicitly requires feature comparison |
+| 14 | Floating chat bubble in lower right | Overused SaaS support widget visual cliché | Product is literally a chat widget |
+| 15 | Testimonial cards with stock photo avatar + stars | Low-trust visual, users have learned to ignore | Real testimonials with real attribution are provided |
+| 16 | "As seen in" logo parade (Forbes, TechCrunch, etc.) | Hollow social proof without context | Actual press coverage is documented |
+| 17 | Animated typing cursor on hero headline | "We're a startup" signal — too common | Animation is thematically relevant (e.g. code editor product) |
+| 18 | Confetti / celebration animation on CTA | Cheap dopamine — overused in growth-hacking templates | Genuine milestone celebration moment in the product |
+| 19 | Dark sidebar + white content area as default layout | Chrome-era admin panel default, no personality | Design system specifies this layout explicitly |
+| 20 | Lorem ipsum placeholder text | Signals "design not thought through" — use real or realistic copy | Never — always use product-relevant placeholder copy |
+
+### Positive Rules (what to do instead)
+
+- Use "text-wrap: pretty" + CSS Grid + advanced CSS — these signal real craftsmanship
+- Use oklch() or brand-spec colors only — never invent new hex values during generation
+- Apply "one element at 120%, rest at 80%" — precision in one signature detail > uniform mediocrity
+- Choose display fonts that match the brand's energy — not whatever ships with the OS
+- Earn every element's presence — if it doesn't serve the content, remove it
+
 ## Design Session Management
 
 **Existing design (iterate/update):** Call ` + "`ListDesigns`" + ` first. If a session exists for this project, use its ` + "`session_dir`" + ` as your working directory for all file writes.
@@ -2351,12 +2496,15 @@ Required token names (add more as needed):
 --font-family
 --font-family-heading
 --spacing-unit
+--border-radius
 --radius-sm
 --radius-md
 --radius-lg
 --shadow-sm
 --shadow-md
 --shadow-lg
+--transition-duration
+--animation-easing
 ` + "```" + `
 
 ## Step 3 — Generate screens.jsx with Tab Strip and Variations
@@ -2450,6 +2598,38 @@ Embed the following snippet verbatim inside ` + "`<body>`" + ` before ` + "`</bo
         <option value="spacious">Spacious</option>
       </select>
     </label>
+    <label style="display:block;margin-bottom:calc(var(--spacing-unit) * 0.5);color:var(--color-text);">Border Radius
+      <select onchange="applyBorderRadius(this.value)" style="display:block;width:100%;margin-top:0.25rem;padding:0.25rem;font-family:var(--font-family);border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-alt);color:var(--color-text);">
+        <option value="none">Sharp (0)</option>
+        <option value="subtle">Subtle (4px)</option>
+        <option value="rounded" selected>Rounded (8px)</option>
+        <option value="large">Large (16px)</option>
+        <option value="pill">Pill (9999px)</option>
+      </select>
+    </label>
+    <label style="display:block;margin-bottom:calc(var(--spacing-unit) * 0.5);color:var(--color-text);">Spacing Scale
+      <select onchange="applySpacingUnit(this.value)" style="display:block;width:100%;margin-top:0.25rem;padding:0.25rem;font-family:var(--font-family);border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-alt);color:var(--color-text);">
+        <option value="tight">Tight (0.75rem)</option>
+        <option value="comfortable" selected>Comfortable (1rem)</option>
+        <option value="airy">Airy (1.5rem)</option>
+      </select>
+    </label>
+    <label style="display:block;margin-bottom:calc(var(--spacing-unit) * 0.5);color:var(--color-text);">Motion Speed
+      <select onchange="applyMotion(this.value)" style="display:block;width:100%;margin-top:0.25rem;padding:0.25rem;font-family:var(--font-family);border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-alt);color:var(--color-text);">
+        <option value="instant">Instant (0ms)</option>
+        <option value="fast">Fast (150ms)</option>
+        <option value="normal" selected>Normal (300ms)</option>
+        <option value="slow">Slow (500ms)</option>
+      </select>
+    </label>
+    <label style="display:block;margin-bottom:calc(var(--spacing-unit) * 0.5);color:var(--color-text);">Easing
+      <select onchange="applyEasing(this.value)" style="display:block;width:100%;margin-top:0.25rem;padding:0.25rem;font-family:var(--font-family);border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-alt);color:var(--color-text);">
+        <option value="ease-out" selected>Ease Out (natural)</option>
+        <option value="ease-in-out">Ease In-Out (balanced)</option>
+        <option value="spring">Spring (overshoot)</option>
+        <option value="linear">Linear (mechanical)</option>
+      </select>
+    </label>
     <button onclick="toggleDark()" style="display:block;width:100%;padding:0.375rem var(--spacing-unit);background:var(--color-primary);color:var(--color-on-primary);border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-family);">Toggle Dark / Light</button>
   </div>
 </div>
@@ -2484,6 +2664,34 @@ Embed the following snippet verbatim inside ` + "`<body>`" + ` before ` + "`</bo
   };
   window.applyDensity = function(name) {
     R.style.setProperty('--spacing-unit', densities[name] || densities['comfortable']);
+  };
+  var borderRadii = {
+    'none':    { '--border-radius': '0', '--radius-sm': '0', '--radius-md': '0', '--radius-lg': '0' },
+    'subtle':  { '--border-radius': '4px', '--radius-sm': '2px', '--radius-md': '4px', '--radius-lg': '8px' },
+    'rounded': { '--border-radius': '8px', '--radius-sm': '4px', '--radius-md': '8px', '--radius-lg': '16px' },
+    'large':   { '--border-radius': '16px', '--radius-sm': '8px', '--radius-md': '16px', '--radius-lg': '24px' },
+    'pill':    { '--border-radius': '9999px', '--radius-sm': '9999px', '--radius-md': '9999px', '--radius-lg': '9999px' }
+  };
+  window.applyBorderRadius = function(name) {
+    var r = borderRadii[name] || borderRadii['rounded'];
+    Object.keys(r).forEach(function(k) { R.style.setProperty(k, r[k]); });
+  };
+  var spacingUnits = { 'tight': '0.75rem', 'comfortable': '1rem', 'airy': '1.5rem' };
+  window.applySpacingUnit = function(name) {
+    R.style.setProperty('--spacing-unit', spacingUnits[name] || spacingUnits['comfortable']);
+  };
+  var motionSpeeds = { 'instant': '0ms', 'fast': '150ms', 'normal': '300ms', 'slow': '500ms' };
+  window.applyMotion = function(name) {
+    R.style.setProperty('--transition-duration', motionSpeeds[name] || motionSpeeds['normal']);
+  };
+  var easings = {
+    'ease-out':    'cubic-bezier(0.0, 0, 0.2, 1)',
+    'ease-in-out': 'cubic-bezier(0.4, 0, 0.2, 1)',
+    'spring':      'cubic-bezier(0.34, 1.56, 0.64, 1)',
+    'linear':      'linear'
+  };
+  window.applyEasing = function(name) {
+    R.style.setProperty('--animation-easing', easings[name] || easings['ease-out']);
   };
   window.toggleDark = function() {
     dark = !dark;
@@ -2522,12 +2730,15 @@ At the top of ` + "`<style>`" + ` in ` + "`<head>`" + `, set default token value
     --font-family: Inter, system-ui, sans-serif;
     --font-family-heading: Inter, system-ui, sans-serif;
     --spacing-unit: 1rem;
+    --border-radius: 8px;
     --radius-sm: 0.25rem;
     --radius-md: 0.5rem;
     --radius-lg: 1rem;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
     --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
     --shadow-lg: 0 10px 15px rgba(0,0,0,0.10);
+    --transition-duration: 300ms;
+    --animation-easing: cubic-bezier(0.0, 0, 0.2, 1);
   }
   body {
     background: var(--color-bg);
@@ -2770,6 +2981,83 @@ var prototypeSkillContent = `You are generating stateful interactive prototypes 
 
 ## Brief
 $ARGUMENTS
+
+## Junior Designer Workflow: Assumption → Reasoning → Placeholder → Iterate
+
+Do not generate a complete prototype from a blank slate. Use this structured approach on every task:
+
+### Step 0-A · Declare Assumptions (before writing any code)
+
+At the very top of the first file you write, add an HTML comment block:
+
+` + "```html" + `
+<!--
+ASSUMPTIONS
+===========
+User behavior:
+  - Assumed users arrive via [entry point] and want to [primary goal]
+  - Assumed [X] is the most common task; [Y] is secondary
+
+Content:
+  - [Field name] will contain [estimated character count / data format]
+  - [Image slot] will be [dimensions / content type]
+
+Interaction model:
+  - Assumed [gesture/click/keyboard] triggers [action]
+  - Assumed [state A] always precedes [state B]
+
+Open questions for user:
+  - [ ] Is [assumption X] correct?
+  - [ ] What happens when [edge case Y]?
+-->
+` + "```" + `
+
+### Step 0-B · Reasoning (explain each flow decision inline)
+
+For each screen transition or interaction decision, add a brief comment explaining WHY this flow makes sense:
+
+` + "```jsx" + `
+// REASONING: Login → Dashboard direct flow because most users return daily
+// and don't need onboarding after first session. Onboarding only fires on
+// account.isNew === true.
+` + "```" + `
+
+### Step 0-C · Placeholder Discipline
+
+Use explicit, honest placeholders — never invented data:
+
+| Instead of | Use |
+|---|---|
+| Fake user names | ` + "`[User Name]`" + ` or ` + "`<!-- await: real user data -->`" + ` |
+| Made-up statistics | ` + "`[Metric: source pending]`" + ` |
+| Generic product images | Gray block + ` + "`\"Product image · 400×300 · pending\"`" + ` |
+| Lorem ipsum | ` + "`[Copy: headline for feature X]`" + ` |
+| Random numbers in charts | Clearly labeled ` + "`/* mock data — replace with API */`" + ` |
+
+Placeholder rule: a labeled gray block is better than a confident fake.
+
+### Step 0-D · Iterate — Flag What Needs Real Data
+
+At the end of the file, add an iteration checklist:
+
+` + "```html" + `
+<!--
+ITERATION CHECKLIST
+===================
+Replace before handoff:
+  [ ] [Placeholder A] — needs: <what real data/asset is required>
+  [ ] [Placeholder B] — needs: <API endpoint / user content>
+
+Confirm with user:
+  [ ] [Flow decision X] — assumption logged above
+  [ ] [Interaction Y] — needs UX validation
+
+Deferred to production:
+  [ ] [Animation Z] — needs real performance budget
+-->
+` + "```" + `
+
+Show the assumptions + iteration checklist to the user early — before the prototype is complete. An incorrect assumption caught at step 0 costs nothing; caught after full implementation, it costs a rewrite.
 
 ## Design Session Management
 
@@ -3206,3 +3494,190 @@ Tell the user:
 
 Then suggest: ` + "`Use /handoff to generate a developer spec from this prototype.`" + `
 `
+
+var designDirectionAdvisorSkillContent = `You are a design direction advisor. When the user's brief is vague or lacks specific visual direction, you generate 3 differentiated design directions as live HTML demos. The user picks one direction before you proceed to full hifi/prototype execution.
+
+## Brief
+$ARGUMENTS
+
+## When to Use This Skill
+
+**Trigger conditions (any one is sufficient):**
+- Brief is vague ("make it look good", "help me design", "something nice")
+- No design reference provided (no Figma, no screenshot, no brand spec)
+- User explicitly asks for options ("give me directions", "show me styles", "what would work?")
+- Project has no design context (no existing design system, no reference)
+
+**Skip and hand off to /hifi if:**
+- User has given a specific visual reference (Figma, screenshot, brand guidelines)
+- User has stated a clear style ("Apple-style", "Bloomberg editorial feel")
+- Task is a small edit or iteration on existing design
+
+## Step 1 — Understand the Brief
+
+Before generating directions, ask at most 3 questions if the brief is truly empty:
+1. Who is the target audience? (e.g. enterprise users, consumers, developers)
+2. What is the core purpose? (e.g. dashboard, landing page, app)
+3. What emotional tone should it have? (e.g. trustworthy, playful, cutting-edge)
+
+If any of these can be inferred from context, infer — do not ask.
+
+## Step 2 — Restate the Brief (100-150 words)
+
+Summarize the essential design problem in your own words: audience, purpose, emotional tone, and key constraints. End with: "Based on this understanding, here are 3 design directions."
+
+## Step 3 — Select 3 Directions from Different Philosophies
+
+Choose 3 directions that come from different philosophical families. The 20 available philosophies, grouped:
+
+**Information Architecture Family (01-04):** Pentagram (Michael Bierut) · Stamen Design · Information Architects · Fathom Information Design
+**Motion Poetry Family (05-08):** Locomotive · Active Theory · Field.io · Resn
+**Minimalism Family (09-12):** Experimental Jetset · Müller-Brockmann · Build Studio · Sagmeister & Walsh
+**Avant-Garde Family (13-16):** Zach Lieberman · Raven Kwok · Ash Thorp · Territory Studio
+**Eastern Philosophy Family (17-20):** Takram · Kenya Hara · Irma Boom · Neo Shen
+
+**Mandatory rule:** All 3 directions must come from different families. No two directions from the same family.
+
+**Recommended combinations by project type:**
+
+| Project Type | Suggested Direction Mix |
+|---|---|
+| SaaS / Dashboard | Information Architecture + Minimalism + Eastern Philosophy |
+| Creative Agency / Portfolio | Motion Poetry + Avant-Garde + Minimalism |
+| Consumer App | Minimalism + Eastern Philosophy + Information Architecture |
+| Data-Heavy Product | Information Architecture + Minimalism + Motion Poetry |
+| Developer Tool | Information Architecture + Minimalism + Avant-Garde |
+
+For each direction, state:
+- **Name:** "[Philosopher/Studio] — [2-word tagline]" (e.g. "Kenya Hara — Radical Emptiness")
+- **Rationale:** 50-80 words explaining why this philosophy fits the user's specific brief
+- **Visual signatures:** 3-4 bullet points (color approach, typography style, layout density, one signature element)
+- **Emotional keywords:** 3-5 adjectives
+
+## Step 4 — Generate 3 Live HTML Demos in One File
+
+Produce a single self-contained HTML file with all 3 direction demos displayed side by side (or stacked on mobile). Each demo is a 600×400px card mockup of the actual product — not an abstract style board.
+
+The HTML file structure:
+
+` + "```html" + `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Design Directions — [Product Name]</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 2rem; }
+    h1 { text-align: center; margin-bottom: 0.5rem; font-size: 1.25rem; color: #111; }
+    p.subtitle { text-align: center; color: #666; font-size: 0.875rem; margin-bottom: 2rem; }
+    .directions { display: grid; grid-template-columns: repeat(auto-fit, minmax(600px, 1fr)); gap: 2rem; }
+    .direction { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    .direction-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e5e5e5; }
+    .direction-name { font-weight: 600; font-size: 1rem; color: #111; margin-bottom: 0.25rem; }
+    .direction-rationale { font-size: 0.8rem; color: #666; line-height: 1.5; }
+    .demo-frame { width: 100%; height: 400px; position: relative; overflow: hidden; }
+    .direction-footer { padding: 1rem 1.5rem; border-top: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between; }
+    .keywords { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .keyword { background: #f3f4f6; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; color: #555; }
+    .pick-btn { padding: 0.5rem 1.25rem; border: none; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+    .pick-btn:hover { opacity: 0.85; }
+    .picked { outline: 3px solid #2563eb; outline-offset: 3px; }
+    .confirmation { display: none; text-align: center; margin-top: 2rem; padding: 1.5rem; background: #eff6ff; border-radius: 12px; border: 1px solid #bfdbfe; }
+    .confirmation.show { display: block; }
+    .confirmation strong { color: #1d4ed8; font-size: 1.1rem; }
+    .confirmation p { color: #3730a3; font-size: 0.875rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Design Directions — [Product Name]</h1>
+  <p class="subtitle">Pick the direction that resonates. You can also mix: "A's color + C's layout".</p>
+  <div class="directions">
+
+    <!-- Direction A -->
+    <div class="direction" id="dir-a">
+      <div class="direction-header">
+        <div class="direction-name">A · [Philosophy Name] — [Tagline]</div>
+        <div class="direction-rationale">[50-80 word rationale for why this fits the brief]</div>
+      </div>
+      <div class="demo-frame">
+        <!-- FULL SELF-CONTAINED MOCKUP FOR DIRECTION A -->
+        <!-- Use inline styles only. No external dependencies. -->
+        <!-- Must look like a real product UI, not an abstract style board. -->
+        <!-- Minimum: header/nav + one content section + one interactive element -->
+      </div>
+      <div class="direction-footer">
+        <div class="keywords">
+          <span class="keyword">[adjective 1]</span>
+          <span class="keyword">[adjective 2]</span>
+          <span class="keyword">[adjective 3]</span>
+        </div>
+        <button class="pick-btn" style="background:[direction-A-primary];color:[on-primary];" onclick="pickDirection('a', 'A · [Name]')">Pick this direction →</button>
+      </div>
+    </div>
+
+    <!-- Direction B -->
+    <div class="direction" id="dir-b">
+      <!-- same structure as Direction A, different content -->
+    </div>
+
+    <!-- Direction C -->
+    <div class="direction" id="dir-c">
+      <!-- same structure as Direction A, different content -->
+    </div>
+
+  </div>
+
+  <div class="confirmation" id="confirmation">
+    <strong>Direction <span id="chosen-label"></span> selected</strong>
+    <p>Tell me to proceed with <code>/hifi</code> or <code>/prototype</code> and I will execute in this direction.</p>
+  </div>
+
+  <script>
+    var current = null;
+    function pickDirection(id, label) {
+      if (current) document.getElementById('dir-' + current).classList.remove('picked');
+      current = id;
+      document.getElementById('dir-' + id).classList.add('picked');
+      document.getElementById('chosen-label').textContent = label;
+      document.getElementById('confirmation').classList.add('show');
+      document.getElementById('confirmation').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  </script>
+</body>
+</html>
+` + "```" + `
+
+### Rules for the demo frames
+
+Each 600×400px demo frame must:
+- Show the actual product context (not an abstract color swatch)
+- Use the philosophy's actual color palette, typography weight, and layout density
+- Include at least: a header/nav, a headline, one content element, one CTA or interactive element
+- Use only inline styles — no external CSS, no CDN fonts (use system font stacks that match the direction's feel)
+- Be visually distinct from the other two directions — a user should be able to tell them apart at a glance
+
+Typography system fonts by direction family:
+- Information Architecture: ` + "`'Helvetica Neue', Arial, sans-serif`" + ` (tight tracking, heavy weight hierarchy)
+- Motion Poetry: ` + "`system-ui, sans-serif`" + ` (large scale contrast, display vs body split)
+- Minimalism: ` + "`Georgia, serif`" + ` or ` + "`'Gill Sans', sans-serif`" + ` (controlled rhythm)
+- Avant-Garde: ` + "`'Courier New', monospace`" + ` or ` + "`system-ui`" + ` with extreme weight contrast
+- Eastern Philosophy: ` + "`'Palatino', serif`" + ` or ` + "`system-ui`" + ` with generous whitespace and light weights
+
+## Step 5 — Save and Present
+
+1. Write the HTML file to a local path (e.g. ` + "`_temp/design-directions.html`" + `)
+2. Present the 3 directions with their names and 2-sentence rationale in the chat
+3. Tell the user: "Open the HTML file to see interactive demos. Click 'Pick this direction →' to select, then tell me to proceed with /hifi or /prototype."
+
+## Step 6 — User Picks → Hand Off
+
+When user picks a direction (or describes a mix), respond:
+
+1. Confirm the chosen direction and its visual signatures
+2. State the assumptions you're carrying forward (typography, palette, layout density)
+3. Ask if they want: (a) proceed to /hifi for static mockup, or (b) proceed to /prototype for interactive flow
+4. Execute the chosen skill with the design direction as context
+
+If user wants to mix directions (e.g. "A's color + C's layout"), create a merged direction brief before handing off.`
