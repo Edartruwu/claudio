@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -484,8 +485,156 @@ func (s *Storage) GetSessionByName(name string) (Session, bool, error) {
 	return sess, true, nil
 }
 
+// getCliSessionID returns the cli_session_id for a cc_sessions row, or "" if unset.
+func (s *Storage) getCliSessionID(ccSessionID string) string {
+	var id string
+	s.readDB.QueryRow(`SELECT COALESCE(cli_session_id,'') FROM cc_sessions WHERE id=?`, ccSessionID).Scan(&id)
+	return id
+}
+
+// nativeToMessage maps a native messages row to a cc Message.
+// ccSessionID is substituted so the web UI sees its own session ID in DOM attributes.
+func nativeToMessage(id int64, sid, role, content, typ, toolUseID, toolName string, createdAt time.Time, agentName, output, ccSessionID string) Message {
+	m := Message{
+		ID:        fmt.Sprintf("%d", id),
+		SessionID: ccSessionID,
+		AgentName: agentName,
+		Output:    output,
+		CreatedAt: createdAt,
+	}
+	switch typ {
+	case "tool_use":
+		m.Role = "tool_use"
+		m.Content = toolName + ": " + content
+		m.ToolUseID = toolUseID
+	case "tool_result":
+		m.Role = "tool_result"
+		m.Content = content
+		m.ToolUseID = toolUseID
+	default:
+		m.Role = role
+		m.Content = content
+	}
+	return m
+}
+
+// listNativeMessages reads from the native messages table for a bridged session.
+// Returns newest-first, up to limit. beforeID is an integer string for pagination.
+func (s *Storage) listNativeMessages(cliSessionID, ccSessionID string, limit int, beforeID string) ([]Message, bool, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	fetchLimit := limit + 1
+
+	var rows *sql.Rows
+	var err error
+	if beforeID != "" {
+		bid, perr := strconv.ParseInt(beforeID, 10, 64)
+		if perr != nil {
+			return nil, false, fmt.Errorf("invalid beforeID %q: %w", beforeID, perr)
+		}
+		rows, err = s.readDB.Query(`
+			SELECT id, session_id, role, content, COALESCE(type,'text'), COALESCE(tool_use_id,''),
+			       COALESCE(tool_name,''), created_at, COALESCE(agent_name,''), COALESCE(output,'')
+			FROM messages WHERE session_id=? AND id < ?
+			ORDER BY id DESC LIMIT ?
+		`, cliSessionID, bid, fetchLimit)
+	} else {
+		rows, err = s.readDB.Query(`
+			SELECT id, session_id, role, content, COALESCE(type,'text'), COALESCE(tool_use_id,''),
+			       COALESCE(tool_name,''), created_at, COALESCE(agent_name,''), COALESCE(output,'')
+			FROM messages WHERE session_id=?
+			ORDER BY id DESC LIMIT ?
+		`, cliSessionID, fetchLimit)
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("list native messages: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var (
+			id                                                           int64
+			sid, role, content, typ, toolUseID, toolName, agentName, out string
+			createdAt                                                    time.Time
+		)
+		if err := rows.Scan(&id, &sid, &role, &content, &typ, &toolUseID, &toolName, &createdAt, &agentName, &out); err != nil {
+			return nil, false, fmt.Errorf("scan native message: %w", err)
+		}
+		msgs = append(msgs, nativeToMessage(id, sid, role, content, typ, toolUseID, toolName, createdAt, agentName, out, ccSessionID))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(msgs) > limit
+	if hasMore {
+		msgs = msgs[:limit]
+	}
+	return msgs, hasMore, nil
+}
+
+// listNativeMessagesByAgent reads native messages filtered by agent_name, oldest first.
+func (s *Storage) listNativeMessagesByAgent(cliSessionID, ccSessionID, agentName string, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.readDB.Query(`
+		SELECT id, session_id, role, content, COALESCE(type,'text'), COALESCE(tool_use_id,''),
+		       COALESCE(tool_name,''), created_at, COALESCE(agent_name,''), COALESCE(output,'')
+		FROM messages WHERE session_id=? AND agent_name=?
+		ORDER BY id ASC LIMIT ?
+	`, cliSessionID, agentName, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list native messages by agent: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []Message
+	for rows.Next() {
+		var (
+			id                                                           int64
+			sid, role, content, typ, toolUseID, toolName, aName, out string
+			createdAt                                                    time.Time
+		)
+		if err := rows.Scan(&id, &sid, &role, &content, &typ, &toolUseID, &toolName, &createdAt, &aName, &out); err != nil {
+			return nil, fmt.Errorf("scan native message: %w", err)
+		}
+		msgs = append(msgs, nativeToMessage(id, sid, role, content, typ, toolUseID, toolName, createdAt, aName, out, ccSessionID))
+	}
+	return msgs, rows.Err()
+}
+
 // InsertMessage stores a message for a session.
+// For sessions bridged to a native TUI session, writes to the native messages table.
 func (s *Storage) InsertMessage(msg Message) error {
+	if cliID := s.getCliSessionID(msg.SessionID); cliID != "" {
+		msgType := "text"
+		toolName := ""
+		content := msg.Content
+		role := msg.Role
+		switch msg.Role {
+		case "tool_use":
+			msgType = "tool_use"
+			role = "assistant"
+			if i := strings.Index(content, ": "); i > 0 {
+				toolName = content[:i]
+				content = content[i+2:]
+			}
+		case "tool_result":
+			msgType = "tool_result"
+			role = "user"
+		}
+		_, err := s.writeDB.Exec(`
+			INSERT INTO messages (session_id, role, content, type, tool_use_id, tool_name, created_at, agent_name, output)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, cliID, role, content, msgType, msg.ToolUseID, toolName, msg.CreatedAt, msg.AgentName, msg.Output)
+		if err != nil {
+			return fmt.Errorf("insert native message (bridged): %w", err)
+		}
+		return nil
+	}
 	_, err := s.writeDB.Exec(`
 		INSERT INTO cc_messages (id, session_id, role, content, agent_name, created_at,
 		                         reply_to_session, quoted_content, tool_use_id)
@@ -499,7 +648,13 @@ func (s *Storage) InsertMessage(msg Message) error {
 }
 
 // UpdateMessageOutput sets the output field on a tool_use message by ToolUseID.
+// For bridged sessions, updates the native messages table.
 func (s *Storage) UpdateMessageOutput(sessionID, toolUseID, output string) error {
+	if cliID := s.getCliSessionID(sessionID); cliID != "" {
+		_, err := s.writeDB.Exec(`UPDATE messages SET output=? WHERE session_id=? AND tool_use_id=?`,
+			output, cliID, toolUseID)
+		return err
+	}
 	_, err := s.writeDB.Exec(`
 		UPDATE cc_messages SET output=? WHERE session_id=? AND tool_use_id=?
 	`, output, sessionID, toolUseID)
@@ -510,7 +665,12 @@ func (s *Storage) UpdateMessageOutput(sessionID, toolUseID, output string) error
 }
 
 // ListMessages returns messages for a session, newest first, up to limit.
+// For bridged sessions, reads from the native messages table.
 func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
+	if cliID := s.getCliSessionID(sessionID); cliID != "" {
+		msgs, _, err := s.listNativeMessages(cliID, sessionID, limit, "")
+		return msgs, err
+	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -542,7 +702,11 @@ func (s *Storage) ListMessages(sessionID string, limit int) ([]Message, error) {
 // ListMessagesPaginated returns the most recent `limit` messages for a session,
 // optionally before the message with ID `beforeID`. Returns (messages newest-first,
 // hasMore bool, error). hasMore is true when older messages exist beyond the returned page.
+// For bridged sessions, reads from the native messages table.
 func (s *Storage) ListMessagesPaginated(sessionID string, limit int, beforeID string) ([]Message, bool, error) {
+	if cliID := s.getCliSessionID(sessionID); cliID != "" {
+		return s.listNativeMessages(cliID, sessionID, limit, beforeID)
+	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -596,7 +760,11 @@ func (s *Storage) ListMessagesPaginated(sessionID string, limit int, beforeID st
 }
 
 // ListMessagesByAgent returns messages for a session filtered by agent_name, oldest first, up to limit.
+// For bridged sessions, reads from the native messages table.
 func (s *Storage) ListMessagesByAgent(sessionID, agentName string, limit int) ([]Message, error) {
+	if cliID := s.getCliSessionID(sessionID); cliID != "" {
+		return s.listNativeMessagesByAgent(cliID, sessionID, agentName, limit)
+	}
 	if limit <= 0 {
 		limit = 200
 	}
@@ -673,8 +841,13 @@ func (s *Storage) GetNativeMessages(sessionID string, limit int) ([]Message, err
 	return msgs, rows.Err()
 }
 
-// DeleteMessages removes all messages for a session (used by /clear command).
+// DeleteMessageByID removes a single message. Numeric IDs target native messages table,
+// UUID IDs target cc_messages.
 func (s *Storage) DeleteMessageByID(id string) error {
+	if _, err := strconv.ParseInt(id, 10, 64); err == nil {
+		_, derr := s.writeDB.Exec(`DELETE FROM messages WHERE id=?`, id)
+		return derr
+	}
 	_, err := s.writeDB.Exec(`DELETE FROM cc_messages WHERE id = ?`, id)
 	return err
 }
@@ -682,6 +855,13 @@ func (s *Storage) DeleteMessageByID(id string) error {
 func (s *Storage) DeleteMessages(sessionID string) error {
 	if _, err := s.writeDB.Exec(`DELETE FROM cc_attachments WHERE session_id = ?`, sessionID); err != nil {
 		return fmt.Errorf("delete attachments: %w", err)
+	}
+	if cliID := s.getCliSessionID(sessionID); cliID != "" {
+		_, err := s.writeDB.Exec(`DELETE FROM messages WHERE session_id = ?`, cliID)
+		if err != nil {
+			return fmt.Errorf("delete native messages (bridged): %w", err)
+		}
+		return nil
 	}
 	_, err := s.writeDB.Exec(`DELETE FROM cc_messages WHERE session_id = ?`, sessionID)
 	if err != nil {
@@ -785,7 +965,22 @@ func (s *Storage) UpsertAgent(agent Agent) error {
 
 // UnreadCount returns the count of unread messages for a session.
 // Messages are unread if created_at > last_read_at (or all if last_read_at is NULL).
+// For bridged sessions, counts from the native messages table.
 func (s *Storage) UnreadCount(sessionID string) (int, error) {
+	if cliID := s.getCliSessionID(sessionID); cliID != "" {
+		var count int
+		err := s.readDB.QueryRow(`
+			SELECT COUNT(*) FROM messages
+			WHERE session_id = ? AND created_at > COALESCE(
+				(SELECT last_read_at FROM cc_sessions WHERE id = ?),
+				'1970-01-01'
+			)
+		`, cliID, sessionID).Scan(&count)
+		if err != nil {
+			return 0, fmt.Errorf("unread count (bridged): %w", err)
+		}
+		return count, nil
+	}
 	var count int
 	err := s.readDB.QueryRow(`
 		SELECT COUNT(*) FROM cc_messages
