@@ -485,8 +485,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		obs := &teammateObserver{state: state, runner: teamRunner}
 		ctx = tools.WithSubAgentObserver(ctx, obs)
 		ctx = tools.WithTeamContext(ctx, tools.TeamContext{
-			TeamName:  state.TeamName,
-			AgentName: state.Identity.AgentName,
+			TeamName:   state.TeamName,
+			AgentName:  state.Identity.AgentName,
+			Foreground: state.Foreground,
 		})
 		// Inject cc sender so runSubAgentWithMemory can forward sub-agent messages
 		// to cc_messages via the attach WebSocket (only effective in --attach mode).
@@ -958,8 +959,10 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 	// Both are nil/empty for non-team sub-agents, which is fine — forwarder no-ops.
 	ccRef := ccSendFromCtx(ctx)
 	ccAgentName := ""
+	foreground := false
 	if tc := tools.TeamContextFromCtx(ctx); tc != nil {
 		ccAgentName = tc.AgentName
+		foreground = tc.Foreground
 	}
 
 	// Create a forwarder that captures text AND forwards tool events to parent
@@ -970,6 +973,7 @@ func runSubAgentWithMemory(ctx context.Context, apiClient *api.Client, parentReg
 		sessionID:   subSessionID,
 		ccSend:      ccRef,
 		ccAgentName: ccAgentName,
+		foreground:  foreground,
 	}
 	engine := query.NewEngineWithConfig(apiClient, subRegistry, forwarder, cfg)
 	engine.SetSubAgent(true)
@@ -1051,8 +1055,12 @@ type subAgentForwarder struct {
 
 	// ccSend forwards messages to ComandCenter cc_messages via attach WS.
 	// nil when not in --attach mode or for non-team sub-agents.
+	// Suppressed entirely for foreground agents: their result already arrives
+	// via tool_result; sending via ccSend would loop back through the hub and
+	// inject the sub-agent's message into the principal's own context.
 	ccSend      *ccSendRef
 	ccAgentName string // display name used as agent_name in cc_messages
+	foreground  bool   // true = skip all ccSend sends
 
 	// lastTurn holds only the current/last assistant turn text.
 	// Reset at the start of each new turn so the sync return path
@@ -1089,7 +1097,10 @@ func (f *subAgentForwarder) OnTextDelta(text string) {
 		f.observer.OnSubAgentText(f.desc, text)
 	}
 	// Forward streaming delta to hub so the web UI agent log shows live text.
-	if f.ccSend != nil && f.ccAgentName != "" {
+	// Suppressed for foreground agents: sending via the parent's attach client
+	// causes the hub to loop the message back to the parent's own connection,
+	// injecting sub-agent text into the principal's conversation context.
+	if !f.foreground && f.ccSend != nil && f.ccAgentName != "" {
 		if c := f.ccSend.get(); c != nil {
 			_ = c.SendEvent(attach.EventMsgStreamDelta, attach.StreamDeltaPayload{
 				Delta:       text,
@@ -1177,7 +1188,10 @@ func (f *subAgentForwarder) OnTurnComplete(usage api.Usage) {
 	// --- cc_messages writes via attach WebSocket (--attach mode, team members only) ---
 	// The hub on the ComandCenter side receives these events and writes to cc_messages,
 	// making messages visible in the agent logs drawer (handleAgentLogs queries by agentName).
-	if f.ccSend != nil && f.ccAgentName != "" {
+	// Suppressed for foreground agents: the hub broadcasts back to the parent's own
+	// attach connection, injecting sub-agent messages into the principal's context.
+	// Foreground results already arrive cleanly via the tool_result path.
+	if !f.foreground && f.ccSend != nil && f.ccAgentName != "" {
 		if cli := f.ccSend.get(); cli != nil {
 			// 1. Assistant text
 			if txt != "" {

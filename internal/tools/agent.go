@@ -114,6 +114,7 @@ func SubAgentDBFromContext(ctx context.Context) *SubAgentDBContext {
 type TeamContext struct {
 	TeamName  string
 	AgentName string
+	Foreground bool // true when spawned synchronously (run_in_background=false)
 }
 
 type ctxKeyTeamContext struct{}
