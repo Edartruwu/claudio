@@ -179,14 +179,8 @@ templ infoTabIconConfig() {
 
 templ TabTasks(data InfoPageData) {
 	<div class="flex flex-col gap-2">
-		<div
-			id="tasks-list"
-			hx-get={ fmt.Sprintf("/chat/%s/tasks", data.Session.ID) }
-			hx-trigger="refresh from:body, every 15s"
-			hx-swap="innerHTML"
-			class="flex flex-col gap-2"
-		>
-		@TaskRows(data.Tasks, data.Session.ID)
+		<div id="tasks-list" class="flex flex-col gap-2">
+			@TaskRows(data.Tasks, data.Session.ID)
 		</div>
 	</div>
 }
