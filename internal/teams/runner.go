@@ -1282,18 +1282,47 @@ func (r *TeammateRunner) WaitForTeam(teamName string, timeout time.Duration) boo
 // be invisible to the runner.
 func (r *TeammateRunner) CleanupTeam(teamName string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
+	var toDelete []string
 	for id, s := range r.teammates {
 		if s.TeamName == teamName {
+			toDelete = append(toDelete, id)
 			delete(r.teammates, id)
 		}
 	}
 	delete(r.mailboxes, teamName)
-
 	if r.activeTeam == teamName {
 		r.activeTeam = ""
 	}
+	r.mu.Unlock()
+
+	if len(toDelete) == 0 {
+		return
+	}
+	// Clean r.children for every removed agent.
+	r.childrenMu.Lock()
+	for _, id := range toDelete {
+		delete(r.children, id)
+	}
+	// Build a set for fast lookup, then splice removed agents out of any
+	// remaining parent's children slice.
+	deleted := make(map[string]bool, len(toDelete))
+	for _, id := range toDelete {
+		deleted[id] = true
+	}
+	for parentID, kids := range r.children {
+		filtered := kids[:0]
+		for _, kid := range kids {
+			if !deleted[kid] {
+				filtered = append(filtered, kid)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(r.children, parentID)
+		} else {
+			r.children[parentID] = filtered
+		}
+	}
+	r.childrenMu.Unlock()
 }
 
 // WaitForAll blocks until all teammates are idle.
@@ -1536,7 +1565,6 @@ func (r *TeammateRunner) reconstructStateFromConfig(agentName string) (*Teammate
 // memory. A threshold of -1 disables auto-deletion.
 func (r *TeammateRunner) IncrementInactivity(threshold int) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	var toDelete []string
 	for id, state := range r.teammates {
@@ -1559,6 +1587,37 @@ func (r *TeammateRunner) IncrementInactivity(threshold int) {
 	for _, id := range toDelete {
 		delete(r.teammates, id)
 	}
+	r.mu.Unlock()
+
+	// Clean r.children for every evicted agent (outside r.mu to avoid lock order issues).
+	if len(toDelete) == 0 {
+		return
+	}
+	r.childrenMu.Lock()
+	for _, id := range toDelete {
+		// Get parentID before we delete the entry — not stored outside teammates
+		// anymore, so derive from children map (reverse lookup is O(n) but
+		// IncrementInactivity is called infrequently).
+		delete(r.children, id)
+	}
+	evicted := make(map[string]bool, len(toDelete))
+	for _, id := range toDelete {
+		evicted[id] = true
+	}
+	for parentID, kids := range r.children {
+		filtered := kids[:0]
+		for _, kid := range kids {
+			if !evicted[kid] {
+				filtered = append(filtered, kid)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(r.children, parentID)
+		} else {
+			r.children[parentID] = filtered
+		}
+	}
+	r.childrenMu.Unlock()
 }
 
 // FormatStatus returns a summary of all teammates.
