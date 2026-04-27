@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/Abraxas-365/claudio/internal/auth/oauth"
@@ -13,14 +15,26 @@ type CompositeStorage struct {
 	fallback SecureStorage
 }
 
-// NewDefaultStorage creates the platform-appropriate secure storage.
-func NewDefaultStorage() SecureStorage {
-	paths := config.GetPaths()
-	plaintext := NewPlaintextStorage(paths.Credentials)
+// NewDefaultStorage creates the platform-appropriate secure storage for the given profile.
+// Profile "default" uses legacy paths for backward compatibility.
+// Empty profile is treated as "default".
+func NewDefaultStorage(profile string) SecureStorage {
+	if profile == "" {
+		profile = "default"
+	}
+
+	credPath := config.GetProfileCredentialsPath(profile)
+
+	// Ensure profile directory exists (skip for "default" — uses legacy path)
+	if profile != "default" {
+		_ = os.MkdirAll(filepath.Dir(credPath), 0700)
+	}
+
+	plaintext := NewPlaintextStorage(credPath)
 
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		keychain := NewKeychainStorage()
+		keychain := NewKeychainStorage(profile, credPath)
 		return &CompositeStorage{
 			primary:  keychain,
 			fallback: plaintext,

@@ -202,7 +202,7 @@ func TestCheckAndRefresh_InFlightFlagDedup(t *testing.T) {
 
 func TestCheckAndRefreshImpl_SkipsFreshToken(t *testing.T) {
 	s := storeWithTokens(t, freshTokens())
-	refreshed, err := checkAndRefreshImpl(s, false)
+	refreshed, err := checkAndRefreshImpl(s, false, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestCheckAndRefreshImpl_ForceSkipsExpiryCheck(t *testing.T) {
 	// proceeds past the expiry guard by checking it does NOT return (false,nil)
 	// immediately. It will either error from the lock/network, or return false
 	// if the token still isn't actually expired after the lock double-check.
-	_, _ = checkAndRefreshImpl(s, true)
+	_, _ = checkAndRefreshImpl(s, true, "")
 }
 
 // ---------------------------------------------------------------------------

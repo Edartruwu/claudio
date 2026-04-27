@@ -33,7 +33,8 @@ var (
 // CheckAndRefreshIfNeeded checks if the OAuth token needs refreshing and refreshes it.
 // Uses in-process deduplication (only one goroutine refreshes at a time) and
 // file locking for multi-process safety.
-func CheckAndRefreshIfNeeded(store storage.SecureStorage, force bool) (bool, error) {
+// profile scopes the lock file; empty string uses the legacy lock path.
+func CheckAndRefreshIfNeeded(store storage.SecureStorage, force bool, profile ...string) (bool, error) {
 	refreshMu.Lock()
 	// If a refresh is already in flight and this is not a forced call, wait for it.
 	if refreshInFlight && !force {
@@ -54,7 +55,11 @@ func CheckAndRefreshIfNeeded(store storage.SecureStorage, force bool) (bool, err
 		refreshMu.Unlock()
 	}()
 
-	result, err := checkAndRefreshImpl(store, force)
+	profileName := ""
+	if len(profile) > 0 {
+		profileName = profile[0]
+	}
+	result, err := checkAndRefreshImpl(store, force, profileName)
 
 	refreshMu.Lock()
 	lastResult, lastErr = result, err
@@ -63,7 +68,7 @@ func CheckAndRefreshIfNeeded(store storage.SecureStorage, force bool) (bool, err
 	return result, err
 }
 
-func checkAndRefreshImpl(store storage.SecureStorage, force bool) (bool, error) {
+func checkAndRefreshImpl(store storage.SecureStorage, force bool, profile string) (bool, error) {
 	tokens, err := store.ReadTokens()
 	if err != nil || tokens == nil || tokens.RefreshToken == "" {
 		return false, nil
@@ -73,11 +78,15 @@ func checkAndRefreshImpl(store storage.SecureStorage, force bool) (bool, error) 
 		return false, nil
 	}
 
-	return refreshWithLock(store, tokens, 0)
+	return refreshWithLock(store, tokens, 0, profile)
 }
 
-func refreshWithLock(store storage.SecureStorage, tokens *oauth.Tokens, retryCount int) (bool, error) {
-	lockPath := filepath.Join(config.GetPaths().Home, ".oauth-refresh.lock")
+func refreshWithLock(store storage.SecureStorage, tokens *oauth.Tokens, retryCount int, profile string) (bool, error) {
+	lockFile := ".oauth-refresh.lock"
+	if profile != "" && profile != "default" {
+		lockFile = fmt.Sprintf(".oauth-refresh-%s.lock", profile)
+	}
+	lockPath := filepath.Join(config.GetPaths().Home, lockFile)
 	fileLock := flock.New(lockPath)
 
 	locked, err := fileLock.TryLock()
@@ -101,7 +110,7 @@ func refreshWithLock(store storage.SecureStorage, tokens *oauth.Tokens, retryCou
 		if tokens != nil && !tokens.IsExpired(refreshBuffer) {
 			return false, nil // Race resolved
 		}
-		return refreshWithLock(store, tokens, retryCount+1)
+		return refreshWithLock(store, tokens, retryCount+1, profile)
 	}
 	defer fileLock.Unlock()
 

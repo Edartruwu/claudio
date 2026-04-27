@@ -53,6 +53,7 @@ var (
 	flagAttach              string
 	flagName                string
 	flagMaster              bool
+	flagProfile             string
 )
 
 // mcpManager is a minimal interface for querying MCP tool names.
@@ -126,7 +127,7 @@ security, and hackability.`,
 			fmt.Fprintln(os.Stderr, "\033[33m⚠ WARNING: All permission checks are disabled. Tools will execute without approval.\033[0m")
 		}
 
-		a, err := app.New(settings, projectRoot)
+		a, err := app.New(settings, projectRoot, flagProfile)
 		if err != nil {
 			return fmt.Errorf("failed to initialize: %w", err)
 		}
@@ -247,6 +248,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagAttach, "attach", "", "ComandCenter server URL (e.g. http://localhost:8080)")
 	rootCmd.PersistentFlags().StringVar(&flagName, "name", "", "Session display name in ComandCenter")
 	rootCmd.PersistentFlags().BoolVar(&flagMaster, "master", false, "Mark this session as the master session")
+	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Auth profile to use (default: active profile)")
 }
 
 func Execute() error {

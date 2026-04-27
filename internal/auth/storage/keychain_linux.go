@@ -15,30 +15,32 @@ import (
 )
 
 const (
-	secretLabel     = "Claudio credentials"
-	secretAttrKey   = "application"
-	secretAttrValue = "claudio"
+	secretLabel   = "Claudio credentials"
+	secretAttrKey = "application"
+	cacheTTL      = 30 * time.Second
 )
 
 // KeychainStorage stores credentials using libsecret (secret-tool) on Linux.
 type KeychainStorage struct {
-	mu        sync.Mutex
-	cache     *storageData
-	cacheTime time.Time
+	mu             sync.Mutex
+	cache          *storageData
+	cacheTime      time.Time
+	profile        string
+	fallbackPath   string
 }
 
-// NewKeychainStorage creates a Linux keychain storage.
+// NewKeychainStorage creates a Linux keychain storage for the given profile.
 // Falls back to plaintext if secret-tool is not available.
-func NewKeychainStorage() SecureStorage {
+// profile is used as the attribute value for per-profile isolation.
+func NewKeychainStorage(profile string, fallbackPath string) SecureStorage {
+	if profile == "" {
+		profile = "default"
+	}
 	// Check if secret-tool is available
 	if _, err := exec.LookPath("secret-tool"); err != nil {
-		return NewPlaintextStorage(defaultCredentialsPath())
+		return NewPlaintextStorage(fallbackPath)
 	}
-	return &KeychainStorage{}
-}
-
-func defaultCredentialsPath() string {
-	return "" // Will be set by the composite storage
+	return &KeychainStorage{profile: profile, fallbackPath: fallbackPath}
 }
 
 func (s *KeychainStorage) Name() string {
@@ -90,7 +92,7 @@ func (s *KeychainStorage) Delete() error {
 	defer s.mu.Unlock()
 
 	s.cache = nil
-	cmd := exec.Command("secret-tool", "clear", secretAttrKey, secretAttrValue)
+	cmd := exec.Command("secret-tool", "clear", secretAttrKey, s.profile)
 	cmd.Run() // Ignore error (may not exist)
 	return nil
 }
@@ -100,7 +102,7 @@ func (s *KeychainStorage) read() (*storageData, error) {
 		return s.cache, nil
 	}
 
-	cmd := exec.Command("secret-tool", "lookup", secretAttrKey, secretAttrValue)
+	cmd := exec.Command("secret-tool", "lookup", secretAttrKey, s.profile)
 	output, err := cmd.Output()
 	if err != nil {
 		return &storageData{}, nil // Not found
@@ -138,7 +140,7 @@ func (s *KeychainStorage) write(data *storageData) error {
 	// secret-tool store reads the secret from stdin
 	cmd := exec.Command("secret-tool", "store",
 		"--label", secretLabel,
-		secretAttrKey, secretAttrValue)
+		secretAttrKey, s.profile)
 	cmd.Stdin = strings.NewReader(hexPayload)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("secret-tool store failed: %w", err)

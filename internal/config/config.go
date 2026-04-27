@@ -172,27 +172,28 @@ type MCPServerConfig struct {
 
 // Paths holds all relevant filesystem paths.
 type Paths struct {
-	Home        string // ~/.claudio/
-	Settings    string // ~/.claudio/settings.json
-	Local       string // ~/.claudio/local-settings.json
-	Credentials string // ~/.claudio/credentials.json
-	Sessions    string // ~/.claudio/sessions/
-	Plugins     string // ~/.claudio/plugins/
-	Skills      string // ~/.claudio/skills/
-	Audit       string // ~/.claudio/audit/
-	Contexts    string // ~/.claudio/contexts/
-	Rules       string // ~/.claudio/rules/
-	Agents        string // ~/.claudio/agents/
-	TeamTemplates string // ~/.claudio/team-templates/
-	Memory        string // ~/.claudio/memory/
-	Projects    string // ~/.claudio/projects/
-	Logs        string // ~/.claudio/logs/
-	Plans       string // ~/.claudio/plans/
-	Cache       string // ~/.claudio/cache/
-	Designs     string // ~/.claudio/designs/
-	Starters    string // ~/.claudio/designs/starters/
-	DB          string // ~/.claudio/claudio.db
-	Instincts   string // ~/.claudio/instincts.json
+	Home              string // ~/.claudio/
+	Settings          string // ~/.claudio/settings.json
+	Local             string // ~/.claudio/local-settings.json
+	Credentials       string // ~/.claudio/credentials.json
+	ActiveProfileFile string // ~/.claudio/active_profile
+	Sessions          string // ~/.claudio/sessions/
+	Plugins           string // ~/.claudio/plugins/
+	Skills            string // ~/.claudio/skills/
+	Audit             string // ~/.claudio/audit/
+	Contexts          string // ~/.claudio/contexts/
+	Rules             string // ~/.claudio/rules/
+	Agents            string // ~/.claudio/agents/
+	TeamTemplates     string // ~/.claudio/team-templates/
+	Memory            string // ~/.claudio/memory/
+	Projects          string // ~/.claudio/projects/
+	Logs              string // ~/.claudio/logs/
+	Plans             string // ~/.claudio/plans/
+	Cache             string // ~/.claudio/cache/
+	Designs           string // ~/.claudio/designs/
+	Starters          string // ~/.claudio/designs/starters/
+	DB                string // ~/.claudio/claudio.db
+	Instincts         string // ~/.claudio/instincts.json
 }
 
 var (
@@ -209,30 +210,56 @@ func GetPaths() *Paths {
 		}
 		base := filepath.Join(home, ".claudio")
 		paths = &Paths{
-			Home:        base,
-			Settings:    filepath.Join(base, "settings.json"),
-			Local:       filepath.Join(base, "local-settings.json"),
-			Credentials: filepath.Join(base, "credentials.json"),
-			Sessions:    filepath.Join(base, "sessions"),
-			Plugins:     filepath.Join(base, "plugins"),
-			Skills:      filepath.Join(base, "skills"),
-			Audit:       filepath.Join(base, "audit"),
-			Contexts:    filepath.Join(base, "contexts"),
-			Rules:       filepath.Join(base, "rules"),
-			Agents:        filepath.Join(base, "agents"),
-			TeamTemplates: filepath.Join(base, "team-templates"),
-			Memory:        filepath.Join(base, "memory"),
-			Projects:    filepath.Join(base, "projects"),
-			Logs:        filepath.Join(base, "logs"),
-			Plans:       filepath.Join(base, "plans"),
-			Cache:       filepath.Join(base, "cache"),
-			Designs:     filepath.Join(base, "designs"),
-			Starters:    filepath.Join(base, "designs", "starters"),
-			DB:          filepath.Join(base, "claudio.db"),
-			Instincts:   filepath.Join(base, "instincts.json"),
+			Home:              base,
+			Settings:          filepath.Join(base, "settings.json"),
+			Local:             filepath.Join(base, "local-settings.json"),
+			Credentials:       filepath.Join(base, "credentials.json"),
+			ActiveProfileFile: filepath.Join(base, "active_profile"),
+			Sessions:          filepath.Join(base, "sessions"),
+			Plugins:           filepath.Join(base, "plugins"),
+			Skills:            filepath.Join(base, "skills"),
+			Audit:             filepath.Join(base, "audit"),
+			Contexts:          filepath.Join(base, "contexts"),
+			Rules:             filepath.Join(base, "rules"),
+			Agents:            filepath.Join(base, "agents"),
+			TeamTemplates:     filepath.Join(base, "team-templates"),
+			Memory:            filepath.Join(base, "memory"),
+			Projects:          filepath.Join(base, "projects"),
+			Logs:              filepath.Join(base, "logs"),
+			Plans:             filepath.Join(base, "plans"),
+			Cache:             filepath.Join(base, "cache"),
+			Designs:           filepath.Join(base, "designs"),
+			Starters:          filepath.Join(base, "designs", "starters"),
+			DB:                filepath.Join(base, "claudio.db"),
+			Instincts:         filepath.Join(base, "instincts.json"),
 		}
 	})
 	return paths
+}
+
+// GetActiveProfile returns the currently active profile name.
+// Reads ~/.claudio/active_profile; returns "default" if missing or empty.
+func GetActiveProfile() string {
+	p := GetPaths()
+	data, err := os.ReadFile(p.ActiveProfileFile)
+	if err != nil {
+		return "default"
+	}
+	name := strings.TrimSpace(string(data))
+	if name == "" {
+		return "default"
+	}
+	return name
+}
+
+// GetProfileCredentialsPath returns the credentials.json path for a named profile.
+// Profile "default" uses the legacy path (~/.claudio/credentials.json) for backward compat.
+func GetProfileCredentialsPath(profile string) string {
+	p := GetPaths()
+	if profile == "" || profile == "default" {
+		return p.Credentials
+	}
+	return filepath.Join(p.Home, "profiles", profile, "credentials.json")
 }
 
 // EnsureDirs creates all required directories and bootstraps default config files.

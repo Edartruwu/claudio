@@ -16,7 +16,6 @@ import (
 
 const (
 	keychainService = "Claudio"
-	keychainAccount = "default"
 	cacheTTL        = 30 * time.Second
 )
 
@@ -25,11 +24,17 @@ type KeychainStorage struct {
 	mu        sync.Mutex
 	cache     *storageData
 	cacheTime time.Time
+	profile   string
 }
 
-// NewKeychainStorage creates a new macOS Keychain storage.
-func NewKeychainStorage() SecureStorage {
-	return &KeychainStorage{}
+// NewKeychainStorage creates a new macOS Keychain storage for the given profile.
+// Profile name is used as the keychain Account field for per-profile isolation.
+// fallbackPath is accepted for API compatibility with linux but unused on darwin.
+func NewKeychainStorage(profile string, fallbackPath string) SecureStorage {
+	if profile == "" {
+		profile = "default"
+	}
+	return &KeychainStorage{profile: profile}
 }
 
 func (s *KeychainStorage) Name() string {
@@ -83,7 +88,7 @@ func (s *KeychainStorage) Delete() error {
 	s.cache = nil
 	cmd := exec.Command("security", "delete-generic-password",
 		"-s", keychainService,
-		"-a", keychainAccount)
+		"-a", s.profile)
 	cmd.Run() // Ignore error (may not exist)
 	return nil
 }
@@ -96,7 +101,7 @@ func (s *KeychainStorage) read() (*storageData, error) {
 
 	cmd := exec.Command("security", "find-generic-password",
 		"-s", keychainService,
-		"-a", keychainAccount,
+		"-a", s.profile,
 		"-w")
 	output, err := cmd.Output()
 	if err != nil {
@@ -133,13 +138,13 @@ func (s *KeychainStorage) write(data *storageData) error {
 	// Delete existing entry first
 	deleteCmd := exec.Command("security", "delete-generic-password",
 		"-s", keychainService,
-		"-a", keychainAccount)
+		"-a", s.profile)
 	deleteCmd.Run() // Ignore error
 
 	// Add new entry
 	addCmd := exec.Command("security", "add-generic-password",
 		"-s", keychainService,
-		"-a", keychainAccount,
+		"-a", s.profile,
 		"-w", hexPayload,
 		"-U") // Update if exists
 	if err := addCmd.Run(); err != nil {

@@ -76,6 +76,7 @@ func ccSendFromCtx(ctx context.Context) *ccSendRef {
 // App holds all shared application dependencies.
 type App struct {
 	Config    *config.Settings
+	Profile   string
 	Bus       *bus.Bus
 	Storage   authstorage.SecureStorage
 	Auth      *auth.Resolver
@@ -125,13 +126,21 @@ func (s *SecurityContext) CheckCommand(cmd string) error {
 
 // New creates a new App with all dependencies wired up.
 // projectRoot is the git root (or cwd) used for project-scoped memory.
-func New(settings *config.Settings, projectRoot string) (*App, error) {
+// profile selects the auth profile; empty string uses the active profile from config.
+func New(settings *config.Settings, projectRoot string, profile ...string) (*App, error) {
 	if err := config.EnsureDirs(); err != nil {
 		return nil, err
 	}
 
+	activeProfile := ""
+	if len(profile) > 0 && profile[0] != "" {
+		activeProfile = profile[0]
+	} else {
+		activeProfile = config.GetActiveProfile()
+	}
+
 	eventBus := bus.New()
-	store := authstorage.NewDefaultStorage()
+	store := authstorage.NewDefaultStorage(activeProfile)
 	resolver := auth.NewResolver(store)
 
 	// Open SQLite database
@@ -664,6 +673,7 @@ func New(settings *config.Settings, projectRoot string) (*App, error) {
 
 	return &App{
 		Config:    settings,
+		Profile:   activeProfile,
 		Bus:       eventBus,
 		Storage:   store,
 		Auth:      resolver,

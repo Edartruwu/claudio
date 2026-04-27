@@ -116,7 +116,7 @@ func main() {
 	}
 	// Shared API client — used for /compact in web UI and background cron execution.
 	sharedAPIClient := func() *api.Client {
-		store := authstorage.NewDefaultStorage()
+		store := authstorage.NewDefaultStorage("")
 		resolver := auth.NewResolver(store)
 		return api.NewClient(resolver, api.WithPromptCaching(false))
 	}()
