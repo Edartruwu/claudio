@@ -139,10 +139,12 @@ func (ws *WebServer) handleChatView(w http.ResponseWriter, r *http.Request) {
 	// ListMessagesPaginated returns newest first; reverse for display.
 	reversed := reverseMessages(msgs)
 
-	// Filter out agent status noise ("⏳ agent — done", "✅agent — done") and sub-agent messages.
+	// Filter out agent status noise ("⏳ agent — done", "✅agent — done").
+	// Do NOT filter by AgentName: the main agent may have a named persona (--agent flag),
+	// so excluding AgentName != "" would hide all its replies on reload.
 	filtered := reversed[:0]
 	for _, m := range reversed {
-		if !IsAgentStatusLine(m.Content) && m.AgentName == "" {
+		if !IsAgentStatusLine(m.Content) {
 			filtered = append(filtered, m)
 		}
 	}
@@ -352,10 +354,10 @@ func (ws *WebServer) handlePartialMessages(w http.ResponseWriter, r *http.Reques
 	}
 	reversed := reverseMessages(msgs)
 
-	// Filter out agent status noise ("⏳ agent — done", "✅agent — done") and sub-agent messages.
+	// Filter out agent status noise only. Do NOT filter by AgentName.
 	filtered := reversed[:0]
 	for _, m := range reversed {
-		if !IsAgentStatusLine(m.Content) && m.AgentName == "" {
+		if !IsAgentStatusLine(m.Content) {
 			filtered = append(filtered, m)
 		}
 	}
