@@ -113,12 +113,11 @@ func (t *VerifyPrototypeTool) Execute(ctx context.Context, input json.RawMessage
 		return &Result{Content: fmt.Sprintf("cannot create temp script: %v", err), IsError: true}, nil
 	}
 	defer os.Remove(tmpScript.Name())
+	defer tmpScript.Close()
 
 	if _, err := tmpScript.WriteString(verifyPrototypeRunnerPy); err != nil {
-		tmpScript.Close()
 		return &Result{Content: fmt.Sprintf("cannot write temp script: %v", err), IsError: true}, nil
 	}
-	tmpScript.Close()
 
 	// 4. Build JSON input for the runner.
 	runnerInput := map[string]interface{}{
