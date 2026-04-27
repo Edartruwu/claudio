@@ -513,7 +513,8 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 
 	// Emit agent spawn event (initial status="running") so agent appears immediately in CommandCenter team list.
 	// Without this, agents only appear after completion (EventAgentStatus fired in runTeammate cleanup).
-	if r.eventBus != nil {
+	// Foreground (sync) agents are not tracked in the team panel — suppress to avoid spurious toasts.
+	if r.eventBus != nil && !cfg.Foreground {
 		payload, _ := json.Marshal(attach.AgentStatusPayload{
 			Name:          cfg.AgentName,
 			Status:        "working",
@@ -839,7 +840,8 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	// Publish agent status event.
 	// Normalize internal MemberStatus to the protocol status vocabulary:
 	// StatusComplete → "done" (matches attach.AgentStatusPayload comment: idle|working|done|waiting).
-	if r.eventBus != nil {
+	// Foreground (sync) agents skip this — caller has the result directly; no toast/notification needed.
+	if r.eventBus != nil && !state.Foreground {
 		protocolStatus := string(status)
 		if status == StatusComplete {
 			protocolStatus = "done"
