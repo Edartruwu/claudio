@@ -1,6 +1,7 @@
 package comandcenter
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -446,15 +447,18 @@ func TestStorage_ListTasks(t *testing.T) {
 	if len(tasks) != 2 {
 		t.Fatalf("expected 2 tasks, got %d", len(tasks))
 	}
-	// Newest first (task-2 created_at is later).
-	if tasks[0].ID != "task-2" {
-		t.Errorf("expected task-2 first, got %q", tasks[0].ID)
+	// Status-priority sort: pending(1) before done(3), then created_at DESC within same priority.
+	if tasks[0].ID != "task-1" {
+		t.Errorf("expected task-1 first (pending < done), got %q", tasks[0].ID)
 	}
-	if tasks[0].Subject != "Write tests" {
-		t.Errorf("Subject: got %q, want %q", tasks[0].Subject, "Write tests")
+	if tasks[0].Subject != "Fix bug" {
+		t.Errorf("Subject: got %q, want %q", tasks[0].Subject, "Fix bug")
 	}
-	if tasks[0].Status != "done" {
-		t.Errorf("Status: got %q, want %q", tasks[0].Status, "done")
+	if tasks[0].Status != "pending" {
+		t.Errorf("Status: got %q, want %q", tasks[0].Status, "pending")
+	}
+	if tasks[1].ID != "task-2" {
+		t.Errorf("expected task-2 second, got %q", tasks[1].ID)
 	}
 }
 
@@ -1153,6 +1157,241 @@ func TestStorage_GetLatestAgentEvents_LatestPerAgent(t *testing.T) {
 	}
 	if events[0].Status != "done" {
 		t.Errorf("Status = %q, want %q", events[0].Status, "done")
+	}
+}
+
+// createNativeMessagesFullSQL is like createNativeMessagesSQL but includes the
+// agent_name and output columns that listNativeMessages expects.
+const createNativeMessagesFullSQL = `CREATE TABLE IF NOT EXISTS messages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id TEXT NOT NULL,
+	role TEXT NOT NULL,
+	content TEXT NOT NULL,
+	type TEXT NOT NULL DEFAULT 'text',
+	tool_use_id TEXT DEFAULT '',
+	tool_name TEXT DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	agent_name TEXT DEFAULT '',
+	output TEXT DEFAULT '',
+	FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`
+
+// setupNativeTables creates native sessions + messages tables and inserts a session row.
+func setupNativeTables(t *testing.T, s *Storage, nativeSessionID string) {
+	t.Helper()
+	if err := s.ExecRaw(createNativeSessionsSQL); err != nil {
+		t.Fatalf("create sessions table: %v", err)
+	}
+	if err := s.ExecRaw(createNativeMessagesFullSQL); err != nil {
+		t.Fatalf("create messages table: %v", err)
+	}
+	if err := s.ExecRaw(`INSERT INTO sessions (id, name) VALUES (?, ?)`, nativeSessionID, "native-test"); err != nil {
+		t.Fatalf("insert native session: %v", err)
+	}
+}
+
+// TestStorage_InsertMessage_NativeBridge verifies that InsertMessage routes to the
+// native messages table (not cc_messages) when the cc_session has cli_session_id set.
+func TestStorage_InsertMessage_NativeBridge(t *testing.T) {
+	s := newTestStorage(t)
+
+	const nativeID = "cli-sess-bridge-ins"
+	const ccID = "cc-sess-bridge-ins"
+
+	setupNativeTables(t, s, nativeID)
+
+	// Create cc_session with cli_session_id pointing to native session.
+	if err := s.UpsertSession(Session{
+		ID:           ccID,
+		Name:         "bridge-ins",
+		Path:         "/tmp",
+		Status:       "active",
+		CliSessionID: nativeID,
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	msg := Message{
+		ID:        "should-be-ignored",
+		SessionID: ccID,
+		Role:      "user",
+		Content:   "hello from web",
+		CreatedAt: time.Now(),
+	}
+	if err := s.InsertMessage(msg); err != nil {
+		t.Fatalf("InsertMessage (bridge): %v", err)
+	}
+
+	// Must appear in native messages table.
+	var count int
+	if err := s.writeDB.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id=?`, nativeID).Scan(&count); err != nil {
+		t.Fatalf("count native messages: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("native messages count: got %d, want 1", count)
+	}
+
+	// Must NOT appear in cc_messages.
+	var ccCount int
+	if err := s.writeDB.QueryRow(`SELECT COUNT(*) FROM cc_messages WHERE session_id=?`, ccID).Scan(&ccCount); err != nil {
+		t.Fatalf("count cc_messages: %v", err)
+	}
+	if ccCount != 0 {
+		t.Errorf("cc_messages count: got %d, want 0", ccCount)
+	}
+}
+
+// TestStorage_ListMessages_NativeBridge verifies that ListMessages reads from the native
+// messages table and maps rows correctly (SessionID → ccSessionID) for bridged sessions.
+func TestStorage_ListMessages_NativeBridge(t *testing.T) {
+	s := newTestStorage(t)
+
+	const nativeID = "cli-sess-bridge-list"
+	const ccID = "cc-sess-bridge-list"
+
+	setupNativeTables(t, s, nativeID)
+
+	if err := s.UpsertSession(Session{
+		ID:           ccID,
+		Name:         "bridge-list",
+		Path:         "/tmp",
+		Status:       "active",
+		CliSessionID: nativeID,
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	// Insert native messages directly.
+	if err := s.ExecRaw(
+		`INSERT INTO messages (session_id, role, content, type) VALUES (?, ?, ?, ?)`,
+		nativeID, "user", "native user msg", "text",
+	); err != nil {
+		t.Fatalf("insert native message: %v", err)
+	}
+	if err := s.ExecRaw(
+		`INSERT INTO messages (session_id, role, content, type) VALUES (?, ?, ?, ?)`,
+		nativeID, "assistant", "native assistant msg", "text",
+	); err != nil {
+		t.Fatalf("insert native message: %v", err)
+	}
+
+	msgs, err := s.ListMessages(ccID, 50)
+	if err != nil {
+		t.Fatalf("ListMessages (bridge): %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+
+	// All returned messages must use the cc session ID, not the native one.
+	for _, m := range msgs {
+		if m.SessionID != ccID {
+			t.Errorf("SessionID: got %q, want %q", m.SessionID, ccID)
+		}
+	}
+
+	// Newest first — assistant msg was inserted last.
+	if msgs[0].Role != "assistant" {
+		t.Errorf("msgs[0].Role: got %q, want %q (newest first)", msgs[0].Role, "assistant")
+	}
+	if msgs[0].Content != "native assistant msg" {
+		t.Errorf("msgs[0].Content: got %q, want %q", msgs[0].Content, "native assistant msg")
+	}
+	if msgs[1].Role != "user" {
+		t.Errorf("msgs[1].Role: got %q, want %q", msgs[1].Role, "user")
+	}
+}
+
+// TestStorage_DeleteMessage_NativeBridge verifies that DeleteMessageByID with a numeric
+// string ID removes the row from the native messages table.
+func TestStorage_DeleteMessage_NativeBridge(t *testing.T) {
+	s := newTestStorage(t)
+
+	const nativeID = "cli-sess-bridge-del"
+	const ccID = "cc-sess-bridge-del"
+
+	setupNativeTables(t, s, nativeID)
+
+	if err := s.UpsertSession(Session{
+		ID:           ccID,
+		Name:         "bridge-del",
+		Path:         "/tmp",
+		Status:       "active",
+		CliSessionID: nativeID,
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	if err := s.ExecRaw(
+		`INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)`,
+		nativeID, "user", "to be deleted",
+	); err != nil {
+		t.Fatalf("insert native message: %v", err)
+	}
+
+	// Retrieve auto-assigned integer ID.
+	var nativeMsgID int64
+	if err := s.writeDB.QueryRow(`SELECT id FROM messages WHERE session_id=?`, nativeID).Scan(&nativeMsgID); err != nil {
+		t.Fatalf("fetch native message id: %v", err)
+	}
+
+	idStr := fmt.Sprintf("%d", nativeMsgID)
+	if err := s.DeleteMessageByID(idStr); err != nil {
+		t.Fatalf("DeleteMessageByID(%q): %v", idStr, err)
+	}
+
+	var count int
+	if err := s.writeDB.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id=?`, nativeID).Scan(&count); err != nil {
+		t.Fatalf("count after delete: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("native messages after delete: got %d, want 0", count)
+	}
+}
+
+// TestStorage_NoBridge_Unchanged verifies that sessions without cli_session_id continue
+// to store messages in cc_messages as before.
+func TestStorage_NoBridge_Unchanged(t *testing.T) {
+	s := newTestStorage(t)
+
+	const ccID = "cc-sess-no-bridge"
+
+	if err := s.UpsertSession(Session{
+		ID:           ccID,
+		Name:         "no-bridge",
+		Path:         "/tmp",
+		Status:       "active",
+		CliSessionID: "", // no bridge
+		CreatedAt:    time.Now(),
+		LastActiveAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	msg := Message{
+		ID:        "no-bridge-msg-1",
+		SessionID: ccID,
+		Role:      "user",
+		Content:   "plain cc message",
+		CreatedAt: time.Now(),
+	}
+	if err := s.InsertMessage(msg); err != nil {
+		t.Fatalf("InsertMessage (no bridge): %v", err)
+	}
+
+	// Must appear in cc_messages.
+	var count int
+	if err := s.writeDB.QueryRow(`SELECT COUNT(*) FROM cc_messages WHERE session_id=?`, ccID).Scan(&count); err != nil {
+		t.Fatalf("count cc_messages: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("cc_messages count: got %d, want 1", count)
 	}
 }
 

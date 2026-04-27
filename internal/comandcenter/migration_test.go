@@ -135,13 +135,13 @@ func TestMigration_VersionTableNoCollision(t *testing.T) {
 		}
 	}
 
-	// CC schema_version must be 23 (all migrations applied, including cc_agent_events migration 23).
+	// CC schema_version must be 24 (all migrations applied, including cli_session_id migration 24).
 	var ccVersion int
 	if err := raw.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM cc_schema_version`).Scan(&ccVersion); err != nil {
 		t.Fatalf("read cc_schema_version: %v", err)
 	}
-	if ccVersion != 23 {
-		t.Errorf("cc_schema_version: got %d, want 23", ccVersion)
+	if ccVersion != 24 {
+		t.Errorf("cc_schema_version: got %d, want 24", ccVersion)
 	}
 
 	// Claudio's schema_version must still be 22 — untouched.
