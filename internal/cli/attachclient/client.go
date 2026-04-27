@@ -60,8 +60,8 @@ func (c *Client) SetSessionID(id string) {
 }
 
 // Connect opens WebSocket to <serverURL>/ws/attach with Authorization header.
-// Sends EventSessionHello immediately after connect.
-// Starts goroutine to read inbound messages.
+// Starts goroutine to read inbound messages but does NOT send Hello yet.
+// Call Handshake() after SetSessionID() to send the Hello with the correct session ID.
 // Returns error if connection fails.
 func (c *Client) Connect(ctx context.Context) error {
 	c.mu.Lock()
@@ -95,7 +95,24 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	c.conn = conn
 
-	// Send hello
+	// Start outbox writer and read loop
+	c.outbox = make(chan attach.Envelope, 1000)
+	go c.writeLoop()
+	go c.readLoop()
+
+	return nil
+}
+
+// Handshake sends the EventSessionHello to the server. Call this after
+// SetSessionID() so the server receives the correct CLI session ID.
+func (c *Client) Handshake() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
 	cwd, _ := os.Getwd()
 	hello := attach.HelloPayload{
 		Name:         c.name,
@@ -106,16 +123,8 @@ func (c *Client) Connect(ctx context.Context) error {
 		SessionID:    c.sessionID,
 	}
 	if err := c.sendEnvelopeUnlocked(attach.EventSessionHello, hello); err != nil {
-		conn.Close()
-		c.conn = nil
 		return fmt.Errorf("send hello: %w", err)
 	}
-
-	// Start outbox writer and read loop
-	c.outbox = make(chan attach.Envelope, 1000)
-	go c.writeLoop()
-	go c.readLoop()
-
 	return nil
 }
 

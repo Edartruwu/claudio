@@ -478,6 +478,9 @@ func runHeadlessAttach(args []string) error {
 	appInstance.TeamRunner.SetSessionID(currentSessionID)
 	if attachClient != nil && currentSessionID != "" {
 		attachClient.SetSessionID(currentSessionID)
+		if err := attachClient.Handshake(); err != nil {
+			log.Printf("Warning: attach handshake failed: %v\n", err)
+		}
 	}
 
 	engineCfg := query.EngineConfig{
@@ -1199,6 +1202,18 @@ func runInteractive() error {
 	if attachClient != nil {
 		tuiOpts = append(tuiOpts, tui.WithScreenshotPusher(attachclient.NewAttachScreenshotPusher(attachClient)))
 	}
+	// Seed GlobalTaskStore with existing tasks for the current session (resume case)
+	// and wire the attach client session ID so the web UI can correlate tasks.
+	if cur := sess.Current(); cur != nil && cur.ID != "" {
+		_ = tools.GlobalTaskStore.LoadForSession(cur.ID)
+		if attachClient != nil {
+			attachClient.SetSessionID(cur.ID)
+			if err := attachClient.Handshake(); err != nil {
+				log.Printf("Warning: attach handshake failed: %v\n", err)
+			}
+		}
+	}
+
 	model := tui.New(appInstance.API, reg, systemPrompt, sess, tuiOpts...)
 
 	// Fall back to stored agent/team config when CLI flags are absent (matches headless resume).

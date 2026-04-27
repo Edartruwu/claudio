@@ -112,7 +112,7 @@ func (p *Panel) SetSize(w, h int) {
 func (p *Panel) HandleRefresh() tea.Cmd {
 	p.tick++
 	p.refresh()
-	if p.hasRunningBg() {
+	if p.active {
 		return tickCmd()
 	}
 	return nil
