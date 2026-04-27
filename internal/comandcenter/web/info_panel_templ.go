@@ -619,7 +619,7 @@ func TaskRows(tasks []cc.Task, sessionID string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if task.Status == "done" {
+			if task.Status == "done" || task.Status == "completed" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span class=\"text-[var(--color-brand)] text-sm mt-px shrink-0 font-bold\">&#10003;</span><div class=\"flex-1 min-w-0\"><p class=\"text-[var(--color-textMuted)] text-[15px] line-through m-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

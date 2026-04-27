@@ -15,7 +15,10 @@ templ TaskDetail(data TaskDetailData) {
 			<span>Updated { RelTime(data.Task.UpdatedAt) }</span>
 		</div>
 		if data.DescHTML != "" {
-			<div class="prose prose-invert leading-relaxed task-desc-html" style="font-size:13px;color:var(--color-textPrimary);">
+			<div
+				class="task-desc-html"
+				style="font-size:12px;line-height:1.6;color:var(--color-textSecondary);max-height:260px;overflow-y:auto;overflow-x:hidden;word-break:break-word;overflow-wrap:break-word;white-space:pre-wrap;"
+			>
 				@templ.Raw(string(data.DescHTML))
 			</div>
 		} else {

@@ -32,7 +32,7 @@ func StatusBadge(status string) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		switch status {
-		case "done", "complete":
+		case "done", "complete", "completed":
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold\" style=\"background:rgba(0,196,140,0.15);color:var(--color-brand);\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\"><polyline points=\"20 6 9 17 4 12\"></polyline></svg> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
