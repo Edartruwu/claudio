@@ -829,7 +829,8 @@ func (s *Storage) ListTasks(sessionID string) ([]Task, error) {
 		SELECT id, session_id, subject, COALESCE(description,''), status, COALESCE(assigned_to,''),
 		       COALESCE(blocks,'[]'), COALESCE(blocked_by,'[]'), COALESCE(metadata,'{}'),
 		       created_at, updated_at
-		FROM team_tasks WHERE session_id=? AND status != 'deleted' ORDER BY created_at DESC
+		FROM team_tasks WHERE session_id=? AND status != 'deleted'
+		ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1 WHEN 'blocked' THEN 2 WHEN 'done' THEN 3 ELSE 4 END, created_at DESC
 	`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
