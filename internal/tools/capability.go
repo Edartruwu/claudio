@@ -49,6 +49,7 @@ func RegisterCapabilityTools(registry *Registry, capabilities []string, client *
 			registry.Register(NewCreateDesignSessionTool())
 			registry.Register(&ExportVideoTool{})
 			registry.Register(&ExportDeckPPTXTool{})
+			registry.Register(&VerifyPrototypeTool{})
 			return
 		}
 	}

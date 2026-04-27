@@ -37,6 +37,25 @@ func checkFfmpegAvailable() error {
 	return nil
 }
 
+// checkPython3Available verifies that python3 is on PATH.
+func checkPython3Available() error {
+	if err := exec.Command("python3", "--version").Run(); err != nil {
+		return fmt.Errorf(
+			"python3 not found.\n" +
+				"Install Python 3: https://www.python.org/downloads/")
+	}
+	return nil
+}
+
+// checkPlaywrightAvailable verifies that the playwright Python package is installed.
+func checkPlaywrightAvailable() error {
+	if err := exec.Command("python3", "-c", "import playwright").Run(); err != nil {
+		return fmt.Errorf(
+			"Playwright required. Install via: pip install playwright && playwright install chromium")
+	}
+	return nil
+}
+
 // nodeGlobalModulesDir returns the global node_modules path so scripts can
 // find globally-installed packages (e.g. playwright). Uses `npm root -g`.
 func nodeGlobalModulesDir() string {
