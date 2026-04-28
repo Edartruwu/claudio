@@ -4,9 +4,9 @@
 package lua
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
@@ -21,7 +21,22 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// pendingCommand holds a command registered from Lua before commandRegistry is wired.
+//go:embed defaults.lua
+var defaultsLua string
+
+// luaHandler pairs a plugin's Lua VM with a registered Lua function for safe callbacks.
+type luaHandler struct {
+	plugin *loadedPlugin
+	fn     *lua.LFunction
+}
+
+// LuaCapability holds a capability name and tool names registered by a Lua plugin.
+type LuaCapability struct {
+	Name      string
+	ToolNames []string
+}
+
+// pendingCommand queues a command registered before commandRegistry is wired.
 type pendingCommand struct {
 	cmd *commands.Command
 }
@@ -36,14 +51,49 @@ type Runtime struct {
 	db      *storage.DB
 	caps    *capabilities.Registry
 
-	commandRegistry *commands.Registry
-	keymapRegistry  *vim.KeymapRegistry
-	pendingCommands []*pendingCommand
+	mu      sync.Mutex
+	plugins []*loadedPlugin
 
-	mu               sync.Mutex
-	plugins          []*loadedPlugin
-	changeHandlers   map[string][]configChangeHandler // key → on_change handlers
-	pendingProviders []LuaProviderConfig              // collected by register_provider()
+	// Config change handlers
+	changeHandlersMu sync.RWMutex
+	changeHandlers   map[string][]configChangeHandler
+
+	// Command registry (wired after TUI/CLI init)
+	commandRegistryMu sync.Mutex
+	commandRegistry   *commands.Registry
+
+	// Keymap registry (wired after TUI init)
+	keymapRegistryMu sync.Mutex
+	keymapRegistry   *vim.KeymapRegistry
+
+	// Pending commands (registered before registry is wired)
+	pendingCommandsMu sync.Mutex
+	pendingCommands   []pendingCommand
+
+	// Pending providers
+	pendingProvidersMu sync.Mutex
+	pendingProviders   []LuaProviderConfig // defined in api_provider.go
+
+	// Agent tracking
+	agentMu          sync.RWMutex
+	currentAgent     string
+	agentChangeHdlrs []luaHandler
+	extraContextMu   sync.RWMutex
+	extraContext     []string
+	promptSuffixMu   sync.RWMutex
+	promptSuffixHdlr *luaHandler
+
+	// Session tracking
+	sessionMu           sync.RWMutex
+	currentSessionID    string
+	currentSessionTitle string
+	sessionStartHdlrs   []luaHandler
+	sessionEndHdlrs     []luaHandler
+	messageHdlrs        []luaHandler
+
+	// Pending capabilities
+	pendingCapsMu sync.Mutex
+	pendingCaps   []LuaCapability
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -74,25 +124,6 @@ func New(
 		db:      db,
 		caps:    caps,
 	}
-}
-
-// SetCommandRegistry wires a command registry into the runtime and flushes any
-// commands that were registered from Lua before this call.
-func (r *Runtime) SetCommandRegistry(reg *commands.Registry) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.commandRegistry = reg
-	for _, p := range r.pendingCommands {
-		reg.Register(p.cmd)
-	}
-	r.pendingCommands = nil
-}
-
-// SetKeymapRegistry wires a keymap registry into the runtime.
-func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.keymapRegistry = reg
 }
 
 // LoadAll scans pluginsDir for subdirectories containing init.lua and loads each
@@ -143,33 +174,42 @@ func (r *Runtime) LoadPlugin(name, dir string) (retErr error) {
 	return nil
 }
 
-// ExecString runs arbitrary Lua code in a sandboxed LState.
-// It captures print() output and returns it as a string.
-// Use this for the :lua command in the TUI command line.
+// LoadDefaults executes the embedded defaults.lua, setting initial config values
+// on the Runtime's Settings before user init or plugins run.
+func (r *Runtime) LoadDefaults() error {
+	return r.execString(defaultsLua, "defaults.lua")
+}
+
+// ExecString runs a Lua string in a transient sandboxed state — public API for :lua REPL.
+// Returns any string value left on the stack and any execution error.
 func (r *Runtime) ExecString(code string) (string, error) {
-	L := lua.NewState()
+	L := newSandboxedState()
 	defer L.Close()
-
-	p := &loadedPlugin{name: "repl", L: L}
-	r.injectAPI(L, p)
-
-	// capture print() output
-	var buf strings.Builder
-	L.SetGlobal("print", L.NewFunction(func(L *lua.LState) int {
-		n := L.GetTop()
-		parts := make([]string, n)
-		for i := 1; i <= n; i++ {
-			parts[i-1] = L.ToStringMeta(L.Get(i)).String()
-		}
-		buf.WriteString(strings.Join(parts, "\t"))
-		buf.WriteByte('\n')
-		return 0
-	}))
-
+	r.injectAPI(L, &loadedPlugin{name: "<repl>"})
 	if err := L.DoString(code); err != nil {
 		return "", err
 	}
-	return strings.TrimRight(buf.String(), "\n"), nil
+	// Return top-of-stack string if present
+	if top := L.GetTop(); top > 0 {
+		if s, ok := L.Get(-1).(lua.LString); ok {
+			return string(s), nil
+		}
+	}
+	return "", nil
+}
+
+// execString runs a Lua string in a transient sandboxed state wired to the
+// runtime's API. The state is closed after execution; it is NOT added to
+// r.plugins. Use this for one-shot init scripts (defaults, user init).
+func (r *Runtime) execString(code, name string) error {
+	L := newSandboxedState()
+	defer L.Close()
+	dummy := &loadedPlugin{name: name, dir: ""}
+	r.injectAPI(L, dummy)
+	if err := L.DoString(code); err != nil {
+		return fmt.Errorf("lua: exec %s: %w", name, err)
+	}
+	return nil
 }
 
 // Close shuts down all Lua VMs and unsubscribes bus handlers.
@@ -202,18 +242,53 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(claudio, "register_command", L.NewFunction(r.apiRegisterCommand(plugin)))
 	L.SetField(claudio, "cmd", L.NewFunction(r.apiCmd(plugin)))
 	L.SetField(claudio, "register_provider", L.NewFunction(r.apiRegisterProvider(plugin)))
+	L.SetField(claudio, "register_capability", L.NewFunction(r.apiRegisterCapability(plugin)))
 
-	// keymap subtable: del + list (register_keymap stays at top level for compat)
-	keymapTbl := L.NewTable()
-	L.SetField(keymapTbl, "del", L.NewFunction(r.apiKeymapDel(plugin)))
-	L.SetField(keymapTbl, "list", L.NewFunction(r.apiKeymapList(plugin)))
-	L.SetField(claudio, "keymap", keymapTbl)
+	// claudio.keymap sub-table
+	keymapTable := L.NewTable()
+	L.SetField(keymapTable, "del", L.NewFunction(r.apiKeymapDel(plugin)))
+	L.SetField(keymapTable, "list", L.NewFunction(r.apiKeymapList(plugin)))
+	L.SetField(claudio, "keymap", keymapTable)
 
-	// TUI theme/style API (claudio.ui.*)
-	registerTUIAPI(L, claudio)
+	// claudio.agent sub-table
+	agentTable := L.NewTable()
+	L.SetField(agentTable, "current", L.NewFunction(r.apiAgentCurrent(plugin)))
+	L.SetField(agentTable, "on_change", L.NewFunction(r.apiAgentOnChange(plugin)))
+	L.SetField(agentTable, "add_context", L.NewFunction(r.apiAgentAddContext(plugin)))
+	L.SetField(agentTable, "set_prompt_suffix", L.NewFunction(r.apiAgentSetPromptSuffix(plugin)))
+	L.SetField(claudio, "agent", agentTable)
 
-	// Settings API (claudio.config.*)
-	r.registerConfigSettingsAPI(L, claudio)
+	// claudio.session sub-table
+	sessionTable := L.NewTable()
+	L.SetField(sessionTable, "id", L.NewFunction(r.apiSessionID(plugin)))
+	L.SetField(sessionTable, "title", L.NewFunction(r.apiSessionTitle(plugin)))
+	L.SetField(sessionTable, "on_start", L.NewFunction(r.apiSessionOnStart(plugin)))
+	L.SetField(sessionTable, "on_end", L.NewFunction(r.apiSessionOnEnd(plugin)))
+	L.SetField(sessionTable, "on_message", L.NewFunction(r.apiSessionOnMessage(plugin)))
+	L.SetField(claudio, "session", sessionTable)
+
+	// Global settings + UI APIs (available to all plugins and init scripts)
+	r.injectGlobalConfigAPI(L, claudio)
 
 	L.SetGlobal("claudio", claudio)
+}
+
+// SetCommandRegistry wires the command registry and flushes pending commands.
+func (r *Runtime) SetCommandRegistry(reg *commands.Registry) {
+	r.commandRegistryMu.Lock()
+	defer r.commandRegistryMu.Unlock()
+	r.commandRegistry = reg
+	r.pendingCommandsMu.Lock()
+	defer r.pendingCommandsMu.Unlock()
+	for _, p := range r.pendingCommands {
+		reg.Register(p.cmd)
+	}
+	r.pendingCommands = nil
+}
+
+// SetKeymapRegistry wires the keymap registry.
+func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {
+	r.keymapRegistryMu.Lock()
+	defer r.keymapRegistryMu.Unlock()
+	r.keymapRegistry = reg
 }

@@ -81,7 +81,7 @@ func (r *Runtime) apiRegisterCommand(plugin *loadedPlugin) lua.LGFunction {
 		if r.commandRegistry != nil {
 			r.commandRegistry.Register(cmd)
 		} else {
-			r.pendingCommands = append(r.pendingCommands, &pendingCommand{cmd: cmd})
+			r.pendingCommands = append(r.pendingCommands, pendingCommand{cmd: cmd})
 		}
 		r.mu.Unlock()
 

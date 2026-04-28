@@ -25,8 +25,8 @@ func (r *Runtime) registerConfigSettingsAPI(L *lua.LState, claudioTbl *lua.LTabl
 	cfg := L.NewTable()
 
 	L.SetField(cfg, "get", L.NewFunction(r.apiConfigGet()))
-	L.SetField(cfg, "set", L.NewFunction(r.apiConfigSet(L)))
-	L.SetField(cfg, "on_change", L.NewFunction(r.apiConfigOnChange(L)))
+	L.SetField(cfg, "set", L.NewFunction(r.apiConfigSet()))
+	L.SetField(cfg, "on_change", L.NewFunction(r.apiConfigOnChange()))
 
 	L.SetField(claudioTbl, "config", cfg)
 }
@@ -56,7 +56,7 @@ func (r *Runtime) apiConfigGet() lua.LGFunction {
 
 // ── set ───────────────────────────────────────────────────────────────────────
 
-func (r *Runtime) apiConfigSet(callerL *lua.LState) lua.LGFunction {
+func (r *Runtime) apiConfigSet() lua.LGFunction {
 	return func(L *lua.LState) int {
 		key := L.CheckString(1)
 		newLVal := L.Get(2)
@@ -88,7 +88,7 @@ func (r *Runtime) apiConfigSet(callerL *lua.LState) lua.LGFunction {
 
 // ── on_change ─────────────────────────────────────────────────────────────────
 
-func (r *Runtime) apiConfigOnChange(callerL *lua.LState) lua.LGFunction {
+func (r *Runtime) apiConfigOnChange() lua.LGFunction {
 	return func(L *lua.LState) int {
 		key := L.CheckString(1)
 		fn := L.CheckFunction(2)

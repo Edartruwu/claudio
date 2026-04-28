@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -9,6 +10,20 @@ import (
 type pluginDir struct {
 	name string
 	dir  string
+}
+
+// LoadUserInit loads the Lua file at path if it exists. If the file is absent,
+// nil is returned (missing user init is not an error). Any parse or runtime
+// error in the file is returned to the caller.
+func (r *Runtime) LoadUserInit(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("lua: read %s: %w", path, err)
+	}
+	return r.execString(string(data), path)
 }
 
 // discoverPlugins scans baseDir for subdirectories containing init.lua.
