@@ -412,6 +412,10 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 	if t.TeamRunner != nil && t.TeamRunner.ActiveTeamName() != "" {
 		teamName := t.TeamRunner.ActiveTeamName()
 		shortName := slugifyName(desc)
+		// If the calling agent is running inside a worktree, the sub-agent must
+		// operate in the same worktree — not a freshly created one.
+		inheritedCwd := CwdFromContext(ctx)
+		inheritedMainRoot := mainRootFromContext(ctx)
 		state, err := t.TeamRunner.Spawn(teams.SpawnConfig{
 			TeamName:          teamName,
 			AgentName:         shortName,
@@ -426,6 +430,8 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 			TaskIDs:           in.TaskIDs,
 			ParentAgentID:     teams.TeammateAgentIDFromContext(ctx),
 			MergeWhenFinished: in.MergeWhenFinished,
+			InheritedWorktree: inheritedCwd,
+			InheritedMainRoot: inheritedMainRoot,
 		})
 		if err != nil {
 			return &Result{Content: fmt.Sprintf("Failed to spawn teammate: %v", err), IsError: true}, nil

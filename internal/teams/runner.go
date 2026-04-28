@@ -418,6 +418,8 @@ type SpawnConfig struct {
 	ParentAgentID        string         // non-empty when spawned by another teammate
 	AdvisorConfig        *AdvisorConfig // optional; if set, advisor tool is injected into executor
 	MergeWhenFinished    bool           // if true, auto-merge worktree branch into main after agent completes
+	InheritedWorktree    string         // when set, run inside caller's existing worktree (no new WT created)
+	InheritedMainRoot    string         // main repo root corresponding to InheritedWorktree
 }
 
 // Spawn starts a new teammate goroutine.
@@ -460,8 +462,9 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		}
 	}
 
-	// Default to worktree isolation when inside a git repo
-	if cfg.Isolation == "" {
+	// Default to worktree isolation when inside a git repo, unless the
+	// caller is already running in a worktree that we should inherit.
+	if cfg.Isolation == "" && cfg.InheritedWorktree == "" {
 		cwd, _ := os.Getwd()
 		repo := git.NewRepo(cwd)
 		if repo.IsRepo() {
@@ -592,6 +595,11 @@ func (r *TeammateRunner) runTeammate(ctx context.Context, state *TeammateState, 
 	// Decorate context with per-teammate observer/DB if configured
 	if r.contextDecorator != nil {
 		ctx = r.contextDecorator(ctx, state)
+	}
+
+	// Inherit caller's worktree: run in the same directory without creating a new one.
+	if cfg.InheritedWorktree != "" && r.cwdInjector != nil {
+		ctx = r.cwdInjector(ctx, cfg.InheritedWorktree, cfg.InheritedMainRoot)
 	}
 
 	// Set up worktree isolation if requested
@@ -752,7 +760,12 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	}
 
 	// Add worktree notice to system prompt
-	if state.WorktreePath != "" {
+	if cfg.InheritedWorktree != "" {
+		system += fmt.Sprintf("\n\nYou are running inside your caller's git worktree at %s. "+
+			"File tools (Read, Edit, Write, Glob, Grep) operate there automatically via path remapping. "+
+			"Changes you make are visible to the agent that spawned you. "+
+			"Commit your work before returning your final response.", cfg.InheritedWorktree)
+	} else if state.WorktreePath != "" {
 		cwd, _ := os.Getwd()
 		system += fmt.Sprintf("\n\nYou are operating in an isolated git worktree at %s — same repository, same relative file structure, separate working copy. "+
 			"Paths in conversation context from the parent agent refer to %s; translate them to your worktree root. "+
