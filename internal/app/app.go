@@ -724,6 +724,10 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	windowMgr := windows.New()
 	luaRuntime.SetWindowManager(windowMgr)
 
+	// Wire team runner and manager so Lua plugins can inspect agent/team state.
+	luaRuntime.SetTeamRunner(teamRunner)
+	luaRuntime.SetTeamManager(teamMgr)
+
 	return &App{
 		Config:    settings,
 		Profile:   activeProfile,

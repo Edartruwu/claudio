@@ -16,6 +16,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
@@ -114,6 +115,12 @@ type Runtime struct {
 	// Pending window registrations (registered before WindowManager is wired)
 	pendingWindowsMu sync.Mutex
 	pendingWindows   []WindowDef
+
+	// Team inspection (wired after teams are initialised)
+	teamRunnerMu sync.RWMutex
+	teamRunner   *teams.TeammateRunner
+	teamManagerMu sync.RWMutex
+	teamManager  *teams.Manager
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -276,7 +283,15 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(agentTable, "on_change", L.NewFunction(r.apiAgentOnChange(plugin)))
 	L.SetField(agentTable, "add_context", L.NewFunction(r.apiAgentAddContext(plugin)))
 	L.SetField(agentTable, "set_prompt_suffix", L.NewFunction(r.apiAgentSetPromptSuffix(plugin)))
+	L.SetField(agentTable, "list", L.NewFunction(r.apiAgentList(plugin)))
+	L.SetField(agentTable, "status", L.NewFunction(r.apiAgentStatus(plugin)))
 	L.SetField(claudio, "agent", agentTable)
+
+	// claudio.teams sub-table
+	teamsTable := L.NewTable()
+	L.SetField(teamsTable, "list", L.NewFunction(r.apiTeamsList(plugin)))
+	L.SetField(teamsTable, "members", L.NewFunction(r.apiTeamsMembers(plugin)))
+	L.SetField(claudio, "teams", teamsTable)
 
 	// claudio.session sub-table
 	sessionTable := L.NewTable()
@@ -342,4 +357,18 @@ func (r *Runtime) GetWindowManager() *windows.Manager {
 	r.windowManagerMu.RLock()
 	defer r.windowManagerMu.RUnlock()
 	return r.windowManager
+}
+
+// SetTeamRunner wires the TeammateRunner so Lua plugins can inspect agent state.
+func (r *Runtime) SetTeamRunner(runner *teams.TeammateRunner) {
+	r.teamRunnerMu.Lock()
+	defer r.teamRunnerMu.Unlock()
+	r.teamRunner = runner
+}
+
+// SetTeamManager wires the team Manager so Lua plugins can inspect team configuration.
+func (r *Runtime) SetTeamManager(mgr *teams.Manager) {
+	r.teamManagerMu.Lock()
+	defer r.teamManagerMu.Unlock()
+	r.teamManager = mgr
 }
