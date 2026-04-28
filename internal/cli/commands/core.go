@@ -66,14 +66,6 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	})
 
 	r.Register(&Command{
-		Name:        "clear",
-		Description: "Clear the screen",
-		Execute: func(args string) (string, error) {
-			return "\033[2J\033[H", nil // ANSI clear
-		},
-	})
-
-	r.Register(&Command{
 		Name:        "agent",
 		Description: "Switch agent persona for this session",
 		Execute: func(args string) (string, error) {
@@ -525,7 +517,7 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 
 	r.Register(&Command{
 		Name:        "clear",
-		Description: "Clear conversation history (keeps session)",
+		Description: "Clear screen and conversation history",
 		Execute: func(args string) (string, error) {
 			return "[action:clear]", nil
 		},
@@ -1071,6 +1063,56 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 			deps.CloseWindow(name)
 			return fmt.Sprintf("closed window: %s", name), nil
 		},
+	})
+
+	// :b — open buffer picker or jump to named buffer (handled in TUI root)
+	r.Register(&Command{
+		Name:        "b",
+		Description: "Open buffer by name (:b to list all, :b <name> to jump)",
+		Execute: func(args string) (string, error) {
+			return "", nil // handled directly in TUI root
+		},
+	})
+
+	// :agents — open agent picker (same as Space+a, handled in TUI root)
+	r.Register(&Command{
+		Name:        "agents",
+		Description: "Open agent picker",
+		Execute: func(args string) (string, error) {
+			return "", nil // handled directly in TUI root
+		},
+	})
+
+	// ── TUI-only stubs: visible in /help and tab-complete; logic in TUI ─────
+	r.Register(&Command{
+		Name:        "map",
+		Description: "Map a key sequence to an action (:map <key> <action>)",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "unmap",
+		Description: "Remove a key mapping (:unmap <key>)",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "maps",
+		Description: "List all key mappings (:maps [group])",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "agui",
+		Description: "Toggle agent inspector panel",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "gain",
+		Description: "Show context filter savings stats",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "discover",
+		Description: "Show unfiltered command suggestions",
+		Execute: func(args string) (string, error) { return "", nil },
 	})
 }
 
