@@ -14,15 +14,17 @@ var (
 )
 
 // Sidebar stacks multiple Blocks vertically in a fixed-width column.
+// All blocks are sourced from the BlockRegistry, which can be updated at any
+// time — View() always reads the current snapshot.
 type Sidebar struct {
-	blocks []Block
-	width  int
-	height int
+	registry *BlockRegistry
+	width    int
+	height   int
 }
 
-// New creates a sidebar with the given blocks in order.
-func New(blocks ...Block) *Sidebar {
-	return &Sidebar{blocks: blocks}
+// New creates a sidebar backed by the given registry.
+func New(registry *BlockRegistry) *Sidebar {
+	return &Sidebar{registry: registry}
 }
 
 // SetSize tells the sidebar its available dimensions.
@@ -36,13 +38,17 @@ func (s *Sidebar) Width() int { return s.width }
 
 // View renders all blocks stacked vertically.
 func (s *Sidebar) View() string {
-	if s.width < 8 || s.height < 4 || len(s.blocks) == 0 {
+	if s.registry == nil {
+		return ""
+	}
+	blocks := s.registry.Blocks()
+	if s.width < 8 || s.height < 4 || len(blocks) == 0 {
 		return ""
 	}
 
 	// Filter out blocks that have no content (MinHeight == 0 would skip)
-	live := make([]Block, 0, len(s.blocks))
-	for _, b := range s.blocks {
+	live := make([]Block, 0, len(blocks))
+	for _, b := range blocks {
 		if b.MinHeight() > 0 {
 			live = append(live, b)
 		}

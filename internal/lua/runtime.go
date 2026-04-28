@@ -21,6 +21,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tools"
 	keymapPkg "github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/picker"
+	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	lua "github.com/yuin/gopher-lua"
@@ -120,6 +121,10 @@ type Runtime struct {
 	// Pending sidebar blocks (registered before TUI is wired)
 	pendingSidebarBlocksMu sync.Mutex
 	pendingSidebarBlocks   []SidebarBlockDef
+
+	// Sidebar block registry (wired after TUI is ready via SetBlockRegistry)
+	sidebarRegistryMu sync.RWMutex
+	sidebarRegistry   *sidebar.BlockRegistry
 
 	// Pending window registrations (registered before WindowManager is wired)
 	pendingWindowsMu sync.Mutex
