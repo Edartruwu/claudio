@@ -325,17 +325,17 @@ var (
 			BorderLeft(true).
 			BorderForeground(styles.Subtle)
 
-	// Dropdown modal box: rounded border (Tokyo Night blue to match other layouts).
+	// Dropdown modal box: rounded border.
 	dropdownStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7aa2f7")).
+			BorderForeground(styles.SurfaceAlt).
 			Padding(0, 1)
 
-	// Outer picker border — Telescope-style rounded border in Tokyo Night blue.
+	// Outer picker border — Telescope-style rounded border.
 	// Applied by renderHorizontal, renderVertical, and renderIvy as the last
 	// compositing step so the entire picker (title + list + preview + prompt)
 	// appears inside a single unified floating window frame.
 	pickerBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#7aa2f7"))
+				BorderForeground(styles.SurfaceAlt)
 )
