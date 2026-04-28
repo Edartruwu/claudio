@@ -685,6 +685,19 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 
 	// Initialize Lua plugin runtime (after all registries are ready)
 	luaRuntime := luart.New(registry, skillsRegistry, eventBus, hooksMgr, settings, db, capReg)
+
+	// 1. Embedded defaults (sets model, compactMode, etc. from defaults.lua)
+	if err := luaRuntime.LoadDefaults(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: lua defaults: %v\n", err)
+	}
+
+	// 2. User init (~/.claudio/init.lua) — missing file is silently skipped
+	luaUserInit := filepath.Join(config.GetPaths().Home, "init.lua")
+	if err := luaRuntime.LoadUserInit(luaUserInit); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: lua user init: %v\n", err)
+	}
+
+	// 3. Plugins (~/.claudio/lua-plugins/*/init.lua)
 	luaPluginsDir := filepath.Join(config.GetPaths().Home, "lua-plugins")
 	if err := luaRuntime.LoadAll(luaPluginsDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: lua plugins: %v\n", err)

@@ -4,6 +4,7 @@
 package lua
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"sync"
@@ -17,6 +18,9 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tools"
 	lua "github.com/yuin/gopher-lua"
 )
+
+//go:embed defaults.lua
+var defaultsLua string
 
 // Runtime manages Lua plugin lifecycle: loading, sandbox creation, and shutdown.
 type Runtime struct {
@@ -110,6 +114,26 @@ func (r *Runtime) LoadPlugin(name, dir string) (retErr error) {
 	return nil
 }
 
+// LoadDefaults executes the embedded defaults.lua, setting initial config values
+// on the Runtime's Settings before user init or plugins run.
+func (r *Runtime) LoadDefaults() error {
+	return r.execString(defaultsLua, "defaults.lua")
+}
+
+// execString runs a Lua string in a transient sandboxed state wired to the
+// runtime's API. The state is closed after execution; it is NOT added to
+// r.plugins. Use this for one-shot init scripts (defaults, user init).
+func (r *Runtime) execString(code, name string) error {
+	L := newSandboxedState()
+	defer L.Close()
+	dummy := &loadedPlugin{name: name, dir: ""}
+	r.injectAPI(L, dummy)
+	if err := L.DoString(code); err != nil {
+		return fmt.Errorf("lua: exec %s: %w", name, err)
+	}
+	return nil
+}
+
 // Close shuts down all Lua VMs and unsubscribes bus handlers.
 func (r *Runtime) Close() {
 	r.mu.Lock()
@@ -137,6 +161,9 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(claudio, "notify", L.NewFunction(r.apiNotify(plugin)))
 	L.SetField(claudio, "log", L.NewFunction(r.apiLog(plugin)))
 	L.SetField(claudio, "register_keymap", L.NewFunction(r.apiRegisterKeymap(plugin)))
+
+	// Global settings + UI APIs (available to all plugins and init scripts)
+	r.injectGlobalConfigAPI(L, claudio)
 
 	L.SetGlobal("claudio", claudio)
 }

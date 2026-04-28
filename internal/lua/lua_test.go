@@ -382,6 +382,74 @@ end)
 	}
 }
 
+// ── defaults / user-init tests ──────────────────────────────────────────────
+
+func TestLoadDefaults_SetsModel(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	if err := rt.LoadDefaults(); err != nil {
+		t.Fatalf("LoadDefaults: %v", err)
+	}
+
+	if rt.cfg.Model != "claude-sonnet-4-6" {
+		t.Errorf("Model = %q, want %q", rt.cfg.Model, "claude-sonnet-4-6")
+	}
+	if rt.cfg.CompactMode != "strategic" {
+		t.Errorf("CompactMode = %q, want %q", rt.cfg.CompactMode, "strategic")
+	}
+	if !rt.cfg.SessionPersist {
+		t.Error("SessionPersist should be true")
+	}
+}
+
+func TestLoadDefaults_UserCanOverride(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	if err := rt.LoadDefaults(); err != nil {
+		t.Fatalf("LoadDefaults: %v", err)
+	}
+
+	// Override the model via a subsequent execString (simulates user init)
+	override := `claudio.config.set("model", "my-custom-model")`
+	if err := rt.execString(override, "test-override"); err != nil {
+		t.Fatalf("execString: %v", err)
+	}
+
+	if rt.cfg.Model != "my-custom-model" {
+		t.Errorf("Model = %q, want %q", rt.cfg.Model, "my-custom-model")
+	}
+}
+
+func TestLoadUserInit_MissingFileNoError(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	if err := rt.LoadUserInit("/nonexistent/path/init.lua"); err != nil {
+		t.Fatalf("LoadUserInit on missing file should return nil, got: %v", err)
+	}
+}
+
+func TestLoadUserInit_ExecutesFile(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	dir := t.TempDir()
+	initPath := filepath.Join(dir, "init.lua")
+	if err := os.WriteFile(initPath, []byte(`claudio.config.set("model", "from-user-init")`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := rt.LoadUserInit(initPath); err != nil {
+		t.Fatalf("LoadUserInit: %v", err)
+	}
+
+	if rt.cfg.Model != "from-user-init" {
+		t.Errorf("Model = %q, want %q", rt.cfg.Model, "from-user-init")
+	}
+}
+
 func TestRegisterHook(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
