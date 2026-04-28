@@ -4,6 +4,7 @@
 package lua
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -167,6 +168,14 @@ type Runtime struct {
 
 	tokensProviderMu sync.RWMutex
 	tokensProvider   TokensProvider
+
+	// Lightweight AI call (no tools)
+	runAICallMu sync.RWMutex
+	runAICall   func(ctx context.Context, system, user, model string) (string, error)
+
+	// Full sub-agent call (with tool whitelist)
+	runAgentCallMu sync.RWMutex
+	runAgentCall   func(ctx context.Context, system, prompt, model string, maxTurns int, allowedTools []string) (string, error)
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -326,6 +335,11 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(keymapTable, "unmap", L.NewFunction(r.apiLeaderKeymapUnmap(plugin)))
 	L.SetField(claudio, "keymap", keymapTable)
 
+	// claudio.ai sub-table
+	aiTable := L.NewTable()
+	L.SetField(aiTable, "run", L.NewFunction(r.apiAIRun(plugin)))
+	L.SetField(claudio, "ai", aiTable)
+
 	// claudio.agent sub-table
 	agentTable := L.NewTable()
 	L.SetField(agentTable, "current", L.NewFunction(r.apiAgentCurrent(plugin)))
@@ -334,6 +348,7 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(agentTable, "set_prompt_suffix", L.NewFunction(r.apiAgentSetPromptSuffix(plugin)))
 	L.SetField(agentTable, "list", L.NewFunction(r.apiAgentList(plugin)))
 	L.SetField(agentTable, "status", L.NewFunction(r.apiAgentStatus(plugin)))
+	L.SetField(agentTable, "spawn", L.NewFunction(r.apiAgentSpawn(plugin)))
 	L.SetField(claudio, "agent", agentTable)
 
 	// claudio.teams sub-table
@@ -349,6 +364,7 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(sessionTable, "on_start", L.NewFunction(r.apiSessionOnStart(plugin)))
 	L.SetField(sessionTable, "on_end", L.NewFunction(r.apiSessionOnEnd(plugin)))
 	L.SetField(sessionTable, "on_message", L.NewFunction(r.apiSessionOnMessage(plugin)))
+	L.SetField(sessionTable, "messages", L.NewFunction(r.apiSessionMessages(plugin)))
 	L.SetField(claudio, "session", sessionTable)
 
 	// claudio.ui sub-table (real impl from api_tui.go)
@@ -497,4 +513,18 @@ func (r *Runtime) SetTokensProvider(p TokensProvider) {
 	r.tokensProviderMu.Lock()
 	defer r.tokensProviderMu.Unlock()
 	r.tokensProvider = p
+}
+
+// SetRunAICall wires the lightweight AI call callback for claudio.ai.run().
+func (r *Runtime) SetRunAICall(fn func(ctx context.Context, system, user, model string) (string, error)) {
+	r.runAICallMu.Lock()
+	defer r.runAICallMu.Unlock()
+	r.runAICall = fn
+}
+
+// SetRunAgentCall wires the sub-agent call callback for claudio.agent.spawn().
+func (r *Runtime) SetRunAgentCall(fn func(ctx context.Context, system, prompt, model string, maxTurns int, allowedTools []string) (string, error)) {
+	r.runAgentCallMu.Lock()
+	defer r.runAgentCallMu.Unlock()
+	r.runAgentCall = fn
 }
