@@ -72,10 +72,8 @@ claudio.keymap.map("<space>it", "panel.tasks")
 claudio.keymap.map("<space>io", "panel.tools")
 
 -- Pickers
-claudio.keymap.map("<space>a",  "picker.agents")
 claudio.keymap.map("<space>/",  "picker.search")
 claudio.keymap.map("<space>;",  "picker.recent")
-claudio.keymap.map("<space>.",  "picker.buffers")
 claudio.keymap.map("<space>p",  "picker.commands")
 
 -- Editor

@@ -7165,7 +7165,7 @@ func (m *Model) cleanup() {
 func (m *Model) layout() {
 	promptH := m.prompt.Height()
 	paletteH := 0
-	if m.palette.IsActive() || m.filePicker.IsActive() {
+	if m.palette.IsActive() {
 		paletteH = 10
 	}
 
@@ -7396,16 +7396,18 @@ func (m Model) View() string {
 		)
 	}
 
+	// File picker floats over the bottom of the viewport — no layout shift.
+	if pickerView := m.filePicker.View(); pickerView != "" {
+		topArea = overlayBottomLeft(topArea, pickerView, mw, m.viewport.Height)
+	}
+
 	var sections []string
 	sections = append(sections, lipgloss.NewStyle().Height(1).Render("")) // top padding — prevents content from being clipped at terminal edge
 	sections = append(sections, topArea)
 
-	// 3. Command palette or file picker (full width, between viewport and prompt)
+	// 3. Command palette (full width, between viewport and prompt)
 	if paletteView := m.palette.View(); paletteView != "" {
 		sections = append(sections, paletteView)
-	}
-	if pickerView := m.filePicker.View(); pickerView != "" {
-		sections = append(sections, pickerView)
 	}
 
 	// 4. Dock slot — permission dock (highest priority) or todo dock
