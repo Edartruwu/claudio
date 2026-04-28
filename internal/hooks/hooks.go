@@ -124,10 +124,22 @@ type HookResult struct {
 	Error    error
 }
 
+// InlineHookFn is a Go function registered as a hook handler (e.g. from Lua plugins).
+// Unlike shell-command hooks, inline hooks run in-process.
+type InlineHookFn func(ctx context.Context, hctx HookContext) error
+
+// inlineHook pairs a matcher pattern with a Go function.
+type inlineHook struct {
+	event   Event
+	matcher string
+	fn      InlineHookFn
+}
+
 // Manager loads and executes hooks.
 type Manager struct {
-	config  HooksConfig
-	enabled bool
+	config      HooksConfig
+	enabled     bool
+	inlineHooks []inlineHook
 }
 
 // NewManager creates a hooks manager from a configuration.
@@ -136,6 +148,16 @@ func NewManager(config HooksConfig) *Manager {
 		config:  config,
 		enabled: true,
 	}
+}
+
+// RegisterInlineHook registers a Go function as a hook handler.
+// Used by Lua plugins to register hooks without shell commands.
+func (m *Manager) RegisterInlineHook(event Event, matcher string, fn InlineHookFn) {
+	m.inlineHooks = append(m.inlineHooks, inlineHook{
+		event:   event,
+		matcher: matcher,
+		fn:      fn,
+	})
 }
 
 // RegisterSkillHooks appends skill-defined hooks to the manager at runtime.
@@ -215,9 +237,6 @@ func (m *Manager) Run(ctx context.Context, event Event, hctx HookContext) ([]Hoo
 	}
 
 	matchers := m.matchersForEvent(event)
-	if len(matchers) == 0 {
-		return nil, false
-	}
 
 	var results []HookResult
 	blocked := false
@@ -242,6 +261,23 @@ func (m *Manager) Run(ctx context.Context, event Event, hctx HookContext) ([]Hoo
 			if result.ExitCode == 1 {
 				blocked = true
 			}
+		}
+	}
+
+	// Run inline hooks (registered by Lua plugins, etc.)
+	for _, ih := range m.inlineHooks {
+		if ih.event != event {
+			continue
+		}
+		if !matchTool(ih.matcher, hctx.ToolName) {
+			continue
+		}
+		if err := ih.fn(ctx, hctx); err != nil {
+			results = append(results, HookResult{
+				HookID:  "inline",
+				Stderr:  err.Error(),
+				Error:   err,
+			})
 		}
 	}
 

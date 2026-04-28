@@ -21,6 +21,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/harness"
 	"github.com/Abraxas-365/claudio/internal/hooks"
+	luart "github.com/Abraxas-365/claudio/internal/lua"
 	"github.com/Abraxas-365/claudio/internal/learning"
 	"github.com/Abraxas-365/claudio/internal/models"
 	"github.com/Abraxas-365/claudio/internal/plugins"
@@ -100,6 +101,7 @@ type App struct {
 	LSP          *lsp.ServerManager
 	MCPManager          *mcp.Manager
 	Capabilities        *capabilities.Registry
+	LuaRuntime          *luart.Runtime
 	HarnessTemplateDirs []string
 	InjectCh            chan attach.UserMsgPayload
 	InterruptCh         chan struct{}
@@ -681,6 +683,13 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	tools.SetCapabilityRegistry(capReg)
 	agents.SetCapabilityRegistry(capReg)
 
+	// Initialize Lua plugin runtime (after all registries are ready)
+	luaRuntime := luart.New(registry, skillsRegistry, eventBus, hooksMgr, settings, db, capReg)
+	luaPluginsDir := filepath.Join(config.GetPaths().Home, "lua-plugins")
+	if err := luaRuntime.LoadAll(luaPluginsDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: lua plugins: %v\n", err)
+	}
+
 	return &App{
 		Config:    settings,
 		Profile:   activeProfile,
@@ -706,6 +715,7 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		LSP:         lspManager,
 		MCPManager:          globalMCPMgr,
 		Capabilities:        capReg,
+		LuaRuntime:          luaRuntime,
 		// Priority order for TUI (first-match wins): project-local > harness
 		// (~/.claudio/team-templates is prepended by TUI as the primary/writable dir)
 		HarnessTemplateDirs: append([]string{filepath.Join(cwd, ".claudio", "team-templates")}, harness.CollectTemplateDirs(harnesses)...),
@@ -828,6 +838,9 @@ func (a *App) MemoryExtractor() func(messages []api.Message) {
 
 // Close cleans up resources.
 func (a *App) Close() error {
+	if a.LuaRuntime != nil {
+		a.LuaRuntime.Close()
+	}
 	if a.DB != nil {
 		return a.DB.Close()
 	}
