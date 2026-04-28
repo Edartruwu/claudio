@@ -111,6 +111,13 @@ func (m *Model) SetSize(width, height int) {
 	m.height = height
 }
 
+// Cancel cancels the underlying finder context and calls Finder.Close().
+// Safe to call multiple times. Called by the host model when the picker is
+// closed programmatically (e.g. replaced by a new picker) rather than via Esc.
+func (m Model) Cancel() {
+	cancelPicker(m)
+}
+
 // ── BubbleTea interface ───────────────────────────────────────────────────────
 
 // tickCmd schedules a preview-refresh tick 250 ms from now.

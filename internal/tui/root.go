@@ -992,8 +992,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.popupVisible = false
 			return m, nil
 		}
-		// Buffer scroll keys (active when a buffer is open)
-		if m.activeBufferName != "" && m.windowMgr != nil {
+		// Buffer scroll keys (active when a buffer is open, but not while the picker overlay is open).
+		if m.activeBufferName != "" && m.windowMgr != nil && !m.isPickerOpen {
 			// ESC always closes the buffer regardless of vim mode.
 			if msg.String() == "esc" {
 				m.activeBufferName = ""
@@ -1142,8 +1142,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// In Normal mode during streaming: do nothing (use Ctrl+C to cancel)
 			// This allows navigating (Space+wk, etc.) without killing the stream.
-			// Exception: allow esc to close an open side panel even while streaming.
-			if m.streaming && m.focus != FocusPanel {
+			// Exception: allow esc to close an open side panel or picker overlay even while streaming.
+			if m.streaming && m.focus != FocusPanel && !m.isPickerOpen {
 				return m, nil
 			}
 			if m.filePicker.IsActive() {
@@ -4940,7 +4940,12 @@ func (m *Model) openAgentPicker() tea.Cmd {
 }
 
 // closePicker closes the picker overlay and restores focus to the prompt.
+// It also cancels the underlying finder goroutine so resources are not leaked
+// when the picker is dismissed programmatically (e.g. replaced by a new picker).
 func (m *Model) closePicker() {
+	if m.isPickerOpen {
+		m.pickerModel.Cancel() // cancel finder goroutine / context
+	}
 	m.isPickerOpen = false
 	m.pickerKind = ""
 	m.focus = FocusPrompt
