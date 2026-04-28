@@ -159,40 +159,6 @@ claudio.ui.popup({
 	}
 }
 
-// TestUIAPI_RegisterWhichkey_Stored verifies pending whichkey groups are stored.
-func TestUIAPI_RegisterWhichkey_Stored(t *testing.T) {
-	rt := testRuntime(t)
-	defer rt.Close()
-
-	dir := writePlugin(t, "wk_plugin", `
-claudio.ui.register_whichkey("Plugin", {
-  { key = "p", desc = "Open plugin panel" },
-  { key = "r", desc = "Reload plugin" },
-})
-`)
-	if err := rt.LoadPlugin("wk_plugin", dir); err != nil {
-		t.Fatalf("LoadPlugin: %v", err)
-	}
-
-	groups := rt.PendingWhichkeyGroups()
-	if len(groups) != 1 {
-		t.Fatalf("PendingWhichkeyGroups count = %d; want 1", len(groups))
-	}
-	g := groups[0]
-	if g.Group != "Plugin" {
-		t.Errorf("group name = %q; want 'Plugin'", g.Group)
-	}
-	if len(g.Bindings) != 2 {
-		t.Fatalf("bindings count = %d; want 2", len(g.Bindings))
-	}
-	if g.Bindings[0].Key != "p" || g.Bindings[0].Desc != "Open plugin panel" {
-		t.Errorf("binding[0] = {%q,%q}; want {p, Open plugin panel}", g.Bindings[0].Key, g.Bindings[0].Desc)
-	}
-	if g.Bindings[1].Key != "r" || g.Bindings[1].Desc != "Reload plugin" {
-		t.Errorf("binding[1] = {%q,%q}; want {r, Reload plugin}", g.Bindings[1].Key, g.Bindings[1].Desc)
-	}
-}
-
 // TestUIAPI_RegisterPaletteEntry_Stored verifies pending palette entries are stored.
 func TestUIAPI_RegisterPaletteEntry_Stored(t *testing.T) {
 	rt := testRuntime(t)

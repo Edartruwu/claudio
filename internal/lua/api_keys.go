@@ -326,6 +326,11 @@ func (r *Runtime) apiLeaderKeymapMap(plugin *loadedPlugin) lua.LGFunction {
 				}
 			})
 
+			// Track unsub by seq so apiLeaderKeymapUnmap can cancel it.
+			r.leaderFnUnsubsMu.Lock()
+			r.leaderFnUnsubs[seq] = unsub
+			r.leaderFnUnsubsMu.Unlock()
+
 			plugin.mu.Lock()
 			plugin.unsubs = append(plugin.unsubs, unsub)
 			plugin.mu.Unlock()
@@ -371,6 +376,14 @@ func (r *Runtime) apiLeaderKeymapUnmap(plugin *loadedPlugin) lua.LGFunction {
 		}
 		r.pendingLeaderBindings = filtered
 		r.pendingLeaderMu.Unlock()
+
+		// Cancel the bus subscription for Lua-function-backed bindings.
+		r.leaderFnUnsubsMu.Lock()
+		if unsub, ok := r.leaderFnUnsubs[seq]; ok {
+			unsub()
+			delete(r.leaderFnUnsubs, seq)
+		}
+		r.leaderFnUnsubsMu.Unlock()
 
 		return 0
 	}

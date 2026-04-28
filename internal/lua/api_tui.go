@@ -27,18 +27,6 @@ type StatuslineCtx struct {
 	Session string
 }
 
-// WhichkeyEntry is a single key binding contributed by a plugin.
-type WhichkeyEntry struct {
-	Key  string
-	Desc string
-}
-
-// WhichkeyGroup is a named group of key bindings registered by a plugin.
-type WhichkeyGroup struct {
-	Group    string
-	Bindings []WhichkeyEntry
-}
-
 // PaletteEntry is a command palette entry registered by a plugin.
 type PaletteEntry struct {
 	Name        string
@@ -89,15 +77,6 @@ func (r *Runtime) RenderStatusline(ctx StatuslineCtx) string {
 		return string(s)
 	}
 	return ""
-}
-
-// PendingWhichkeyGroups returns all whichkey groups registered by plugins.
-func (r *Runtime) PendingWhichkeyGroups() []WhichkeyGroup {
-	r.uiMu.RLock()
-	defer r.uiMu.RUnlock()
-	out := make([]WhichkeyGroup, len(r.pendingWhichkeyGroups))
-	copy(out, r.pendingWhichkeyGroups)
-	return out
 }
 
 // PendingPaletteEntries returns all palette entries registered by plugins.
@@ -151,7 +130,6 @@ func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 	ui := L.NewTable()
 	L.SetField(ui, "set_statusline", L.NewFunction(r.apiSetStatusline(plugin)))
 	L.SetField(ui, "popup", L.NewFunction(r.apiPopup(plugin)))
-	L.SetField(ui, "register_whichkey", L.NewFunction(r.apiRegisterWhichkey()))
 	L.SetField(ui, "register_palette_entry", L.NewFunction(r.apiRegisterPaletteEntry()))
 	L.SetField(ui, "register_sidebar_block", L.NewFunction(r.apiRegisterSidebarBlock(plugin)))
 	// Color / theme controls
@@ -256,42 +234,6 @@ func (r *Runtime) apiPopup(plugin *loadedPlugin) lua.LGFunction {
 			Payload:   payload,
 			Timestamp: time.Now(),
 		})
-		return 0
-	}
-}
-
-// apiRegisterWhichkey returns the claudio.ui.register_whichkey(group, bindings) binding.
-//
-// Lua usage:
-//
-//	claudio.ui.register_whichkey("Plugin", {
-//	  { key = "p", desc = "Open plugin panel" },
-//	  { key = "r", desc = "Reload plugin" },
-//	})
-func (r *Runtime) apiRegisterWhichkey() lua.LGFunction {
-	return func(L *lua.LState) int {
-		group := L.CheckString(1)
-		bindingsTbl := L.CheckTable(2)
-
-		var entries []WhichkeyEntry
-		bindingsTbl.ForEach(func(_, v lua.LValue) {
-			tbl, ok := v.(*lua.LTable)
-			if !ok {
-				return
-			}
-			key := lua.LVAsString(tbl.RawGetString("key"))
-			desc := lua.LVAsString(tbl.RawGetString("desc"))
-			if key != "" {
-				entries = append(entries, WhichkeyEntry{Key: key, Desc: desc})
-			}
-		})
-
-		r.uiMu.Lock()
-		r.pendingWhichkeyGroups = append(r.pendingWhichkeyGroups, WhichkeyGroup{
-			Group:    group,
-			Bindings: entries,
-		})
-		r.uiMu.Unlock()
 		return 0
 	}
 }
