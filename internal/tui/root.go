@@ -47,6 +47,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/modelselector"
 	"github.com/Abraxas-365/claudio/internal/tui/picker"
 	"github.com/Abraxas-365/claudio/internal/tui/picker/finders"
+	"github.com/Abraxas-365/claudio/internal/tui/picker/previewers"
 	"github.com/Abraxas-365/claudio/internal/tui/panels"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/analyticspanel"
@@ -4632,9 +4633,10 @@ func (m *Model) openAgentPicker() tea.Cmd {
 		return m.toast.Show("no active team")
 	}
 	mdl := picker.New(picker.Config{
-		Title:  "Agents",
-		Finder: finders.NewAgentFinder(m.appCtx.TeamRunner),
-		Layout: picker.LayoutDropdown,
+		Title:     "Agents",
+		Finder:    finders.NewAgentFinder(m.appCtx.TeamRunner),
+		Layout:    picker.LayoutHorizontal,
+		Previewer: previewers.NewAgentPreviewer(m.appCtx.TeamRunner),
 	})
 	mdl.SetSize(m.width*3/4, m.height*3/4)
 	m.pickerModel = mdl
