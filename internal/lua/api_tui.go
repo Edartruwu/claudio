@@ -7,8 +7,17 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	lua "github.com/yuin/gopher-lua"
 )
+
+// SidebarBlockDef holds a sidebar block registered by a Lua plugin.
+type SidebarBlockDef struct {
+	ID       string
+	Title    string
+	Plugin   *loadedPlugin
+	RenderFn *lua.LFunction
+}
 
 // StatuslineCtx holds contextual data passed to the Lua statusline function.
 type StatuslineCtx struct {
@@ -100,6 +109,15 @@ func (r *Runtime) PendingPaletteEntries() []PaletteEntry {
 	return out
 }
 
+// GetSidebarBlocks returns all sidebar blocks registered by plugins.
+func (r *Runtime) GetSidebarBlocks() []SidebarBlockDef {
+	r.uiMu.RLock()
+	defer r.uiMu.RUnlock()
+	out := make([]SidebarBlockDef, len(r.pendingSidebarBlocks))
+	copy(out, r.pendingSidebarBlocks)
+	return out
+}
+
 // injectUIAPI registers claudio.ui.* bindings and returns the table.
 func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 	ui := L.NewTable()
@@ -107,8 +125,46 @@ func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 	L.SetField(ui, "popup", L.NewFunction(r.apiPopup(plugin)))
 	L.SetField(ui, "register_whichkey", L.NewFunction(r.apiRegisterWhichkey()))
 	L.SetField(ui, "register_palette_entry", L.NewFunction(r.apiRegisterPaletteEntry()))
+	L.SetField(ui, "register_sidebar_block", L.NewFunction(r.apiRegisterSidebarBlock(plugin)))
+	// Color / theme controls
+	L.SetField(ui, "set_color", L.NewFunction(func(L *lua.LState) int {
+		slot := L.CheckString(1)
+		hex := L.CheckString(2)
+		if err := styles.SetColor(slot, hex); err != nil {
+			L.RaiseError("set_color: %v", err)
+		}
+		styles.RebuildAll()
+		return 0
+	}))
+	L.SetField(ui, "set_theme", L.NewFunction(func(L *lua.LState) int {
+		tbl := L.CheckTable(1)
+		colors := map[string]string{}
+		tbl.ForEach(func(k, v lua.LValue) {
+			if ks, ok := k.(lua.LString); ok {
+				colors[string(ks)] = lua.LVAsString(v)
+			}
+		})
+		styles.SetTheme(colors)
+		styles.RebuildAll()
+		return 0
+	}))
+	L.SetField(ui, "set_border", L.NewFunction(func(L *lua.LState) int {
+		styles.SetBorderStyle(L.CheckString(1))
+		styles.RebuildAll()
+		return 0
+	}))
+	L.SetField(ui, "get_colors", L.NewFunction(func(L *lua.LState) int {
+		tbl := L.NewTable()
+		for k, v := range styles.GetColors() {
+			L.SetField(tbl, k, lua.LString(v))
+		}
+		L.Push(tbl)
+		return 1
+	}))
 	return ui
 }
+
+
 
 // apiSetStatusline returns the claudio.ui.set_statusline(fn) binding.
 //
@@ -241,6 +297,66 @@ func (r *Runtime) apiRegisterPaletteEntry() lua.LGFunction {
 			Description: desc,
 		})
 		r.uiMu.Unlock()
+		return 0
+	}
+}
+
+// injectPluginUIAPI adds plugin-aware UI bindings to the claudio.ui sub-table.
+// Called from injectAPI after injectGlobalConfigAPI has set up the ui table.
+func (r *Runtime) injectPluginUIAPI(L *lua.LState, plugin *loadedPlugin, claudio *lua.LTable) {
+	uiTable, ok := L.GetField(claudio, "ui").(*lua.LTable)
+	if !ok || uiTable == nil {
+		uiTable = L.NewTable()
+		L.SetField(claudio, "ui", uiTable)
+	}
+	L.SetField(uiTable, "register_sidebar_block", L.NewFunction(r.apiRegisterSidebarBlock(plugin)))
+}
+
+// apiRegisterSidebarBlock implements claudio.ui.register_sidebar_block({id, title, render}).
+//
+// Lua surface:
+//
+//	claudio.ui.register_sidebar_block({
+//	  id     = "my-block",
+//	  title  = "My Plugin",
+//	  render = function(ctx) return "content string" end,
+//	})
+func (r *Runtime) apiRegisterSidebarBlock(plugin *loadedPlugin) lua.LGFunction {
+	return func(L *lua.LState) int {
+		tbl := L.CheckTable(1)
+
+		idVal := L.GetField(tbl, "id")
+		id, ok := idVal.(lua.LString)
+		if !ok || string(id) == "" {
+			L.RaiseError("register_sidebar_block: id must be a non-empty string")
+			return 0
+		}
+
+		titleVal := L.GetField(tbl, "title")
+		title, ok := titleVal.(lua.LString)
+		if !ok {
+			L.RaiseError("register_sidebar_block: title must be a string")
+			return 0
+		}
+
+		renderVal := L.GetField(tbl, "render")
+		renderFn, ok := renderVal.(*lua.LFunction)
+		if !ok {
+			L.RaiseError("register_sidebar_block: render must be a function")
+			return 0
+		}
+
+		def := SidebarBlockDef{
+			ID:       string(id),
+			Title:    string(title),
+			Plugin:   plugin,
+			RenderFn: renderFn,
+		}
+
+		r.pendingSidebarBlocksMu.Lock()
+		r.pendingSidebarBlocks = append(r.pendingSidebarBlocks, def)
+		r.pendingSidebarBlocksMu.Unlock()
+
 		return 0
 	}
 }

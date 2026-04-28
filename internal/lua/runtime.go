@@ -101,6 +101,10 @@ type Runtime struct {
 	statuslinePlugin      *loadedPlugin
 	pendingWhichkeyGroups []WhichkeyGroup
 	pendingPaletteEntries []PaletteEntry
+
+	// Pending sidebar blocks (registered before TUI is wired)
+	pendingSidebarBlocksMu sync.Mutex
+	pendingSidebarBlocks   []SidebarBlockDef
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -280,6 +284,9 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// Global settings + config APIs
 	r.injectGlobalConfigAPI(L, claudio)
 
+	// Plugin-aware UI extensions (sidebar blocks, etc.)
+	r.injectPluginUIAPI(L, plugin, claudio)
+
 	L.SetGlobal("claudio", claudio)
 }
 
@@ -294,6 +301,15 @@ func (r *Runtime) SetCommandRegistry(reg *commands.Registry) {
 		reg.Register(p.cmd)
 	}
 	r.pendingCommands = nil
+}
+
+// GetSidebarBlocks returns a snapshot of all sidebar blocks registered by plugins.
+func (r *Runtime) GetSidebarBlocks() []SidebarBlockDef {
+	r.pendingSidebarBlocksMu.Lock()
+	defer r.pendingSidebarBlocksMu.Unlock()
+	out := make([]SidebarBlockDef, len(r.pendingSidebarBlocks))
+	copy(out, r.pendingSidebarBlocks)
+	return out
 }
 
 // SetKeymapRegistry wires the keymap registry.

@@ -206,5 +206,97 @@ claudio.ui.register_palette_entry({
 	}
 	if entries[1].Description != "Opens the plugin debug panel" {
 		t.Errorf("entry[1].Description = %q; want description set", entries[1].Description)
+
+// TestUIAPI_RegisterSidebarBlock_Stored verifies that register_sidebar_block
+// stores the block definition in the runtime and it is retrievable via GetSidebarBlocks.
+func TestUIAPI_RegisterSidebarBlock_Stored(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	dir := writePlugin(t, "sidebar-block", `
+claudio.ui.register_sidebar_block({
+  id     = "my-block",
+  title  = "My Plugin",
+  render = function(ctx) return "hello from plugin" end,
+})
+`)
+	if err := rt.LoadPlugin("sidebar-block", dir); err != nil {
+		t.Fatalf("LoadPlugin: %v", err)
+	}
+
+	blocks := rt.GetSidebarBlocks()
+	if len(blocks) != 1 {
+		t.Fatalf("GetSidebarBlocks len = %d, want 1", len(blocks))
+	}
+
+	b := blocks[0]
+	if b.ID != "my-block" {
+		t.Errorf("ID = %q, want %q", b.ID, "my-block")
+	}
+	if b.Title != "My Plugin" {
+		t.Errorf("Title = %q, want %q", b.Title, "My Plugin")
+	}
+	if b.RenderFn == nil {
+		t.Error("RenderFn is nil, want non-nil")
+	}
+	if b.Plugin == nil {
+		t.Error("Plugin is nil, want non-nil")
+	}
+}
+
+// TestUIAPI_RegisterSidebarBlock_MissingID verifies that missing id raises an error.
+func TestUIAPI_RegisterSidebarBlock_MissingID(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	dir := writePlugin(t, "sidebar-no-id", `
+claudio.ui.register_sidebar_block({
+  title  = "No ID",
+  render = function(ctx) return "" end,
+})
+`)
+	err := rt.LoadPlugin("sidebar-no-id", dir)
+	if err == nil {
+		t.Fatal("expected error for missing id, got nil")
+	}
+}
+
+// TestUIAPI_RegisterSidebarBlock_MissingRender verifies that missing render fn raises an error.
+func TestUIAPI_RegisterSidebarBlock_MissingRender(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	dir := writePlugin(t, "sidebar-no-render", `
+claudio.ui.register_sidebar_block({
+  id    = "block",
+  title = "No Render",
+})
+`)
+	err := rt.LoadPlugin("sidebar-no-render", dir)
+	if err == nil {
+		t.Fatal("expected error for missing render, got nil")
+	}
+}
+
+// TestRebuildAll_DoesNotPanic ensures RebuildAll can be called without panicking.
+func TestRebuildAll_DoesNotPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("RebuildAll panicked: %v", r)
+		}
+	}()
+	styles.RebuildAll()
+}
+
+// TestSurfaceAltSlot verifies surface_alt (underscore) slot works.
+func TestSurfaceAltSlot(t *testing.T) {
+	resetColors(t)
+	L := newTestState(t)
+	err := L.DoString(`claudio.ui.set_color("surface_alt", "#101010")`)
+	if err != nil {
+		t.Fatalf("surface_alt: %v", err)
+	}
+	if styles.SurfaceAlt != lipgloss.Color("#101010") {
+		t.Errorf("SurfaceAlt: got %q", styles.SurfaceAlt)
 	}
 }
