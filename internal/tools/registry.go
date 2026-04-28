@@ -347,6 +347,22 @@ func (r *Registry) SetSmallModelClient(client *api.Client, smallModel string) {
 	}
 }
 
+// FilterByNames returns a cloned registry containing only tools whose names
+// appear in the provided list. Unknown names are silently ignored.
+func (r *Registry) FilterByNames(names []string) *Registry {
+	clone := r.Clone()
+	keep := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		keep[n] = struct{}{}
+	}
+	for _, name := range clone.Names() {
+		if _, ok := keep[name]; !ok {
+			clone.Remove(name)
+		}
+	}
+	return clone
+}
+
 // Names returns the names of all registered tools.
 func (r *Registry) Names() []string {
 	result := make([]string, len(r.order))

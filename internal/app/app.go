@@ -743,6 +743,49 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	// Wire LSP manager so Lua plugins can register/control LSP servers at runtime.
 	luaRuntime.SetLSPManager(lspManager)
 
+	// Wire lightweight AI call for Lua plugins (claudio.ai.run)
+	luaRuntime.SetRunAICall(func(ctx context.Context, system, user, model string) (string, error) {
+		client := apiClient
+		if model != "" {
+			resolved := resolveModelAlias(model)
+			if resolved != apiClient.GetModel() {
+				client = api.NewClientFromExisting(apiClient, resolved)
+			}
+		}
+		contentJSON, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(user)})
+		req := &api.MessagesRequest{
+			System:    system,
+			Messages:  []api.Message{{Role: "user", Content: contentJSON}},
+			MaxTokens: 4096,
+		}
+		resp, err := client.SendMessage(ctx, req)
+		if err != nil {
+			return "", err
+		}
+		var result strings.Builder
+		for _, block := range resp.Content {
+			if block.Type == "text" {
+				result.WriteString(block.Text)
+			}
+		}
+		return result.String(), nil
+	})
+
+	// Wire full sub-agent for Lua plugins (claudio.agent.spawn)
+	luaRuntime.SetRunAgentCall(func(ctx context.Context, system, prompt, model string, maxTurns int, allowedTools []string) (string, error) {
+		if maxTurns > 0 {
+			ctx = tools.WithMaxTurns(ctx, maxTurns)
+		}
+		if model != "" {
+			ctx = tools.WithSubAgentModel(ctx, model)
+		}
+		reg := registry
+		if len(allowedTools) > 0 {
+			reg = registry.FilterByNames(allowedTools)
+		}
+		return runSubAgentWithMemory(ctx, apiClient, reg, system, prompt, "", subAgentCfg, eventBus)
+	})
+
 	return &App{
 		Config:    settings,
 		Profile:   activeProfile,
