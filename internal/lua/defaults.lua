@@ -86,83 +86,57 @@ claudio.keymap.map("<space>ev", "editor.view")
 claudio.keymap.map("<space>t",  "todo.toggle")
 
 
--- Default sidebar blocks
--- Remove or override these in your ~/.claudio/init.lua by registering
--- blocks with the same id.
+-- Default sidebar via claudio.win.new_panel
+-- Remove or override sections in your ~/.claudio/init.lua.
 
-claudio.ui.register_sidebar_block({
-  id     = "files",
-  title  = "Files",
-  weight = 3,
-  render = function(w, h)
-    local files = claudio.files.list()
-    if #files == 0 then return "  No files yet" end
-    local lines = {}
-    for i, f in ipairs(files) do
-      if i > h then
-        table.insert(lines, "  +" .. (#files - h) .. " more")
-        break
-      end
-      local prefix = f.is_dir and "  📁 " or "  📄 "
-      table.insert(lines, prefix .. f.name)
-    end
-    return table.concat(lines, "\n")
-  end
-})
+local sidebar = claudio.win.new_panel({ position = "left", width = 30 })
 
-claudio.ui.register_sidebar_block({
-  id     = "session",
-  title  = "Session",
-  weight = 1,
+sidebar:add_section({
+  id = "session", title = "Session", weight = 1, min_height = 3,
   render = function(w, h)
     local s = claudio.session.current()
     if s == nil then return "" end
     local lines = {}
-    if s.name ~= "" then
-      table.insert(lines, s.name)
-    end
-    if s.model ~= "" then
-      table.insert(lines, s.model)
-    end
+    if s.name  and s.name  ~= "" then table.insert(lines, "  " .. s.name)  end
+    if s.model and s.model ~= "" then table.insert(lines, "  " .. s.model) end
     return table.concat(lines, "\n")
-  end
+  end,
 })
 
-claudio.ui.register_sidebar_block({
-  id     = "todos",
-  title  = "Tasks",
-  weight = 2,
+sidebar:add_section({
+  id = "todos", title = "Tasks", weight = 2, min_height = 3,
   render = function(w, h)
     local tasks = claudio.tasks.list()
-    if #tasks == 0 then return "No tasks" end
+    if tasks == nil or #tasks == 0 then return "  no tasks" end
     local lines = {}
-    for i, t in ipairs(tasks) do
-      if i > h then break end
-      local icon = "○"
-      if t.status == "completed" then
-        icon = "✓"
-      elseif t.status == "in_progress" then
-        icon = "●"
-      end
-      table.insert(lines, icon .. " " .. t.title)
+    for _, t in ipairs(tasks) do
+      local icon = t.status == "completed" and "✓" or (t.status == "in_progress" and "●" or "○")
+      table.insert(lines, "  " .. icon .. " " .. t.title)
     end
     return table.concat(lines, "\n")
-  end
+  end,
 })
 
-claudio.ui.register_sidebar_block({
-  id     = "tokens",
-  title  = "Tokens",
-  weight = 1,
+sidebar:add_section({
+  id = "files", title = "Files", weight = 3, min_height = 3,
   render = function(w, h)
-    local u = claudio.tokens.usage()
-    if u == nil then return "" end
-    local pct = 0
-    if u.max > 0 then
-      pct = math.floor(u.used / u.max * 100)
+    local files = claudio.files.list()
+    if files == nil or #files == 0 then return "  no files" end
+    local lines = {}
+    for _, f in ipairs(files) do
+      table.insert(lines, "  " .. f)
     end
-    return string.format("%d / %d (%d%%)\n$%.4f", u.used, u.max, pct, u.cost)
-  end
+    return table.concat(lines, "\n")
+  end,
+})
+
+sidebar:add_section({
+  id = "tokens", title = "Tokens", weight = 4, min_height = 2,
+  render = function(w, h)
+    local t = claudio.tokens.usage()
+    if t == nil then return "" end
+    return string.format("  %d tok  $%.4f", t.total, t.cost)
+  end,
 })
 
 -- Branching

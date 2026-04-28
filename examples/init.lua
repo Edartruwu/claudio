@@ -70,78 +70,55 @@ claudio.ui.set_theme({
 -- Border: "rounded" (default), "block", "double", "normal", "hidden"
 claudio.ui.set_border("rounded")
 
--- ── Sidebar ───────────────────────────────────────────────────────────────────
--- The sidebar is pure Lua. Four blocks ship in defaults.lua:
---   "files"   (weight 3) — tracked files in the current session
---   "session" (weight 1) — current session name + model
---   "todos"   (weight 2) — active tasks (○ pending  ● in_progress  ✓ done)
---   "tokens"  (weight 1) — token usage + cost
+-- ── Sidebar (via claudio.win.new_panel) ──────────────────────────────────────
+-- The sidebar is a panel created by defaults.lua via claudio.win.new_panel.
+-- Four sections ship by default: session, tasks, files, tokens.
 --
--- weight controls vertical order — higher weight = rendered lower.
--- render(w, h) receives available width/height; return a plain string.
--- Re-registering with the same id replaces the default block.
+-- Sections have weight (vertical order), min_height, and a render(w, h) fn.
+-- You can create additional panels at any position: "left", "right", "bottom".
 
--- Disable the sidebar entirely:
--- claudio.ui.set_sidebar_enabled(false)
-
--- Remove a single default block (e.g. hide token counter):
--- claudio.ui.remove_sidebar_block("tokens")
-
--- Override the session block to show more detail:
--- claudio.ui.register_sidebar_block({
---   id     = "session",
---   title  = "Session",
---   weight = 1,
+-- Create a custom sidebar panel (overrides the default):
+-- local my_sidebar = claudio.win.new_panel({ position = "left", width = 30 })
+-- my_sidebar:add_section({
+--   id = "session", title = "Session", weight = 1, min_height = 3,
 --   render = function(w, h)
 --     local s = claudio.session.current()
 --     if s == nil then return "" end
 --     local lines = {}
---     if s.name  ~= "" then table.insert(lines, "  " .. s.name)  end
---     if s.model ~= "" then table.insert(lines, "  " .. s.model) end
+--     if s.name  and s.name  ~= "" then table.insert(lines, "  " .. s.name)  end
+--     if s.model and s.model ~= "" then table.insert(lines, "  " .. s.model) end
 --     local t = claudio.tokens.usage()
---     if t then
---       table.insert(lines, string.format("  $%.4f", t.cost))
---     end
+--     if t then table.insert(lines, string.format("  $%.4f", t.cost)) end
 --     return table.concat(lines, "\n")
 --   end,
 -- })
 
--- Add a git status block:
--- claudio.ui.register_sidebar_block({
---   id     = "git",
---   title  = "Git",
---   weight = 4,
+-- Add a git status section:
+-- my_sidebar:add_section({
+--   id = "git", title = "Git", weight = 5, min_height = 3,
 --   render = function(w, h)
 --     local branch = claudio.cmd("git rev-parse --abbrev-ref HEAD 2>/dev/null"):gsub("\n","")
 --     local stats  = claudio.cmd("git diff --shortstat 2>/dev/null"):gsub("\n","")
 --     if branch == "" then return "  not a repo" end
 --     local lines = { "   " .. branch }
 --     if stats ~= "" then table.insert(lines, "  " .. stats) end
---     local staged = claudio.cmd("git diff --cached --shortstat 2>/dev/null"):gsub("\n","")
---     if staged ~= "" then table.insert(lines, "  staged: " .. staged) end
 --     return table.concat(lines, "\n")
 --   end,
 -- })
 
--- Add a clock block:
--- claudio.ui.register_sidebar_block({
---   id     = "clock",
---   title  = "Time",
---   weight = 10,
---   render = function(w, h)
---     return "  " .. os.date("%H:%M")
---   end,
--- })
+-- Hide/show a panel at runtime:
+-- my_sidebar:hide()
+-- my_sidebar:show()
+-- my_sidebar:toggle()
 
--- Add a weather block (requires curl):
--- claudio.ui.register_sidebar_block({
---   id     = "weather",
---   title  = "Weather",
---   weight = 10,
---   render = function(w, h)
---     local out = claudio.cmd("curl -sf 'wttr.in/?format=3' 2>/dev/null")
---     return out ~= "" and ("  " .. out) or "  unavailable"
---   end,
+-- Remove a section:
+-- my_sidebar:remove_section("tokens")
+
+-- Bottom panel example:
+-- local bottom = claudio.win.new_panel({ position = "bottom", height = 8 })
+-- bottom:add_section({
+--   id = "clock", title = "Time", weight = 1, min_height = 1,
+--   render = function(w, h) return "  " .. os.date("%H:%M") end,
 -- })
 
 -- ── Keymaps ──────────────────────────────────────────────────────────────────
