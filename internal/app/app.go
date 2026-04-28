@@ -702,10 +702,16 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		fmt.Fprintf(os.Stderr, "Warning: lua user init: %v\n", err)
 	}
 
-	// 3. Plugins (~/.claudio/lua-plugins/*/init.lua)
-	luaPluginsDir := filepath.Join(config.GetPaths().Home, "lua-plugins")
-	if err := luaRuntime.LoadAll(luaPluginsDir); err != nil {
+	// 3. Plugins (~/.claudio/plugins/*/init.lua)
+	if err := luaRuntime.LoadAll(config.GetPaths().Plugins); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: lua plugins: %v\n", err)
+	}
+
+	// 4. Project-local init (.claudio/init.lua in cwd)
+	if workingDir, err := os.Getwd(); err == nil {
+		if err := luaRuntime.LoadProjectInit(workingDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: lua project init: %v\n", err)
+		}
 	}
 
 	// Apply any providers registered by Lua plugins / init.lua
