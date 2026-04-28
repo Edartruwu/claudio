@@ -242,6 +242,60 @@ func (m *ServerManager) GetServer(ctx context.Context, filePath string) (*Server
 	return srv, nil
 }
 
+// RegisterServer adds or updates a server configuration at runtime.
+// If a server with the same name is already running, it continues running
+// with the old config until next start; only the config map is updated.
+func (m *ServerManager) RegisterServer(name string, cfg config.LspServerConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Remove stale ext mappings for this server name.
+	for ext, n := range m.extMap {
+		if n == name {
+			delete(m.extMap, ext)
+		}
+	}
+
+	sc := FromLspServerConfig(name, cfg)
+	m.configs[name] = sc
+	for _, ext := range sc.Extensions {
+		ext = strings.ToLower(ext)
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		m.extMap[ext] = name
+	}
+}
+
+// UnregisterServer stops the named server (if running) and removes its config.
+func (m *ServerManager) UnregisterServer(name string) {
+	// StopServer acquires mu internally.
+	m.StopServer(name) //nolint:errcheck
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.configs, name)
+	for ext, n := range m.extMap {
+		if n == name {
+			delete(m.extMap, ext)
+		}
+	}
+}
+
+// ListServers returns a snapshot of all configured servers and whether each is running.
+func (m *ServerManager) ListServers() map[string]bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make(map[string]bool, len(m.configs))
+	for name := range m.configs {
+		srv, ok := m.servers[name]
+		result[name] = ok && srv.Ready
+	}
+	return result
+}
+
 // CleanIdle stops servers that haven't been used recently.
 func (m *ServerManager) CleanIdle() {
 	m.mu.RLock()

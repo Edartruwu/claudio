@@ -740,6 +740,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	luaRuntime.SetTeamRunner(teamRunner)
 	luaRuntime.SetTeamManager(teamMgr)
 
+	// Wire LSP manager so Lua plugins can register/control LSP servers at runtime.
+	luaRuntime.SetLSPManager(lspManager)
+
 	return &App{
 		Config:    settings,
 		Profile:   activeProfile,
