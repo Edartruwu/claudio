@@ -726,6 +726,16 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	r.Register(&Command{
 		Name:        "output-style",
 		Description: "Show or set output style (normal, concise, verbose, markdown)",
+		ArgCompleter: func(prefix string) []string {
+			vals := []string{"normal", "concise", "verbose", "markdown"}
+			var matches []string
+			for _, s := range vals {
+				if strings.HasPrefix(s, prefix) {
+					matches = append(matches, s)
+				}
+			}
+			return matches
+		},
 		Execute: func(args string) (string, error) {
 			if deps.GetOutputStyle == nil {
 				return "Output style not available.", nil
@@ -787,6 +797,24 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	r.Register(&Command{
 		Name:        "set",
 		Description: "Set a Claudio option  e.g. :set model claude-opus-4-6  :set color.primary #7aa2f7",
+		ArgCompleter: func(prefix string) []string {
+			keys := []string{
+				"model", "smallModel", "permissionMode", "autoCompact",
+				"compactMode", "compactKeepN", "sessionPersist", "hookProfile",
+				"caveman", "autoMemoryExtract", "memorySelection", "maxBudget",
+				"outputFilter", "outputStyle", "border",
+				"color.primary", "color.secondary", "color.success", "color.warning",
+				"color.error", "color.muted", "color.surface", "color.surface_alt",
+				"color.text", "color.dim", "color.subtle", "color.orange", "color.aqua",
+			}
+			var matches []string
+			for _, k := range keys {
+				if strings.HasPrefix(k, prefix) {
+					matches = append(matches, k)
+				}
+			}
+			return matches
+		},
 		Execute: func(args string) (string, error) {
 			args = strings.TrimSpace(args)
 
@@ -968,6 +996,16 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		Name:        "colorscheme",
 		Aliases:     []string{"cs", "theme"},
 		Description: "Apply a built-in color scheme  e.g. :colorscheme tokyonight",
+		ArgCompleter: func(prefix string) []string {
+			var names []string
+			for name := range BuiltinThemes {
+				if strings.HasPrefix(name, prefix) {
+					names = append(names, name)
+				}
+			}
+			sort.Strings(names)
+			return names
+		},
 		Execute: func(args string) (string, error) {
 			name := strings.TrimSpace(args)
 			if name == "" {

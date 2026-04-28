@@ -37,6 +37,11 @@ type Model struct {
 	// autocomplete state
 	suggestions []string
 	suggIdx     int
+
+	// popup/wildmenu state for argument completion
+	popup       []string
+	popupIdx    int
+	popupActive bool
 }
 
 // New creates a cmdline model backed by the given command registry.
@@ -69,6 +74,9 @@ func (m *Model) Activate() {
 	m.histIdx = -1
 	m.suggestions = nil
 	m.suggIdx = 0
+	m.popup = nil
+	m.popupIdx = 0
+	m.popupActive = false
 }
 
 // Deactivate closes the command line.
@@ -91,10 +99,31 @@ func (m Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	switch msg.Type {
 	case tea.KeyEsc:
+		if m.popupActive {
+			m.popup = nil
+			m.popupActive = false
+			return m, nil
+		}
 		m.Deactivate()
 		return m, func() tea.Msg { return CancelMsg{} }
 
 	case tea.KeyEnter:
+		if m.popupActive && len(m.popup) > 0 {
+			name, _ := parseCmdLine(m.input.Value())
+			selected := m.popup[m.popupIdx]
+			raw := name + " " + selected
+			m.input.SetValue(raw)
+			m.popup = nil
+			m.popupActive = false
+			m.Deactivate()
+			if len(m.history) == 0 || m.history[len(m.history)-1] != raw {
+				m.history = append(m.history, raw)
+			}
+			cmdName, args := parseCmdLine(raw)
+			return m, func() tea.Msg {
+				return ExecuteMsg{Raw: raw, Name: cmdName, Args: args}
+			}
+		}
 		raw := strings.TrimSpace(m.input.Value())
 		m.Deactivate()
 		if raw == "" {
@@ -110,6 +139,13 @@ func (m Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 
 	case tea.KeyUp:
+		if m.popupActive && len(m.popup) > 0 {
+			m.popupIdx--
+			if m.popupIdx < 0 {
+				m.popupIdx = len(m.popup) - 1
+			}
+			return m, nil
+		}
 		// Browse history backwards
 		if len(m.history) == 0 {
 			break
@@ -124,6 +160,10 @@ func (m Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyDown:
+		if m.popupActive && len(m.popup) > 0 {
+			m.popupIdx = (m.popupIdx + 1) % len(m.popup)
+			return m, nil
+		}
 		// Browse history forwards
 		if m.histIdx == -1 {
 			break
@@ -139,26 +179,38 @@ func (m Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyTab:
-		m.autocomplete()
+		if strings.Contains(m.input.Value(), " ") {
+			m.argComplete()
+		} else {
+			m.autocomplete()
+		}
 		return m, nil
 
 	case tea.KeySpace:
-		// Reset autocomplete state when user types a space (starts arguments).
+		// Reset autocomplete and popup state when user types a space (starts arguments).
 		m.suggestions = nil
 		m.suggIdx = 0
+		m.popup = nil
+		m.popupIdx = 0
+		m.popupActive = false
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+		// rebuild popup after space
+		m.argComplete()
 		return m, cmd
-	}
-
-	// Reset suggestions when user types normally
-	if msg.Type == tea.KeyRunes || msg.Type == tea.KeyBackspace || msg.Type == tea.KeyDelete || msg.Type == tea.KeySpace {
-		m.suggestions = nil
-		m.suggIdx = 0
 	}
 
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	// Rebuild arg popup after any character change
+	if strings.Contains(m.input.Value(), " ") {
+		m.argComplete()
+	} else {
+		m.suggestions = nil
+		m.suggIdx = 0
+		m.popup = nil
+		m.popupActive = false
+	}
 	return m, cmd
 }
 
@@ -192,6 +244,37 @@ func (m *Model) autocomplete() {
 	m.suggIdx = (m.suggIdx + 1) % len(m.suggestions)
 }
 
+// argComplete builds the argument popup for commands that support it.
+func (m *Model) argComplete() {
+	if m.registry == nil {
+		return
+	}
+	val := m.input.Value()
+	cmdName, argPrefix := parseCmdLine(val)
+	if cmdName == "" {
+		m.popup = nil
+		m.popupActive = false
+		return
+	}
+	cmd, ok := m.registry.Get(cmdName)
+	if !ok || cmd.ArgCompleter == nil {
+		m.popup = nil
+		m.popupActive = false
+		return
+	}
+	completions := cmd.ArgCompleter(argPrefix)
+	if len(completions) == 0 {
+		m.popup = nil
+		m.popupActive = false
+		return
+	}
+	m.popup = completions
+	m.popupActive = true
+	if m.popupIdx >= len(m.popup) {
+		m.popupIdx = 0
+	}
+}
+
 // View renders the command line bar.
 func (m Model) View() string {
 	if !m.active {
@@ -205,7 +288,38 @@ func (m Model) View() string {
 		Padding(0, 1).
 		Render(m.input.View())
 
-	return bar
+	if !m.popupActive || len(m.popup) == 0 {
+		return bar
+	}
+
+	// Render popup above the bar (max 12 items visible)
+	maxVisible := 12
+	start := 0
+	if m.popupIdx >= maxVisible {
+		start = m.popupIdx - maxVisible + 1
+	}
+	end := start + maxVisible
+	if end > len(m.popup) {
+		end = len(m.popup)
+	}
+
+	itemWidth := m.width - 2
+	var rows []string
+	for i := start; i < end; i++ {
+		item := m.popup[i]
+		style := lipgloss.NewStyle().
+			Width(itemWidth).
+			Padding(0, 1)
+		if i == m.popupIdx {
+			style = style.Background(styles.Primary).Foreground(styles.Surface).Bold(true)
+		} else {
+			style = style.Background(styles.SurfaceAlt).Foreground(styles.Text)
+		}
+		rows = append(rows, style.Render(item))
+	}
+
+	popup := strings.Join(rows, "\n")
+	return popup + "\n" + bar
 }
 
 // parseCmdLine splits "name args..." into name and args.
