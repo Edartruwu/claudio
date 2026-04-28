@@ -200,6 +200,13 @@ type Paths struct {
 	DB                string // ~/.claudio/claudio.db
 	Instincts         string // ~/.claudio/instincts.json
 	LSP               string // ~/.claudio/lsp/
+	State             string // ~/.claudio/state.json (machine-written only)
+}
+
+// MachineState holds fields written programmatically (never human-edited).
+// Persisted to state.json, separate from user-facing settings.json.
+type MachineState struct {
+	PluginConfigs map[string]map[string]any `json:"pluginConfigs,omitempty"`
 }
 
 var (
@@ -240,6 +247,7 @@ func GetPaths() *Paths {
 			DB:                filepath.Join(base, "claudio.db"),
 			Instincts:         filepath.Join(base, "instincts.json"),
 			LSP:               filepath.Join(base, "lsp"),
+			State:             filepath.Join(base, "state.json"),
 		}
 	})
 	return paths
@@ -299,25 +307,21 @@ func EnsureDirs() error {
 		}
 	}
 
-	// Bootstrap default settings.json if it doesn't exist
+	// Bootstrap default settings.json if it doesn't exist.
+	// Defaults are now set by defaults.lua; this just ensures the file exists
+	// so mergeFromFile has something to read on first run.
 	if _, err := os.Stat(p.Settings); os.IsNotExist(err) {
-		defaults := DefaultSettings()
-		data, _ := json.MarshalIndent(defaults, "", "  ")
-		os.WriteFile(p.Settings, data, 0644)
+		os.WriteFile(p.Settings, []byte("{}\n"), 0644)
 	}
 
 	return nil
 }
 
 // DefaultSettings returns settings with sensible defaults.
+// Most user-facing defaults are now set by defaults.lua (embedded);
+// only structural/API defaults that must exist before Lua runs remain here.
 func DefaultSettings() *Settings {
 	return &Settings{
-		Model:                "claude-sonnet-4-6",
-		SmallModel:           "claude-haiku-4-5-20251001",
-		PermissionMode:       "default",
-		CompactMode:          "strategic",
-		SessionPersist:       true,
-		HookProfile:          "standard",
 		APIBaseURL:           "https://api.anthropic.com",
 		AgentAutoDeleteAfter: 3,
 		CodeFilterLevel:      "none",
@@ -325,11 +329,14 @@ func DefaultSettings() *Settings {
 }
 
 // Load reads and merges settings from all sources.
-// Priority (highest to lowest): env vars > project > local > user
+// Priority (highest to lowest): env vars > project > local > user > state.json (machine fields)
 func Load(projectDir string) (*Settings, error) {
 	merged := DefaultSettings()
 
 	p := GetPaths()
+
+	// 0. Machine state (state.json) — lowest priority, machine-written fields only
+	loadMachineState(merged, p.State, p.Settings)
 
 	// 1. User settings (~/.claudio/settings.json)
 	mergeFromFile(merged, p.Settings)
@@ -347,6 +354,47 @@ func Load(projectDir string) (*Settings, error) {
 	applyEnvOverrides(merged)
 
 	return merged, nil
+}
+
+// loadMachineState reads machine-written state from state.json.
+// If state.json doesn't exist but settings.json has machine fields (pluginConfigs),
+// performs a one-time migration: extracts machine fields → writes state.json.
+func loadMachineState(settings *Settings, statePath, settingsPath string) {
+	// Try state.json first
+	if data, err := os.ReadFile(statePath); err == nil {
+		var ms MachineState
+		if json.Unmarshal(data, &ms) == nil {
+			if len(ms.PluginConfigs) > 0 {
+				settings.PluginConfigs = ms.PluginConfigs
+			}
+			return
+		}
+	}
+
+	// state.json missing/invalid → migrate from settings.json if it has machine fields
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return
+	}
+	pcRaw, ok := raw["pluginConfigs"]
+	if !ok {
+		return
+	}
+	// Found pluginConfigs in settings.json → migrate to state.json
+	var pc map[string]map[string]any
+	if json.Unmarshal(pcRaw, &pc) != nil || len(pc) == 0 {
+		return
+	}
+	settings.PluginConfigs = pc
+	// Write state.json (best-effort migration)
+	ms := MachineState{PluginConfigs: pc}
+	if out, err := json.MarshalIndent(ms, "", "  "); err == nil {
+		os.WriteFile(statePath, out, 0644)
+	}
 }
 
 func mergeFromFile(settings *Settings, path string) {
@@ -636,11 +684,61 @@ func ProjectDesignsDir(projectRoot string) string {
 	return filepath.Join(p.Projects, slug, "designs")
 }
 
-// SaveSettings persists s to the global settings file (~/.claudio/settings.json).
+// SaveSettings persists s: machine state → state.json, user config → settings.json.
+// PluginConfigs is written only to state.json (never settings.json).
 func SaveSettings(s *Settings) error {
-	data, err := json.MarshalIndent(s, "", "  ")
+	p := GetPaths()
+	return SaveSettingsTo(s, p.Settings, p.State)
+}
+
+// SaveSettingsTo writes settings split across settingsPath (user config) and
+// statePath (machine state). Exported for testing with temp dirs.
+func SaveSettingsTo(s *Settings, settingsPath, statePath string) error {
+	// 1. Write machine state to state.json
+	ms := MachineState{PluginConfigs: s.PluginConfigs}
+	if msData, err := json.MarshalIndent(ms, "", "  "); err == nil {
+		if err := os.WriteFile(statePath, msData, 0644); err != nil {
+			return err
+		}
+	}
+
+	// 2. Write user config to settings.json (without machine fields)
+	clone := *s
+	clone.PluginConfigs = nil // strip machine-only field
+	data, err := json.MarshalIndent(&clone, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(GetPaths().Settings, data, 0644)
+	return os.WriteFile(settingsPath, data, 0644)
+}
+
+// SaveMachineState persists only machine-written state to state.json.
+func SaveMachineState(s *Settings) error {
+	ms := MachineState{PluginConfigs: s.PluginConfigs}
+	data, err := json.MarshalIndent(ms, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(GetPaths().State, data, 0644)
+}
+
+// LoadMachineState reads machine state from state.json into the given Settings.
+func LoadMachineState(s *Settings) error {
+	data, err := os.ReadFile(GetPaths().State)
+	if err != nil {
+		return err
+	}
+	var ms MachineState
+	if err := json.Unmarshal(data, &ms); err != nil {
+		return err
+	}
+	if len(ms.PluginConfigs) > 0 {
+		s.PluginConfigs = ms.PluginConfigs
+	}
+	return nil
+}
+
+// LoadMachineStateFrom is the path-parameterized version for testing.
+func LoadMachineStateFrom(s *Settings, statePath, settingsPath string) {
+	loadMachineState(s, statePath, settingsPath)
 }

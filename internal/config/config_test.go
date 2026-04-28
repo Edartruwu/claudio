@@ -15,14 +15,16 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	if settings.CompactMode != "strategic" {
-		t.Errorf("expected default CompactMode 'strategic', got %q", settings.CompactMode)
+	// Most user-facing defaults are now set by defaults.lua, not Go code.
+	// Only structural defaults remain in DefaultSettings().
+	if settings.APIBaseURL != "https://api.anthropic.com" {
+		t.Errorf("expected default APIBaseURL, got %q", settings.APIBaseURL)
 	}
-	if !settings.SessionPersist {
-		t.Error("expected default SessionPersist true")
+	if settings.AgentAutoDeleteAfter != 3 {
+		t.Errorf("expected default AgentAutoDeleteAfter=3, got %d", settings.AgentAutoDeleteAfter)
 	}
-	if settings.HookProfile != "standard" {
-		t.Errorf("expected default HookProfile 'standard', got %q", settings.HookProfile)
+	if settings.CodeFilterLevel != "none" {
+		t.Errorf("expected default CodeFilterLevel='none', got %q", settings.CodeFilterLevel)
 	}
 }
 
@@ -87,6 +89,126 @@ func TestEnsureDirs(t *testing.T) {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			t.Errorf("expected directory to exist: %s", dir)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// state.json migration tests
+// ---------------------------------------------------------------------------
+
+func TestLoadSettings_MigratesFromSettingsJson(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+	statePath := filepath.Join(dir, "state.json")
+
+	// Old settings.json with pluginConfigs (machine field)
+	old := map[string]any{
+		"model": "claude-opus-4-6",
+		"pluginConfigs": map[string]any{
+			"my-plugin": map[string]any{"token": "secret-123"},
+		},
+	}
+	data, _ := json.Marshal(old)
+	os.WriteFile(settingsPath, data, 0644)
+
+	// state.json does NOT exist yet
+	s := config.DefaultSettings()
+	config.LoadMachineStateFrom(s, statePath, settingsPath)
+
+	// PluginConfigs should be available
+	if s.PluginConfigs == nil {
+		t.Fatal("expected PluginConfigs to be migrated")
+	}
+	pc := s.PluginConfigs["my-plugin"]
+	if pc == nil || pc["token"] != "secret-123" {
+		t.Errorf("expected token=secret-123, got %v", pc)
+	}
+
+	// state.json should now exist (migration wrote it)
+	if _, err := os.Stat(statePath); os.IsNotExist(err) {
+		t.Error("expected state.json to be created by migration")
+	}
+
+	// Verify state.json content
+	stateData, _ := os.ReadFile(statePath)
+	var ms config.MachineState
+	if err := json.Unmarshal(stateData, &ms); err != nil {
+		t.Fatalf("state.json unmarshal: %v", err)
+	}
+	if ms.PluginConfigs["my-plugin"]["token"] != "secret-123" {
+		t.Error("state.json should contain migrated pluginConfigs")
+	}
+}
+
+func TestSaveSettings_WritesStateJson(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+	statePath := filepath.Join(dir, "state.json")
+
+	s := config.DefaultSettings()
+	s.Model = "claude-opus-4-6"
+	s.PluginConfigs = map[string]map[string]any{
+		"test-plugin": {"key": "val"},
+	}
+
+	err := config.SaveSettingsTo(s, settingsPath, statePath)
+	if err != nil {
+		t.Fatalf("SaveSettingsTo: %v", err)
+	}
+
+	// settings.json should NOT have pluginConfigs
+	settingsData, _ := os.ReadFile(settingsPath)
+	var raw map[string]json.RawMessage
+	json.Unmarshal(settingsData, &raw)
+	if _, ok := raw["pluginConfigs"]; ok {
+		t.Error("settings.json should not contain pluginConfigs")
+	}
+
+	// settings.json should still have model
+	var cfg map[string]any
+	json.Unmarshal(settingsData, &cfg)
+	if cfg["model"] != "claude-opus-4-6" {
+		t.Errorf("expected model in settings.json, got %v", cfg["model"])
+	}
+
+	// state.json should have pluginConfigs
+	stateData, _ := os.ReadFile(statePath)
+	var ms config.MachineState
+	json.Unmarshal(stateData, &ms)
+	if ms.PluginConfigs["test-plugin"]["key"] != "val" {
+		t.Error("state.json should contain pluginConfigs")
+	}
+}
+
+func TestLoadSettings_StateJsonTakesPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+	statePath := filepath.Join(dir, "state.json")
+
+	// settings.json has old pluginConfigs
+	old := map[string]any{
+		"pluginConfigs": map[string]any{
+			"p": map[string]any{"v": "old"},
+		},
+	}
+	data, _ := json.Marshal(old)
+	os.WriteFile(settingsPath, data, 0644)
+
+	// state.json has newer pluginConfigs
+	ms := config.MachineState{
+		PluginConfigs: map[string]map[string]any{
+			"p": {"v": "new"},
+		},
+	}
+	msData, _ := json.MarshalIndent(ms, "", "  ")
+	os.WriteFile(statePath, msData, 0644)
+
+	s := config.DefaultSettings()
+	config.LoadMachineStateFrom(s, statePath, settingsPath)
+
+	// state.json value should win
+	if s.PluginConfigs["p"]["v"] != "new" {
+		t.Errorf("expected state.json to take precedence, got %v", s.PluginConfigs["p"]["v"])
 	}
 }
 
