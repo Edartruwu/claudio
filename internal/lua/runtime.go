@@ -22,7 +22,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tools"
 	keymapPkg "github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/picker"
-	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	lua "github.com/yuin/gopher-lua"
@@ -123,13 +122,13 @@ type Runtime struct {
 	statuslinePlugin      *loadedPlugin
 	pendingPaletteEntries []PaletteEntry
 
-	// Pending sidebar blocks (registered before TUI is wired)
-	pendingSidebarBlocksMu sync.Mutex
-	pendingSidebarBlocks   []SidebarBlockDef
+	// Panel registry (wired after TUI is ready via SetPanelRegistry).
+	// Panels queued before wiring are held in pendingPanels.
+	panelRegistryMu sync.RWMutex
+	panelRegistry   *PanelRegistry
 
-	// Sidebar block registry (wired after TUI is ready via SetBlockRegistry)
-	sidebarRegistryMu sync.RWMutex
-	sidebarRegistry   *sidebar.BlockRegistry
+	pendingPanelsMu sync.Mutex
+	pendingPanels   []*PanelDef
 
 	// Pending window registrations (registered before WindowManager is wired)
 	pendingWindowsMu sync.Mutex
@@ -400,8 +399,11 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// Global settings + config APIs
 	r.injectGlobalConfigAPI(L, claudio)
 
-	// Plugin-aware UI extensions (sidebar blocks, etc.)
+	// Plugin-aware UI extensions (no-op; blocks replaced by claudio.win.new_panel)
 	r.injectPluginUIAPI(L, plugin, claudio)
+
+	// claudio.win — new_panel / section API
+	r.injectWinAPI(L, plugin, claudio)
 
 	// claudio.buf + claudio.ui.register_window
 	r.injectWindowsAPI(L, plugin, claudio)
@@ -434,7 +436,29 @@ func (r *Runtime) SetCommandRegistry(reg *commands.Registry) {
 	r.pendingCommands = nil
 }
 
-// GetSidebarBlocks returns a snapshot of all sidebar blocks registered by plugins.
+// SetPanelRegistry wires the panel registry. Any panels queued before this call
+// are flushed into the live registry.
+func (r *Runtime) SetPanelRegistry(reg *PanelRegistry) {
+	r.panelRegistryMu.Lock()
+	r.panelRegistry = reg
+	r.panelRegistryMu.Unlock()
+
+	r.pendingPanelsMu.Lock()
+	pending := r.pendingPanels
+	r.pendingPanels = nil
+	r.pendingPanelsMu.Unlock()
+
+	for _, p := range pending {
+		reg.Register(p)
+	}
+}
+
+// GetPanelRegistry returns the wired PanelRegistry (nil until TUI is ready).
+func (r *Runtime) GetPanelRegistry() *PanelRegistry {
+	r.panelRegistryMu.RLock()
+	defer r.panelRegistryMu.RUnlock()
+	return r.panelRegistry
+}
 
 // SetKeymapRegistry wires the keymap registry.
 func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {
