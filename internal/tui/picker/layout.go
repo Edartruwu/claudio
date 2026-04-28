@@ -12,41 +12,63 @@ import (
 
 // renderHorizontal: results pane (left 60%) | preview pane (right 40%).
 // Prompt lives at the bottom of the results pane.
+// A rounded Tokyo-Night border wraps the entire picker; subtract 2 cols and
+// 2 rows from inner dimensions to account for the border.
 func renderHorizontal(m Model, width, height int) string {
+	innerW := width - 2
+	innerH := height - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	if innerH < 1 {
+		innerH = 1
+	}
+
 	hasPrev := m.cfg.Previewer != nil && len(m.filtered) > 0
 
-	leftW := width
+	leftW := innerW
 	if hasPrev {
-		leftW = width * 6 / 10
+		leftW = innerW * 6 / 10
 	}
-	rightW := width - leftW
+	rightW := innerW - leftW
 
-	left := buildResultsPane(m, leftW, height)
+	left := buildResultsPane(m, leftW, innerH)
 	if !hasPrev || rightW <= 0 {
-		return left
+		return pickerBorderStyle.Render(left)
 	}
 
-	right := buildPreviewPane(m, rightW, height)
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	right := buildPreviewPane(m, rightW, innerH)
+	return pickerBorderStyle.Render(lipgloss.JoinHorizontal(lipgloss.Top, left, right))
 }
 
 // renderVertical: preview pane (top 40%) → results list → prompt (bottom).
+// A rounded Tokyo-Night border wraps the entire picker; subtract 2 cols and
+// 2 rows from inner dimensions to account for the border.
 func renderVertical(m Model, width, height int) string {
+	innerW := width - 2
+	innerH := height - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	if innerH < 1 {
+		innerH = 1
+	}
+
 	hasPrev := m.cfg.Previewer != nil && len(m.filtered) > 0
 
 	if !hasPrev {
-		return buildResultsPane(m, width, height)
+		return pickerBorderStyle.Render(buildResultsPane(m, innerW, innerH))
 	}
 
-	prevH := height * 4 / 10
+	prevH := innerH * 4 / 10
 	if prevH < 3 {
 		prevH = 3
 	}
-	listH := height - prevH
+	listH := innerH - prevH
 
-	preview := buildPreviewPane(m, width, prevH)
-	results := buildResultsPane(m, width, listH)
-	return lipgloss.JoinVertical(lipgloss.Left, preview, results)
+	preview := buildPreviewPane(m, innerW, prevH)
+	results := buildResultsPane(m, innerW, listH)
+	return pickerBorderStyle.Render(lipgloss.JoinVertical(lipgloss.Left, preview, results))
 }
 
 // renderDropdown: compact centered modal (~60% wide, ~40% tall), no preview.
@@ -104,6 +126,8 @@ func renderDropdown(m Model, width, height int) string {
 
 // renderIvy: full-width bottom overlay (~30% height).
 // Prompt at top of strip, results below; preview on right when enabled.
+// A rounded Tokyo-Night border wraps the content strip; subtract 2 cols and
+// 2 rows from inner dimensions to account for the border.
 func renderIvy(m Model, width, height int) string {
 	hasPrev := m.cfg.Previewer != nil && len(m.filtered) > 0
 
@@ -115,24 +139,36 @@ func renderIvy(m Model, width, height int) string {
 		stripH = height
 	}
 
+	// Inner dims account for border (2 cols, 2 rows).
+	innerW := width - 2
+	innerH := stripH - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	if innerH < 1 {
+		innerH = 1
+	}
+
 	topPad := height - stripH
 
 	var strip string
 	if hasPrev {
-		leftW := width * 6 / 10
-		rightW := width - leftW
-		left := buildResultsPane(m, leftW, stripH)
-		right := buildPreviewPane(m, rightW, stripH)
+		leftW := innerW * 6 / 10
+		rightW := innerW - leftW
+		left := buildResultsPane(m, leftW, innerH)
+		right := buildPreviewPane(m, rightW, innerH)
 		strip = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	} else {
-		strip = buildResultsPane(m, width, stripH)
+		strip = buildResultsPane(m, innerW, innerH)
 	}
+
+	bordered := pickerBorderStyle.Render(strip)
 
 	var sb strings.Builder
 	for i := 0; i < topPad; i++ {
 		sb.WriteString("\n")
 	}
-	sb.WriteString(strip)
+	sb.WriteString(bordered)
 	return sb.String()
 }
 
@@ -289,9 +325,17 @@ var (
 			BorderLeft(true).
 			BorderForeground(styles.Subtle)
 
-	// Dropdown modal box: rounded border.
+	// Dropdown modal box: rounded border (Tokyo Night blue to match other layouts).
 	dropdownStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(styles.Primary).
+			BorderForeground(lipgloss.Color("#7aa2f7")).
 			Padding(0, 1)
+
+	// Outer picker border — Telescope-style rounded border in Tokyo Night blue.
+	// Applied by renderHorizontal, renderVertical, and renderIvy as the last
+	// compositing step so the entire picker (title + list + preview + prompt)
+	// appears inside a single unified floating window frame.
+	pickerBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("#7aa2f7"))
 )

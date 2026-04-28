@@ -20,12 +20,36 @@ func NewBufferFinder(mgr *windows.Manager) picker.Finder {
 	return &bufferFinder{mgr: mgr}
 }
 
+// panelWindowNames lists windows that back TUI panels, not real content
+// buffers. These are registered in the Manager but should not appear in the
+// buffer picker because the user cannot meaningfully "open" them.
+var panelWindowNames = map[string]bool{
+	"AgentGUI":    true,
+	"SessionTree": true,
+	"Tasks":       true,
+	"Memory":      true,
+	"Skills":      true,
+	"Analytics":   true,
+	"Tools":       true,
+	"Conversation": true,
+}
+
+// isPanel returns true when name corresponds to a TUI panel window (not a
+// real content buffer that belongs in the buffer picker).
+func isPanel(name string) bool {
+	return panelWindowNames[name]
+}
+
 func (f *bufferFinder) Find(ctx context.Context) <-chan picker.Entry {
 	wins := f.mgr.AllWindows()
 	ch := make(chan picker.Entry, len(wins))
 	go func() {
 		defer close(ch)
 		for _, w := range wins {
+			// Skip panel windows — only real content buffers belong here.
+			if isPanel(w.Name) {
+				continue
+			}
 			meta := map[string]any{
 				"name": w.Name,
 			}
