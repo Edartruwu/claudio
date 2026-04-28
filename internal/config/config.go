@@ -104,6 +104,10 @@ type Settings struct {
 
 	// AutoLoadSkills configures skills pre-loaded into agent system prompts on spawn.
 	AutoLoadSkills AutoLoadSkillsConfig `json:"autoLoadSkills,omitempty"`
+
+	// PluginConfigs holds per-plugin configuration keyed by plugin name.
+	// Plugins read/write their own namespace: settings.PluginConfigs["my-plugin"]["key"]
+	PluginConfigs map[string]map[string]any `json:"pluginConfigs,omitempty"`
 }
 
 // AutoLoadSkillsConfig specifies skills to inject automatically into agent prompts.
@@ -595,6 +599,18 @@ func (s *Settings) GetMemoryRefreshOnCompact() bool {
 		return *s.MemoryRefreshOnCompact
 	}
 	return true
+}
+
+// GetPluginConfig returns the config map for a named plugin (never nil).
+// Lazily initializes PluginConfigs and the per-plugin map on first access.
+func (s *Settings) GetPluginConfig(pluginName string) map[string]any {
+	if s.PluginConfigs == nil {
+		s.PluginConfigs = make(map[string]map[string]any)
+	}
+	if s.PluginConfigs[pluginName] == nil {
+		s.PluginConfigs[pluginName] = make(map[string]any)
+	}
+	return s.PluginConfigs[pluginName]
 }
 
 // CavemanEnabled returns whether the caveman ultra-compressed mode is enabled.

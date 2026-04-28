@@ -205,6 +205,14 @@ func (db *DB) migrate() error {
 		`ALTER TABLE messages ADD COLUMN agent_name TEXT`,
 		// 30 — output column for messages (structured agent output)
 		`ALTER TABLE messages ADD COLUMN output TEXT`,
+		// 31 — plugin key-value store for Lua plugin persistence
+		`CREATE TABLE IF NOT EXISTS plugin_data (
+			plugin_name TEXT NOT NULL,
+			key         TEXT NOT NULL,
+			value       TEXT,
+			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (plugin_name, key)
+		)`,
 	}
 
 	for i, m := range migrations {
