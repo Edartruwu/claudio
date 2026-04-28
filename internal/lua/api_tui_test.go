@@ -8,7 +8,29 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/tui/styles"
+	"github.com/charmbracelet/lipgloss"
 )
+
+// resetColors saves and restores color state around tests that mutate styles package vars.
+func resetColors(t *testing.T) {
+	t.Helper()
+	orig := styles.Primary
+	t.Cleanup(func() { styles.Primary = orig; styles.RebuildAll() })
+}
+
+// newTestState returns a Runtime whose plugins dir has a no-op init.lua loaded.
+// Use it when tests need to call Lua code directly via rt.ExecString.
+func newTestState(t *testing.T) *Runtime {
+	t.Helper()
+	rt := testRuntime(t)
+	t.Cleanup(func() { rt.Close() })
+	dir := writePlugin(t, "tui_state_test", `-- no-op`)
+	if err := rt.LoadPlugin("tui_state_test", dir); err != nil {
+		t.Fatalf("newTestState LoadPlugin: %v", err)
+	}
+	return rt
+}
 
 // TestUIAPI_SetStatusline_Stored verifies that claudio.ui.set_statusline stores the function.
 func TestUIAPI_SetStatusline_Stored(t *testing.T) {
@@ -206,6 +228,8 @@ claudio.ui.register_palette_entry({
 	}
 	if entries[1].Description != "Opens the plugin debug panel" {
 		t.Errorf("entry[1].Description = %q; want description set", entries[1].Description)
+	}
+}
 
 // TestUIAPI_RegisterSidebarBlock_Stored verifies that register_sidebar_block
 // stores the block definition in the runtime and it is retrievable via GetSidebarBlocks.
@@ -290,9 +314,10 @@ func TestRebuildAll_DoesNotPanic(t *testing.T) {
 
 // TestSurfaceAltSlot verifies surface_alt (underscore) slot works.
 func TestSurfaceAltSlot(t *testing.T) {
-	resetColors(t)
-	L := newTestState(t)
-	err := L.DoString(`claudio.ui.set_color("surface_alt", "#101010")`)
+	origSurfaceAlt := styles.SurfaceAlt
+	t.Cleanup(func() { styles.SurfaceAlt = origSurfaceAlt; styles.RebuildAll() })
+	rt := newTestState(t)
+	_, err := rt.ExecString(`claudio.ui.set_color("surface_alt", "#101010")`)
 	if err != nil {
 		t.Fatalf("surface_alt: %v", err)
 	}

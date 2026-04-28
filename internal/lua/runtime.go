@@ -304,13 +304,6 @@ func (r *Runtime) SetCommandRegistry(reg *commands.Registry) {
 }
 
 // GetSidebarBlocks returns a snapshot of all sidebar blocks registered by plugins.
-func (r *Runtime) GetSidebarBlocks() []SidebarBlockDef {
-	r.pendingSidebarBlocksMu.Lock()
-	defer r.pendingSidebarBlocksMu.Unlock()
-	out := make([]SidebarBlockDef, len(r.pendingSidebarBlocks))
-	copy(out, r.pendingSidebarBlocks)
-	return out
-}
 
 // SetKeymapRegistry wires the keymap registry.
 func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {

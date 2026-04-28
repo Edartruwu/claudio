@@ -11,7 +11,7 @@
 
 ### The open-source AI coding agent for your terminal
 
-**Multi-agent teams · Persistent memory · Vim-grade TUI · Single Go binary**
+**Multi-agent teams · Lua-configurable runtime · Vim-grade TUI · Single Go binary**
 
 [![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
@@ -63,8 +63,8 @@ Promote any session into a reusable agent persona — with its own memory, tools
 </td>
 <td valign="top">
 
-### 🔌 Pluggable
-MCP servers, LSP integration, hooks, custom skills, plugins, and multi-provider model support.
+### 🔌 Lua Runtime
+Full `~/.claudio/init.lua` config — register tools, keymaps, themes, commands, providers, capabilities, and hooks without recompiling. Same philosophy as Neovim.
 
 </td>
 </tr>
@@ -121,44 +121,40 @@ claudio          # launches the TUI
 
 #### Using a different provider
 
-`claudio auth login` is the quickest path — it authenticates with Anthropic so you can use Claude models out of the box. But Claudio is **model-agnostic**: you can route any model to Groq, OpenAI, Ollama, Together, vLLM, or any OpenAI-compatible endpoint by editing `~/.claudio/settings.json`:
+`claudio auth login` is the quickest path — it authenticates with Anthropic so you can use Claude models out of the box. But Claudio is **model-agnostic**: you can register any provider in `~/.claudio/init.lua` and route models to Groq, OpenAI, Ollama, Together, vLLM, or any OpenAI-compatible endpoint:
 
-```json
-{
-  "model": "llama-3.3-70b-versatile",
-  "providers": {
-    "groq": {
-      "apiBase": "https://api.groq.com/openai/v1",
-      "apiKey": "$GROQ_API_KEY",
-      "type": "openai"
-    },
-    "openai": {
-      "apiBase": "https://api.openai.com/v1",
-      "apiKey": "$OPENAI_API_KEY",
-      "type": "openai"
-    },
-    "ollama": {
-      "apiBase": "http://localhost:11434/v1",
-      "type": "openai"
-    }
-  },
-  "modelRouting": {
-    "llama-*": "groq",
-    "gpt-*": "openai",
-    "qwen*": "ollama"
-  }
-}
+```lua
+-- ~/.claudio/init.lua
+
+claudio.register_provider({
+  name     = "groq",
+  type     = "openai",
+  base_url = "https://api.groq.com/openai/v1",
+  api_key  = "$GROQ_API_KEY",
+  routes   = { "llama-*" },
+})
+
+claudio.register_provider({
+  name     = "ollama",
+  type     = "ollama",
+  base_url = "http://localhost:11434",
+  routes   = { "qwen*" },
+})
+
+claudio.config.set("model", "llama-3.3-70b-versatile")
 ```
 
 Then launch with any routed model:
 
 ```bash
-claudio --model gpt-4o            # OpenAI
-claudio --model llama-3.3-70b-versatile   # Groq
-claudio --model qwen2.5-coder     # Local Ollama
+claudio --model gpt-4o                   # OpenAI
+claudio --model llama-3.3-70b-versatile  # Groq
+claudio --model qwen2.5-coder            # Local Ollama
 ```
 
-See [Model Configuration](#model-configuration) for the full reference.
+Or switch live in the TUI: `:set model llama-3.3-70b-versatile`
+
+See [Lua Configuration](#lua-configuration) and [Model Configuration](#model-configuration) for the full reference.
 
 ---
 
@@ -168,6 +164,10 @@ See [Model Configuration](#model-configuration) for the full reference.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Lua Configuration](#lua-configuration)
+  - [init.lua — personal config](#initlua--personal-config)
+  - [Plugins](#lua-plugins)
+  - [Full API surface](#full-api-surface)
 - [Project Setup](#project-setup)
   - [/init — Project setup skill](#init--project-setup-skill)
   - [Configuration hierarchy](#configuration-hierarchy)
@@ -225,8 +225,9 @@ Claudio is built ground-up in Go for engineers who want **more control, more age
 | ⏰ **Cron tasks** | `@every 1h`, `@daily`, `HH:MM` | Feature-gated |
 | 🌐 **Web / Mobile UI** | `comandcenter` — WhatsApp-style PWA, push notifications, file uploads, multi-session hub | ❌ |
 | 🌉 **Cross-session comms** | Unix-socket bridge for parallel worktrees | ❌ |
-| ⌨️ **Vim mode** | Full state machine + registers | Basic vi-mode |
+| ⌨️ **Vim mode** | Full state machine + registers + `:` command line | Basic vi-mode |
 | 💾 **Persistence** | SQLite + file-based | File-based only |
+| 🔌 **Extensibility** | Lua runtime — register tools, providers, keymaps, themes, commands from `init.lua`. No recompile. | Extension API in beta |
 
 ---
 
@@ -295,6 +296,133 @@ claudio --attach http://localhost:8080 \
 
 ---
 
+## Lua Configuration
+
+Claudio embeds a Lua runtime (gopher-lua — pure Go, no CGO) that gives you full control over every aspect of your setup without recompiling. The philosophy is the same as Neovim: the binary ships compiled defaults, and your `~/.claudio/init.lua` overrides everything on top.
+
+### `init.lua` — personal config
+
+```lua
+-- ~/.claudio/init.lua  (your personal Claudio config)
+
+-- ── Model & settings ─────────────────────────────────────
+claudio.config.set("model", "claude-opus-4-6")
+claudio.config.set("caveman", true)
+claudio.config.set("compactMode", "strategic")
+
+-- ── Theme ─────────────────────────────────────────────────
+claudio.colorscheme("tokyonight")
+-- or fine-grained:
+claudio.ui.set_color("primary", "#7aa2f7")
+claudio.ui.set_border("rounded")
+
+-- ── Keymaps ───────────────────────────────────────────────
+claudio.register_keymap({ mode = "normal", key = "K", action = "show_docs",
+  handler = function() claudio.notify("docs") end })
+
+-- ── Providers ─────────────────────────────────────────────
+claudio.register_provider({
+  name     = "groq",
+  type     = "openai",
+  base_url = "https://api.groq.com/openai/v1",
+  api_key  = "$GROQ_API_KEY",
+  routes   = { "llama-*" },
+})
+
+-- ── Hooks ─────────────────────────────────────────────────
+claudio.subscribe("tool.executed", function(e)
+  if e.tool_name == "Bash" then
+    claudio.log("[audit] " .. tostring(e.input))
+  end
+end)
+
+-- ── Commands ──────────────────────────────────────────────
+claudio.register_command({
+  name        = "standup",
+  description = "Print git log for standup",
+  execute     = function(args)
+    return "run: git log --oneline --since=yesterday"
+  end,
+})
+
+-- ── Capabilities ──────────────────────────────────────────
+claudio.register_capability("database", {
+  tools = { "SQLQuery", "SchemaInspect", "MigrationRun" }
+})
+```
+
+### Load order
+
+```
+1. internal/lua/defaults.lua   ← embedded binary defaults (model, compactMode, etc.)
+2. ~/.claudio/init.lua         ← your personal config
+3. ~/.claudio/plugins/*/       ← community plugins
+4. .claudio/init.lua           ← project overrides (per-repo)
+```
+
+Each layer can override the one before. Project config wins over personal config, personal wins over defaults.
+
+### Lua Plugins
+
+Community plugins are directories under `~/.claudio/plugins/`, each with an `init.lua`:
+
+```
+~/.claudio/plugins/
+  claudio-jira/
+    init.lua
+  claudio-database/
+    init.lua
+```
+
+Install via CLI:
+```bash
+claudio plugin install https://github.com/someone/claudio-jira
+claudio plugin list
+claudio plugin remove claudio-jira
+claudio plugin info claudio-jira
+```
+
+A plugin's `init.lua` receives the same `claudio.*` API — it can register tools, skills, commands, providers, keymaps, capabilities, and hooks exactly like your personal `init.lua`.
+
+### Full API surface
+
+| Namespace | Methods |
+|-----------|---------|
+| `claudio.*` | `register_tool`, `register_skill`, `register_hook`, `register_command`, `register_provider`, `register_capability`, `register_keymap`, `subscribe`, `publish`, `notify`, `log`, `cmd`, `colorscheme` |
+| `claudio.config.*` | `get(key)`, `set(key, val)`, `on_change(key, fn)` |
+| `claudio.keymap.*` | `set(mode, key, action, fn)`, `del(mode, key)`, `list(mode)` |
+| `claudio.ui.*` | `set_color(slot, hex)`, `set_theme(table)`, `set_border(name)`, `get_colors()`, `set_statusline(fn)`, `popup(opts)`, `register_whichkey(group, bindings)`, `register_palette_entry(entry)`, `register_sidebar_block(opts)` |
+| `claudio.agent.*` | `current()`, `on_change(fn)`, `add_context(text)`, `set_prompt_suffix(name, text)` |
+| `claudio.session.*` | `id()`, `title()`, `on_start(fn)`, `on_end(fn)`, `on_message(fn)` |
+
+**Color slots for `set_color`:** `primary`, `secondary`, `success`, `warning`, `error`, `muted`, `surface`, `surface_alt`, `text`, `dim`, `subtle`, `orange`, `aqua`
+
+**Built-in colorschemes:** `tokyonight`, `gruvbox`, `catppuccin`, `nord`, `dracula`
+
+### `:checkhealth`
+
+Press `:checkhealth` (or `:health`) to see a diagnostics report:
+
+```
+Lua Plugins
+  ✓ claudio-jira     (loaded)
+  ✗ claudio-broken   (error: attempt to index a nil value)
+
+Capabilities
+  design       (4 factories)
+  database     (3 factories)
+
+Config
+  model:          claude-opus-4-6
+  permissionMode: default
+  compactMode:    strategic
+
+LSP
+  gopls          go, gomod
+```
+
+---
+
 ## Project Setup
 
 ### `/init` — Project setup skill
@@ -333,19 +461,23 @@ CLAUDIO.md           # Project instructions for the AI
 
 ### Configuration hierarchy
 
-Settings are merged with priority (highest first):
+Settings are resolved with priority (highest first):
 
 ```
-Environment variables    CLAUDIO_MODEL, CLAUDIO_API_BASE_URL, etc.
+Environment variables         CLAUDIO_MODEL, CLAUDIO_API_BASE_URL, etc.
        |
-.claudio/settings.json  Project config (per-repo, committed to git)
+.claudio/init.lua             Project Lua config (per-repo, committed to git)
        |
-~/.claudio/local.json   Local overrides (per-machine, not committed)
+~/.claudio/plugins/*/init.lua Community plugins (loaded after user init)
        |
-~/.claudio/settings.json  Global user config
+~/.claudio/init.lua           Your personal Lua config — keymaps, theme, providers
        |
-Built-in defaults
+internal/lua/defaults.lua     Embedded defaults (compiled into binary)
+       |
+~/.claudio/state.json         Machine-written state only (plugin data, etc.)
 ```
+
+**Human config lives in `init.lua`**, not JSON. Everything intentional — model, keymaps, theme, providers, hooks — goes in `~/.claudio/init.lua`. `state.json` is machine-written and you never touch it.
 
 **Scalar values** (model, permissionMode) are overridden by higher priority. **Lists** (denyTools, denyPaths) are appended across layers. Resources like agents, skills, and rules from **both** `~/.claudio/` and `.claudio/` are loaded and merged.
 
@@ -469,6 +601,21 @@ Rules are evaluated in order; first match wins. Behaviors: `allow` (skip approva
 
 ## Interactive Commands
 
+### Vim Command Line (`:` mode)
+
+Press `:` in normal vim mode to open the command line (exactly like Neovim):
+
+| Command | Description |
+|---------|-------------|
+| `:lua <code>` | Execute Lua in the live REPL — `claudio.notify("hi")`, `claudio.ui.set_color(...)` |
+| `:set <key> [value]` | Read or write any config setting — `:set model`, `:set caveman true` |
+| `:colorscheme <name>` | Switch theme — `tokyonight`, `gruvbox`, `catppuccin`, `nord`, `dracula` |
+| `:checkhealth` | Diagnose plugins, capabilities, config, LSP — like `:checkhealth` in Neovim |
+| `:health` | Alias for `:checkhealth` |
+| `:<command>` | Any `/command` works as a `:command` too |
+
+### Slash Commands
+
 | Command | Aliases | Description |
 |---------|---------|-------------|
 | `/help` | `h`, `?` | Show available commands |
@@ -557,6 +704,21 @@ Enter viewport mode with `<Space>wk` or (in vim normal mode with empty prompt) j
 ### Vim Mode
 
 Toggle with `/vim`. Full state machine: `i` (insert), `Esc` (normal), `hjkl`, `w/b/e` (word motion), `f/F/t/T` (char search), `.` (repeat), `d/c/y` (operators), text objects, registers, counts, `%` (bracket matching).
+
+### `:` Command Line
+
+Press `:` in normal vim mode to open the command line (like Neovim). Built-in commands:
+
+| Command | Description |
+|---------|-------------|
+| `:lua <code>` | Execute Lua in the live runtime — `:lua claudio.notify("hi")` |
+| `:set <key> [value]` | Read or write any config setting — `:set model claude-opus-4-6` |
+| `:colorscheme <name>` | Switch theme — `tokyonight`, `gruvbox`, `catppuccin`, `nord`, `dracula` |
+| `:checkhealth` / `:health` | Diagnose plugins, capabilities, config, LSP |
+| `:model` | Show or change the AI model |
+| `:vim` | Toggle vim mode |
+
+All `/` slash commands also work as `:` commands. Plugins can register new commands with `claudio.register_command()`.
 
 ---
 
@@ -2364,35 +2526,34 @@ Names are without the `plugin_` prefix. Eager plugins appear in the tool list on
 
 Claudio supports routing models to different API providers (Groq, OpenAI, Ollama, Together, vLLM, or any OpenAI-compatible endpoint) alongside the default Anthropic backend.
 
-Configure providers and routing rules in your settings (`~/.claudio/settings.json` or `.claudio/settings.json`):
+Configure providers in `~/.claudio/init.lua`:
 
-```json
-{
-  "providers": {
-    "groq": {
-      "apiBase": "https://api.groq.com/openai/v1",
-      "apiKey": "$GROQ_API_KEY",
-      "type": "openai"
-    },
-    "openai": {
-      "apiBase": "https://api.openai.com/v1",
-      "apiKey": "$OPENAI_API_KEY",
-      "type": "openai"
-    },
-    "ollama": {
-      "apiBase": "http://localhost:11434/v1",
-      "type": "openai"
-    }
-  },
-  "modelRouting": {
-    "llama-*": "groq",
-    "mixtral-*": "groq",
-    "gemma*": "groq",
-    "gpt-*": "openai",
-    "o1*": "openai",
-    "qwen*": "ollama"
-  }
-}
+```lua
+-- Groq (fast, free tier)
+claudio.register_provider({
+  name     = "groq",
+  type     = "openai",
+  base_url = "https://api.groq.com/openai/v1",
+  api_key  = "$GROQ_API_KEY",
+  routes   = { "llama-*", "mixtral-*", "gemma*" },
+})
+
+-- OpenAI
+claudio.register_provider({
+  name     = "openai",
+  type     = "openai",
+  base_url = "https://api.openai.com/v1",
+  api_key  = "$OPENAI_API_KEY",
+  routes   = { "gpt-*", "o1*" },
+})
+
+-- Ollama (local)
+claudio.register_provider({
+  name     = "ollama",
+  type     = "ollama",
+  base_url = "http://localhost:11434",
+  routes   = { "qwen*", "llama3*" },
+})
 ```
 
 | Field | Description |
@@ -2402,7 +2563,7 @@ Configure providers and routing rules in your settings (`~/.claudio/settings.jso
 | `providers.<name>.type` | `"openai"` for OpenAI-compatible APIs, `"anthropic"` for Anthropic-compatible |
 | `modelRouting.<pattern>` | Glob pattern mapping model names to a provider name |
 
-Models that don't match any routing pattern use the default Anthropic backend. To use a routed model, set it with `--model` or in `settings.json`:
+Models that don't match any routing pattern use the default Anthropic backend. To use a routed model, set it with `--model`, via `:set model <name>` in the TUI, or in `init.lua`:
 
 ```bash
 # Use Groq's Llama model
@@ -3256,44 +3417,48 @@ The process stays alive, reconnects on drop, and resumes the same session by nam
 
 ```
 ~/.claudio/                    # Global config directory
-  settings.json                # User settings
-  local-settings.json          # Machine-local overrides
+  init.lua                     # YOUR personal config — keymaps, theme, providers, hooks
+  settings.json                # Remaining machine-readable settings (model choice, etc.)
+  state.json                   # Machine-written state only (plugin data) — never hand-edit
   credentials.json             # Auth credentials
-  claudio.db                   # SQLite (sessions, messages, audit)
-  instincts.json               # Learned patterns
-  memory/                      # Global memories
+  lsp/                         # LSP server configs (Lua)
+    go.lua                     # gopls config
+    typescript.lua             # tsserver config
+  plugins/                     # Lua plugins (community / third-party)
+    <name>/
+      init.lua                 # Plugin entry point
+  team-templates/              # Team composition templates (Lua or JSON)
+    backend-team.lua
   agents/                      # Custom agent definitions
     <name>/                    # Directory-form agent (preferred)
-      AGENT.md                 # Agent persona (same front-matter as .md form)
-      plugins/                 # Agent-specific plugin executables
-        <plugin-name>          # Executable (e.g. claudio-assistant-os)
+      AGENT.md                 # Agent persona
       skills/                  # Agent-specific skills
-        <skill-name>/          # One dir per skill
-          SKILL.md             # Skill instructions (front-matter: name, description, allowed-tools…)
-          references/          # Optional reference material
-            <category>/        # Categorised reference docs (.md files)
-    <name>.md                  # Flat-file form (still supported)
+        <skill-name>/
+          SKILL.md
   skills/                      # User skills
   rules/                       # User rules
   contexts/                    # Context profiles
-  plugins/                     # Executable plugins (global, all agents)
   plans/                       # Plan mode files
-  cache/                       # Model capabilities cache
-  cron.json                    # Scheduled task definitions (shared with ComandCenter)
-  keybindings.json             # Custom keybindings (user-created)
-  comandcenter.db              # ComandCenter SQLite DB (sessions, messages, tasks, agents)
-  uploads/                     # Files uploaded via the web UI
-  projects/                    # Per-project data
-    <project-slug>/memory/     # Project-scoped memories
+  data/                        # Runtime data — never version-control
+    claudio.db                 # SQLite (sessions, messages, audit)
+    cache/                     # Model capabilities cache
+    sessions/
+    memory/
+    uploads/                   # Files uploaded via the web UI
+    projects/                  # Per-project data
+      <project-slug>/memory/
 
 .claudio/                      # Per-project config (created by /init or claudio init)
+  init.lua                     # Project Lua overrides (wins over ~/.claudio/init.lua)
   settings.json                # Project settings (overrides global)
   rules/                       # Project rules
   skills/                      # Project skills
-  agents/                      # Project agents (same directory-form supported)
+  agents/                      # Project agents
   memory/                      # Project memories
 CLAUDIO.md                     # Project instructions
 ```
+
+> **Version-control tip:** commit `~/.claudio/init.lua`, `lsp/`, `team-templates/`, `agents/`, `skills/` to your dotfiles repo. Never commit `state.json` or `data/`.
 
 ---
 

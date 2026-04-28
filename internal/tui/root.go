@@ -1041,6 +1041,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Fall through: do NOT return here so the key bubbles to root.
 		}
 
+		// nvim-style ":" command line — must intercept before any focus-specific
+		// handlers so that Enter/Space/etc. reach cmdline regardless of m.focus.
+		if m.cmdline.IsActive() {
+			var cmd tea.Cmd
+			m.cmdline, cmd = m.cmdline.Update(msg)
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
 		// Viewport focus mode: section-based navigation with cursor
 		if m.focus == FocusViewport {
 			// Search input mode
@@ -1405,14 +1414,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Agent detail overlay
 		if m.focus == FocusAgentDetail {
 			return m.handleAgentDetailKey(msg)
-		}
-
-		// nvim-style ":" command line — intercepts all keys when active
-		if m.cmdline.IsActive() {
-			var cmd tea.Cmd
-			m.cmdline, cmd = m.cmdline.Update(msg)
-			cmds = append(cmds, cmd)
-			return m, tea.Batch(cmds...)
 		}
 
 		// ":" in vim Normal mode activates the command line
