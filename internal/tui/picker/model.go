@@ -7,6 +7,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -18,6 +19,9 @@ type EntryMsg Entry
 
 // finderDoneMsg is sent internally when the Finder's channel is closed.
 type finderDoneMsg struct{}
+
+// tickMsg is sent on each preview-refresh tick.
+type tickMsg struct{}
 
 // PickerClosedMsg is emitted when the user cancels the picker (Esc / q).
 type PickerClosedMsg struct{}
@@ -109,8 +113,19 @@ func (m *Model) SetSize(width, height int) {
 
 // ── BubbleTea interface ───────────────────────────────────────────────────────
 
+// tickCmd schedules a preview-refresh tick 250 ms from now.
+func tickCmd() tea.Cmd {
+	return tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+		return tickMsg{}
+	})
+}
+
 // Init starts waiting for the first entry from the Finder.
+// When a Previewer is configured, also arms the first preview-refresh tick.
 func (m Model) Init() tea.Cmd {
+	if m.cfg.Previewer != nil {
+		return tea.Batch(waitForEntry(m.entryCh), tickCmd())
+	}
 	return waitForEntry(m.entryCh)
 }
 
@@ -130,6 +145,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case finderDoneMsg:
 		m.loading = false
+		return m, nil
+
+	case tickMsg:
+		// Re-arm only when previewer active — zero overhead otherwise.
+		if m.cfg.Previewer != nil {
+			return m, tickCmd()
+		}
 		return m, nil
 
 	case tea.KeyMsg:
