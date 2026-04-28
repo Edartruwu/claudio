@@ -26,6 +26,20 @@ func (r *Runtime) LoadUserInit(path string) error {
 	return r.execString(string(data), path)
 }
 
+// LoadProjectInit loads <projectDir>/.claudio/init.lua if it exists.
+// Missing file silently returns nil; any parse or runtime error is returned.
+func (r *Runtime) LoadProjectInit(projectDir string) error {
+	path := filepath.Join(projectDir, ".claudio", "init.lua")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("lua: read %s: %w", path, err)
+	}
+	return r.execString(string(data), path)
+}
+
 // discoverPlugins scans baseDir for subdirectories containing init.lua.
 // Returns the list of discovered plugins sorted by directory name.
 func discoverPlugins(baseDir string) ([]pluginDir, error) {

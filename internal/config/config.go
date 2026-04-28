@@ -183,6 +183,7 @@ type Paths struct {
 	ActiveProfileFile string // ~/.claudio/active_profile
 	Sessions          string // ~/.claudio/sessions/
 	Plugins           string // ~/.claudio/plugins/
+	LuaPluginsDir     string // ~/.claudio/plugins/ (deprecated alias for Plugins)
 	Skills            string // ~/.claudio/skills/
 	Audit             string // ~/.claudio/audit/
 	Contexts          string // ~/.claudio/contexts/
@@ -222,6 +223,7 @@ func GetPaths() *Paths {
 			ActiveProfileFile: filepath.Join(base, "active_profile"),
 			Sessions:          filepath.Join(base, "sessions"),
 			Plugins:           filepath.Join(base, "plugins"),
+			LuaPluginsDir:     filepath.Join(base, "plugins"),
 			Skills:            filepath.Join(base, "skills"),
 			Audit:             filepath.Join(base, "audit"),
 			Contexts:          filepath.Join(base, "contexts"),
