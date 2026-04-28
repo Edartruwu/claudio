@@ -110,6 +110,8 @@ type Model struct {
 
 	// State
 	messages            []ChatMessage
+	messageIDs          []int64              // storage IDs parallel to messages; 0 means no stored ID
+	branchParentTitle   string               // non-empty when current session is a branch (display only)
 	focus               Focus
 	width, height       int
 	streaming           bool
@@ -1293,6 +1295,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "p":
+				// If current session is a branch, 'p' jumps to the parent session.
+				if m.session != nil && m.session.Current() != nil &&
+					m.session.Current().BranchFromMessageID != nil &&
+					*m.session.Current().BranchFromMessageID != 0 {
+					if cmd := m.jumpToParentSession(); cmd != nil {
+						return m, cmd
+					}
+					return m, nil
+				}
 				// Toggle pin on current section's message
 				if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
 					msgIdx := m.vpSections[m.vpCursor].MsgIndex
@@ -1756,6 +1767,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panelsessions.DeleteSessionMsg:
 		m.closePanel()
 		return m, nil
+
+	case panelsessions.BranchFromSessionMsg:
+		// User pressed 'b' in the session tree panel — branch from the last message of that session.
+		if m.db == nil {
+			return m, m.toast.Show("No database available")
+		}
+		msgs, err := m.db.GetMessages(msg.SessionID)
+		if err != nil || len(msgs) == 0 {
+			return m, m.toast.Show("No messages to branch from")
+		}
+		lastMsgID := msgs[len(msgs)-1].ID
+		// Temporarily switch to the target session so Branch() works on the right session.
+		if _, err := m.session.Resume(msg.SessionID); err != nil {
+			return m, m.toast.Show(fmt.Sprintf("Branch: %v", err))
+		}
+		newSess, err := m.session.Branch(lastMsgID)
+		if err != nil {
+			return m, m.toast.Show(fmt.Sprintf("Branch: %v", err))
+		}
+		if m.sessionPicker != nil {
+			m.sessionPicker.Deactivate()
+			m.sessionPicker = nil
+		}
+		m.closePanel()
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+		m.doSwitchSession(newSess.ID)
+		return m, m.resumeStreamingCmds()
 
 	case memorypanel.EditorDoneMsg:
 		// Memory was edited in external editor — refresh panel
@@ -3143,6 +3182,35 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 // runCmdlineCommand handles a command entered via the nvim-style ":" command line.
 // It executes the command through the registry and shows the result as a system message.
 func (m Model) runCmdlineCommand(msg cmdline.ExecuteMsg) (tea.Model, tea.Cmd) {
+	// :branch — create a branch from the last message of the current session.
+	if msg.Name == "branch" {
+		if m.session == nil || m.session.Current() == nil {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "E: no active session"})
+			m.refreshViewport()
+			return m, nil
+		}
+		if m.db == nil {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "E: no database"})
+			m.refreshViewport()
+			return m, nil
+		}
+		storedMsgs, err := m.db.GetMessages(m.session.Current().ID)
+		if err != nil || len(storedMsgs) == 0 {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "E: no messages to branch from"})
+			m.refreshViewport()
+			return m, nil
+		}
+		lastMsgID := storedMsgs[len(storedMsgs)-1].ID
+		newSess, err := m.session.Branch(lastMsgID)
+		if err != nil {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("E: branch: %v", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		m.doSwitchSession(newSess.ID)
+		return m, m.resumeStreamingCmds()
+	}
+
 	result, err := m.commands.Execute(msg.Name, msg.Args)
 	if err != nil {
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("E: %s", err.Error())})
@@ -4644,6 +4712,13 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 	case keymap.ActionPickerAgents:
 		return m.openAgentPicker()
 
+	// ── Branching ──────────────────────────
+	case keymap.ActionBranchSession:
+		return m.branchFromCursor()
+
+	case keymap.ActionBranchParentJump:
+		return m.jumpToParentSession()
+
 	default:
 		// Lua-registered leader handler: action IDs starting with "lua.fn." are
 		// synthetic IDs assigned to Lua function callbacks by claudio.keymap.map().
@@ -4782,7 +4857,7 @@ func (m *Model) openSessionPicker() (bool, tea.Cmd) {
 		m.focus = FocusPrompt
 		m.prompt.Focus()
 	} else if m.session != nil {
-		picker := panelsessions.New(m.session)
+		picker := panelsessions.NewWithDB(m.session, m.db)
 		picker.SetSize(m.width, m.height)
 		picker.Activate()
 		m.sessionPicker = picker
@@ -4903,6 +4978,7 @@ func (m *Model) doSwitchSession(id string) {
 	}
 	// Clear current conversation and show resume context
 	m.messages = nil
+	m.messageIDs = nil
 	m.streamText.Reset()
 	m.turns = 0
 	m.totalTokens = 0
@@ -4929,11 +5005,21 @@ func (m *Model) doSwitchSession(id string) {
 	if resumed.Summary != "" {
 		ctx.WriteString(fmt.Sprintf("\n\n  %s", resumed.Summary))
 	}
-	// Append resume header directly — don't persist to DB
+	// Append resume header directly — don't persist to DB; no storage ID for it
 	m.messages = append(m.messages, ChatMessage{Type: MsgSystem, Content: ctx.String()})
+	m.messageIDs = append(m.messageIDs, 0)
 
-	// Load previous messages from DB
-	if storedMsgs, err := m.session.GetMessages(); err == nil && len(storedMsgs) > 0 {
+	// Load previous messages from DB.
+	// For branch sessions, use GetBranchMessages to include parent chain up to the fork point.
+	var loadedMsgs []storage.MessageRecord
+	var loadErr error
+	if resumed.BranchFromMessageID != nil && *resumed.BranchFromMessageID != 0 && m.db != nil {
+		loadedMsgs, loadErr = m.db.GetBranchMessages(resumed.ID)
+	} else {
+		loadedMsgs, loadErr = m.session.GetMessages()
+	}
+	if loadErr == nil && len(loadedMsgs) > 0 {
+		storedMsgs := loadedMsgs
 		for _, msg := range storedMsgs {
 			var msgType MessageType
 			switch msg.Type {
@@ -4954,6 +5040,7 @@ func (m *Model) doSwitchSession(id string) {
 				ToolName:  msg.ToolName,
 				ToolUseID: msg.ToolUseID,
 			})
+			m.messageIDs = append(m.messageIDs, msg.ID)
 		}
 
 		// Restore engine conversation history so the model has full context.
@@ -5068,8 +5155,75 @@ func (m *Model) doSwitchSession(id string) {
 		}
 	}
 
+	// Populate branch parent title for display in status line.
+	m.branchParentTitle = ""
+	if resumed.BranchFromMessageID != nil && *resumed.BranchFromMessageID != 0 &&
+		resumed.ParentSessionID != "" && m.db != nil {
+		if parent, err := m.db.GetSession(resumed.ParentSessionID); err == nil && parent != nil {
+			t := parent.Title
+			if t == "" {
+				t = parent.Summary
+			}
+			if t == "" {
+				t = resumed.ParentSessionID
+			}
+			m.branchParentTitle = t
+		}
+	}
+
 	m.syncMainWindowState()
 	m.refreshViewport()
+}
+
+// branchFromCursor creates a branch session from the message at the current viewport cursor.
+// Called by ActionBranchSession (Space+g+b keybinding).
+func (m *Model) branchFromCursor() tea.Cmd {
+	if m.session == nil || m.session.Current() == nil {
+		return m.toast.Show("No active session")
+	}
+	if m.db == nil {
+		return m.toast.Show("No database available")
+	}
+	// Find the message at the current cursor position.
+	var msgID int64
+	if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
+		msgIdx := m.vpSections[m.vpCursor].MsgIndex
+		if msgIdx >= 0 && msgIdx < len(m.messageIDs) {
+			msgID = m.messageIDs[msgIdx]
+		}
+	}
+	// Fall back to the last message if cursor has no stored ID.
+	if msgID == 0 {
+		for i := len(m.messageIDs) - 1; i >= 0; i-- {
+			if m.messageIDs[i] != 0 {
+				msgID = m.messageIDs[i]
+				break
+			}
+		}
+	}
+	if msgID == 0 {
+		return m.toast.Show("No message to branch from")
+	}
+	newSess, err := m.session.Branch(msgID)
+	if err != nil {
+		return m.toast.Show(fmt.Sprintf("Branch: %v", err))
+	}
+	m.doSwitchSession(newSess.ID)
+	return m.resumeStreamingCmds()
+}
+
+// jumpToParentSession switches to the parent session of the current branch.
+// Called by 'p' key when focused on a branch session, or by ActionBranchParentJump.
+func (m *Model) jumpToParentSession() tea.Cmd {
+	if m.session == nil || m.session.Current() == nil {
+		return m.toast.Show("No active session")
+	}
+	cur := m.session.Current()
+	if cur.ParentSessionID == "" {
+		return m.toast.Show("Not a branch session")
+	}
+	m.doSwitchSession(cur.ParentSessionID)
+	return m.resumeStreamingCmds()
 }
 
 // isRightWindowFocused returns true when focus is on the conversation mirror panel.
@@ -7364,12 +7518,18 @@ func (m Model) renderStatusLine() string {
 	}
 	pill := pillStyle.Render("● " + modeLabel)
 
-	// Center: session name + optional agent name.
+	// Center: session name + optional branch ancestry + optional agent name.
 	sessName := m.sessionName()
 	if sessName == "" {
 		sessName = "new session"
 	}
 	center := sessName
+	if m.branchParentTitle != "" {
+		branchIndicator := lipgloss.NewStyle().
+			Foreground(styles.Muted).
+			Render("  ⎇ " + truncateStr(m.branchParentTitle, 30))
+		center += branchIndicator
+	}
 	if m.currentAgent != "" {
 		center += " · " + m.currentAgent
 	}

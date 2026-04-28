@@ -85,6 +85,7 @@ claudio.keymap.map("<space>ev", "editor.view")
 -- Misc
 claudio.keymap.map("<space>t",  "todo.toggle")
 
+
 -- Default sidebar blocks
 -- Remove or override these in your ~/.claudio/init.lua by registering
 -- blocks with the same id.
@@ -163,3 +164,7 @@ claudio.ui.register_sidebar_block({
     return string.format("%d / %d (%d%%)\n$%.4f", u.used, u.max, pct, u.cost)
   end
 })
+
+-- Branching
+claudio.keymap.map("<space>gb", "branch.session")
+claudio.keymap.map("<space>gp", "branch.parent-jump")

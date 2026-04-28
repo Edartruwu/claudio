@@ -55,6 +55,10 @@ const (
 	// Picker overlays (telescope-style fuzzy finder)
 	ActionPickerBuffers ActionID = "picker.buffers"
 	ActionPickerAgents  ActionID = "picker.agents"
+
+	// Branch / conversation branching
+	ActionBranchSession    ActionID = "branch.session"
+	ActionBranchParentJump ActionID = "branch.parent-jump"
 )
 
 // ActionMeta holds metadata for a registered action.
@@ -111,6 +115,10 @@ var Registry = map[ActionID]ActionMeta{
 	// Picker overlays
 	ActionPickerBuffers: {ActionPickerBuffers, "Buffer/window picker", "navigation"},
 	ActionPickerAgents:  {ActionPickerAgents, "Agent picker", "navigation"},
+
+	// Branching
+	ActionBranchSession:    {ActionBranchSession, "Branch from cursor message", "buffer"},
+	ActionBranchParentJump: {ActionBranchParentJump, "Jump to parent (branch) session", "buffer"},
 }
 
 // ValidAction returns true if the given action ID exists in the registry.
