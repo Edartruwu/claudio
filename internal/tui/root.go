@@ -48,7 +48,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/analyticspanel"
-	panelconfig "github.com/Abraxas-365/claudio/internal/tui/panels/config"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/conversationpanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/memorypanel"
@@ -368,7 +367,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		expandedGroups:      make(map[int]bool),
 		thinkingExpanded:    make(map[int]bool),
 		lastToolGroup:       -1,
-		lastPanelID:         PanelConfig,
+		lastPanelID:         PanelNone,
 		toolStartTimes:      make(map[string]time.Time),
 		vpCursor:            -1,
 		km:                  loadKeymap(),
@@ -1568,17 +1567,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case panelsessions.DeleteSessionMsg:
 		m.closePanel()
-		return m, nil
-
-	case panelconfig.InsertCommandMsg:
-		m.closePanel()
-		m.focus = FocusPrompt
-		m.prompt.Focus()
-		m.prompt.SetValue(msg.Command + " ")
-		return m, nil
-
-	case panelconfig.ConfigChangedMsg:
-		m.applyConfigChange(msg.Key, msg.Value)
 		return m, nil
 
 	case memorypanel.EditorDoneMsg:
@@ -4277,10 +4265,6 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 		return nil
 
 	// ── Panels ─────────────────────────────
-	case keymap.ActionPanelConfig:
-		m.togglePanel(PanelConfig)
-		return nil
-
 	case keymap.ActionPanelSkills:
 		m.togglePanel(PanelSkills)
 		return nil
@@ -5814,10 +5798,6 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 	switch id {
 	case PanelSessions:
 		return nil // Sessions use Telescope-style overlay, not side panel
-	case PanelConfig:
-		if m.appCtx != nil && m.appCtx.Config != nil {
-			return panelconfig.New(m.appCtx.Config)
-		}
 	case PanelSkills:
 		if m.skills != nil {
 			return skillspanel.New(m.skills)
@@ -7141,8 +7121,6 @@ func (m Model) panelName() string {
 	switch m.activePanelID {
 	case PanelSessions:
 		return "sessions"
-	case PanelConfig:
-		return "config"
 	case PanelSkills:
 		return "skills"
 	case PanelMemory:
