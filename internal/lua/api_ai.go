@@ -1,7 +1,6 @@
 package lua
 
 import (
-	"context"
 	"log"
 
 	lua "github.com/yuin/gopher-lua"
@@ -34,8 +33,9 @@ func (r *Runtime) apiAIRun(plugin *loadedPlugin) lua.LGFunction {
 			return 0
 		}
 
+		ctx := r.shutdownCtx
 		go func() {
-			result, err := cb(context.Background(), system, user, model)
+			result, err := cb(ctx, system, user, model)
 			errStr := ""
 			if err != nil {
 				errStr = err.Error()
@@ -88,8 +88,9 @@ func (r *Runtime) apiAgentSpawn(plugin *loadedPlugin) lua.LGFunction {
 			return 0
 		}
 
+		ctx := r.shutdownCtx
 		go func() {
-			result, err := cb(context.Background(), system, prompt, model, maxTurns, allowedTools)
+			result, err := cb(ctx, system, prompt, model, maxTurns, allowedTools)
 			errStr := ""
 			if err != nil {
 				errStr = err.Error()

@@ -152,6 +152,10 @@ type Runtime struct {
 	teamManagerMu sync.RWMutex
 	teamManager  *teams.Manager
 
+	// shutdown context — cancelled by Close() to stop in-flight Lua AI/agent calls.
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+
 	// LSP server manager (wired after LSP init)
 	lspManagerMu sync.RWMutex
 	lspManager   *lsp.ServerManager
@@ -197,6 +201,7 @@ func New(
 	db *storage.DB,
 	caps *capabilities.Registry,
 ) *Runtime {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Runtime{
 		toolReg:        toolReg,
 		skills:         skillsReg,
@@ -206,6 +211,8 @@ func New(
 		db:             db,
 		caps:           caps,
 		leaderFnUnsubs: make(map[string]func()),
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
 	}
 }
 
@@ -295,8 +302,9 @@ func (r *Runtime) execString(code, name string) error {
 	return nil
 }
 
-// Close shuts down all Lua VMs and unsubscribes bus handlers.
+// Close shuts down all Lua VMs, cancels in-flight AI/agent calls, and unsubscribes bus handlers.
 func (r *Runtime) Close() {
+	r.shutdownCancel()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, p := range r.plugins {
