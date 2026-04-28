@@ -322,6 +322,9 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// claudio.picker + claudio.finder
 	r.injectPickerAPI(L, plugin, claudio)
 
+	// claudio.filter sub-table
+	r.injectFilterAPI(L, plugin, claudio)
+
 	L.SetGlobal("claudio", claudio)
 }
 
