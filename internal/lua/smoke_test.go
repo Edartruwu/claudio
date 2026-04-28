@@ -5,8 +5,8 @@ package lua
 // These tests validate the end-to-end adapter paths that root.go exercises at
 // runtime without requiring an interactive TUI session:
 //
-//  1. panel: claudio.win.new_panel → add_section → SectionDef.CallRender
-//     returns plugin content.
+//  1. panel: claudio.win.new_panel + add_section → PanelRegistry → SectionDef
+//     → CallRender returns plugin content.
 //  2. register_window: claudio.buf.new + claudio.ui.register_window → Manager.Open
 //     → Window.View renders buffer content.
 //
@@ -22,19 +22,20 @@ import (
 
 // ─── panel smoke ──────────────────────────────────────────────────────────
 
-// TestSmoke_Panel_CallRenderReturnsContent creates a panel with a section and
-// verifies that CallRender returns the expected string.
+// TestSmoke_Panel_CallRenderReturnsContent mirrors the root.go PanelHost path:
+// load plugin → get panel via PanelRegistry → call section.CallRender → verify.
 func TestSmoke_Panel_CallRenderReturnsContent(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
+
+	reg := NewPanelRegistry()
+	rt.SetPanelRegistry(reg)
 
 	dir := writePlugin(t, "smoke-panel", `
 local p = claudio.win.new_panel({ position = "left", width = 30 })
 p:add_section({
   id     = "smoke-section",
   title  = "Smoke Panel",
-  weight = 1,
-  min_height = 3,
   render = function(w, h)
     return "width=" .. w .. " height=" .. h
   end,
@@ -44,22 +45,19 @@ p:add_section({
 		t.Fatalf("LoadPlugin: %v", err)
 	}
 
-	rt.pendingPanelsMu.Lock()
-	panels := rt.pendingPanels
-	rt.pendingPanelsMu.Unlock()
+	panels := reg.AllPanels()
 	if len(panels) != 1 {
-		t.Fatalf("pending panels: got %d, want 1", len(panels))
+		t.Fatalf("AllPanels: got %d, want 1", len(panels))
 	}
 
 	p := panels[0]
-	p.Mu.Lock()
-	sections := p.Sections
-	p.Mu.Unlock()
-	if len(sections) != 1 {
-		t.Fatalf("sections: got %d, want 1", len(sections))
+	if p.Position != "left" {
+		t.Errorf("Position = %q, want %q", p.Position, "left")
 	}
-
-	sec := sections[0]
+	if len(p.Sections) != 1 {
+		t.Fatalf("Sections len = %d, want 1", len(p.Sections))
+	}
+	sec := p.Sections[0]
 	if sec.ID != "smoke-section" {
 		t.Errorf("section ID = %q, want %q", sec.ID, "smoke-section")
 	}
@@ -67,6 +65,7 @@ p:add_section({
 		t.Errorf("section Title = %q, want %q", sec.Title, "Smoke Panel")
 	}
 
+	// Simulate PanelHost.View call path.
 	got := sec.CallRender(40, 10)
 	if got != "width=40 height=10" {
 		t.Errorf("CallRender(40,10) = %q, want %q", got, "width=40 height=10")
@@ -74,42 +73,34 @@ p:add_section({
 }
 
 // TestSmoke_Panel_MultipleSections verifies multiple sections co-exist and
-// each renders independently.
+// each renders independently — guards against shared-state bugs.
 func TestSmoke_Panel_MultipleSections(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
 
-	dir := writePlugin(t, "smoke-multi-panel", `
-local p = claudio.win.new_panel({ position = "left", width = 30 })
-p:add_section({
-  id = "sec-a", title = "A", weight = 1,
-  render = function(w, h) return "A" end,
-})
-p:add_section({
-  id = "sec-b", title = "B", weight = 2,
-  render = function(w, h) return "B" end,
-})
+	reg := NewPanelRegistry()
+	rt.SetPanelRegistry(reg)
+
+	dir := writePlugin(t, "smoke-multi-section", `
+local p = claudio.win.new_panel({ position = "left" })
+p:add_section({ id = "sec-a", title = "Section A", render = function(w, h) return "A" end })
+p:add_section({ id = "sec-b", title = "Section B", render = function(w, h) return "B" end })
 `)
-	if err := rt.LoadPlugin("smoke-multi-panel", dir); err != nil {
+	if err := rt.LoadPlugin("smoke-multi-section", dir); err != nil {
 		t.Fatalf("LoadPlugin: %v", err)
 	}
 
-	rt.pendingPanelsMu.Lock()
-	panels := rt.pendingPanels
-	rt.pendingPanelsMu.Unlock()
+	panels := reg.AllPanels()
 	if len(panels) != 1 {
-		t.Fatalf("pending panels: got %d, want 1", len(panels))
+		t.Fatalf("AllPanels: got %d, want 1", len(panels))
 	}
 
-	p := panels[0]
-	p.Mu.Lock()
-	sections := p.Sections
-	p.Mu.Unlock()
-	if len(sections) != 2 {
-		t.Fatalf("sections: got %d, want 2", len(sections))
+	secs := panels[0].Sections
+	if len(secs) != 2 {
+		t.Fatalf("Sections: got %d, want 2", len(secs))
 	}
 
-	for _, sec := range sections {
+	for _, sec := range secs {
 		got := sec.CallRender(20, 5)
 		if sec.ID == "sec-a" && got != "A" {
 			t.Errorf("sec-a render = %q, want %q", got, "A")

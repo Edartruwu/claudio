@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
-	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -87,6 +86,9 @@ func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 	L.SetField(ui, "set_statusline", L.NewFunction(r.apiSetStatusline(plugin)))
 	L.SetField(ui, "popup", L.NewFunction(r.apiPopup(plugin)))
 	L.SetField(ui, "register_palette_entry", L.NewFunction(r.apiRegisterPaletteEntry()))
+	// register_sidebar_block is a no-op shim for backward compat.
+	// New plugins should use claudio.win.new_panel() instead.
+	L.SetField(ui, "register_sidebar_block", L.NewFunction(func(L *lua.LState) int { return 0 }))
 	// Color / theme controls
 	L.SetField(ui, "set_color", L.NewFunction(func(L *lua.LState) int {
 		slot := L.CheckString(1)
@@ -227,14 +229,5 @@ func (r *Runtime) apiRegisterPaletteEntry() lua.LGFunction {
 }
 
 // injectPluginUIAPI is a no-op retained for call-site compatibility.
-// Sidebar blocks have been replaced by claudio.win.new_panel.
+// Sidebar blocks are replaced by claudio.win.new_panel (see panel_api.go).
 func (r *Runtime) injectPluginUIAPI(_ *lua.LState, _ *loadedPlugin, _ *lua.LTable) {}
-
-// SetBlockRegistry is a deprecated no-op. Retained so root.go compiles until
-// the TUI agent replaces the call with SetPanelRegistry.
-// Deprecated: use SetPanelRegistry instead.
-func (r *Runtime) SetBlockRegistry(_ *sidebar.BlockRegistry) {}
-
-// GetSidebarBlocks is a deprecated no-op. Returns nil.
-// Deprecated: panels now accessed via GetPanelRegistry().
-func (r *Runtime) GetSidebarBlocks() []struct{} { return nil }

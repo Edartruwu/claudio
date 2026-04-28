@@ -100,9 +100,8 @@ type Model struct {
 	todoDock            *docks.TodoDock
 	filesPanel          *filespanel.Panel
 	fileOps             []filespanel.FileOp
-	sidebar             *sidebar.Sidebar
+	panelHost           *sidebar.PanelHost
 	sidebarFiles        *sidebarblocks.FilesBlock
-	blockRegistry       *sidebar.BlockRegistry
 	// Panels
 	activePanel   panels.Panel
 	activePanelID PanelID
@@ -505,26 +504,24 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		})
 	}
 
-	// Create sidebar block registry before wiring Lua so pending blocks flush correctly.
-	m.blockRegistry = sidebar.NewBlockRegistry()
-
 	// Apply Lua plugin UI extensions (palette entries etc.) and wire leader keymap.
 	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
 		m.appCtx.LuaRuntime.SetLeaderKeymap(m.km)
 		m.applyLuaUIExtensions()
-		// Wire block registry — flushes any blocks already registered by Lua plugins.
-		m.appCtx.LuaRuntime.SetBlockRegistry(m.blockRegistry)
 	}
 
-	// Initialize sidebar (sidebarFiles kept for file-op refresh; not registered in sidebar)
+	// sidebarFiles drives file-op tracking and feeds the Lua files data provider.
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
 
-	// Wire Lua data providers so sidebar.lua blocks can read live session/file/task/token state.
+	// Wire Lua data providers so sidebar render closures can read live state.
 	m.luaTokens = &luaTokenState{}
 	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
 		wireLuaDataProviders(m.appCtx.LuaRuntime, m.session, m.sidebarFiles, m.luaTokens)
+		// Wire the panel registry so pending panels (from defaults.lua) are flushed.
+		reg := luart.NewPanelRegistry()
+		m.appCtx.LuaRuntime.SetPanelRegistry(reg)
 	}
-	m.sidebar = m.buildSidebar()
+	m.panelHost = m.buildPanelHost()
 
 	cmdRegistry := commands.NewRegistry()
 	commands.RegisterCoreCommands(cmdRegistry, &commands.CommandDeps{
@@ -7077,14 +7074,17 @@ func (m *Model) isWelcomeScreen() bool {
 	return len(m.messages) == 0 && !m.streaming
 }
 
-// buildSidebar constructs the sidebar backed by the block registry.
-// All blocks (Lua-registered or otherwise) are sourced from m.blockRegistry at render time.
-func (m *Model) buildSidebar() *sidebar.Sidebar {
+// buildPanelHost constructs the PanelHost backed by the Lua PanelRegistry.
+// All panels come from Lua plugins (including defaults.lua) at render time.
+func (m *Model) buildPanelHost() *sidebar.PanelHost {
 	cfg := m.sidebarConfig()
 	if !cfg.Enabled {
 		return nil
 	}
-	return sidebar.New(m.blockRegistry)
+	if m.appCtx == nil || m.appCtx.LuaRuntime == nil {
+		return nil
+	}
+	return sidebar.New(m.appCtx.LuaRuntime.GetPanelRegistry())
 }
 
 // sidebarConfig returns the effective sidebar config (from settings or defaults).
@@ -7104,17 +7104,21 @@ func (m *Model) sidebarConfig() config.SidebarConfig {
 	}
 }
 
-// sidebarWidth returns the pixel width the sidebar occupies (0 if disabled).
+// sidebarWidth returns the pixel width the panel host occupies (0 if disabled).
 func (m *Model) sidebarWidth() int {
-	if m.sidebar == nil {
+	if m.panelHost == nil {
 		return 0
 	}
 	cfg := m.sidebarConfig()
-	w := cfg.Width
-	if w == 0 {
-		w = 32
+	defaultW := cfg.Width
+	if defaultW == 0 {
+		defaultW = 32
 	}
-	// Don't show sidebar if terminal is too narrow
+	w := m.panelHost.Width("left", defaultW)
+	if w == 0 {
+		return 0
+	}
+	// Don't show panel host if terminal is too narrow.
 	if m.width-w-1 < 40 {
 		return 0
 	}
@@ -7335,17 +7339,13 @@ func (m Model) View() string {
 	} else if m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
 		// layout() already computed and applied filesPanel dimensions.
 		topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, m.filesPanel.View())
-	} else if m.sidebar != nil && m.focus != FocusAgentDetail {
-		// Rebuild sidebar each frame so token/cost closures capture
-		// the current (value-receiver) Model copy. Otherwise the
-		// closures formed in New() reference a stale stack-local m
-		// and the Usage panel always renders zeros.
-		m.sidebar = m.buildSidebar()
+	} else if m.panelHost != nil && m.panelHost.HasPanels("left") && m.focus != FocusAgentDetail {
 		sw := m.sidebarWidth()
 		if sw > 0 {
-			m.sidebar.SetSize(sw, m.viewport.Height)
 			sep := buildSeparator(m.viewport.Height)
-			sidebarView := lipgloss.NewStyle().Width(sw).Height(m.viewport.Height).Render(m.sidebar.View())
+			sidebarView := lipgloss.NewStyle().Width(sw).Height(m.viewport.Height).Render(
+				m.panelHost.View("left", sw, m.viewport.Height),
+			)
 			topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, sep, sidebarView)
 		}
 	}
