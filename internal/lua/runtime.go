@@ -115,7 +115,6 @@ type Runtime struct {
 	uiMu                  sync.RWMutex
 	StatuslineFn          *lua.LFunction
 	statuslinePlugin      *loadedPlugin
-	pendingWhichkeyGroups []WhichkeyGroup
 	pendingPaletteEntries []PaletteEntry
 
 	// Pending sidebar blocks (registered before TUI is wired)
@@ -131,6 +130,11 @@ type Runtime struct {
 	leaderKeymap         *keymapPkg.Keymap
 	pendingLeaderMu      sync.Mutex
 	pendingLeaderBindings []pendingLeaderBinding
+
+	// leaderFnUnsubs tracks bus unsubscribe fns for Lua-function-backed leader
+	// bindings, keyed by normalised seq. Protected by leaderFnUnsubsMu.
+	leaderFnUnsubsMu sync.Mutex
+	leaderFnUnsubs   map[string]func()
 
 	// Picker opener (wired after TUI is ready)
 	pickerOpenerMu sync.RWMutex
@@ -167,13 +171,14 @@ func New(
 	caps *capabilities.Registry,
 ) *Runtime {
 	return &Runtime{
-		toolReg: toolReg,
-		skills:  skillsReg,
-		bus:     eventBus,
-		hooks:   hooksMgr,
-		cfg:     cfg,
-		db:      db,
-		caps:    caps,
+		toolReg:        toolReg,
+		skills:         skillsReg,
+		bus:            eventBus,
+		hooks:          hooksMgr,
+		cfg:            cfg,
+		db:             db,
+		caps:           caps,
+		leaderFnUnsubs: make(map[string]func()),
 	}
 }
 
