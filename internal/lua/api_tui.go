@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -118,11 +119,33 @@ func (b *SidebarBlockDef) CallRender(width, height int) string {
 
 // GetSidebarBlocks returns all sidebar blocks registered by plugins.
 func (r *Runtime) GetSidebarBlocks() []SidebarBlockDef {
-	r.uiMu.RLock()
-	defer r.uiMu.RUnlock()
+	r.pendingSidebarBlocksMu.Lock()
+	defer r.pendingSidebarBlocksMu.Unlock()
 	out := make([]SidebarBlockDef, len(r.pendingSidebarBlocks))
 	copy(out, r.pendingSidebarBlocks)
 	return out
+}
+
+// SetBlockRegistry wires the sidebar BlockRegistry and flushes any pending
+// Lua-registered blocks. After this call, new register_sidebar_block calls
+// register directly into the registry instead of the pending queue.
+func (r *Runtime) SetBlockRegistry(reg *sidebar.BlockRegistry) {
+	r.sidebarRegistryMu.Lock()
+	r.sidebarRegistry = reg
+	r.sidebarRegistryMu.Unlock()
+
+	r.pendingSidebarBlocksMu.Lock()
+	pending := r.pendingSidebarBlocks
+	r.pendingSidebarBlocks = nil
+	r.pendingSidebarBlocksMu.Unlock()
+
+	for _, def := range pending {
+		d := def // capture for closure
+		block := sidebar.NewLuaBlock(d.ID, d.Title, 1, 3, func(w, h int) string {
+			return d.CallRender(w, h)
+		})
+		reg.Register(block)
+	}
 }
 
 // injectUIAPI registers claudio.ui.* bindings and returns the table.
@@ -323,9 +346,22 @@ func (r *Runtime) apiRegisterSidebarBlock(plugin *loadedPlugin) lua.LGFunction {
 			RenderFn: renderFn,
 		}
 
-		r.pendingSidebarBlocksMu.Lock()
-		r.pendingSidebarBlocks = append(r.pendingSidebarBlocks, def)
-		r.pendingSidebarBlocksMu.Unlock()
+		// If a registry is already wired, register immediately; otherwise queue.
+		r.sidebarRegistryMu.RLock()
+		reg := r.sidebarRegistry
+		r.sidebarRegistryMu.RUnlock()
+
+		if reg != nil {
+			d := def // capture for closure
+			block := sidebar.NewLuaBlock(d.ID, d.Title, 1, 3, func(w, h int) string {
+				return d.CallRender(w, h)
+			})
+			reg.Register(block)
+		} else {
+			r.pendingSidebarBlocksMu.Lock()
+			r.pendingSidebarBlocks = append(r.pendingSidebarBlocks, def)
+			r.pendingSidebarBlocksMu.Unlock()
+		}
 
 		return 0
 	}

@@ -66,7 +66,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
-	"github.com/Abraxas-365/claudio/internal/utils"
 )
 
 // WindowState holds per-window session state so the main viewport and the
@@ -102,6 +101,7 @@ type Model struct {
 	fileOps             []filespanel.FileOp
 	sidebar             *sidebar.Sidebar
 	sidebarFiles        *sidebarblocks.FilesBlock
+	blockRegistry       *sidebar.BlockRegistry
 	// Panels
 	activePanel   panels.Panel
 	activePanelID PanelID
@@ -474,13 +474,18 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		})
 	}
 
+	// Create sidebar block registry before wiring Lua so pending blocks flush correctly.
+	m.blockRegistry = sidebar.NewBlockRegistry()
+
 	// Apply Lua plugin UI extensions (palette entries etc.) and wire leader keymap.
 	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
 		m.appCtx.LuaRuntime.SetLeaderKeymap(m.km)
 		m.applyLuaUIExtensions()
+		// Wire block registry — flushes any blocks already registered by Lua plugins.
+		m.appCtx.LuaRuntime.SetBlockRegistry(m.blockRegistry)
 	}
 
-	// Initialize sidebar
+	// Initialize sidebar (sidebarFiles kept for file-op refresh; not registered in sidebar)
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
 	m.sidebar = m.buildSidebar()
 
@@ -6783,71 +6788,14 @@ func (m *Model) isWelcomeScreen() bool {
 	return len(m.messages) == 0 && !m.streaming
 }
 
-// luaSidebarBlock adapts a luart.SidebarBlockDef to the sidebar.Block interface.
-type luaSidebarBlock struct {
-	def luart.SidebarBlockDef
-}
-
-func (b *luaSidebarBlock) Title() string                    { return b.def.Title }
-func (b *luaSidebarBlock) MinHeight() int                   { return 3 }
-func (b *luaSidebarBlock) Weight() int                      { return 1 }
-func (b *luaSidebarBlock) Render(width, maxHeight int) string { return b.def.CallRender(width, maxHeight) }
-
-// buildSidebar constructs the sidebar from config (or defaults).
+// buildSidebar constructs the sidebar backed by the block registry.
+// All blocks (Lua-registered or otherwise) are sourced from m.blockRegistry at render time.
 func (m *Model) buildSidebar() *sidebar.Sidebar {
 	cfg := m.sidebarConfig()
 	if !cfg.Enabled {
 		return nil
 	}
-
-	blockNames := cfg.Blocks
-	if len(blockNames) == 0 {
-		blockNames = []string{"session", "files", "todos", "tokens"}
-	}
-
-	var blks []sidebar.Block
-	for _, name := range blockNames {
-		switch name {
-		case "files":
-			blks = append(blks, m.sidebarFiles)
-		case "todos":
-			blks = append(blks, sidebarblocks.NewTodosBlock())
-		case "tokens":
-			blks = append(blks, sidebarblocks.NewTokensBlock(
-				func() int { return m.totalTokens },
-				func() float64 { return m.totalCost },
-				func() int { return utils.MaxContextForModel(m.model) },
-				func() string { return m.model },
-			))
-		case "session":
-			blks = append(blks, sidebarblocks.NewSessionBlock(
-				func() string {
-					if m.session != nil && m.session.Current() != nil {
-						return m.session.Current().Title
-					}
-					return ""
-				},
-				func() int { return len(m.messages) },
-				func() time.Time {
-					if m.session != nil && m.session.Current() != nil {
-						return m.session.Current().CreatedAt
-					}
-					return time.Time{}
-				},
-			))
-		}
-	}
-	// Append Lua-registered sidebar blocks (fixes the pendingSidebarBlocks gap).
-	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
-		for _, def := range m.appCtx.LuaRuntime.GetSidebarBlocks() {
-			blks = append(blks, &luaSidebarBlock{def: def})
-		}
-	}
-
-	if len(blks) == 0 {
-		return nil
-	}
-	return sidebar.New(blks...)
+	return sidebar.New(m.blockRegistry)
 }
 
 // sidebarConfig returns the effective sidebar config (from settings or defaults).
