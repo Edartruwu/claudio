@@ -14,15 +14,17 @@ import (
 // Thread-safe for register/open/close; Update() must be called from the
 // BubbleTea event loop (single-threaded).
 type Manager struct {
-	windows map[string]*Window
-	stack   []*Window // open windows in z-order (lowest first)
-	mu      sync.RWMutex
+	windows  map[string]*Window
+	liveBufs map[string]*LiveBuffer // name → LiveBuffer for agent:// windows
+	stack    []*Window              // open windows in z-order (lowest first)
+	mu       sync.RWMutex
 }
 
 // New returns an initialized Manager.
 func New() *Manager {
 	return &Manager{
-		windows: make(map[string]*Window),
+		windows:  make(map[string]*Window),
+		liveBufs: make(map[string]*LiveBuffer),
 	}
 }
 
@@ -34,6 +36,43 @@ func (m *Manager) Register(w *Window) {
 		panic(fmt.Sprintf("windows: duplicate window name %q", w.Name))
 	}
 	m.windows[w.Name] = w
+}
+
+// RegisterLiveBuffer creates a Window backed by lb and registers both.
+// Panics on duplicate name (same rule as Register).
+func (m *Manager) RegisterLiveBuffer(lb *LiveBuffer, title string) {
+	w := &Window{
+		Name:   lb.name,
+		Title:  title,
+		Buffer: lb.Buffer(),
+		Layout: LayoutSidebar,
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.windows[w.Name]; exists {
+		panic(fmt.Sprintf("windows: duplicate window name %q", w.Name))
+	}
+	m.windows[w.Name] = w
+	m.liveBufs[w.Name] = lb
+}
+
+// GetLiveBuffer returns the LiveBuffer registered under name, or (nil, false).
+func (m *Manager) GetLiveBuffer(name string) (*LiveBuffer, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	lb, ok := m.liveBufs[name]
+	return lb, ok
+}
+
+// AllWindows returns all registered windows (open or closed).
+func (m *Manager) AllWindows() []*Window {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]*Window, 0, len(m.windows))
+	for _, w := range m.windows {
+		out = append(out, w)
+	}
+	return out
 }
 
 // Get returns the named window or nil.

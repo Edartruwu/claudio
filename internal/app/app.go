@@ -724,6 +724,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	windowMgr := windows.New()
 	luaRuntime.SetWindowManager(windowMgr)
 
+	// Wire window manager into team runner so agent runs surface as LiveBuffers.
+	teamRunner.SetWindowManager(windowMgr)
+
 	// Wire team runner and manager so Lua plugins can inspect agent/team state.
 	luaRuntime.SetTeamRunner(teamRunner)
 	luaRuntime.SetTeamManager(teamMgr)

@@ -18,6 +18,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/git"
 	"github.com/Abraxas-365/claudio/internal/prompts"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 )
 
 // TeammateProgress tracks a teammate's work activity.
@@ -319,6 +320,9 @@ type TeammateRunner struct {
 
 	childrenMu sync.Mutex
 	children   map[string][]string // parentAgentID → []childAgentID
+
+	windowMgr *windows.Manager  // optional; registers agent:// LiveBuffers
+	liveBufs  sync.Map           // agentID → *windows.LiveBuffer
 }
 
 // NewTeammateRunner creates a runner for spawning in-process teammates.
@@ -380,7 +384,14 @@ func (r *TeammateRunner) SetSessionID(id string) {
 	r.sessionID = id
 }
 
-// EmitEvent sends an event to the registered handler.
+// SetWindowManager wires a windows.Manager so that agent runs are reflected as
+// LiveBuffers under the "agent://<agentID>" name.
+func (r *TeammateRunner) SetWindowManager(mgr *windows.Manager) {
+	r.windowMgr = mgr
+}
+
+// EmitEvent sends an event to the registered handler and updates the
+// corresponding agent LiveBuffer (if a window manager is wired).
 func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 	// State mutations (AddConversation, IncrToolCalls, etc.) are performed by
 	// the caller (teammateObserver in app.go or direct runner calls) BEFORE
@@ -388,6 +399,57 @@ func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 	// only forwards the event to the registered TUI event handler.
 	if r.eventHandler != nil {
 		r.eventHandler.OnTeammateEvent(event)
+	}
+
+	// Update agent LiveBuffer when a window manager is set.
+	if r.windowMgr == nil || event.AgentID == "" {
+		return
+	}
+	bufName := "agent://" + event.AgentID
+	switch event.Type {
+	case "started":
+		lb := windows.NewLiveBuffer(bufName)
+		if _, loaded := r.liveBufs.LoadOrStore(event.AgentID, lb); !loaded {
+			// First registration for this agent — create the window.
+			title := event.AgentName
+			if title == "" {
+				title = event.AgentID
+			}
+			// Recover from duplicate-name panic on re-use (shouldn't happen
+			// for unique agent IDs, but guard to avoid crashing the runner).
+			func() {
+				defer func() { recover() }() //nolint:errcheck
+				r.windowMgr.RegisterLiveBuffer(lb, title)
+			}()
+		}
+	case "text":
+		if v, ok := r.liveBufs.Load(event.AgentID); ok {
+			v.(*windows.LiveBuffer).Append(event.Text)
+		}
+	case "tool_start":
+		if v, ok := r.liveBufs.Load(event.AgentID); ok {
+			line := "▶ " + event.ToolName
+			if event.Input != "" {
+				line += " " + event.Input
+			}
+			v.(*windows.LiveBuffer).Append(line)
+		}
+	case "tool_end":
+		if v, ok := r.liveBufs.Load(event.AgentID); ok {
+			line := "◀ " + event.ToolName
+			if event.Text != "" {
+				line += " " + event.Text
+			}
+			v.(*windows.LiveBuffer).Append(line)
+		}
+	case "complete":
+		if v, ok := r.liveBufs.Load(event.AgentID); ok {
+			v.(*windows.LiveBuffer).SetDone("done")
+		}
+	case "error":
+		if v, ok := r.liveBufs.Load(event.AgentID); ok {
+			v.(*windows.LiveBuffer).SetDone("error")
+		}
 	}
 }
 
