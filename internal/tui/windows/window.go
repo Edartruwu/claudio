@@ -20,8 +20,9 @@ type Window struct {
 	Width   int // hint; 0 = auto
 	Height  int // hint; 0 = auto
 	ZIndex  int
-	Focused bool
-	open    bool
+	Focused   bool
+	AgentName string // routing name for >>agentName messages
+	open      bool
 }
 
 // IsOpen reports whether the window is currently visible.

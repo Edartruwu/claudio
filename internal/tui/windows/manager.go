@@ -40,12 +40,13 @@ func (m *Manager) Register(w *Window) {
 
 // RegisterLiveBuffer creates a Window backed by lb and registers both.
 // Panics on duplicate name (same rule as Register).
-func (m *Manager) RegisterLiveBuffer(lb *LiveBuffer, title string) {
+func (m *Manager) RegisterLiveBuffer(lb *LiveBuffer, agentName, title string) {
 	w := &Window{
-		Name:   lb.name,
-		Title:  title,
-		Buffer: lb.Buffer(),
-		Layout: LayoutSidebar,
+		Name:      lb.name,
+		Title:     title,
+		AgentName: agentName,
+		Buffer:    lb.Buffer(),
+		Layout:    LayoutSidebar,
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

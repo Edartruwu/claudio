@@ -419,7 +419,7 @@ func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 			// for unique agent IDs, but guard to avoid crashing the runner).
 			func() {
 				defer func() { recover() }() //nolint:errcheck
-				r.windowMgr.RegisterLiveBuffer(lb, title)
+				r.windowMgr.RegisterLiveBuffer(lb, event.AgentName, title)
 			}()
 		}
 	case "text":

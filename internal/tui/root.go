@@ -225,6 +225,10 @@ type Model struct {
 	// Initialized from AppContext.WindowManager (app-level) or created locally.
 	windowMgr *windows.Manager
 
+	// Full-content buffer view state.
+	activeBufferName   string // name of full-screen buffer ("" = none)
+	bufferScrollOffset int    // lines from tail (0=tail)
+
 	// Telescope-style fuzzy picker overlay (Task 5).
 	// pickerModel is live only while isPickerOpen is true.
 	pickerModel picker.Model
@@ -962,6 +966,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.popupVisible = false
 			return m, nil
 		}
+		// Buffer scroll keys (active when a buffer is open)
+		if m.activeBufferName != "" && m.windowMgr != nil {
+			lb, hasLive := m.windowMgr.GetLiveBuffer(m.activeBufferName)
+			var maxOffset int
+			if hasLive {
+				maxOffset = lb.Len() - (m.viewport.Height - 1)
+				if maxOffset < 0 {
+					maxOffset = 0
+				}
+			}
+			switch msg.String() {
+			case "k", "up":
+				m.bufferScrollOffset += 3
+				if m.bufferScrollOffset > maxOffset {
+					m.bufferScrollOffset = maxOffset
+				}
+				return m, nil
+			case "j", "down":
+				m.bufferScrollOffset -= 3
+				if m.bufferScrollOffset < 0 {
+					m.bufferScrollOffset = 0
+				}
+				return m, nil
+			case "ctrl+d":
+				half := (m.viewport.Height - 1) / 2
+				m.bufferScrollOffset += half
+				if m.bufferScrollOffset > maxOffset {
+					m.bufferScrollOffset = maxOffset
+				}
+				return m, nil
+			case "ctrl+u":
+				half := (m.viewport.Height - 1) / 2
+				m.bufferScrollOffset -= half
+				if m.bufferScrollOffset < 0 {
+					m.bufferScrollOffset = 0
+				}
+				return m, nil
+			case "G":
+				m.bufferScrollOffset = 0
+				return m, nil
+			case "esc":
+				m.activeBufferName = ""
+				m.bufferScrollOffset = 0
+				return m, nil
+			}
+		}
 		switch msg.String() {
 		case "shift+tab":
 			// Cycle permission mode: default → auto → plan → default
@@ -1661,13 +1711,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Entry.Value is *windows.Window — open it in the window manager.
 			// Agent-backed windows (agent://<agentID>) open the rich detail overlay.
 			if w, ok := msg.Entry.Value.(*windows.Window); ok {
-				if strings.HasPrefix(w.Name, "agent://") {
-					agentID := strings.TrimPrefix(w.Name, "agent://")
-					newM, cmd := m.openAgentDetail(agentID)
-					m = newM
-					cmds = append(cmds, cmd)
-				} else if m.windowMgr != nil {
-					_ = m.windowMgr.Open(w.Name)
+				if m.windowMgr != nil {
+					// All windows open as full-content buffer view
+					m.activeBufferName = w.Name
+					m.bufferScrollOffset = 0
+					// Prompt keeps focus — user can scroll with j/k or type to send >>
 				}
 			}
 		case "agents":
@@ -2600,6 +2648,13 @@ func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (t
 
 	if cmdName, cmdArgs, isCmd := commands.Parse(text); isCmd {
 		return m.handleCommand(cmdName, cmdArgs)
+	}
+
+	// When a buffer is active, route message directly to that agent.
+	if m.activeBufferName != "" && m.windowMgr != nil {
+		if w := m.windowMgr.Get(m.activeBufferName); w != nil && w.AgentName != "" {
+			return m.handleAgentMessage(">>" + w.AgentName + " " + text)
+		}
 	}
 
 	// Handle >>agent messages
@@ -7243,6 +7298,52 @@ func (m Model) View() string {
 			sidebarView := lipgloss.NewStyle().Width(sw).Height(m.viewport.Height).Render(m.sidebar.View())
 			topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, sep, sidebarView)
 		}
+	}
+
+	// Full-content buffer view: replaces topArea when a buffer is active.
+	if m.activeBufferName != "" && m.windowMgr != nil {
+		w := m.windowMgr.Get(m.activeBufferName)
+		lb, hasLive := m.windowMgr.GetLiveBuffer(m.activeBufferName)
+		bufH := m.viewport.Height - 1 // -1 for title bar line
+		if bufH < 1 {
+			bufH = 1
+		}
+
+		var content string
+		if hasLive {
+			content = lb.RenderWithOffset(m.viewport.Width, bufH, m.bufferScrollOffset)
+		} else if w != nil {
+			content = w.View(m.viewport.Width, bufH)
+		}
+
+		// Title bar
+		agentName := ""
+		statusStr := "running"
+		if w != nil {
+			agentName = w.AgentName
+		}
+		if hasLive {
+			statusStr = lb.Status()
+		}
+		scrollHint := ""
+		if m.bufferScrollOffset > 0 {
+			scrollHint = fmt.Sprintf(" ↑%d", m.bufferScrollOffset)
+		}
+		agentPart := agentName
+		if agentPart == "" {
+			agentPart = strings.TrimPrefix(m.activeBufferName, "agent://")
+		}
+		titleBar := lipgloss.NewStyle().
+			Width(m.viewport.Width).
+			Background(lipgloss.Color("237")).
+			Foreground(lipgloss.Color("252")).
+			Bold(true).
+			Render(fmt.Sprintf(" %s [%s]%s  ESC close  j/k scroll  type to send >>", agentPart, statusStr, scrollHint))
+
+		topArea = lipgloss.JoinVertical(lipgloss.Left,
+			titleBar,
+			lipgloss.NewStyle().Width(m.viewport.Width).Height(bufH).Render(content),
+		)
 	}
 
 	var sections []string
