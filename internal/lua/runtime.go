@@ -18,6 +18,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -65,6 +66,10 @@ type Runtime struct {
 	// Keymap registry (wired after TUI init)
 	keymapRegistryMu sync.Mutex
 	keymapRegistry   *vim.KeymapRegistry
+
+	// Window manager (wired after TUI init)
+	windowManagerMu sync.RWMutex
+	windowManager   *windows.Manager
 
 	// Pending commands (registered before registry is wired)
 	pendingCommandsMu sync.Mutex
@@ -310,4 +315,18 @@ func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {
 	r.keymapRegistryMu.Lock()
 	defer r.keymapRegistryMu.Unlock()
 	r.keymapRegistry = reg
+}
+
+// SetWindowManager wires the TUI window manager so Lua plugins can open/close floats.
+func (r *Runtime) SetWindowManager(wm *windows.Manager) {
+	r.windowManagerMu.Lock()
+	defer r.windowManagerMu.Unlock()
+	r.windowManager = wm
+}
+
+// GetWindowManager returns the wired window manager (nil until TUI is ready).
+func (r *Runtime) GetWindowManager() *windows.Manager {
+	r.windowManagerMu.RLock()
+	defer r.windowManagerMu.RUnlock()
+	return r.windowManager
 }

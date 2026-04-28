@@ -17,6 +17,10 @@ const (
 	ActionWindowSplitVertical ActionID = "window.split-vertical"
 	ActionWindowClose         ActionID = "window.close"
 
+	// Float window management
+	ActionFloatWindowClose ActionID = "float.window.close"
+	ActionFloatWindowHint  ActionID = "float.window.hint"
+
 	// Buffer/session management
 	ActionBufferNext      ActionID = "buffer.next"
 	ActionBufferPrev      ActionID = "buffer.prev"
@@ -59,13 +63,15 @@ type ActionMeta struct {
 // Registry maps every action ID to its metadata.
 var Registry = map[ActionID]ActionMeta{
 	// Window management
-	ActionWindowCycle:         {ActionWindowCycle, "Cycle windows", "window"},
+	ActionWindowCycle:         {ActionWindowCycle, "Cycle windows / float focus", "window"},
 	ActionWindowFocusLeft:     {ActionWindowFocusLeft, "Focus left window", "window"},
 	ActionWindowFocusDown:     {ActionWindowFocusDown, "Focus prompt", "window"},
 	ActionWindowFocusUp:       {ActionWindowFocusUp, "Focus viewport", "window"},
 	ActionWindowFocusRight:    {ActionWindowFocusRight, "Focus right panel", "window"},
 	ActionWindowSplitVertical: {ActionWindowSplitVertical, "Mirror panel", "window"},
 	ActionWindowClose:         {ActionWindowClose, "Close panel", "window"},
+	ActionFloatWindowClose:    {ActionFloatWindowClose, "Close focused float window", "window"},
+	ActionFloatWindowHint:     {ActionFloatWindowHint, "Open float window (use :open <name>)", "window"},
 
 	// Buffer/session management
 	ActionBufferNext:      {ActionBufferNext, "Next session", "buffer"},
