@@ -62,6 +62,24 @@ type State struct {
 	// Pending text object: 'i' or 'a' after operator
 	pendingInner bool // true after 'i' in operator pending
 	pendingOuter bool // true after 'a' in operator pending
+
+	// registry is the keymap registry used for dispatch.
+	// nil → use the package-level defaultRegistry.
+	registry *KeymapRegistry
+}
+
+// getRegistry returns the registry for this state, falling back to defaultRegistry.
+func (s *State) getRegistry() *KeymapRegistry {
+	if s.registry != nil {
+		return s.registry
+	}
+	return defaultRegistry
+}
+
+// SetRegistry replaces the keymap registry used by this State instance.
+// Useful for tests or per-session customization. Pass nil to revert to the default.
+func (s *State) SetRegistry(r *KeymapRegistry) {
+	s.registry = r
 }
 
 // New creates a new vim state starting in insert mode.
@@ -128,9 +146,8 @@ func (s *State) HandleKey(key rune, text string, cursor int) Action {
 // ── Insert Mode ─────────────────────────────────────────
 
 func (s *State) handleInsert(key rune) Action {
-	if key == 27 { // Escape
-		s.Mode = ModeNormal
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeNormal, SetCursor: NoPos}
+	if km, ok := s.getRegistry().Lookup(key, ModeInsert); ok {
+		return km.Handler(key, "", 0, 1, s)
 	}
 	return Action{Type: ActionNone}
 }
@@ -138,7 +155,8 @@ func (s *State) handleInsert(key rune) Action {
 // ── Normal Mode ─────────────────────────────────────────
 
 func (s *State) handleNormal(key rune, text string, cursor int) Action {
-	// Numeric prefix
+	// Numeric prefix accumulation — not in registry, handled before dispatch.
+	// '0' with a non-empty CountBuf appends to the count; otherwise '0' is "line start".
 	if key >= '1' && key <= '9' || (key == '0' && s.CountBuf != "") {
 		s.CountBuf += string(key)
 		return Action{Type: ActionNone}
@@ -146,306 +164,19 @@ func (s *State) handleNormal(key rune, text string, cursor int) Action {
 
 	count := s.consumeCount()
 
-	switch key {
-	// ── Mode switching ──
-	case 'i':
-		s.Mode = ModeInsert
-		s.startRecording()
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeInsert, SetCursor: NoPos}
-	case 'a':
-		s.Mode = ModeInsert
-		s.startRecording()
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeInsert, MoveCursor: 1, SetCursor: NoPos}
-	case 'I':
-		s.Mode = ModeInsert
-		s.startRecording()
-		pos := firstNonBlank(text, cursor)
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeInsert, SetCursor: pos}
-	case 'A':
-		s.Mode = ModeInsert
-		s.startRecording()
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeInsert, SetCursor: lineEndPos(text, cursor)}
-	case 'o':
-		s.Mode = ModeInsert
-		s.startRecording()
-		end := lineEndPos(text, cursor)
-		return Action{Type: ActionInsertText, Text: "\n", SetCursor: end, SwitchMode: ModeInsert}
-	case 'O':
-		s.Mode = ModeInsert
-		s.startRecording()
-		start := lineStartPos(text, cursor)
-		return Action{Type: ActionInsertText, Text: "\n", SetCursor: start, SwitchMode: ModeInsert, MoveCursor: -1}
-	case 'v':
-		s.Mode = ModeVisual
-		s.VisualStart = cursor
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeVisual, SetCursor: NoPos}
-
-	// ── Motions ──
-	case 'h':
-		return Action{Type: ActionMoveCursor, MoveCursor: -count}
-	case 'l':
-		return Action{Type: ActionMoveCursor, MoveCursor: count}
-	case 'j':
-		return moveLine(text, cursor, count)
-	case 'k':
-		return moveLine(text, cursor, -count)
-	case 'w':
-		return Action{Type: ActionSetCursor, SetCursor: wordForward(text, cursor, count)}
-	case 'W':
-		return Action{Type: ActionSetCursor, SetCursor: wordForwardBig(text, cursor, count)}
-	case 'b':
-		return Action{Type: ActionSetCursor, SetCursor: wordBackward(text, cursor, count)}
-	case 'B':
-		return Action{Type: ActionSetCursor, SetCursor: wordBackwardBig(text, cursor, count)}
-	case 'e':
-		return Action{Type: ActionSetCursor, SetCursor: wordEnd(text, cursor, count)}
-	case 'E':
-		return Action{Type: ActionSetCursor, SetCursor: wordEndBig(text, cursor, count)}
-	case '0':
-		return Action{Type: ActionSetCursor, SetCursor: lineStartPos(text, cursor)}
-	case '^', '_':
-		return Action{Type: ActionSetCursor, SetCursor: firstNonBlank(text, cursor)}
-	case '$':
-		return Action{Type: ActionSetCursor, SetCursor: lineEndPos(text, cursor)}
-	case 'g':
-		return Action{Type: ActionSetCursor, SetCursor: 0}
-	case 'G':
-		return Action{Type: ActionSetCursor, SetCursor: len(text)}
-	case '{':
-		return Action{Type: ActionSetCursor, SetCursor: paragraphBackward(text, cursor, count)}
-	case '}':
-		return Action{Type: ActionSetCursor, SetCursor: paragraphForward(text, cursor, count)}
-	case '%':
-		if pos := matchBracket(text, cursor); pos >= 0 {
-			return Action{Type: ActionSetCursor, SetCursor: pos}
-		}
-
-	// ── Character search ──
-	case 'f':
-		s.Mode = ModeCharSearch
-		s.charSearchDir = 1
-		s.charSearchTill = false
-		s.Count = count
-		return Action{Type: ActionNone}
-	case 'F':
-		s.Mode = ModeCharSearch
-		s.charSearchDir = -1
-		s.charSearchTill = false
-		s.Count = count
-		return Action{Type: ActionNone}
-	case 't':
-		s.Mode = ModeCharSearch
-		s.charSearchDir = 1
-		s.charSearchTill = true
-		s.Count = count
-		return Action{Type: ActionNone}
-	case 'T':
-		s.Mode = ModeCharSearch
-		s.charSearchDir = -1
-		s.charSearchTill = true
-		s.Count = count
-		return Action{Type: ActionNone}
-	case ';':
-		if s.lastCharSearch != 0 {
-			pos := findChar(text, cursor, s.lastCharSearch, s.lastCharDir, s.lastCharTill, count)
-			if pos >= 0 {
-				return Action{Type: ActionSetCursor, SetCursor: pos}
-			}
-		}
-	case ',':
-		if s.lastCharSearch != 0 {
-			pos := findChar(text, cursor, s.lastCharSearch, -s.lastCharDir, s.lastCharTill, count)
-			if pos >= 0 {
-				return Action{Type: ActionSetCursor, SetCursor: pos}
-			}
-		}
-
-	// ── Operators ──
-	case 'd':
-		s.Mode = ModeOperatorPending
-		s.PendingOp = 'd'
-		s.Count = count
-		return Action{Type: ActionNone}
-	case 'y':
-		s.Mode = ModeOperatorPending
-		s.PendingOp = 'y'
-		s.Count = count
-		return Action{Type: ActionNone}
-	case 'c':
-		s.Mode = ModeOperatorPending
-		s.PendingOp = 'c'
-		s.Count = count
-		return Action{Type: ActionNone}
-
-	// ── Shortcuts (operator + implicit motion) ──
-	case 'D': // d$
-		end := lineEndPos(text, cursor)
-		if cursor < end {
-			s.Clipboard = text[cursor:end]
-			return Action{Type: ActionDeleteRange, DeleteFrom: cursor, DeleteTo: end}
-		}
-	case 'C': // c$
-		s.Mode = ModeInsert
-		end := lineEndPos(text, cursor)
-		if cursor < end {
-			s.Clipboard = text[cursor:end]
-			return Action{Type: ActionDeleteRange, DeleteFrom: cursor, DeleteTo: end, SwitchMode: ModeInsert}
-		}
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeInsert, SetCursor: NoPos}
-	case 'S': // cc
-		s.Mode = ModeInsert
-		start := lineStartPos(text, cursor)
-		end := lineEndPos(text, cursor)
-		s.Clipboard = text[start:end]
-		return Action{Type: ActionDeleteRange, DeleteFrom: start, DeleteTo: end, SwitchMode: ModeInsert}
-	case 'Y': // yy
-		start := lineStartPos(text, cursor)
-		end := lineEndPos(text, cursor)
-		if end < len(text) {
-			end++
-		}
-		s.Clipboard = text[start:end]
-		return Action{Type: ActionYank, Text: s.Clipboard}
-
-	// ── Direct actions ──
-	case 'x':
-		end := cursor + count
-		if end > len(text) {
-			end = len(text)
-		}
-		if cursor < end {
-			s.Clipboard = text[cursor:end]
-			return Action{Type: ActionDeleteRange, DeleteFrom: cursor, DeleteTo: end}
-		}
-	case 'r':
-		s.Mode = ModeReplace
-		s.Count = count
-		return Action{Type: ActionNone}
-	case 'p':
-		if s.Clipboard != "" {
-			return Action{Type: ActionPaste, Text: s.Clipboard, SetCursor: cursor + 1}
-		}
-	case 'P':
-		if s.Clipboard != "" {
-			return Action{Type: ActionPaste, Text: s.Clipboard, SetCursor: cursor}
-		}
-	case 'u':
-		return Action{Type: ActionUndo}
-	case 18: // Ctrl+R
-		return Action{Type: ActionRedo}
-	case 'J':
-		return Action{Type: ActionJoinLines}
-	case '~':
-		return Action{Type: ActionToggleCase}
-	case '.':
-		// Repeat last change — handled by prompt layer
-		return s.replayLastChange(text, cursor)
-
-	case 27: // Escape
-		return Action{Type: ActionNone}
+	// Registry dispatch — all key handlers live in DefaultKeymaps / plugin registrations.
+	if km, ok := s.getRegistry().Lookup(key, ModeNormal); ok {
+		return km.Handler(key, text, cursor, count, s)
 	}
-
 	return Action{Type: ActionNone}
 }
 
 // ── Visual Mode ─────────────────────────────────────────
 
 func (s *State) handleVisual(key rune, text string, cursor int) Action {
-	switch key {
-	case 27: // Escape
-		s.Mode = ModeNormal
-		return Action{Type: ActionSwitchMode, SwitchMode: ModeNormal, SetCursor: NoPos}
-	case 'd', 'x':
-		from, to := orderRange(s.VisualStart, cursor)
-		to++ // inclusive
-		if to > len(text) {
-			to = len(text)
-		}
-		s.Clipboard = text[from:to]
-		s.Mode = ModeNormal
-		return Action{Type: ActionDeleteRange, DeleteFrom: from, DeleteTo: to, SwitchMode: ModeNormal}
-	case 'y':
-		from, to := orderRange(s.VisualStart, cursor)
-		to++
-		if to > len(text) {
-			to = len(text)
-		}
-		s.Clipboard = text[from:to]
-		s.Mode = ModeNormal
-		return Action{Type: ActionYank, Text: s.Clipboard, SwitchMode: ModeNormal}
-	case 'c':
-		from, to := orderRange(s.VisualStart, cursor)
-		to++
-		if to > len(text) {
-			to = len(text)
-		}
-		s.Clipboard = text[from:to]
-		s.Mode = ModeInsert
-		return Action{Type: ActionDeleteRange, DeleteFrom: from, DeleteTo: to, SwitchMode: ModeInsert}
-	case '~':
-		from, to := orderRange(s.VisualStart, cursor)
-		to++
-		if to > len(text) {
-			to = len(text)
-		}
-		s.Mode = ModeNormal
-		return Action{Type: ActionToggleCase, DeleteFrom: from, DeleteTo: to, SwitchMode: ModeNormal}
-	case 'U':
-		from, to := orderRange(s.VisualStart, cursor)
-		to++
-		if to > len(text) {
-			to = len(text)
-		}
-		upper := strings.ToUpper(text[from:to])
-		s.Mode = ModeNormal
-		return Action{Type: ActionDeleteRange, DeleteFrom: from, DeleteTo: to, Text: upper, SwitchMode: ModeNormal}
-	case 'u':
-		from, to := orderRange(s.VisualStart, cursor)
-		to++
-		if to > len(text) {
-			to = len(text)
-		}
-		lower := strings.ToLower(text[from:to])
-		s.Mode = ModeNormal
-		return Action{Type: ActionDeleteRange, DeleteFrom: from, DeleteTo: to, Text: lower, SwitchMode: ModeNormal}
-
-	// Motions extend selection
-	case 'h':
-		return Action{Type: ActionMoveCursor, MoveCursor: -1}
-	case 'l':
-		return Action{Type: ActionMoveCursor, MoveCursor: 1}
-	case 'j':
-		return moveLine(text, cursor, 1)
-	case 'k':
-		return moveLine(text, cursor, -1)
-	case 'w':
-		return Action{Type: ActionSetCursor, SetCursor: wordForward(text, cursor, 1)}
-	case 'W':
-		return Action{Type: ActionSetCursor, SetCursor: wordForwardBig(text, cursor, 1)}
-	case 'b':
-		return Action{Type: ActionSetCursor, SetCursor: wordBackward(text, cursor, 1)}
-	case 'B':
-		return Action{Type: ActionSetCursor, SetCursor: wordBackwardBig(text, cursor, 1)}
-	case 'e':
-		return Action{Type: ActionSetCursor, SetCursor: wordEnd(text, cursor, 1)}
-	case '0':
-		return Action{Type: ActionSetCursor, SetCursor: lineStartPos(text, cursor)}
-	case '^', '_':
-		return Action{Type: ActionSetCursor, SetCursor: firstNonBlank(text, cursor)}
-	case '$':
-		return Action{Type: ActionSetCursor, SetCursor: lineEndPos(text, cursor)}
-	case 'g':
-		return Action{Type: ActionSetCursor, SetCursor: 0}
-	case 'G':
-		return Action{Type: ActionSetCursor, SetCursor: len(text)}
-	case '{':
-		return Action{Type: ActionSetCursor, SetCursor: paragraphBackward(text, cursor, 1)}
-	case '}':
-		return Action{Type: ActionSetCursor, SetCursor: paragraphForward(text, cursor, 1)}
-	case '%':
-		if pos := matchBracket(text, cursor); pos >= 0 {
-			return Action{Type: ActionSetCursor, SetCursor: pos}
-		}
+	// Registry dispatch — count always 1 in visual mode (matches original behaviour).
+	if km, ok := s.getRegistry().Lookup(key, ModeVisual); ok {
+		return km.Handler(key, text, cursor, 1, s)
 	}
 	return Action{Type: ActionNone}
 }

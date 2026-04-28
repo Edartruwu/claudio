@@ -136,6 +136,7 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(claudio, "register_hook", L.NewFunction(r.apiRegisterHook(plugin)))
 	L.SetField(claudio, "notify", L.NewFunction(r.apiNotify(plugin)))
 	L.SetField(claudio, "log", L.NewFunction(r.apiLog(plugin)))
+	L.SetField(claudio, "register_keymap", L.NewFunction(r.apiRegisterKeymap(plugin)))
 
 	L.SetGlobal("claudio", claudio)
 }
