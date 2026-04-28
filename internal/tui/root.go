@@ -3494,6 +3494,9 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch logicalIdx() {
 		case 0: // Yes, clear context + auto-accept edits
 			m.planModeActive = false
+			if m.engine != nil {
+				m.engine.ReleasePlanMode()
+			}
 			if m.engineConfig != nil {
 				m.engineConfig.PermissionMode = "auto"
 			}
@@ -3515,6 +3518,9 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case 1: // Yes, auto-accept edits (keep context)
 			m.planModeActive = false
+			if m.engine != nil {
+				m.engine.ReleasePlanMode()
+			}
 			if m.engineConfig != nil {
 				m.engineConfig.PermissionMode = "auto"
 			}
@@ -3524,12 +3530,18 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleSubmit("Yes, proceed with implementation. Auto-accept all file edits.")
 		case 2: // Yes, manually approve edits
 			m.planModeActive = false
+			if m.engine != nil {
+				m.engine.ReleasePlanMode()
+			}
 			m.focus = FocusPrompt
 			m.prompt.Focus()
 			m.refreshViewport()
 			return m.handleSubmit("Yes, proceed with implementation.")
 		case 3: // No, let me revise
 			m.planModeActive = false
+			if m.engine != nil {
+				m.engine.ReleasePlanMode()
+			}
 			m.focus = FocusPrompt
 			m.prompt.Focus()
 
@@ -3537,6 +3549,9 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case 4: // Chat about the plan — dismiss dialog and return to prompt.
 			m.planModeActive = false
+			if m.engine != nil {
+				m.engine.ReleasePlanMode()
+			}
 			m.focus = FocusPrompt
 			m.prompt.Focus()
 			m.refreshViewport()
@@ -3545,6 +3560,9 @@ func (m Model) handlePlanApprovalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		// Dismiss — return to prompt without sending anything.
 		m.planModeActive = false
+		if m.engine != nil {
+			m.engine.ReleasePlanMode()
+		}
 		m.focus = FocusPrompt
 		m.prompt.Focus()
 		m.refreshViewport()

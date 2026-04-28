@@ -97,6 +97,7 @@ type Engine struct {
 	model           string
 	permissionMode       string
 	prePlanPermMode      string // permission mode before AI-initiated plan mode
+	planAwaitingApproval bool   // true after ExitPlanMode until TUI calls ReleasePlanMode
 	permissionRules      []config.PermissionRule
 	costConfirmThresh float64
 	discoveredTools        map[string]bool // tools discovered via ToolSearch
@@ -356,6 +357,21 @@ func (e *Engine) Messages() []api.Message {
 
 // SessionID returns the session ID associated with this engine.
 func (e *Engine) SessionID() string { return e.sessionID }
+
+// ReleasePlanMode restores permissions after the user approves or rejects a plan.
+// Safe to call multiple times — no-op if not awaiting approval.
+func (e *Engine) ReleasePlanMode() {
+	if !e.planAwaitingApproval {
+		return
+	}
+	e.planAwaitingApproval = false
+	if e.prePlanPermMode != "" {
+		e.permissionMode = e.prePlanPermMode
+		e.prePlanPermMode = ""
+	} else {
+		e.permissionMode = "default"
+	}
+}
 
 // SetMessages replaces the conversation messages (used after compaction or clear).
 // If messages are cleared (nil or empty), also resets injection state flags so the
@@ -1222,12 +1238,8 @@ func (e *Engine) runSingleTool(ctx context.Context, tu tools.ToolUse, tool tools
 			e.prePlanPermMode = e.permissionMode
 			e.permissionMode = "plan"
 		case "ExitPlanMode":
-			if e.prePlanPermMode != "" {
-				e.permissionMode = e.prePlanPermMode
-				e.prePlanPermMode = ""
-			} else {
-				e.permissionMode = "default"
-			}
+			e.planAwaitingApproval = true
+			// Keep permissionMode as "plan" — stays blocked until TUI calls ReleasePlanMode()
 		}
 	}
 
