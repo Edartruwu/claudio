@@ -3,10 +3,13 @@ package lua
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/tui/picker"
+	"github.com/Abraxas-365/claudio/internal/tui/picker/finders"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -124,6 +127,7 @@ func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 		L.Push(tbl)
 		return 1
 	}))
+	L.SetField(ui, "pick", L.NewFunction(r.apiUIPick(plugin)))
 	return ui
 }
 
@@ -224,6 +228,133 @@ func (r *Runtime) apiRegisterPaletteEntry() lua.LGFunction {
 			Description: desc,
 		})
 		r.uiMu.Unlock()
+		return 0
+	}
+}
+
+// apiUIPick returns the claudio.ui.pick(items, opts) binding — vim.ui.select() equivalent.
+//
+// Lua usage:
+//
+//	claudio.ui.pick(
+//	  { {label="Foo", value="foo"}, {label="Bar", value="bar", description="desc"} },
+//	  {
+//	    title     = "Pick something",
+//	    on_select = function(item) claudio.notify(item.value) end,
+//	    on_cancel = function() claudio.notify("cancelled") end,
+//	    multi     = false,
+//	  }
+//	)
+func (r *Runtime) apiUIPick(plugin *loadedPlugin) lua.LGFunction {
+	return func(L *lua.LState) int {
+		itemsTbl := L.CheckTable(1)
+		optsTbl := L.CheckTable(2)
+
+		// Build picker entries from items table.
+		var entries []picker.Entry
+		itemsTbl.ForEach(func(_, v lua.LValue) {
+			tbl, ok := v.(*lua.LTable)
+			if !ok {
+				return
+			}
+			label := lua.LVAsString(tbl.RawGetString("label"))
+			value := lua.LVAsString(tbl.RawGetString("value"))
+			desc := lua.LVAsString(tbl.RawGetString("description"))
+			if label == "" {
+				label = value
+			}
+			meta := map[string]any{
+				"value":       value,
+				"description": desc,
+			}
+			entries = append(entries, picker.Entry{
+				Display: label,
+				Ordinal: label,
+				Value:   value,
+				Meta:    meta,
+			})
+		})
+
+		// Read opts.
+		title := ""
+		if v := optsTbl.RawGetString("title"); v != lua.LNil {
+			title = lua.LVAsString(v)
+		}
+		var onSelectFn *lua.LFunction
+		if fn, ok := optsTbl.RawGetString("on_select").(*lua.LFunction); ok {
+			onSelectFn = fn
+		}
+		var onCancelFn *lua.LFunction
+		if fn, ok := optsTbl.RawGetString("on_cancel").(*lua.LFunction); ok {
+			onCancelFn = fn
+		}
+		multiSelect := false
+		if v, ok := optsTbl.RawGetString("multi").(lua.LBool); ok {
+			multiSelect = bool(v)
+		}
+		var onMultiFn *lua.LFunction
+		if fn, ok := optsTbl.RawGetString("on_multi").(*lua.LFunction); ok {
+			onMultiFn = fn
+		}
+
+		// Build callback that marshals Entry back to Lua table.
+		capturedPlugin := plugin
+		entryToLua := func(e picker.Entry) *lua.LTable {
+			t := capturedPlugin.L.NewTable()
+			capturedPlugin.L.SetField(t, "label", lua.LString(e.Display))
+			if s, ok := e.Value.(string); ok {
+				capturedPlugin.L.SetField(t, "value", lua.LString(s))
+			} else {
+				capturedPlugin.L.SetField(t, "value", lua.LString(fmt.Sprintf("%v", e.Value)))
+			}
+			if m, ok := e.Meta["description"]; ok {
+				if ds, ok := m.(string); ok {
+					capturedPlugin.L.SetField(t, "description", lua.LString(ds))
+				}
+			}
+			return t
+		}
+
+		cfg := picker.Config{
+			Title:  title,
+			Finder: finders.NewTableFinder(entries),
+			Layout: picker.LayoutDropdown,
+		}
+
+		if onSelectFn != nil {
+			fn := onSelectFn
+			cfg.OnSelect = func(entry picker.Entry) {
+				capturedPlugin.mu.Lock()
+				defer capturedPlugin.mu.Unlock()
+				t := entryToLua(entry)
+				if err := capturedPlugin.L.CallByParam(lua.P{
+					Fn: fn, NRet: 0, Protect: true,
+				}, t); err != nil {
+					log.Printf("[lua] ui.pick on_select error: %v", err)
+				}
+			}
+		}
+
+		if multiSelect && onMultiFn != nil {
+			fn := onMultiFn
+			cfg.OnMultiSelect = func(selected []picker.Entry) {
+				capturedPlugin.mu.Lock()
+				defer capturedPlugin.mu.Unlock()
+				arr := capturedPlugin.L.NewTable()
+				for i, e := range selected {
+					arr.RawSetInt(i+1, entryToLua(e))
+				}
+				if err := capturedPlugin.L.CallByParam(lua.P{
+					Fn: fn, NRet: 0, Protect: true,
+				}, arr); err != nil {
+					log.Printf("[lua] ui.pick on_multi error: %v", err)
+				}
+			}
+		}
+
+		_ = onCancelFn // picker.Config has no OnCancel; reserved for future use
+
+		r.callPickerOpener(cfg)
 		return 0
 	}
 }

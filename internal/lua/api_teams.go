@@ -22,12 +22,29 @@ func (r *Runtime) apiAgentList(_ *loadedPlugin) lua.LGFunction {
 			return 1
 		}
 
+		r.windowManagerMu.RLock()
+		wm := r.windowManager
+		r.windowManagerMu.RUnlock()
+
 		for i, state := range runner.AllStates() {
 			entry := L.NewTable()
 			L.SetField(entry, "id", lua.LString(state.Identity.AgentID))
 			L.SetField(entry, "name", lua.LString(state.Identity.AgentName))
 			L.SetField(entry, "status", lua.LString(string(state.GetStatus())))
 			L.SetField(entry, "team", lua.LString(state.TeamName))
+
+			// Check if agent has a live buffer window
+			hasWindow := false
+			if wm != nil {
+				for _, w := range wm.AllWindows() {
+					if w.AgentName == state.Identity.AgentName {
+						hasWindow = true
+						break
+					}
+				}
+			}
+			L.SetField(entry, "has_window", lua.LBool(hasWindow))
+
 			tbl.RawSetInt(i+1, entry)
 		}
 

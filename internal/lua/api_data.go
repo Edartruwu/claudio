@@ -78,6 +78,8 @@ func (r *Runtime) injectDataAPIs(L *lua.LState, claudio *lua.LTable) {
 	// claudio.tasks sub-table
 	tasksTbl := L.NewTable()
 	L.SetField(tasksTbl, "list", L.NewFunction(r.apiTasksList()))
+	L.SetField(tasksTbl, "background", L.NewFunction(r.apiTasksBackground()))
+	L.SetField(tasksTbl, "kill", L.NewFunction(r.apiTasksKill()))
 	L.SetField(claudio, "tasks", tasksTbl)
 
 	// claudio.tokens sub-table
@@ -159,6 +161,87 @@ func (r *Runtime) apiTasksList() lua.LGFunction {
 		}
 		L.Push(arr)
 		return 1
+	}
+}
+
+// apiTasksBackground returns claudio.tasks.background() → array of background task states.
+//
+// Lua usage:
+//
+//	local bg = claudio.tasks.background()
+//	-- [{id, type, status, description, command?, agent_type?, start_time, end_time?, error?, exit_code?, tool_calls, tokens_used}, ...]
+func (r *Runtime) apiTasksBackground() lua.LGFunction {
+	return func(L *lua.LState) int {
+		r.taskRuntimeMu.RLock()
+		rt := r.taskRuntime
+		r.taskRuntimeMu.RUnlock()
+
+		arr := L.NewTable()
+		if rt == nil {
+			L.Push(arr)
+			return 1
+		}
+
+		for i, t := range rt.List(false) {
+			entry := L.NewTable()
+			L.SetField(entry, "id", lua.LString(t.ID))
+			L.SetField(entry, "type", lua.LString(string(t.Type)))
+			L.SetField(entry, "status", lua.LString(string(t.Status)))
+			L.SetField(entry, "description", lua.LString(t.Description))
+			L.SetField(entry, "start_time", lua.LString(t.StartTime.Format("2006-01-02T15:04:05Z07:00")))
+			L.SetField(entry, "tool_calls", lua.LNumber(t.ToolCalls))
+			L.SetField(entry, "tokens_used", lua.LNumber(t.TokensUsed))
+			if t.Command != "" {
+				L.SetField(entry, "command", lua.LString(t.Command))
+			}
+			if t.AgentType != "" {
+				L.SetField(entry, "agent_type", lua.LString(t.AgentType))
+			}
+			if t.EndTime != nil {
+				L.SetField(entry, "end_time", lua.LString(t.EndTime.Format("2006-01-02T15:04:05Z07:00")))
+			}
+			if t.Error != "" {
+				L.SetField(entry, "error", lua.LString(t.Error))
+			}
+			if t.ExitCode != nil {
+				L.SetField(entry, "exit_code", lua.LNumber(*t.ExitCode))
+			}
+			arr.RawSetInt(i+1, entry)
+		}
+
+		L.Push(arr)
+		return 1
+	}
+}
+
+// apiTasksKill returns claudio.tasks.kill(id) → true/nil, err_string.
+//
+// Lua usage:
+//
+//	local ok, err = claudio.tasks.kill("task-abc123")
+func (r *Runtime) apiTasksKill() lua.LGFunction {
+	return func(L *lua.LState) int {
+		id := L.CheckString(1)
+
+		r.taskRuntimeMu.RLock()
+		rt := r.taskRuntime
+		r.taskRuntimeMu.RUnlock()
+
+		if rt == nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString("task runtime not available"))
+			return 2
+		}
+
+		if err := rt.Kill(id); err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+
+		L.Push(lua.LTrue)
+		L.Push(lua.LNil)
+		return 2
 	}
 }
 

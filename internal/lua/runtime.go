@@ -18,6 +18,7 @@ import (
 	lsp "github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
+	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	keymapPkg "github.com/Abraxas-365/claudio/internal/tui/keymap"
@@ -162,6 +163,10 @@ type Runtime struct {
 	// LSP server manager (wired after LSP init)
 	lspManagerMu sync.RWMutex
 	lspManager   *lsp.ServerManager
+
+	// Background task runtime (wired after task runtime init)
+	taskRuntimeMu sync.RWMutex
+	taskRuntime   *tasks.Runtime
 
 	// Data providers (wired after TUI init by root.go)
 	sessionProviderMu sync.RWMutex
@@ -393,6 +398,38 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(branchTable, "on_branch", L.NewFunction(r.apiBranchOnBranch(plugin)))
 	L.SetField(claudio, "branch", branchTable)
 
+	// claudio.sessions sub-table (list/search all sessions — NOT current session)
+	sessionsTable := L.NewTable()
+	L.SetField(sessionsTable, "list", L.NewFunction(r.apiSessionsList(plugin)))
+	L.SetField(sessionsTable, "search", L.NewFunction(r.apiSessionsSearch(plugin)))
+	L.SetField(claudio, "sessions", sessionsTable)
+
+	// claudio.models sub-table
+	modelsTable := L.NewTable()
+	L.SetField(modelsTable, "list", L.NewFunction(r.apiModelsList(plugin)))
+	L.SetField(claudio, "models", modelsTable)
+
+	// claudio.commands sub-table
+	commandsTable := L.NewTable()
+	L.SetField(commandsTable, "list", L.NewFunction(r.apiCommandsList(plugin)))
+	L.SetField(claudio, "commands", commandsTable)
+
+	// claudio.skills sub-table
+	skillsTable := L.NewTable()
+	L.SetField(skillsTable, "list", L.NewFunction(r.apiSkillsList(plugin)))
+	L.SetField(claudio, "skills", skillsTable)
+
+	// claudio.windows sub-table
+	windowsTable := L.NewTable()
+	L.SetField(windowsTable, "list", L.NewFunction(r.apiWindowsList(plugin)))
+	L.SetField(windowsTable, "read", L.NewFunction(r.apiWindowsRead(plugin)))
+	L.SetField(claudio, "windows", windowsTable)
+
+	// claudio.actions sub-table
+	actionsTable := L.NewTable()
+	L.SetField(actionsTable, "list", L.NewFunction(r.apiActionsList(plugin)))
+	L.SetField(claudio, "actions", actionsTable)
+
 	// claudio.ui sub-table (real impl from api_tui.go)
 	L.SetField(claudio, "ui", r.injectUIAPI(L, plugin))
 
@@ -536,6 +573,13 @@ func (r *Runtime) SetLSPManager(mgr *lsp.ServerManager) {
 	r.lspManagerMu.Lock()
 	defer r.lspManagerMu.Unlock()
 	r.lspManager = mgr
+}
+
+// SetTaskRuntime wires the background task runtime so Lua plugins can list/kill tasks.
+func (r *Runtime) SetTaskRuntime(rt *tasks.Runtime) {
+	r.taskRuntimeMu.Lock()
+	defer r.taskRuntimeMu.Unlock()
+	r.taskRuntime = rt
 }
 
 // SetSessionProvider wires the session data provider for claudio.session.current().

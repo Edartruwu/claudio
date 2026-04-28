@@ -743,6 +743,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	// Wire LSP manager so Lua plugins can register/control LSP servers at runtime.
 	luaRuntime.SetLSPManager(lspManager)
 
+	// Wire background task runtime so Lua plugins can list/kill tasks.
+	luaRuntime.SetTaskRuntime(taskRuntime)
+
 	// Wire lightweight AI call for Lua plugins (claudio.ai.run)
 	luaRuntime.SetRunAICall(func(ctx context.Context, system, user, model string) (string, error) {
 		client := apiClient
