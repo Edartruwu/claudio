@@ -84,3 +84,7 @@ claudio.keymap.map("<space>ev", "editor.view")
 
 -- Misc
 claudio.keymap.map("<space>t",  "todo.toggle")
+
+-- Branching
+claudio.keymap.map("<space>gb", "branch.session")
+claudio.keymap.map("<space>gp", "branch.parent-jump")

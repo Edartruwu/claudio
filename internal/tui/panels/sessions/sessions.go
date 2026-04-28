@@ -60,6 +60,7 @@ const (
 // Panel is the Telescope-style session picker overlay.
 type Panel struct {
 	session *session.Session
+	db      *storage.DB // optional; enables tree mode
 
 	active   bool
 	width    int
@@ -73,11 +74,22 @@ type Panel struct {
 
 	// Rename state
 	renameText string
+
+	// Tree mode
+	treeMode   bool
+	nodes      []treeNode
+	treeCursor int
+	expanded   map[string]bool
 }
 
 // New creates a new session picker.
 func New(sess *session.Session) *Panel {
 	return &Panel{session: sess}
+}
+
+// NewWithDB creates a new session picker with database access (enables tree mode).
+func NewWithDB(sess *session.Session, db *storage.DB) *Panel {
+	return &Panel{session: sess, db: db, expanded: make(map[string]bool)}
 }
 
 func (p *Panel) IsActive() bool { return p.active }
@@ -126,6 +138,11 @@ func (p *Panel) applyFilter() {
 
 func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	key := msg.String()
+
+	// ── Tree mode ──
+	if p.treeMode {
+		return p.updateTree(key)
+	}
 
 	// ── Delete confirmation ──
 	if p.mode == modeConfirmDelete {
@@ -209,6 +226,17 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			p.renameText = sessionLabel(p.filtered[p.cursor])
 		}
 		return nil, true
+	case "t":
+		// Toggle tree mode (only if db is available)
+		if p.db != nil {
+			p.treeMode = true
+			p.treeCursor = 0
+			if p.expanded == nil {
+				p.expanded = make(map[string]bool)
+			}
+			p.loadTreeNodes()
+		}
+		return nil, true
 	case "backspace":
 		if len(p.query) > 0 {
 			p.query = p.query[:len(p.query)-1]
@@ -233,12 +261,14 @@ func (p *Panel) View() string {
 		return ""
 	}
 
-	// Use the full allocated size so the panel scales properly whether rendered
-	// as a drawer (35% width) or any other overlay mode.  The rounded border
-	// adds 1 col on each side and Padding(0,1) adds another 1 col each side,
-	// so innerW = p.width - 4.  Guard against uninitialised sizes.
+	// Guard against uninitialised sizes.
 	if p.width < 10 || p.height < 5 {
 		return ""
+	}
+
+	// Tree mode uses a different layout.
+	if p.treeMode {
+		return p.viewTree()
 	}
 	// Border adds +2 cols and +2 rows to the total. Padding(0,1) is INSIDE Width.
 	// So Width(boxW) total = boxW+2. Use boxW = p.width-2 so total = p.width.
@@ -553,11 +583,14 @@ func wrapText(text string, maxW int) []string {
 
 // Help returns a short keybinding hint line for the panel footer.
 func (p *Panel) Help() string {
+	if p.treeMode {
+		return "j/k navigate · enter open · tab expand · b branch · t list · esc close"
+	}
 	if p.mode == modeRename {
 		return "enter confirm · esc cancel"
 	}
 	if p.mode == modeConfirmDelete {
 		return "y confirm delete · any cancel"
 	}
-	return "↑/↓ navigate · enter open · ctrl+r rename · ctrl+d delete · ctrl+a all · esc close"
+	return "↑/↓ navigate · enter open · ctrl+r rename · ctrl+d delete · ctrl+a all · t tree · esc close"
 }
