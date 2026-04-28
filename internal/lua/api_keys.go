@@ -11,9 +11,63 @@ import (
 	"unicode"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	lua "github.com/yuin/gopher-lua"
 )
+
+// luaActionNames maps the Lua-friendly dot-notation action names used in
+// claudio.keymap.map() to the actual ActionID constants. The ActionID
+// constants themselves use dashes in some places; this table normalises
+// the discrepancy so callers can use consistent dot-separated names.
+var luaActionNames = map[string]keymap.ActionID{
+	"window.cycle":        keymap.ActionWindowCycle,
+	"window.close":        keymap.ActionWindowClose,
+	"window.focus.up":     keymap.ActionWindowFocusUp,
+	"window.focus.down":   keymap.ActionWindowFocusDown,
+	"window.focus.left":   keymap.ActionWindowFocusLeft,
+	"window.focus.right":  keymap.ActionWindowFocusRight,
+	"window.split.v":      keymap.ActionWindowSplitVertical,
+	"window.float.close":  keymap.ActionFloatWindowClose,
+	"window.float.hint":   keymap.ActionFloatWindowHint,
+	"buffer.next":         keymap.ActionBufferNext,
+	"buffer.prev":         keymap.ActionBufferPrev,
+	"buffer.new":          keymap.ActionBufferNew,
+	"buffer.close":        keymap.ActionBufferClose,
+	"buffer.rename":       keymap.ActionBufferRename,
+	"buffer.alternate":    keymap.ActionBufferAlternate,
+	"buffer.list":         keymap.ActionBufferList,
+	"panel.skills":        keymap.ActionPanelSkills,
+	"panel.memory":        keymap.ActionPanelMemory,
+	"panel.tasks":         keymap.ActionPanelTasks,
+	"panel.tools":         keymap.ActionPanelTools,
+	"panel.analytics":     keymap.ActionPanelAnalytics,
+	"panel.files":         keymap.ActionPanelFiles,
+	"panel.session_tree":  keymap.ActionPanelSessionTree,
+	"panel.agent_gui":     keymap.ActionPanelAgentGUI,
+	"picker.session":      keymap.ActionSessionPicker,
+	"picker.recent":       keymap.ActionSessionRecent,
+	"picker.search":       keymap.ActionSearch,
+	"picker.commands":     keymap.ActionCommandPalette,
+	"picker.buffers":      keymap.ActionPickerBuffers,
+	"picker.agents":       keymap.ActionPickerAgents,
+	"editor.edit":         keymap.ActionEditorEditPrompt,
+	"editor.view":         keymap.ActionEditorViewSection,
+	"todo.toggle":         keymap.ActionTodoDock,
+}
+
+// normalizeLeaderSeq strips the "<space>" prefix from a leader sequence string
+// returning just the key suffix stored in the keymap.
+// e.g. "<space>ww" → "ww", "<space>K" → "K".
+func normalizeLeaderSeq(seq string) string {
+	lower := strings.ToLower(seq)
+	for _, pfx := range []string{"<space>", "<leader>"} {
+		if strings.HasPrefix(lower, pfx) {
+			return seq[len(pfx):]
+		}
+	}
+	return seq
+}
 
 // apiRegisterKeymap returns the claudio.register_keymap(tbl) binding.
 //
@@ -202,6 +256,148 @@ func (r *Runtime) apiKeymapList(plugin *loadedPlugin) lua.LGFunction {
 		L.Push(result)
 		return 1
 	}
+}
+
+// apiLeaderKeymapMap returns the claudio.keymap.map(seq, action, opts?) binding.
+//
+// Lua usage:
+//
+//	claudio.keymap.map("<space>ww", "window.cycle")
+//	claudio.keymap.map("<space>m",  function(evt) ... end, { desc = "My action" })
+//
+// seq is a leader sequence like "<space>ww". action is either an ActionID
+// string (looked up in luaActionNames) or a Lua function. For Lua functions a
+// synthetic ActionID "lua.fn.<seq>" is registered in the leader keymap and a
+// bus subscription fires the function when the sequence is triggered.
+func (r *Runtime) apiLeaderKeymapMap(plugin *loadedPlugin) lua.LGFunction {
+	return func(L *lua.LState) int {
+		seqRaw := L.CheckString(1)
+		actionVal := L.Get(2)
+
+		seq := normalizeLeaderSeq(seqRaw)
+		if seq == "" {
+			L.ArgError(1, "keymap.map: seq must not be empty after stripping leader prefix")
+			return 0
+		}
+
+		switch av := actionVal.(type) {
+		case lua.LString:
+			// ActionID string path.
+			actionStr := string(av)
+			actionID, ok := luaActionNames[actionStr]
+			if !ok {
+				// Allow raw ActionID strings (in case caller uses the constant directly).
+				actionID = keymap.ActionID(actionStr)
+				if !keymap.ValidAction(actionID) {
+					L.ArgError(2, "keymap.map: unknown action: "+actionStr)
+					return 0
+				}
+			}
+			r.setLeaderBinding(seq, actionID)
+
+		case *lua.LFunction:
+			// Lua function path: assign synthetic ActionID, subscribe bus event.
+			syntheticID := keymap.ActionID("lua.fn." + seq)
+			eventType := "leader." + string(syntheticID)
+
+			r.setLeaderBinding(seq, syntheticID)
+
+			// Subscribe the Lua function to the bus event that dispatchAction fires.
+			unsub := r.bus.Subscribe(eventType, func(e bus.Event) {
+				plugin.mu.Lock()
+				defer plugin.mu.Unlock()
+
+				defer func() {
+					if rv := recover(); rv != nil {
+						log.Printf("[lua] plugin %s leader handler panic: %v", plugin.name, rv)
+					}
+				}()
+
+				evtTbl := plugin.L.NewTable()
+				plugin.L.SetField(evtTbl, "seq", lua.LString(seqRaw))
+				plugin.L.SetField(evtTbl, "plugin", lua.LString(plugin.name))
+
+				if err := plugin.L.CallByParam(lua.P{
+					Fn:      av,
+					NRet:    0,
+					Protect: true,
+				}, evtTbl); err != nil {
+					log.Printf("[lua] plugin %s leader handler error: %v", plugin.name, err)
+				}
+			})
+
+			plugin.mu.Lock()
+			plugin.unsubs = append(plugin.unsubs, unsub)
+			plugin.mu.Unlock()
+
+		default:
+			L.ArgError(2, "keymap.map: action must be a string or function")
+			return 0
+		}
+
+		return 0
+	}
+}
+
+// apiLeaderKeymapUnmap returns the claudio.keymap.unmap(seq) binding.
+//
+// Lua usage:
+//
+//	claudio.keymap.unmap("<space>ww")
+//
+// Removes the leader binding for seq. Safe to call before the keymap is wired.
+func (r *Runtime) apiLeaderKeymapUnmap(plugin *loadedPlugin) lua.LGFunction {
+	return func(L *lua.LState) int {
+		seqRaw := L.CheckString(1)
+		seq := normalizeLeaderSeq(seqRaw)
+		if seq == "" {
+			return 0
+		}
+
+		r.leaderKeymapMu.Lock()
+		km := r.leaderKeymap
+		r.leaderKeymapMu.Unlock()
+
+		if km != nil {
+			km.Delete(seq)
+		}
+		// Also remove from pending list so it won't be applied on SetLeaderKeymap.
+		r.pendingLeaderMu.Lock()
+		filtered := r.pendingLeaderBindings[:0]
+		for _, pb := range r.pendingLeaderBindings {
+			if pb.seq != seq {
+				filtered = append(filtered, pb)
+			}
+		}
+		r.pendingLeaderBindings = filtered
+		r.pendingLeaderMu.Unlock()
+
+		return 0
+	}
+}
+
+// setLeaderBinding applies a leader binding to the keymap if it is already
+// wired, otherwise buffers it for when SetLeaderKeymap is called.
+func (r *Runtime) setLeaderBinding(seq string, actionID keymap.ActionID) {
+	r.leaderKeymapMu.Lock()
+	km := r.leaderKeymap
+	r.leaderKeymapMu.Unlock()
+
+	if km != nil {
+		// Only apply if the user has not already set this binding via keymap.json.
+		if _, already := km.Resolve(seq); !already {
+			km.SetCustom(seq, actionID)
+		}
+		return
+	}
+
+	// Buffer for later application via SetLeaderKeymap.
+	r.pendingLeaderMu.Lock()
+	r.pendingLeaderBindings = append(r.pendingLeaderBindings, pendingLeaderBinding{
+		seq:      seq,
+		actionID: actionID,
+	})
+	r.pendingLeaderMu.Unlock()
 }
 
 // LoadKeybindings loads a keybindings.lua file (e.g. ~/.claudio/keybindings.lua) in a
