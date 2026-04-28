@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/agents"
@@ -23,7 +22,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/harness"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	luart "github.com/Abraxas-365/claudio/internal/lua"
-	"github.com/Abraxas-365/claudio/internal/tui/picker"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	"github.com/Abraxas-365/claudio/internal/learning"
 	"github.com/Abraxas-365/claudio/internal/models"
@@ -734,30 +732,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	// Wire window manager into team runner so agent runs surface as LiveBuffers.
 	teamRunner.SetWindowManager(windowMgr)
 
-	// Wire picker opener so Lua plugins can open picker overlays as float windows.
-	// Each call registers a new float window with a unique name and opens it.
-	// Key routing into the picker model requires further TUI integration (root.go).
-	var pickerSeq atomic.Int64
-	luaRuntime.SetPickerOpener(func(cfg picker.Config) {
-		n := pickerSeq.Add(1)
-		name := fmt.Sprintf("lua-picker-%d", n)
-		m := picker.New(cfg)
-		buf := &windows.Buffer{
-			Name: name,
-			Render: func(width, height int) string {
-				m.SetSize(width, height)
-				return m.View()
-			},
-		}
-		w := &windows.Window{
-			Name:   name,
-			Title:  cfg.Title,
-			Buffer: buf,
-			Layout: windows.LayoutFloat,
-		}
-		windowMgr.Register(w)
-		_ = windowMgr.Open(name)
-	})
+	// Picker opener: the TUI (root.go New()) wires the real interactive opener
+	// via luaRuntime.SetPickerOpener once it starts, replacing any placeholder.
+	// No static window fallback is needed — callPickerOpener handles nil gracefully.
 
 	// Wire team runner and manager so Lua plugins can inspect agent/team state.
 	luaRuntime.SetTeamRunner(teamRunner)
