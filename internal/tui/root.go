@@ -2599,7 +2599,16 @@ func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (t
 		// No auto-title: session label shows the short hash until the user runs /set-name
 	}
 
-	m.addMessage(ChatMessage{Type: MsgUser, Content: displayText})
+	// Task-notifications and bg-task-notifications are injected into the AI
+	// context programmatically — the human-facing status is already shown by
+	// handleTeammateEvent / bg-task handlers as a MsgSystem message.
+	// Showing the raw XML as a MsgUser would duplicate the same content.
+	isSystemNotification := strings.HasPrefix(text, "<task-notification>") ||
+		strings.HasPrefix(text, "<bg-task-notification>") ||
+		strings.HasPrefix(text, "<bg-task-error>")
+	if !isSystemNotification {
+		m.addMessage(ChatMessage{Type: MsgUser, Content: displayText})
+	}
 	m.refreshViewport()
 
 	// Increment inactivity counters for all done agents — this human message

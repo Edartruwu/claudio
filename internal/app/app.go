@@ -342,9 +342,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 			skillTool.SkillsRegistry = skillsRegistry
 			skillTool.HooksManager = hooksMgr
 			skillTool.ProjectRoot = cwd
-			if settings.CavemanEnabled() {
-				skillTool.ExcludedNames = []string{"caveman"}
-			}
+			// caveman is always hidden from the skill listing — it is only activated
+			// via config (":set caveman true") not by calling Skill("caveman").
+			skillTool.ExcludedNames = []string{"caveman"}
 		}
 	}
 
