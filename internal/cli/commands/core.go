@@ -1000,6 +1000,40 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 			return fmt.Sprintf("colorscheme: %s applied", name), nil
 		},
 	})
+
+	r.Register(&Command{
+		Name:        "open",
+		Description: "Open a named window: /open <window-name>",
+		Execute: func(args string) (string, error) {
+			name := strings.TrimSpace(args)
+			if name == "" {
+				return "", fmt.Errorf("usage: /open <window-name>")
+			}
+			if deps.OpenWindow == nil {
+				return "", fmt.Errorf("window manager not available")
+			}
+			if err := deps.OpenWindow(name); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("opened window: %s", name), nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "close",
+		Description: "Close a named window: /close <window-name>",
+		Execute: func(args string) (string, error) {
+			name := strings.TrimSpace(args)
+			if name == "" {
+				return "", fmt.Errorf("usage: /close <window-name>")
+			}
+			if deps.CloseWindow == nil {
+				return "", fmt.Errorf("window manager not available")
+			}
+			deps.CloseWindow(name)
+			return fmt.Sprintf("closed window: %s", name), nil
+		},
+	})
 }
 
 func openBrowser(url string) error {

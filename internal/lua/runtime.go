@@ -18,6 +18,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -105,6 +106,14 @@ type Runtime struct {
 	// Pending sidebar blocks (registered before TUI is wired)
 	pendingSidebarBlocksMu sync.Mutex
 	pendingSidebarBlocks   []SidebarBlockDef
+
+	// Window manager (wired after TUI init)
+	windowManagerMu sync.Mutex
+	windowManager   *windows.Manager
+
+	// Pending window registrations (registered before WindowManager is wired)
+	pendingWindowsMu sync.Mutex
+	pendingWindows   []WindowDef
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -287,6 +296,9 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// Plugin-aware UI extensions (sidebar blocks, etc.)
 	r.injectPluginUIAPI(L, plugin, claudio)
 
+	// claudio.buf + claudio.ui.register_window
+	r.injectWindowsAPI(L, plugin, claudio)
+
 	L.SetGlobal("claudio", claudio)
 }
 
@@ -310,4 +322,17 @@ func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {
 	r.keymapRegistryMu.Lock()
 	defer r.keymapRegistryMu.Unlock()
 	r.keymapRegistry = reg
+}
+
+// SetWindowManager wires the window manager and flushes any pending window registrations.
+func (r *Runtime) SetWindowManager(wm *windows.Manager) {
+	r.windowManagerMu.Lock()
+	defer r.windowManagerMu.Unlock()
+	r.windowManager = wm
+	r.pendingWindowsMu.Lock()
+	defer r.pendingWindowsMu.Unlock()
+	for _, def := range r.pendingWindows {
+		wm.Register(def.Window)
+	}
+	r.pendingWindows = nil
 }

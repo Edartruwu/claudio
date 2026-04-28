@@ -58,6 +58,9 @@ type CommandDeps struct {
 	// Config
 	GetConfig  func() *config.Settings
 	SaveConfig func(*config.Settings) error
+	// Window manager
+	OpenWindow  func(name string) error
+	CloseWindow func(name string)
 }
 
 // SkillInfo holds skill data for command registration.
