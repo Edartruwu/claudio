@@ -906,7 +906,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cmdline.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
 		if m.isPickerOpen {
-			m.pickerModel.SetSize(m.width*3/4, m.height*3/4)
+			m.pickerModel.SetSize(m.width*4/5, m.height*4/5)
 		}
 		m.modelSelector.SetWidth(m.width)
 		m.agentSelector.SetWidth(m.width)
@@ -4697,11 +4697,12 @@ func (m *Model) openBufferPicker() tea.Cmd {
 		return m.toast.Show("no window manager available")
 	}
 	mdl := picker.New(picker.Config{
-		Title:  "Buffers",
-		Finder: finders.NewBufferFinder(m.windowMgr),
-		Layout: picker.LayoutDropdown,
+		Title:     "Buffers",
+		Finder:    finders.NewBufferFinder(m.windowMgr),
+		Layout:    picker.LayoutHorizontal,
+		Previewer: previewers.NewBufferPreviewer(),
 	})
-	mdl.SetSize(m.width*3/4, m.height*3/4)
+	mdl.SetSize(m.width*4/5, m.height*4/5)
 	m.pickerModel = mdl
 	m.isPickerOpen = true
 	m.pickerKind = "buffers"
@@ -4726,7 +4727,7 @@ func (m *Model) openAgentPicker() tea.Cmd {
 		Layout:    picker.LayoutHorizontal,
 		Previewer: previewers.NewAgentPreviewer(m.appCtx.TeamRunner),
 	})
-	mdl.SetSize(m.width*3/4, m.height*3/4)
+	mdl.SetSize(m.width*4/5, m.height*4/5)
 	m.pickerModel = mdl
 	m.isPickerOpen = true
 	m.pickerKind = "agents"
@@ -7178,14 +7179,10 @@ func (m Model) View() string {
 	}
 
 	// Render fuzzy picker overlay on top of everything else.
+	// overlayCenter keeps background TUI visible around the picker (Telescope-style).
 	if m.isPickerOpen {
 		pickerView := m.pickerModel.View()
-		base = lipgloss.Place(
-			m.width, m.height,
-			lipgloss.Center, lipgloss.Center,
-			pickerView,
-			lipgloss.WithWhitespaceChars(" "),
-		)
+		base = overlayCenter(base, pickerView, m.width, m.height)
 	}
 
 	return base
