@@ -797,6 +797,31 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		m.appCtx.LuaRuntime.SetWindowManager(m.windowMgr)
 	}
 
+	// Register AGUI panel as a managed float window.
+	// Render delegates to the pooled panel instance at call time so the
+	// window can be registered before the panel is created.
+	{
+		pool := m.panelPool // map is a reference type — shared with all copies
+		aguiBuf := &windows.Buffer{
+			Name: "agui",
+			Render: func(w, h int) string {
+				p, ok := pool[PanelAgentGUI]
+				if !ok {
+					return ""
+				}
+				return p.View()
+			},
+		}
+		m.windowMgr.Register(&windows.Window{
+			Name:   "AgentGUI",
+			Title:  "Agents",
+			Buffer: aguiBuf,
+			Layout: windows.LayoutFloat,
+			Width:  80,
+			Height: 40,
+		})
+	}
+
 	return m
 }
 
@@ -1082,12 +1107,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Float window key routing — focused float intercepts all keys.
 		// Esc dismisses the top float; other keys are routed to its Update.
 		if m.windowMgr != nil && m.windowMgr.FocusedFloat() != nil {
+			f := m.windowMgr.FocusedFloat()
 			// Esc closes the focused float before routing so the window is gone
 			// before the next render.
 			if msg.String() == "esc" {
-				if f := m.windowMgr.FocusedFloat(); f != nil {
+				if f != nil {
 					m.windowMgr.Close(f.Name)
+					// If closing AgentGUI float, also deactivate the panel.
+					if f.Name == "AgentGUI" && m.activePanelID == PanelAgentGUI && m.activePanel != nil {
+						m.activePanel.Deactivate()
+						m.activePanel = nil
+						m.activePanelID = PanelNone
+						m.focus = FocusPrompt
+						m.prompt.Focus()
+					}
 				}
+				return m, tea.Batch(cmds...)
+			}
+			// AgentGUI float: route key events directly to the panel.
+			if f != nil && f.Name == "AgentGUI" && m.activePanelID == PanelAgentGUI && m.activePanel != nil {
+				cmd, _ := m.activePanel.Update(msg)
+				cmds = append(cmds, cmd)
 				return m, tea.Batch(cmds...)
 			}
 			var wCmd tea.Cmd
@@ -3064,9 +3104,9 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// /agui (or :AGUI) → open the two-pane agent inspector panel
+	// /agui (or :AGUI) → open the two-pane agent inspector panel (float window)
 	if strings.EqualFold(name, "agui") {
-		m.togglePanel(PanelAgentGUI)
+		m.toggleAguiFloat()
 		return m, nil
 	}
 
@@ -4387,7 +4427,7 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 		return nil
 
 	case keymap.ActionPanelAgentGUI:
-		m.togglePanel(PanelAgentGUI)
+		m.toggleAguiFloat()
 		return nil
 
 	// ── Navigation ─────────────────────────
@@ -4446,6 +4486,47 @@ func (m *Model) togglePanel(id PanelID) {
 		m.openPanel(id)
 	}
 	m.refreshViewport()
+}
+
+// toggleAguiFloat opens or closes the AgentGUI as a managed float window.
+// The agui panel state (cursor, entries, etc.) is preserved in panelPool.
+// Open/close lifecycle is routed through windowMgr; key events reach the
+// panel via the float key-routing block in handleKeyMsg.
+func (m *Model) toggleAguiFloat() {
+	if m.windowMgr == nil {
+		// Fallback: no window manager — use sidebar panel as before.
+		m.togglePanel(PanelAgentGUI)
+		return
+	}
+	win := m.windowMgr.Get("AgentGUI")
+	if win == nil {
+		return
+	}
+	if win.IsOpen() {
+		// Close: deactivate panel, clear activePanel, restore focus.
+		m.windowMgr.Close("AgentGUI")
+		if m.activePanelID == PanelAgentGUI && m.activePanel != nil {
+			m.activePanel.Deactivate()
+			m.activePanel = nil
+			m.activePanelID = PanelNone
+		}
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+	} else {
+		// Open: get or create panel, activate it, then open the window.
+		panel, ok := m.panelPool[PanelAgentGUI]
+		if !ok {
+			panel = m.createPanel(PanelAgentGUI)
+			if panel == nil {
+				return
+			}
+			m.panelPool[PanelAgentGUI] = panel
+		}
+		panel.Activate()
+		m.activePanel = panel
+		m.activePanelID = PanelAgentGUI
+		_ = m.windowMgr.Open("AgentGUI")
+	}
 }
 
 func (m *Model) openSessionPicker() (bool, tea.Cmd) {
