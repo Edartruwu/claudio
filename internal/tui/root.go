@@ -1611,14 +1611,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch kind {
 		case "buffers":
 			// Entry.Value is *windows.Window — open it in the window manager.
-			if m.windowMgr != nil {
-				if w, ok := msg.Entry.Value.(*windows.Window); ok {
+			// Agent-backed windows (agent://<agentID>) open the rich detail overlay.
+			if w, ok := msg.Entry.Value.(*windows.Window); ok {
+				if strings.HasPrefix(w.Name, "agent://") {
+					agentID := strings.TrimPrefix(w.Name, "agent://")
+					newM, cmd := m.openAgentDetail(agentID)
+					m = newM
+					cmds = append(cmds, cmd)
+				} else if m.windowMgr != nil {
 					_ = m.windowMgr.Open(w.Name)
 				}
 			}
 		case "agents":
-			// Show selected agent info; AGUI panel holds deeper detail.
-			cmds = append(cmds, m.toast.Show("Agent: "+msg.Entry.Ordinal))
+			// Open the full-screen rich agent detail overlay.
+			if agentID, ok := msg.Entry.Meta["agentID"].(string); ok && agentID != "" {
+				newM, cmd := m.openAgentDetail(agentID)
+				m = newM
+				cmds = append(cmds, cmd)
+			}
 		}
 		return m, tea.Batch(cmds...)
 
