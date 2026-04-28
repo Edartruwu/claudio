@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +19,8 @@ type Session struct {
 	Summary         string
 	ParentSessionID string // non-empty for sub-agent sessions
 	AgentType       string // e.g. "general-purpose", "Explore"
-	TeamTemplate    string // e.g. "backend-team", optional template name
+	TeamTemplate        string // e.g. "backend-team", optional template name
+	BranchFromMessageID *int64 // non-nil for user-initiated branch sessions
 }
 
 // MessageRecord represents a persisted message.
@@ -33,6 +35,25 @@ type MessageRecord struct {
 	CreatedAt time.Time
 	AgentName string
 	Output    string
+}
+
+// sessionColumns is the standard column list for session queries.
+const sessionColumns = `id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template, branch_from_message_id`
+
+// scanSession scans a row into a Session, handling the nullable branch_from_message_id.
+func scanSession(scanner interface{ Scan(...interface{}) error }) (*Session, error) {
+	var s Session
+	var branchFromMsgID sql.NullInt64
+	err := scanner.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt,
+		&s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate, &branchFromMsgID)
+	if err != nil {
+		return nil, err
+	}
+	if branchFromMsgID.Valid {
+		v := branchFromMsgID.Int64
+		s.BranchFromMessageID = &v
+	}
+	return &s, nil
 }
 
 // CreateSession creates a new session.
@@ -81,8 +102,7 @@ func (db *DB) CreateSubSession(parentID, agentType, projectDir, model string) (*
 // GetSubSessions returns all sub-agent sessions for a given parent session ID.
 func (db *DB) GetSubSessions(parentID string) ([]Session, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template
-		 FROM sessions WHERE parent_session_id = ? ORDER BY created_at ASC`,
+		`SELECT `+sessionColumns+` FROM sessions WHERE parent_session_id = ? ORDER BY created_at ASC`,
 		parentID,
 	)
 	if err != nil {
@@ -92,11 +112,11 @@ func (db *DB) GetSubSessions(parentID string) ([]Session, error) {
 
 	var sessions []Session
 	for rows.Next() {
-		var s Session
-		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate); err != nil {
+		s, err := scanSession(rows)
+		if err != nil {
 			return nil, err
 		}
-		sessions = append(sessions, s)
+		sessions = append(sessions, *s)
 	}
 	return sessions, rows.Err()
 }
@@ -140,12 +160,11 @@ func (db *DB) UpdateSessionTeamTemplate(id, teamTemplate string) error {
 // GetSessionByTitle returns the most recent session matching title and projectDir,
 // or nil if no such session exists.
 func (db *DB) GetSessionByTitle(title, projectDir string) (*Session, error) {
-	s := &Session{}
-	err := db.conn.QueryRow(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template
-		 FROM sessions WHERE title = ? AND project_dir = ? ORDER BY created_at DESC LIMIT 1`,
+	row := db.conn.QueryRow(
+		`SELECT `+sessionColumns+` FROM sessions WHERE title = ? AND project_dir = ? ORDER BY created_at DESC LIMIT 1`,
 		title, projectDir,
-	).Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate)
+	)
+	s, err := scanSession(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -154,11 +173,10 @@ func (db *DB) GetSessionByTitle(title, projectDir string) (*Session, error) {
 
 // GetSession retrieves a session by ID.
 func (db *DB) GetSession(id string) (*Session, error) {
-	s := &Session{}
-	err := db.conn.QueryRow(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template FROM sessions WHERE id = ?`,
-		id,
-	).Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate)
+	row := db.conn.QueryRow(
+		`SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id,
+	)
+	s, err := scanSession(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -168,8 +186,7 @@ func (db *DB) GetSession(id string) (*Session, error) {
 // ListSessions returns recent top-level sessions (no sub-agent sessions), newest first.
 func (db *DB) ListSessions(limit int) ([]Session, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template
-		 FROM sessions WHERE parent_session_id = '' ORDER BY updated_at DESC LIMIT ?`,
+		`SELECT `+sessionColumns+` FROM sessions WHERE parent_session_id = '' ORDER BY updated_at DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
@@ -179,11 +196,11 @@ func (db *DB) ListSessions(limit int) ([]Session, error) {
 
 	var sessions []Session
 	for rows.Next() {
-		var s Session
-		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate); err != nil {
+		s, err := scanSession(rows)
+		if err != nil {
 			return nil, err
 		}
-		sessions = append(sessions, s)
+		sessions = append(sessions, *s)
 	}
 	return sessions, rows.Err()
 }
@@ -191,9 +208,7 @@ func (db *DB) ListSessions(limit int) ([]Session, error) {
 // ListSessionsByProject returns recent top-level sessions for a specific project, newest first.
 func (db *DB) ListSessionsByProject(projectDir string, limit int) ([]Session, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template
-		 FROM sessions WHERE parent_session_id = '' AND project_dir = ?
-		 ORDER BY updated_at DESC LIMIT ?`,
+		`SELECT `+sessionColumns+` FROM sessions WHERE parent_session_id = '' AND project_dir = ? ORDER BY updated_at DESC LIMIT ?`,
 		projectDir, limit,
 	)
 	if err != nil {
@@ -203,11 +218,11 @@ func (db *DB) ListSessionsByProject(projectDir string, limit int) ([]Session, er
 
 	var sessions []Session
 	for rows.Next() {
-		var s Session
-		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate); err != nil {
+		s, err := scanSession(rows)
+		if err != nil {
 			return nil, err
 		}
-		sessions = append(sessions, s)
+		sessions = append(sessions, *s)
 	}
 	return sessions, rows.Err()
 }
@@ -226,10 +241,7 @@ func (db *DB) DeleteSession(id string) error {
 func (db *DB) SearchSessions(query string, limit int) ([]Session, error) {
 	pattern := "%" + query + "%"
 	rows, err := db.conn.Query(
-		`SELECT id, title, project_dir, model, created_at, updated_at, summary, parent_session_id, agent_type, team_template
-		 FROM sessions
-		 WHERE parent_session_id = '' AND (title LIKE ? OR project_dir LIKE ?)
-		 ORDER BY updated_at DESC LIMIT ?`,
+		`SELECT `+sessionColumns+` FROM sessions WHERE parent_session_id = '' AND (title LIKE ? OR project_dir LIKE ?) ORDER BY updated_at DESC LIMIT ?`,
 		pattern, pattern, limit,
 	)
 	if err != nil {
@@ -239,11 +251,11 @@ func (db *DB) SearchSessions(query string, limit int) ([]Session, error) {
 
 	var sessions []Session
 	for rows.Next() {
-		var s Session
-		if err := rows.Scan(&s.ID, &s.Title, &s.ProjectDir, &s.Model, &s.CreatedAt, &s.UpdatedAt, &s.Summary, &s.ParentSessionID, &s.AgentType, &s.TeamTemplate); err != nil {
+		s, err := scanSession(rows)
+		if err != nil {
 			return nil, err
 		}
-		sessions = append(sessions, s)
+		sessions = append(sessions, *s)
 	}
 	return sessions, rows.Err()
 }
@@ -303,4 +315,186 @@ func (db *DB) GetMessages(sessionID string) ([]MessageRecord, error) {
 		messages = append(messages, m)
 	}
 	return messages, rows.Err()
+}
+
+// ---------------------------------------------------------------------------
+// Session branching
+// ---------------------------------------------------------------------------
+
+// CreateBranchSession creates a user branch from parentID, forking at branchFromMsgID.
+// Sets both parent_session_id and branch_from_message_id.
+func (db *DB) CreateBranchSession(parentID string, branchFromMsgID int64, projectDir, model string) (*Session, error) {
+	s := &Session{
+		ID:                  uuid.New().String(),
+		Title:               "[branch]",
+		ProjectDir:          projectDir,
+		Model:               model,
+		ParentSessionID:     parentID,
+		BranchFromMessageID: &branchFromMsgID,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+
+	_, err := db.conn.Exec(
+		`INSERT INTO sessions (id, title, project_dir, model, parent_session_id, branch_from_message_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Title, s.ProjectDir, s.Model, s.ParentSessionID, branchFromMsgID, s.CreatedAt, s.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create branch session: %w", err)
+	}
+	return s, nil
+}
+
+// GetBranchMessages returns the full message chain for a branch session:
+// parent messages with id <= branchFromMsgID (recursively through grandparents),
+// then this session's own messages. For non-branch sessions, returns own messages only.
+func (db *DB) GetBranchMessages(sessionID string) ([]MessageRecord, error) {
+	type segment struct {
+		sessionID string
+		maxMsgID  *int64 // nil = no upper bound
+	}
+
+	// Walk parent chain: leaf → root. Each segment = one session's messages.
+	// currentLimit carries the branch_from_message_id constraint downward.
+	var segments []segment
+	currentID := sessionID
+	var currentLimit *int64
+
+	for {
+		sess, err := db.GetSession(currentID)
+		if err != nil {
+			return nil, fmt.Errorf("get session %s: %w", currentID, err)
+		}
+		if sess == nil {
+			return nil, fmt.Errorf("session %s not found", currentID)
+		}
+
+		segments = append(segments, segment{sessionID: sess.ID, maxMsgID: currentLimit})
+
+		if sess.BranchFromMessageID == nil || sess.ParentSessionID == "" {
+			break
+		}
+
+		currentLimit = sess.BranchFromMessageID
+		currentID = sess.ParentSessionID
+	}
+
+	// Query root-first, append in order.
+	var allMessages []MessageRecord
+	for i := len(segments) - 1; i >= 0; i-- {
+		seg := segments[i]
+		var rows *sql.Rows
+		var err error
+		if seg.maxMsgID != nil {
+			rows, err = db.conn.Query(
+				`SELECT id, session_id, role, content, type, tool_use_id, tool_name, created_at,
+				        COALESCE(agent_name,''), COALESCE(output,'')
+				 FROM messages WHERE session_id = ? AND id <= ? ORDER BY id ASC`,
+				seg.sessionID, *seg.maxMsgID,
+			)
+		} else {
+			rows, err = db.conn.Query(
+				`SELECT id, session_id, role, content, type, tool_use_id, tool_name, created_at,
+				        COALESCE(agent_name,''), COALESCE(output,'')
+				 FROM messages WHERE session_id = ? ORDER BY id ASC`,
+				seg.sessionID,
+			)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("query messages for session %s: %w", seg.sessionID, err)
+		}
+		for rows.Next() {
+			var m MessageRecord
+			if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.Type, &m.ToolUseID, &m.ToolName, &m.CreatedAt, &m.AgentName, &m.Output); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			allMessages = append(allMessages, m)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return allMessages, nil
+}
+
+// GetSessionBranches returns direct user branch children of parentID.
+func (db *DB) GetSessionBranches(parentID string) ([]*Session, error) {
+	rows, err := db.conn.Query(
+		`SELECT `+sessionColumns+` FROM sessions WHERE parent_session_id = ? AND branch_from_message_id IS NOT NULL ORDER BY created_at ASC`,
+		parentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*Session
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
+// SessionNode is a recursive tree node for GetSessionTree.
+type SessionNode struct {
+	Session  *Session
+	Children []*SessionNode
+}
+
+// GetSessionTree returns a tree rooted at rootID, including all user branch descendants.
+func (db *DB) GetSessionTree(rootID string) (*SessionNode, error) {
+	root, err := db.GetSession(rootID)
+	if err != nil {
+		return nil, err
+	}
+	if root == nil {
+		return nil, fmt.Errorf("session %s not found", rootID)
+	}
+
+	node := &SessionNode{Session: root}
+	if err := db.buildTree(node); err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+func (db *DB) buildTree(node *SessionNode) error {
+	branches, err := db.GetSessionBranches(node.Session.ID)
+	if err != nil {
+		return err
+	}
+	for _, branch := range branches {
+		child := &SessionNode{Session: branch}
+		if err := db.buildTree(child); err != nil {
+			return err
+		}
+		node.Children = append(node.Children, child)
+	}
+	return nil
+}
+
+// GetRootSession walks the parent chain to find the root session (parent_session_id = '').
+func (db *DB) GetRootSession(sessionID string) (*Session, error) {
+	currentID := sessionID
+	for i := 0; i < 100; i++ { // safety limit
+		sess, err := db.GetSession(currentID)
+		if err != nil {
+			return nil, err
+		}
+		if sess == nil {
+			return nil, fmt.Errorf("session %s not found", currentID)
+		}
+		if sess.ParentSessionID == "" {
+			return sess, nil
+		}
+		currentID = sess.ParentSessionID
+	}
+	return nil, fmt.Errorf("parent chain too deep (>100) for session %s", sessionID)
 }

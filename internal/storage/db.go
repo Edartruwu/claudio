@@ -213,6 +213,10 @@ func (db *DB) migrate() error {
 			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (plugin_name, key)
 		)`,
+		// 32 — session branching: nullable FK to messages.id marking the fork point
+		`ALTER TABLE sessions ADD COLUMN branch_from_message_id INTEGER REFERENCES messages(id)`,
+		// 33 — index for branch lookups
+		`CREATE INDEX IF NOT EXISTS idx_sessions_branch_from ON sessions(branch_from_message_id)`,
 	}
 
 	for i, m := range migrations {
