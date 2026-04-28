@@ -72,7 +72,7 @@ type Runtime struct {
 
 	// Pending providers
 	pendingProvidersMu sync.Mutex
-	pendingProviders   []LuaProviderConfig // defined in api_provider.go
+	pendingProviders   []LuaProviderConfig
 
 	// Agent tracking
 	agentMu          sync.RWMutex
@@ -94,6 +94,13 @@ type Runtime struct {
 	// Pending capabilities
 	pendingCapsMu sync.Mutex
 	pendingCaps   []LuaCapability
+
+	// UI extension state — protected by uiMu.
+	uiMu                  sync.RWMutex
+	StatuslineFn          *lua.LFunction
+	statuslinePlugin      *loadedPlugin
+	pendingWhichkeyGroups []WhichkeyGroup
+	pendingPaletteEntries []PaletteEntry
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -267,7 +274,10 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(sessionTable, "on_message", L.NewFunction(r.apiSessionOnMessage(plugin)))
 	L.SetField(claudio, "session", sessionTable)
 
-	// Global settings + UI APIs (available to all plugins and init scripts)
+	// claudio.ui sub-table (real impl from api_tui.go)
+	L.SetField(claudio, "ui", r.injectUIAPI(L, plugin))
+
+	// Global settings + config APIs
 	r.injectGlobalConfigAPI(L, claudio)
 
 	L.SetGlobal("claudio", claudio)

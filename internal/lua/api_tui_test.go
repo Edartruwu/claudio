@@ -1,223 +1,210 @@
 package lua
 
 import (
+	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
-	"github.com/Abraxas-365/claudio/internal/tui/styles"
-	"github.com/charmbracelet/lipgloss"
-	lua "github.com/yuin/gopher-lua"
+	"github.com/Abraxas-365/claudio/internal/bus"
 )
 
-// resetColors restores default Gruvbox palette after each test.
-func resetColors(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() {
-		styles.Primary = lipgloss.Color("#d3869b")
-		styles.Secondary = lipgloss.Color("#83a598")
-		styles.Success = lipgloss.Color("#b8bb26")
-		styles.Warning = lipgloss.Color("#fabd2f")
-		styles.Error = lipgloss.Color("#fb4934")
-		styles.Muted = lipgloss.Color("#928374")
-		styles.Surface = lipgloss.Color("#282828")
-		styles.SurfaceAlt = lipgloss.Color("#3c3836")
-		styles.Text = lipgloss.Color("#ebdbb2")
-		styles.Dim = lipgloss.Color("#bdae93")
-		styles.Subtle = lipgloss.Color("#504945")
-		styles.Orange = lipgloss.Color("#fe8019")
-		styles.Aqua = lipgloss.Color("#8ec07c")
-		styles.RebuildAll()
+// TestUIAPI_SetStatusline_Stored verifies that claudio.ui.set_statusline stores the function.
+func TestUIAPI_SetStatusline_Stored(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	dir := writePlugin(t, "statusline_plugin", `
+claudio.ui.set_statusline(function(ctx)
+  return ctx.mode .. "|" .. ctx.model
+end)
+`)
+	if err := rt.LoadPlugin("statusline_plugin", dir); err != nil {
+		t.Fatalf("LoadPlugin: %v", err)
+	}
+
+	rt.uiMu.RLock()
+	fn := rt.StatuslineFn
+	p := rt.statuslinePlugin
+	rt.uiMu.RUnlock()
+
+	if fn == nil {
+		t.Fatal("StatuslineFn not stored after set_statusline call")
+	}
+	if p == nil {
+		t.Fatal("statuslinePlugin not stored after set_statusline call")
+	}
+}
+
+// TestUIAPI_RenderStatusline verifies that the Lua fn is called and returns the right string.
+func TestUIAPI_RenderStatusline(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	dir := writePlugin(t, "sl_render", `
+claudio.ui.set_statusline(function(ctx)
+  return ctx.mode .. "|" .. ctx.model .. "|tokens:" .. ctx.tokens
+end)
+`)
+	if err := rt.LoadPlugin("sl_render", dir); err != nil {
+		t.Fatalf("LoadPlugin: %v", err)
+	}
+
+	ctx := StatuslineCtx{
+		Mode:    "normal",
+		Model:   "claude-test",
+		Tokens:  42,
+		Session: "my-session",
+	}
+	got := rt.RenderStatusline(ctx)
+	want := "normal|claude-test|tokens:42"
+	if got != want {
+		t.Errorf("RenderStatusline = %q; want %q", got, want)
+	}
+}
+
+// TestUIAPI_Popup_PublishesBusEvent verifies that claudio.ui.popup publishes the "ui.popup" event.
+func TestUIAPI_Popup_PublishesBusEvent(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	type popupPayload struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+		Width   int    `json:"width"`
+		Height  int    `json:"height"`
+	}
+
+	var (
+		mu      sync.Mutex
+		received *popupPayload
+	)
+
+	rt.bus.Subscribe("ui.popup", func(event bus.Event) {
+		var p popupPayload
+		if err := json.Unmarshal(event.Payload, &p); err != nil {
+			return
+		}
+		mu.Lock()
+		received = &p
+		mu.Unlock()
 	})
-}
 
-func newTestState(t *testing.T) *lua.LState {
-	t.Helper()
-	L := lua.NewState()
-	t.Cleanup(L.Close)
-	claudio := L.NewTable()
-	registerTUIAPI(L, claudio)
-	L.SetGlobal("claudio", claudio)
-	return L
-}
-
-// TestSetColor_ValidSlot mutates a single color slot and verifies the package var changed.
-func TestSetColor_ValidSlot(t *testing.T) {
-	resetColors(t)
-	L := newTestState(t)
-
-	err := L.DoString(`claudio.ui.set_color("primary", "#aabbcc")`)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if styles.Primary != lipgloss.Color("#aabbcc") {
-		t.Errorf("Primary: got %q, want #aabbcc", styles.Primary)
-	}
-}
-
-// TestSetColor_UnknownSlot returns an error for unknown slots.
-func TestSetColor_UnknownSlot(t *testing.T) {
-	L := newTestState(t)
-	err := L.DoString(`claudio.ui.set_color("nonexistent", "#ffffff")`)
-	if err == nil {
-		t.Error("expected error for unknown slot")
-	}
-	if !strings.Contains(err.Error(), "unknown color slot") {
-		t.Errorf("error should mention 'unknown color slot', got: %v", err)
-	}
-}
-
-// TestSetColor_MissingHash returns an error when hex lacks '#'.
-func TestSetColor_MissingHash(t *testing.T) {
-	L := newTestState(t)
-	err := L.DoString(`claudio.ui.set_color("primary", "aabbcc")`)
-	if err == nil {
-		t.Error("expected error for hex without #")
-	}
-}
-
-// TestSetTheme_BatchUpdate sets multiple slots at once.
-func TestSetTheme_BatchUpdate(t *testing.T) {
-	resetColors(t)
-	L := newTestState(t)
-
-	err := L.DoString(`
-claudio.ui.set_theme({
-  primary   = "#111111",
-  secondary = "#222222",
-  success   = "#333333",
+	dir := writePlugin(t, "popup_plugin", `
+claudio.ui.popup({
+  title   = "Test Popup",
+  content = "Hello from plugin!",
+  width   = 80,
+  height  = 12,
 })
 `)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := rt.LoadPlugin("popup_plugin", dir); err != nil {
+		t.Fatalf("LoadPlugin: %v", err)
 	}
-	if styles.Primary != lipgloss.Color("#111111") {
-		t.Errorf("primary: got %q", styles.Primary)
+
+	// Bus subscribers are called synchronously in Publish; no sleep needed.
+	// But give a brief window in case of any async buffering.
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		r := received
+		mu.Unlock()
+		if r != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	if styles.Secondary != lipgloss.Color("#222222") {
-		t.Errorf("secondary: got %q", styles.Secondary)
+
+	mu.Lock()
+	r := received
+	mu.Unlock()
+
+	if r == nil {
+		t.Fatal("ui.popup bus event not received")
 	}
-	if styles.Success != lipgloss.Color("#333333") {
-		t.Errorf("success: got %q", styles.Success)
+	if r.Title != "Test Popup" {
+		t.Errorf("popup title = %q; want %q", r.Title, "Test Popup")
+	}
+	if !strings.Contains(r.Content, "Hello from plugin!") {
+		t.Errorf("popup content = %q; want to contain 'Hello from plugin!'", r.Content)
+	}
+	if r.Width != 80 {
+		t.Errorf("popup width = %d; want 80", r.Width)
+	}
+	if r.Height != 12 {
+		t.Errorf("popup height = %d; want 12", r.Height)
 	}
 }
 
-// TestSetTheme_UnknownSlotErrors reports unknown slots.
-func TestSetTheme_UnknownSlotErrors(t *testing.T) {
-	L := newTestState(t)
-	err := L.DoString(`claudio.ui.set_theme({ doesnotexist = "#ffffff" })`)
-	if err == nil {
-		t.Error("expected error for unknown slot in set_theme")
-	}
-}
+// TestUIAPI_RegisterWhichkey_Stored verifies pending whichkey groups are stored.
+func TestUIAPI_RegisterWhichkey_Stored(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
 
-// TestSetTheme_TokyoNight smoke-tests a real community theme.
-func TestSetTheme_TokyoNight(t *testing.T) {
-	resetColors(t)
-	L := newTestState(t)
-
-	err := L.DoString(`
-claudio.ui.set_theme({
-  primary     = "#7aa2f7",
-  secondary   = "#9ece6a",
-  success     = "#9ece6a",
-  warning     = "#e0af68",
-  error       = "#f7768e",
-  muted       = "#565f89",
-  surface     = "#1a1b26",
-  surface_alt = "#24283b",
-  text        = "#c0caf5",
-  dim         = "#9aa5ce",
-  subtle      = "#414868",
-  orange      = "#ff9e64",
-  aqua        = "#73daca",
+	dir := writePlugin(t, "wk_plugin", `
+claudio.ui.register_whichkey("Plugin", {
+  { key = "p", desc = "Open plugin panel" },
+  { key = "r", desc = "Reload plugin" },
 })
 `)
-	if err != nil {
-		t.Fatalf("tokyonight theme failed: %v", err)
+	if err := rt.LoadPlugin("wk_plugin", dir); err != nil {
+		t.Fatalf("LoadPlugin: %v", err)
 	}
-	if styles.Primary != lipgloss.Color("#7aa2f7") {
-		t.Errorf("primary: got %q", styles.Primary)
+
+	groups := rt.PendingWhichkeyGroups()
+	if len(groups) != 1 {
+		t.Fatalf("PendingWhichkeyGroups count = %d; want 1", len(groups))
 	}
-	if styles.Surface != lipgloss.Color("#1a1b26") {
-		t.Errorf("surface: got %q", styles.Surface)
+	g := groups[0]
+	if g.Group != "Plugin" {
+		t.Errorf("group name = %q; want 'Plugin'", g.Group)
+	}
+	if len(g.Bindings) != 2 {
+		t.Fatalf("bindings count = %d; want 2", len(g.Bindings))
+	}
+	if g.Bindings[0].Key != "p" || g.Bindings[0].Desc != "Open plugin panel" {
+		t.Errorf("binding[0] = {%q,%q}; want {p, Open plugin panel}", g.Bindings[0].Key, g.Bindings[0].Desc)
+	}
+	if g.Bindings[1].Key != "r" || g.Bindings[1].Desc != "Reload plugin" {
+		t.Errorf("binding[1] = {%q,%q}; want {r, Reload plugin}", g.Bindings[1].Key, g.Bindings[1].Desc)
 	}
 }
 
-// TestSetBorder_ValidStyles verifies all valid border names are accepted.
-func TestSetBorder_ValidStyles(t *testing.T) {
-	L := newTestState(t)
-	for _, name := range []string{"rounded", "block", "double", "normal", "hidden"} {
-		err := L.DoString(`claudio.ui.set_border("` + name + `")`)
-		if err != nil {
-			t.Errorf("set_border(%q) failed: %v", name, err)
-		}
-	}
-}
+// TestUIAPI_RegisterPaletteEntry_Stored verifies pending palette entries are stored.
+func TestUIAPI_RegisterPaletteEntry_Stored(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
 
-// TestSetBorder_InvalidName returns an error for unknown border names.
-func TestSetBorder_InvalidName(t *testing.T) {
-	L := newTestState(t)
-	err := L.DoString(`claudio.ui.set_border("neon-glow")`)
-	if err == nil {
-		t.Error("expected error for unknown border style")
-	}
-	if !strings.Contains(err.Error(), "unknown border style") {
-		t.Errorf("error should mention 'unknown border style', got: %v", err)
-	}
-}
-
-// TestGetColors_ReturnsTable verifies get_colors() returns a table with all slots.
-func TestGetColors_ReturnsTable(t *testing.T) {
-	L := newTestState(t)
-	err := L.DoString(`
-local c = claudio.ui.get_colors()
-assert(type(c) == "table", "expected table")
-assert(c.primary ~= nil, "primary missing")
-assert(c.secondary ~= nil, "secondary missing")
-assert(c.success ~= nil, "success missing")
-assert(c.warning ~= nil, "warning missing")
-assert(c.error ~= nil, "error missing")
-assert(c.surface ~= nil, "surface missing")
-assert(c.text ~= nil, "text missing")
+	dir := writePlugin(t, "palette_plugin", `
+claudio.ui.register_palette_entry({
+  name   = "Reload Plugins",
+  action = "reload_plugins",
+})
+claudio.ui.register_palette_entry({
+  name        = "Open Debug Panel",
+  action      = "open_debug",
+  description = "Opens the plugin debug panel",
+})
 `)
-	if err != nil {
-		t.Fatalf("get_colors assertion failed: %v", err)
+	if err := rt.LoadPlugin("palette_plugin", dir); err != nil {
+		t.Fatalf("LoadPlugin: %v", err)
 	}
-}
 
-// TestGetColors_ReflectsChanges verifies get_colors() returns updated values after set_color.
-func TestGetColors_ReflectsChanges(t *testing.T) {
-	resetColors(t)
-	L := newTestState(t)
-	err := L.DoString(`
-claudio.ui.set_color("primary", "#deadbe")
-local c = claudio.ui.get_colors()
-assert(c.primary == "#deadbe", "expected #deadbe, got " .. tostring(c.primary))
-`)
-	if err != nil {
-		t.Fatalf("get_colors reflect test failed: %v", err)
+	entries := rt.PendingPaletteEntries()
+	if len(entries) != 2 {
+		t.Fatalf("PendingPaletteEntries count = %d; want 2", len(entries))
 	}
-}
-
-// TestRebuildAll_DoesNotPanic ensures RebuildAll can be called without panicking.
-func TestRebuildAll_DoesNotPanic(t *testing.T) {
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("RebuildAll panicked: %v", r)
-		}
-	}()
-	styles.RebuildAll()
-}
-
-// TestSurfaceAltSlot verifies surface_alt (underscore) slot works.
-func TestSurfaceAltSlot(t *testing.T) {
-	resetColors(t)
-	L := newTestState(t)
-	err := L.DoString(`claudio.ui.set_color("surface_alt", "#101010")`)
-	if err != nil {
-		t.Fatalf("surface_alt: %v", err)
+	if entries[0].Name != "Reload Plugins" {
+		t.Errorf("entry[0].Name = %q; want 'Reload Plugins'", entries[0].Name)
 	}
-	if styles.SurfaceAlt != lipgloss.Color("#101010") {
-		t.Errorf("SurfaceAlt: got %q", styles.SurfaceAlt)
+	if entries[0].Action != "reload_plugins" {
+		t.Errorf("entry[0].Action = %q; want 'reload_plugins'", entries[0].Action)
+	}
+	if entries[1].Name != "Open Debug Panel" {
+		t.Errorf("entry[1].Name = %q; want 'Open Debug Panel'", entries[1].Name)
+	}
+	if entries[1].Description != "Opens the plugin debug panel" {
+		t.Errorf("entry[1].Description = %q; want description set", entries[1].Description)
 	}
 }

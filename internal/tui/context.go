@@ -35,7 +35,7 @@ type AppContext struct {
 	Auditor     *security.Auditor
 	TeamManager *teams.Manager
 	TeamRunner  *teams.TeammateRunner
-	LuaRuntime  *luart.Runtime
+	LuaRuntime  *luart.Runtime // optional; nil when Lua plugin system is disabled
 }
 
 // WithAppContext sets the shared application context for TUI panels.

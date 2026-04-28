@@ -15,6 +15,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	ansitruncate "github.com/muesli/reflow/truncate"
 
+	luart "github.com/Abraxas-365/claudio/internal/lua"
+
 	"github.com/Abraxas-365/claudio/internal/agents"
 	"github.com/Abraxas-365/claudio/internal/api"
 	"github.com/Abraxas-365/claudio/internal/app"
@@ -208,7 +210,15 @@ type Model struct {
 	streamDirty bool
 
 	// busUnsub removes the EventBgTaskComplete subscription; called on quit.
-	busUnsub func()
+	busUnsub  func()
+	busUnsub2 func() // removes the ui.popup subscription
+
+	// Lua popup overlay state
+	popupVisible bool
+	popupTitle   string
+	popupContent string
+	popupWidth   int
+	popupHeight  int
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -250,6 +260,11 @@ type tuiEvent struct {
 	err           error
 	askUserReq    tools.AskUserRequest // for "askuser_request" events
 	teammateEvent *teams.TeammateEvent // for "teammate_event" events
+	// ui_popup event fields
+	popupTitle   string
+	popupContent string
+	popupWidth   int
+	popupHeight  int
 }
 
 // Tea messages
@@ -412,6 +427,43 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 				// Channel full, drop (buffer is 64, should be sufficient)
 			}
 		})
+	}
+
+	// Subscribe to Lua ui.popup events
+	if m.appCtx != nil && m.appCtx.Bus != nil {
+		eventCh := m.eventCh // capture channel reference
+		m.busUnsub2 = m.appCtx.Bus.Subscribe("ui.popup", func(event bus.Event) {
+			var p struct {
+				Title   string `json:"title"`
+				Content string `json:"content"`
+				Width   int    `json:"width"`
+				Height  int    `json:"height"`
+			}
+			if err := json.Unmarshal(event.Payload, &p); err != nil {
+				return
+			}
+			if p.Width == 0 {
+				p.Width = 60
+			}
+			if p.Height == 0 {
+				p.Height = 10
+			}
+			select {
+			case eventCh <- tuiEvent{
+				typ:          "ui_popup",
+				popupTitle:   p.Title,
+				popupContent: p.Content,
+				popupWidth:   p.Width,
+				popupHeight:  p.Height,
+			}:
+			default:
+			}
+		})
+	}
+
+	// Apply Lua plugin UI extensions (whichkey groups, palette entries)
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		m.applyLuaUIExtensions()
 	}
 
 	// Wire keymap into which-key for dynamic binding display
@@ -817,6 +869,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Dismiss which-key popup on any keypress
 		if m.whichKey.IsActive() {
 			m.whichKey.Hide()
+		}
+		// Dismiss Lua popup on any keypress
+		if m.popupVisible {
+			m.popupVisible = false
+			return m, nil
 		}
 		switch msg.String() {
 		case "shift+tab":
@@ -2530,6 +2587,13 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			// Engine is idle — deliver notification immediately
 			return m.handleSubmit(event.text)
 		}
+
+	case "ui_popup":
+		m.popupVisible = true
+		m.popupTitle = event.popupTitle
+		m.popupContent = event.popupContent
+		m.popupWidth = event.popupWidth
+		m.popupHeight = event.popupHeight
 
 	case "approval_needed":
 		m.finalizeStreamingMessage()
@@ -6429,11 +6493,43 @@ func (m *Model) sidebarWidth() int {
 	return w
 }
 
+// applyLuaUIExtensions applies plugin-registered whichkey groups and palette entries.
+// Called once during New() after all panels are initialized.
+func (m *Model) applyLuaUIExtensions() {
+	rt := m.appCtx.LuaRuntime
+
+	// Apply whichkey extra bindings
+	for _, group := range rt.PendingWhichkeyGroups() {
+		var bindings []whichkey.Binding
+		for _, e := range group.Bindings {
+			bindings = append(bindings, whichkey.Binding{Key: e.Key, Desc: e.Desc})
+		}
+		m.whichKey.AddExtraBindings(bindings)
+	}
+
+	// Apply palette entries
+	var items []commandpalette.Item
+	for _, e := range rt.PendingPaletteEntries() {
+		desc := e.Description
+		if desc == "" {
+			desc = e.Action
+		}
+		items = append(items, commandpalette.Item{Name: e.Name, Description: desc})
+	}
+	if len(items) > 0 {
+		m.palette.AddItems(items)
+	}
+}
+
 // cleanup releases resources held by the model. Must be called before tea.Quit.
 func (m *Model) cleanup() {
 	if m.busUnsub != nil {
 		m.busUnsub()
 		m.busUnsub = nil
+	}
+	if m.busUnsub2 != nil {
+		m.busUnsub2()
+		m.busUnsub2 = nil
 	}
 }
 
@@ -6563,6 +6659,10 @@ func (m Model) View() string {
 	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
 		overlay := m.sessionPicker.View()
 		vpView = placeOverlay(vpView, overlay, m.width, m.viewport.Height)
+	}
+	if m.popupVisible {
+		overlay := m.renderLuaPopup()
+		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
 	// Full-screen agent detail overlay replaces viewport entirely
 	if m.focus == FocusAgentDetail && m.agentDetail != nil {
@@ -6813,9 +6913,58 @@ func (m Model) renderSearchBar() string {
 	return " " + left + strings.Repeat(" ", gap) + right + " "
 }
 
+// renderLuaPopup renders the Lua plugin popup overlay.
+func (m Model) renderLuaPopup() string {
+	w := m.popupWidth
+	h := m.popupHeight
+	if w <= 0 {
+		w = 60
+	}
+	if h <= 0 {
+		h = 10
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		styles.StatusLineRightStyle.Render(m.popupTitle),
+		"",
+		m.popupContent,
+	)
+	return lipgloss.NewStyle().
+		Width(w).
+		Height(h).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.Primary).
+		Padding(0, 1).
+		Render(content)
+}
+
 // renderStatusLine renders a 1-line nvim-style statusline above the prompt.
 // When a toast is active, the toast text replaces the statusline content.
 func (m Model) renderStatusLine() string {
+	// Lua plugin statusline takes priority (except over toast).
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil && m.appCtx.LuaRuntime.StatuslineFn != nil {
+		var modeLabel string
+		switch m.focus {
+		case FocusViewport:
+			modeLabel = "viewport"
+		case FocusPanel:
+			modeLabel = "panel"
+		default:
+			modeLabel = "normal"
+		}
+		luaCtx := luart.StatuslineCtx{
+			Mode:    modeLabel,
+			Model:   m.model,
+			Tokens:  m.totalTokens,
+			Session: m.sessionName(),
+		}
+		if s := m.appCtx.LuaRuntime.RenderStatusline(luaCtx); s != "" {
+			return lipgloss.NewStyle().
+				Background(styles.SurfaceAlt).
+				Width(m.width).
+				Render(s)
+		}
+	}
+
 	// Toast takes priority: show toast text in this row.
 	if m.toast.IsActive() {
 		toastStyle := lipgloss.NewStyle().
