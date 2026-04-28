@@ -968,48 +968,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Buffer scroll keys (active when a buffer is open)
 		if m.activeBufferName != "" && m.windowMgr != nil {
-			lb, hasLive := m.windowMgr.GetLiveBuffer(m.activeBufferName)
-			var maxOffset int
-			if hasLive {
-				maxOffset = lb.Len() - (m.viewport.Height - 1)
-				if maxOffset < 0 {
-					maxOffset = 0
-				}
-			}
-			switch msg.String() {
-			case "k", "up":
-				m.bufferScrollOffset += 3
-				if m.bufferScrollOffset > maxOffset {
-					m.bufferScrollOffset = maxOffset
-				}
-				return m, nil
-			case "j", "down":
-				m.bufferScrollOffset -= 3
-				if m.bufferScrollOffset < 0 {
-					m.bufferScrollOffset = 0
-				}
-				return m, nil
-			case "ctrl+d":
-				half := (m.viewport.Height - 1) / 2
-				m.bufferScrollOffset += half
-				if m.bufferScrollOffset > maxOffset {
-					m.bufferScrollOffset = maxOffset
-				}
-				return m, nil
-			case "ctrl+u":
-				half := (m.viewport.Height - 1) / 2
-				m.bufferScrollOffset -= half
-				if m.bufferScrollOffset < 0 {
-					m.bufferScrollOffset = 0
-				}
-				return m, nil
-			case "G":
-				m.bufferScrollOffset = 0
-				return m, nil
-			case "esc":
+			// ESC always closes the buffer regardless of vim mode.
+			if msg.String() == "esc" {
 				m.activeBufferName = ""
 				m.bufferScrollOffset = 0
 				return m, nil
+			}
+			// Scroll keys only fire in vim Normal mode (or when vim is disabled)
+			// so they don't interfere with typing in Insert mode.
+			if m.prompt.IsVimNormal() || !m.prompt.IsVimEnabled() {
+				lb, hasLive := m.windowMgr.GetLiveBuffer(m.activeBufferName)
+				var maxOffset int
+				if hasLive {
+					maxOffset = lb.Len() - (m.viewport.Height - 1)
+					if maxOffset < 0 {
+						maxOffset = 0
+					}
+				}
+				switch msg.String() {
+				case "k", "up":
+					m.bufferScrollOffset += 3
+					if m.bufferScrollOffset > maxOffset {
+						m.bufferScrollOffset = maxOffset
+					}
+					return m, nil
+				case "j", "down":
+					m.bufferScrollOffset -= 3
+					if m.bufferScrollOffset < 0 {
+						m.bufferScrollOffset = 0
+					}
+					return m, nil
+				case "ctrl+d":
+					half := (m.viewport.Height - 1) / 2
+					m.bufferScrollOffset += half
+					if m.bufferScrollOffset > maxOffset {
+						m.bufferScrollOffset = maxOffset
+					}
+					return m, nil
+				case "ctrl+u":
+					half := (m.viewport.Height - 1) / 2
+					m.bufferScrollOffset -= half
+					if m.bufferScrollOffset < 0 {
+						m.bufferScrollOffset = 0
+					}
+					return m, nil
+				case "G":
+					m.bufferScrollOffset = 0
+					return m, nil
+				}
 			}
 		}
 		switch msg.String() {

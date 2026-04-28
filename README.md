@@ -427,13 +427,19 @@ claudio.ui.register_sidebar_block({
 ### Load order
 
 ```
-1. internal/lua/defaults.lua   ← embedded binary defaults
+1. internal/lua/defaults.lua   ← embedded binary defaults (Gruvbox theme, keymaps, sidebar)
 2. ~/.claudio/init.lua         ← your personal config
 3. ~/.claudio/plugins/*/       ← community plugins
 4. .claudio/init.lua           ← project overrides (per-repo, wins over personal)
 ```
 
 Each layer overrides the one before. Project config wins over personal; personal wins over defaults.
+
+### Example configs
+
+A fully-annotated reference config lives at [`examples/init.lua`](examples/init.lua) — copy it to `~/.claudio/init.lua` as a starting point. It includes Gruvbox, Tokyo Night, and Catppuccin Mocha themes as drop-in alternatives, plus examples for every API surface (sidebar blocks, keymaps, providers, hooks, plugins).
+
+Lua plugin examples live in [`examples/lua-plugins/`](examples/lua-plugins/).
 
 ### Lua Plugins
 
