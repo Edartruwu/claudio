@@ -110,6 +110,10 @@ type TeammateState struct {
 	// the result directly and a task-notification would be redundant noise.
 	Foreground bool
 
+	// Ephemeral is true for Agent-tool spawns: the agent appears in the team
+	// panel while running but is removed automatically on completion.
+	Ephemeral bool
+
 	cancel        context.CancelFunc
 	mu            sync.Mutex
 	idleCh        chan struct{} // closed when teammate becomes idle
@@ -408,6 +412,7 @@ type SpawnConfig struct {
 	Isolation            string         // "worktree" for git worktree isolation
 	MemoryDir            string         // optional agent-scoped memory directory (for crystallized agents)
 	Foreground           bool           // true when the lead is blocking on WaitForOne — suppresses task-notification
+	Ephemeral            bool           // true for Agent-tool spawns: visible while running, removed from panel on completion
 	TaskIDs              []string       // task IDs to auto-complete when agent finishes
 	AutoCompactThreshold int            // % of context window to trigger full compact (0 = engine default 95%)
 	ParentAgentID        string         // non-empty when spawned by another teammate
@@ -484,6 +489,7 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 		AutoCompactThreshold: cfg.AutoCompactThreshold,
 		MemoryDir:            cfg.MemoryDir,
 		Foreground:           cfg.Foreground,
+		Ephemeral:            cfg.Ephemeral,
 		AdvisorConfig:        cfg.AdvisorConfig,
 		Status:       StatusWorking,
 		StartedAt:    time.Now(),
@@ -513,8 +519,9 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 
 	// Emit agent spawn event (initial status="running") so agent appears immediately in CommandCenter team list.
 	// Without this, agents only appear after completion (EventAgentStatus fired in runTeammate cleanup).
-	// Foreground (sync) agents are not tracked in the team panel — suppress to avoid spurious toasts.
-	if r.eventBus != nil && !cfg.Foreground {
+	// Foreground (sync) agents are not tracked in the team panel — suppress to avoid spurious toasts,
+	// unless the agent is ephemeral (Agent-tool spawn) which should appear while running but auto-remove on done.
+	if r.eventBus != nil && (!cfg.Foreground || cfg.Ephemeral) {
 		payload, _ := json.Marshal(attach.AgentStatusPayload{
 			Name:          cfg.AgentName,
 			Status:        "working",
@@ -543,7 +550,8 @@ func (r *TeammateRunner) Spawn(cfg SpawnConfig) (*TeammateState, error) {
 
 	// Launch heartbeat ticker — emits periodic EventAgentStatus so the Team tab
 	// shows live metrics (call_count, elapsed_secs, current_tool) while running.
-	if r.eventBus != nil {
+	// Only for background agents and ephemeral foreground agents (Agent-tool spawns).
+	if r.eventBus != nil && (!cfg.Foreground || cfg.Ephemeral) {
 		go func() {
 			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
@@ -841,9 +849,12 @@ Your task will be provided in the user message.`, cfg.AgentName, cfg.TeamName)
 	// Normalize internal MemberStatus to the protocol status vocabulary:
 	// StatusComplete → "done" (matches attach.AgentStatusPayload comment: idle|working|done|waiting).
 	// Foreground (sync) agents skip this — caller has the result directly; no toast/notification needed.
-	if r.eventBus != nil && !state.Foreground {
+	// Ephemeral agents (Agent-tool spawns) emit "removed" so the client deletes the card from the panel.
+	if r.eventBus != nil && (!state.Foreground || state.Ephemeral) {
 		protocolStatus := string(status)
-		if status == StatusComplete {
+		if state.Ephemeral {
+			protocolStatus = "removed"
+		} else if status == StatusComplete {
 			protocolStatus = "done"
 		}
 		payload, _ := json.Marshal(attach.AgentStatusPayload{

@@ -530,6 +530,14 @@ func (h *Hub) processEvent(sessionID string, env attach.Envelope) {
 			return
 		}
 		agentID := fmt.Sprintf("%s:%s", sessionID, p.Name)
+		// "removed" = ephemeral Agent-tool spawn completed — delete from DB so it
+		// doesn't reappear on reconnect, and skip the push notification.
+		if p.Status == "removed" {
+			if err := h.storage.DeleteAgent(agentID); err != nil {
+				log.Printf("hub: DeleteAgent session=%s agent=%s: %v", sessionID, p.Name, err)
+			}
+			break
+		}
 		if err := h.storage.UpsertAgent(Agent{
 			ID:            agentID,
 			SessionID:     sessionID,

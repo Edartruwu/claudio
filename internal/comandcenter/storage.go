@@ -1073,6 +1073,12 @@ func (s *Storage) ListAgents(sessionID string) ([]Agent, error) {
 	return agents, rows.Err()
 }
 
+// DeleteAgent removes a single agent record by ID (used for ephemeral Agent-tool spawns).
+func (s *Storage) DeleteAgent(id string) error {
+	_, err := s.writeDB.Exec(`DELETE FROM cc_agents WHERE id=?`, id)
+	return err
+}
+
 // DeleteAgentsBySession removes all agent records for a session (used by /clear).
 func (s *Storage) DeleteAgentsBySession(sessionID string) error {
 	_, err := s.writeDB.Exec(`DELETE FROM cc_agents WHERE session_id=?`, sessionID)

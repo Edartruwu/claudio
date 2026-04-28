@@ -115,6 +115,8 @@
   function updateAgentCard(name, status, currentTool) {
     var card = document.querySelector('[data-agent-name="' + name + '"]');
     if (!card) return;
+    // Ephemeral agents (Agent-tool spawns) signal completion with "removed" — delete the card.
+    if (status === 'removed') { card.remove(); return; }
 
     // Avatar pulse ring (running → add class, else remove)
     var avatar = card.querySelector('.flex.items-center.justify-center');

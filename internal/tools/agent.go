@@ -422,6 +422,7 @@ func (t *AgentTool) Execute(ctx context.Context, input json.RawMessage) (*Result
 			MaxTurns:          maxTurns,
 			MemoryDir:         agentDef.MemoryDir,
 			Foreground:        !in.RunInBackground,
+			Ephemeral:         true,
 			TaskIDs:           in.TaskIDs,
 			ParentAgentID:     teams.TeammateAgentIDFromContext(ctx),
 			MergeWhenFinished: in.MergeWhenFinished,
