@@ -651,6 +651,11 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 			tool.Runner = teamRunner
 		}
 	}
+	if lt, err := registry.Get("ListTeammates"); err == nil {
+		if tool, ok := lt.(*tools.ListTeammatesTool); ok {
+			tool.Runner = teamRunner
+		}
+	}
 
 	// Wire memory store into MemoryTool and RecallTool
 	if memTool, err := registry.Get("Memory"); err == nil {

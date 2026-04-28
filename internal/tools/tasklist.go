@@ -24,7 +24,7 @@ type bgTaskListInput struct {
 func (t *BgTaskListTool) Name() string { return "BgTaskList" }
 
 func (t *BgTaskListTool) Description() string {
-	return `Lists background tasks (shell commands and agents) for the current session. Shows task ID, type, status, description, and duration. Use this to find task IDs before calling TaskOutput or TaskStop — for example to find a running server process you need to kill or restart.`
+	return `List background shell/bash tasks and Agent-tool tasks started in this session. Returns task ID, type, status, and duration. NOTE: this does NOT show SpawnTeammate agents — use ListTeammates for those.`
 }
 
 func (t *BgTaskListTool) InputSchema() json.RawMessage {

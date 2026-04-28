@@ -361,6 +361,7 @@ var TeamToolNames = []string{
 	"SpawnTeammate",
 	"InstantiateTeam",
 	"PurgeTeammates",
+	"ListTeammates",
 }
 
 // TeamEagerToolNames lists all tools that should be force-eager (non-deferred)
@@ -371,6 +372,7 @@ var TeamEagerToolNames = []string{
 	"SpawnTeammate",
 	"InstantiateTeam",
 	"PurgeTeammates",
+	"ListTeammates",
 	"TaskCreate",
 	"TaskList",
 	"TaskGet",
@@ -444,6 +446,8 @@ func DefaultRegistry() *Registry {
 	r.Register(&SpawnTeammateTool{deferrable: newDeferrable("spawn teammate agent background parallel named")})
 	r.Register(&InstantiateTeamTool{deferrable: newDeferrable("instantiate team template load roster")})
 	r.Register(&PurgeTeammatesTool{deferrable: newDeferrable("purge remove completed failed agents worktrees")})
+	r.Register(&ListTeammatesTool{deferrable: newDeferrable("list teammates agents spawned running status")})
+
 
 	// Master session coordination (AttachClient/AttachURL injected later)
 	r.Register(&SendToSessionTool{deferrable: newDeferrable("send message to master session ComandCenter")})
