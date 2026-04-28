@@ -581,7 +581,8 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 					handler := &query.CollectHandler{Builder: &output}
 					cwd, _ := os.Getwd()
 					engine := query.NewEngineWithConfig(m.apiClient, m.registry, handler, query.EngineConfig{
-						Model: smallModel,
+						Model:     smallModel,
+						SessionID: m.engineConfig.SessionID,
 					})
 					if m.appCtx != nil && m.appCtx.Bus != nil {
 						engine.SetEventBus(m.appCtx.Bus)

@@ -242,58 +242,78 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	// Wire session ID into CronCreate tool so cron entries track their session.
 	if ct, err := registry.Get("CronCreate"); err == nil {
 		if tool, ok := ct.(*tools.CronCreateTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	// Wire session ID into TaskCreate tool so tasks are visible in the web UI.
 	if tc, err := registry.Get("TaskCreate"); err == nil {
 		if tool, ok := tc.(*tools.TaskCreateTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	// Wire session ID into TaskUpdate tool so updates are stored under the correct session.
 	if tu, err := registry.Get("TaskUpdate"); err == nil {
 		if tool, ok := tu.(*tools.TaskUpdateTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	// Wire session ID into TaskList tool so it filters by session.
 	if tl, err := registry.Get("TaskList"); err == nil {
 		if tool, ok := tl.(*tools.TaskListTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	// Wire session ID into TaskGet tool so it filters by session.
 	if tg, err := registry.Get("TaskGet"); err == nil {
 		if tool, ok := tg.(*tools.TaskGetTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	// Wire session ID into TaskStop/TaskOutput for session-scoped access control.
 	if ts, err := registry.Get("TaskStop"); err == nil {
 		if tool, ok := ts.(*tools.TaskStopTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	if to, err := registry.Get("TaskOutput"); err == nil {
 		if tool, ok := to.(*tools.TaskOutputTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	if bl, err := registry.Get("BgTaskList"); err == nil {
 		if tool, ok := bl.(*tools.BgTaskListTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	// Wire session ID into Bash/Agent so background tasks are tagged with the owning session.
 	if b, err := registry.Get("Bash"); err == nil {
 		if tool, ok := b.(*tools.BashTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	if a, err := registry.Get("Agent"); err == nil {
 		if tool, ok := a.(*tools.AgentTool); ok {
-			tool.SessionID = cfg.SessionID
+			if cfg.SessionID != "" {
+				tool.SessionID = cfg.SessionID
+			}
 		}
 	}
 	e.model = cfg.Model
