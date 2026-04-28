@@ -111,10 +111,6 @@ type Runtime struct {
 	pendingSidebarBlocksMu sync.Mutex
 	pendingSidebarBlocks   []SidebarBlockDef
 
-	// Window manager (wired after TUI init)
-	windowManagerMu sync.Mutex
-	windowManager   *windows.Manager
-
 	// Pending window registrations (registered before WindowManager is wired)
 	pendingWindowsMu sync.Mutex
 	pendingWindows   []WindowDef
