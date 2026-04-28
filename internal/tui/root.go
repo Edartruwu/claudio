@@ -229,7 +229,12 @@ type Model struct {
 	// pickerModel is live only while isPickerOpen is true.
 	pickerModel picker.Model
 	isPickerOpen bool
-	pickerKind   string // "buffers" | "agents" — disambiguates PickerDoneMsg handling
+	pickerKind   string // "buffers" | "agents" | "lua" — disambiguates PickerDoneMsg handling
+
+	// luaPickerCh receives picker.Config values from Lua goroutines.
+	// Channels are reference types: all Model copies share the same channel.
+	// Nil when no LuaRuntime is present.
+	luaPickerCh chan picker.Config
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -797,6 +802,22 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		m.appCtx.LuaRuntime.SetWindowManager(m.windowMgr)
 	}
 
+	// Wire interactive Lua picker opener: replace the static window-based
+	// opener set in app.go with one that dispatches into the running BubbleTea
+	// event loop via a buffered channel (channels are reference types — safe
+	// across all Model value copies that BubbleTea creates internally).
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		ch := make(chan picker.Config, 4)
+		m.luaPickerCh = ch
+		m.appCtx.LuaRuntime.SetPickerOpener(func(cfg picker.Config) {
+			select {
+			case ch <- cfg:
+			default:
+				// Buffer full — a picker is already queued; drop duplicate.
+			}
+		})
+	}
+
 	// Register AGUI panel as a managed float window.
 	// Render delegates to the pooled panel instance at call time so the
 	// window can be registered before the panel is created.
@@ -839,13 +860,17 @@ func buildPaletteItems(reg *commands.Registry) []commandpalette.Item {
 
 // Init initializes the model.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		tea.SetWindowTitle("Claudio"),
 		tea.EnableBracketedPaste,
 		m.waitForEvent(),
 		tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return logoTickMsg{} }),
 		tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return taskTickMsg{} }),
-	)
+	}
+	if m.luaPickerCh != nil {
+		cmds = append(cmds, m.waitForLuaPicker())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) waitForEvent() tea.Cmd {
@@ -855,6 +880,20 @@ func (m Model) waitForEvent() tea.Cmd {
 			return nil
 		}
 		return engineEventMsg(event)
+	}
+}
+
+// waitForLuaPicker blocks until a Lua plugin sends a picker.Config via luaPickerCh,
+// then returns an OpenLuaPickerMsg for the BubbleTea Update loop to handle.
+// Must be re-armed after each message so future calls are not missed.
+func (m Model) waitForLuaPicker() tea.Cmd {
+	ch := m.luaPickerCh
+	return func() tea.Msg {
+		cfg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return OpenLuaPickerMsg{Config: cfg}
 	}
 }
 
@@ -1599,6 +1638,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
+	case OpenLuaPickerMsg:
+		// Re-arm the listener immediately so subsequent Lua picker.open() calls
+		// are not missed while this picker is open or after it closes.
+		if m.luaPickerCh != nil {
+			cmds = append(cmds, m.waitForLuaPicker())
+		}
+		// If another picker is already open, close it first.
+		if m.isPickerOpen {
+			m.closePicker()
+		}
+		mdl := picker.New(msg.Config)
+		mdl.SetSize(m.width*3/4, m.height*3/4)
+		m.pickerModel = mdl
+		m.isPickerOpen = true
+		m.pickerKind = "lua"
+		m.focus = FocusPicker
+		m.prompt.Blur()
+		cmds = append(cmds, m.pickerModel.Init())
+		return m, tea.Batch(cmds...)
+
 	case picker.PickerClosedMsg:
 		// User cancelled (Esc/q).
 		m.closePicker()
@@ -1619,6 +1678,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "agents":
 			// Show selected agent info; AGUI panel holds deeper detail.
 			cmds = append(cmds, m.toast.Show("Agent: "+msg.Entry.Ordinal))
+		case "lua":
+			// OnSelect callback already fired inside picker.handleKey before
+			// PickerDoneMsg was emitted — nothing more to do here.
 		}
 		return m, tea.Batch(cmds...)
 
@@ -4157,6 +4219,12 @@ func (m *Model) applyPermissionRule(rule config.PermissionRule) {
 
 // permissionRuleSavedMsg is a no-op message indicating disk persistence completed.
 type permissionRuleSavedMsg struct{}
+
+// OpenLuaPickerMsg is dispatched when a Lua plugin calls claudio.picker.open().
+// The root model handles it by launching a fully interactive picker overlay.
+type OpenLuaPickerMsg struct {
+	Config picker.Config
+}
 
 // persistPermissionRuleCmd returns a tea.Cmd that persists a permission rule to disk
 // without blocking the BubbleTea event loop.
