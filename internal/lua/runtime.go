@@ -109,6 +109,10 @@ type Runtime struct {
 	sessionEndHdlrs     []luaHandler
 	messageHdlrs        []luaHandler
 
+	// Branch tracking
+	branchHdlrsMu sync.RWMutex
+	branchHdlrs   []luaHandler
+
 	// Pending capabilities
 	pendingCapsMu sync.Mutex
 	pendingCaps   []LuaCapability
@@ -374,6 +378,18 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(sessionTable, "on_message", L.NewFunction(r.apiSessionOnMessage(plugin)))
 	L.SetField(sessionTable, "messages", L.NewFunction(r.apiSessionMessages(plugin)))
 	L.SetField(claudio, "session", sessionTable)
+
+	// claudio.branch sub-table
+	branchTable := L.NewTable()
+	L.SetField(branchTable, "current", L.NewFunction(r.apiBranchCurrent(plugin)))
+	L.SetField(branchTable, "create", L.NewFunction(r.apiBranchCreate(plugin)))
+	L.SetField(branchTable, "parent", L.NewFunction(r.apiBranchParent(plugin)))
+	L.SetField(branchTable, "children", L.NewFunction(r.apiBranchChildren(plugin)))
+	L.SetField(branchTable, "root", L.NewFunction(r.apiBranchRoot(plugin)))
+	L.SetField(branchTable, "messages", L.NewFunction(r.apiBranchMessages(plugin)))
+	L.SetField(branchTable, "switch", L.NewFunction(r.apiBranchSwitch(plugin)))
+	L.SetField(branchTable, "on_branch", L.NewFunction(r.apiBranchOnBranch(plugin)))
+	L.SetField(claudio, "branch", branchTable)
 
 	// claudio.ui sub-table (real impl from api_tui.go)
 	L.SetField(claudio, "ui", r.injectUIAPI(L, plugin))

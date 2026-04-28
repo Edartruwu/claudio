@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -213,6 +214,7 @@ type Model struct {
 	// busUnsub removes the EventBgTaskComplete subscription; called on quit.
 	busUnsub  func()
 	busUnsub2 func() // removes the ui.popup subscription
+	busUnsub3 func() // removes the session.switch subscription
 
 	// Lua popup overlay state
 	popupVisible bool
@@ -289,6 +291,8 @@ type tuiEvent struct {
 	popupContent string
 	popupWidth   int
 	popupHeight  int
+	// session.switch event field
+	switchSessionID string
 }
 
 // Tea messages
@@ -479,6 +483,23 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 				popupWidth:   p.Width,
 				popupHeight:  p.Height,
 			}:
+			default:
+			}
+		})
+	}
+
+	// Subscribe to session.switch events (fired by Lua claudio.branch.switch)
+	if m.appCtx != nil && m.appCtx.Bus != nil {
+		eventCh := m.eventCh
+		m.busUnsub3 = m.appCtx.Bus.Subscribe("session.switch", func(event bus.Event) {
+			var p struct {
+				SessionID string `json:"session_id"`
+			}
+			if err := json.Unmarshal(event.Payload, &p); err != nil || p.SessionID == "" {
+				return
+			}
+			select {
+			case eventCh <- tuiEvent{typ: "session_switch", switchSessionID: p.SessionID}:
 			default:
 			}
 		})
@@ -1840,6 +1861,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err != nil {
 			return m, m.toast.Show(fmt.Sprintf("Branch: %v", err))
 		}
+		if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+			m.appCtx.LuaRuntime.NotifyBranchCreated(newSess.ID, msg.SessionID, strconv.FormatInt(lastMsgID, 10))
+		}
 		if m.sessionPicker != nil {
 			m.sessionPicker.Deactivate()
 			m.sessionPicker = nil
@@ -2882,6 +2906,9 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			// Engine is idle — deliver notification immediately
 			return m.handleSubmit(event.text)
 		}
+
+	case "session_switch":
+		m.doSwitchSession(event.switchSessionID)
 
 	case "ui_popup":
 		m.popupVisible = true
@@ -7109,6 +7136,10 @@ func (m *Model) cleanup() {
 	if m.busUnsub2 != nil {
 		m.busUnsub2()
 		m.busUnsub2 = nil
+	}
+	if m.busUnsub3 != nil {
+		m.busUnsub3()
+		m.busUnsub3 = nil
 	}
 }
 
