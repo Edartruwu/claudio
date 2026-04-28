@@ -149,6 +149,19 @@ type Runtime struct {
 	// LSP server manager (wired after LSP init)
 	lspManagerMu sync.RWMutex
 	lspManager   *lsp.ServerManager
+
+	// Data providers (wired after TUI init by root.go)
+	sessionProviderMu sync.RWMutex
+	sessionProvider   SessionProvider
+
+	filesProviderMu sync.RWMutex
+	filesProvider   FilesProvider
+
+	tasksProviderMu sync.RWMutex
+	tasksProvider   TasksProvider
+
+	tokensProviderMu sync.RWMutex
+	tokensProvider   TokensProvider
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -354,6 +367,9 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// claudio.lsp sub-table
 	r.injectLSPAPI(L, plugin, claudio)
 
+	// claudio.session.current, claudio.files, claudio.tasks, claudio.tokens
+	r.injectDataAPIs(L, claudio)
+
 	L.SetGlobal("claudio", claudio)
 }
 
@@ -448,4 +464,32 @@ func (r *Runtime) SetLSPManager(mgr *lsp.ServerManager) {
 	r.lspManagerMu.Lock()
 	defer r.lspManagerMu.Unlock()
 	r.lspManager = mgr
+}
+
+// SetSessionProvider wires the session data provider for claudio.session.current().
+func (r *Runtime) SetSessionProvider(p SessionProvider) {
+	r.sessionProviderMu.Lock()
+	defer r.sessionProviderMu.Unlock()
+	r.sessionProvider = p
+}
+
+// SetFilesProvider wires the files data provider for claudio.files.list().
+func (r *Runtime) SetFilesProvider(p FilesProvider) {
+	r.filesProviderMu.Lock()
+	defer r.filesProviderMu.Unlock()
+	r.filesProvider = p
+}
+
+// SetTasksProvider wires the tasks data provider for claudio.tasks.list().
+func (r *Runtime) SetTasksProvider(p TasksProvider) {
+	r.tasksProviderMu.Lock()
+	defer r.tasksProviderMu.Unlock()
+	r.tasksProvider = p
+}
+
+// SetTokensProvider wires the tokens data provider for claudio.tokens.usage().
+func (r *Runtime) SetTokensProvider(p TokensProvider) {
+	r.tokensProviderMu.Lock()
+	defer r.tokensProviderMu.Unlock()
+	r.tokensProvider = p
 }

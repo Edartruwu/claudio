@@ -721,6 +721,10 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		}
 	}
 
+	// 5. Built-in Lua plugins (sidebar blocks, etc.) — loaded after user plugins
+	// so user overrides take precedence by registering blocks with same id.
+	luaRuntime.LoadBuiltins()
+
 	// Apply any providers registered by Lua plugins / init.lua
 	luaRuntime.ApplyProviders(apiClient)
 
