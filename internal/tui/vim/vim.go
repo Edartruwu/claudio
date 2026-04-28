@@ -12,6 +12,7 @@ const (
 	ModeOperatorPending
 	ModeCharSearch // waiting for char after f/F/t/T
 	ModeReplace    // waiting for char after r
+	ModeCommand    // nvim-style : command line
 )
 
 // String returns the display name of the mode.
@@ -29,6 +30,8 @@ func (m Mode) String() string {
 		return "NORMAL"
 	case ModeReplace:
 		return "NORMAL"
+	case ModeCommand:
+		return "COMMAND"
 	default:
 		return "UNKNOWN"
 	}
@@ -163,6 +166,12 @@ func (s *State) handleNormal(key rune, text string, cursor int) Action {
 	}
 
 	count := s.consumeCount()
+
+	// ':' enters command mode — like nvim's command line.
+	if key == ':' {
+		s.Mode = ModeCommand
+		return Action{Type: ActionSwitchMode, SwitchMode: ModeCommand}
+	}
 
 	// Registry dispatch — all key handlers live in DefaultKeymaps / plugin registrations.
 	if km, ok := s.getRegistry().Lookup(key, ModeNormal); ok {

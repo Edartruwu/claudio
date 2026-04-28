@@ -198,6 +198,7 @@ type Paths struct {
 	Starters          string // ~/.claudio/designs/starters/
 	DB                string // ~/.claudio/claudio.db
 	Instincts         string // ~/.claudio/instincts.json
+	LSP               string // ~/.claudio/lsp/
 }
 
 var (
@@ -236,6 +237,7 @@ func GetPaths() *Paths {
 			Starters:          filepath.Join(base, "designs", "starters"),
 			DB:                filepath.Join(base, "claudio.db"),
 			Instincts:         filepath.Join(base, "instincts.json"),
+			LSP:               filepath.Join(base, "lsp"),
 		}
 	})
 	return paths
@@ -269,7 +271,7 @@ func GetProfileCredentialsPath(profile string) string {
 // EnsureDirs creates all required directories and bootstraps default config files.
 func EnsureDirs() error {
 	p := GetPaths()
-	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts, p.Rules, p.Agents, p.TeamTemplates, p.Memory, p.Projects, p.Logs, p.Plans, p.Cache, p.Designs, p.Starters}
+	dirs := []string{p.Home, p.Sessions, p.Plugins, p.Skills, p.Audit, p.Contexts, p.Rules, p.Agents, p.TeamTemplates, p.Memory, p.Projects, p.Logs, p.Plans, p.Cache, p.Designs, p.Starters, p.LSP}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
@@ -630,4 +632,13 @@ func ProjectDesignsDir(projectRoot string) string {
 	p := GetPaths()
 	slug := SanitizeProjectPath(projectRoot)
 	return filepath.Join(p.Projects, slug, "designs")
+}
+
+// SaveSettings persists s to the global settings file (~/.claudio/settings.json).
+func SaveSettings(s *Settings) error {
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(GetPaths().Settings, data, 0644)
 }

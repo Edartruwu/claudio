@@ -315,6 +315,11 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 			lspCfgs[k] = v
 		}
 	}
+	// Merge Lua LSP configs from ~/.claudio/lsp/*.lua (takes priority over *.lsp.json)
+	luaLspCfgs := plugins.LoadLuaLspConfigs(paths.LSP)
+	for k, v := range luaLspCfgs {
+		lspCfgs[k] = v
+	}
 	lspManager := lsp.NewServerManager(lspCfgs)
 	registry.SetLSPManager(lspManager)
 
@@ -689,6 +694,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	if err := luaRuntime.LoadAll(luaPluginsDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: lua plugins: %v\n", err)
 	}
+
+	// Apply any providers registered by Lua plugins / init.lua
+	luaRuntime.ApplyProviders(apiClient)
 
 	return &App{
 		Config:    settings,

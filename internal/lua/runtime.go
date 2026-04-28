@@ -6,6 +6,7 @@ package lua
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
@@ -39,8 +40,10 @@ type Runtime struct {
 	keymapRegistry  *vim.KeymapRegistry
 	pendingCommands []*pendingCommand
 
-	mu      sync.Mutex
-	plugins []*loadedPlugin
+	mu               sync.Mutex
+	plugins          []*loadedPlugin
+	changeHandlers   map[string][]configChangeHandler // key → on_change handlers
+	pendingProviders []LuaProviderConfig              // collected by register_provider()
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -140,6 +143,35 @@ func (r *Runtime) LoadPlugin(name, dir string) (retErr error) {
 	return nil
 }
 
+// ExecString runs arbitrary Lua code in a sandboxed LState.
+// It captures print() output and returns it as a string.
+// Use this for the :lua command in the TUI command line.
+func (r *Runtime) ExecString(code string) (string, error) {
+	L := lua.NewState()
+	defer L.Close()
+
+	p := &loadedPlugin{name: "repl", L: L}
+	r.injectAPI(L, p)
+
+	// capture print() output
+	var buf strings.Builder
+	L.SetGlobal("print", L.NewFunction(func(L *lua.LState) int {
+		n := L.GetTop()
+		parts := make([]string, n)
+		for i := 1; i <= n; i++ {
+			parts[i-1] = L.ToStringMeta(L.Get(i)).String()
+		}
+		buf.WriteString(strings.Join(parts, "\t"))
+		buf.WriteByte('\n')
+		return 0
+	}))
+
+	if err := L.DoString(code); err != nil {
+		return "", err
+	}
+	return strings.TrimRight(buf.String(), "\n"), nil
+}
+
 // Close shuts down all Lua VMs and unsubscribes bus handlers.
 func (r *Runtime) Close() {
 	r.mu.Lock()
@@ -169,12 +201,19 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(claudio, "register_keymap", L.NewFunction(r.apiRegisterKeymap(plugin)))
 	L.SetField(claudio, "register_command", L.NewFunction(r.apiRegisterCommand(plugin)))
 	L.SetField(claudio, "cmd", L.NewFunction(r.apiCmd(plugin)))
+	L.SetField(claudio, "register_provider", L.NewFunction(r.apiRegisterProvider(plugin)))
 
 	// keymap subtable: del + list (register_keymap stays at top level for compat)
 	keymapTbl := L.NewTable()
 	L.SetField(keymapTbl, "del", L.NewFunction(r.apiKeymapDel(plugin)))
 	L.SetField(keymapTbl, "list", L.NewFunction(r.apiKeymapList(plugin)))
 	L.SetField(claudio, "keymap", keymapTbl)
+
+	// TUI theme/style API (claudio.ui.*)
+	registerTUIAPI(L, claudio)
+
+	// Settings API (claudio.config.*)
+	r.registerConfigSettingsAPI(L, claudio)
 
 	L.SetGlobal("claudio", claudio)
 }

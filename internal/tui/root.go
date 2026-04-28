@@ -36,6 +36,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
 	"github.com/Abraxas-365/claudio/internal/tui/agentselector"
+	"github.com/Abraxas-365/claudio/internal/tui/cmdline"
 	"github.com/Abraxas-365/claudio/internal/tui/commandpalette"
 	"github.com/Abraxas-365/claudio/internal/tui/components"
 	"github.com/Abraxas-365/claudio/internal/tui/docks"
@@ -80,6 +81,7 @@ type Model struct {
 	spinner             components.SpinnerModel
 	permission          permissions.Model
 	palette             commandpalette.Model
+	cmdline             cmdline.Model
 	filePicker          filepicker.Model
 	modelSelector       modelselector.Model
 	agentSelector       agentselector.Model
@@ -647,6 +649,31 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			}
 			return strings.TrimRight(sb.String(), "\n")
 		},
+		ExecLua: func(code string) (string, error) {
+			if m.appCtx == nil || m.appCtx.LuaRuntime == nil {
+				return "", fmt.Errorf("Lua runtime not available")
+			}
+			return m.appCtx.LuaRuntime.ExecString(code)
+		},
+		SetTheme: func(colors map[string]string) {
+			styles.SetTheme(colors)
+		},
+		SetColor: func(slot, hex string) error {
+			return styles.SetColor(slot, hex)
+		},
+		SetBorder: func(style string) error {
+			styles.SetBorderStyle(style)
+			return nil
+		},
+		GetColors: func() map[string]string {
+			return styles.GetColors()
+		},
+		GetConfig: func() *config.Settings {
+			return m.appCtx.Config
+		},
+		SaveConfig: func(s *config.Settings) error {
+			return config.SaveSettings(s)
+		},
 	})
 	m.commands = cmdRegistry
 
@@ -659,6 +686,9 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		})
 	}
 	m.palette = commandpalette.New(paletteItems)
+
+	// nvim-style ":" command line
+	m.cmdline = cmdline.New(cmdRegistry)
 
 	// File picker for @ mentions
 	cwd, _ := os.Getwd()
@@ -724,6 +754,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.tooSmall = msg.Width < 60 || msg.Height < 20
 		m.palette.SetWidth(m.width)
+		m.cmdline.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
 		m.modelSelector.SetWidth(m.width)
 		m.agentSelector.SetWidth(m.width)
@@ -738,6 +769,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case prompt.VimEscapeMsg:
 		// Vim consumed Escape (Insert→Normal). Don't dismiss anything.
+		// If this escape was from ModeCommand (: line cancelled), deactivate cmdline.
+		if m.cmdline.IsActive() {
+			m.cmdline.Deactivate()
+		}
+		return m, nil
+
+	case cmdline.ExecuteMsg:
+		// Run a ":" command — reuse the same dispatch path as "/" commands.
+		return m.runCmdlineCommand(msg)
+
+	case cmdline.CancelMsg:
+		// ":" line was cancelled — nothing to do, cmdline already deactivated.
 		return m, nil
 
 	case ToastDismissMsg:
@@ -1296,6 +1339,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Agent detail overlay
 		if m.focus == FocusAgentDetail {
 			return m.handleAgentDetailKey(msg)
+		}
+
+		// nvim-style ":" command line — intercepts all keys when active
+		if m.cmdline.IsActive() {
+			var cmd tea.Cmd
+			m.cmdline, cmd = m.cmdline.Update(msg)
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
+		// ":" in vim Normal mode activates the command line
+		if m.focus == FocusPrompt && m.prompt.IsVimNormal() && msg.String() == ":" {
+			m.cmdline.Activate()
+			return m, nil
 		}
 
 		// Command palette intercepts keys when active
@@ -2819,6 +2876,19 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(m.spinner.Tick(), m.waitForEvent())
+}
+
+// runCmdlineCommand handles a command entered via the nvim-style ":" command line.
+// It executes the command through the registry and shows the result as a system message.
+func (m Model) runCmdlineCommand(msg cmdline.ExecuteMsg) (tea.Model, tea.Cmd) {
+	result, err := m.commands.Execute(msg.Name, msg.Args)
+	if err != nil {
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("E: %s", err.Error())})
+	} else if result != "" {
+		m.addMessage(ChatMessage{Type: MsgSystem, Content: result})
+	}
+	m.refreshViewport()
+	return m, nil
 }
 
 func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
@@ -6591,7 +6661,10 @@ func (m Model) View() string {
 	sections = append(sections, m.prompt.View())
 
 	// 7. Mode line (full width) — or search bar when searching
-	if m.vpSearchActive {
+	// When cmdline is active, it replaces the mode line (nvim-style).
+	if m.cmdline.IsActive() {
+		sections = append(sections, m.cmdline.View())
+	} else if m.vpSearchActive {
 		sections = append(sections, m.renderSearchBar())
 	} else {
 		sections = append(sections, m.renderModeLine())

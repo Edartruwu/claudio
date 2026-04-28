@@ -220,47 +220,70 @@ func (ws *WebServer) pushToSessionClients(sessionID string, payload []byte) {
 	}
 }
 
-// fanoutWorkers is the number of goroutines that render templates concurrently.
-const fanoutWorkers = 8
+// fanoutLanes is the number of per-session serialized render lanes.
+// Events for the same session always route to the same lane, preserving
+// intra-session ordering while still parallelising across sessions.
+const fanoutLanes = 64
 
-// fanoutQueueSize is the buffer size for the render work queue.
-const fanoutQueueSize = 512
+// fanoutLaneSize is the per-lane event buffer.
+const fanoutLaneSize = 64
 
-// fanout reads UIBroadcast events and forwards them to a worker pool for
-// async template rendering. The read loop never blocks on rendering.
+// fanoutSessionLane hashes a session ID to a lane index in [0, numLanes).
+// Uses a simple polynomial hash — no import needed.
+func fanoutSessionLane(sessionID string, numLanes int) int {
+	var h uint32 = 2166136261 // FNV-1a offset basis
+	for i := 0; i < len(sessionID); i++ {
+		h ^= uint32(sessionID[i])
+		h *= 16777619
+	}
+	return int(h) % numLanes
+}
+
+// fanout reads UIBroadcast events and routes each one to a per-session lane.
+// All events for the same session are processed sequentially by the same
+// goroutine, so message.assistant always arrives at clients before
+// message.tool_use even when template rendering takes different amounts of time.
 // Exits when ws.done is closed or the UIBroadcast channel is closed.
 func (ws *WebServer) fanout() {
 	ch := ws.hub.UIBroadcast()
-	renderQueue := make(chan cc.UIEvent, fanoutQueueSize)
 
-	// Start worker pool.
-	var wg sync.WaitGroup
-	for i := 0; i < fanoutWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for ev := range renderQueue {
-				ws.fanoutHandleEvent(ev)
-			}
-		}()
+	lanes := make([]chan cc.UIEvent, fanoutLanes)
+	for i := range lanes {
+		lanes[i] = make(chan cc.UIEvent, fanoutLaneSize)
 	}
 
-	// Read loop — forward events to workers, never block on rendering.
+	var wg sync.WaitGroup
+	for _, lane := range lanes {
+		wg.Add(1)
+		go func(l chan cc.UIEvent) {
+			defer wg.Done()
+			for ev := range l {
+				ws.fanoutHandleEvent(ev)
+			}
+		}(lane)
+	}
+
+	// Read loop — route events to their session's lane, never block on rendering.
 	for {
 		select {
 		case ev, ok := <-ch:
 			if !ok {
-				close(renderQueue)
+				for _, lane := range lanes {
+					close(lane)
+				}
 				wg.Wait()
 				return
 			}
+			idx := fanoutSessionLane(ev.SessionID, fanoutLanes)
 			select {
-			case renderQueue <- ev:
+			case lanes[idx] <- ev:
 			default:
-				log.Printf("[ws] fanout render queue full, dropping event for session %s (type %s)", ev.SessionID, ev.Envelope.Type)
+				log.Printf("[ws] fanout lane %d full, dropping event for session %s (type %s)", idx, ev.SessionID, ev.Envelope.Type)
 			}
 		case <-ws.done:
-			close(renderQueue)
+			for _, lane := range lanes {
+				close(lane)
+			}
 			wg.Wait()
 			return
 		}

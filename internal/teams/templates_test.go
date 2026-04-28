@@ -234,6 +234,165 @@ func TestGetTemplate_InvalidJSON(t *testing.T) {
 	}
 }
 
+// ── Lua template tests ────────────────────────────────────────────────────────
+
+func writeLuaTemplate(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name+".lua"), []byte(content), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+func TestGetTemplate_LuaBasic(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "myteam", `
+return {
+  name        = "myteam",
+  description = "test team",
+  members = {
+    { name = "alice", subagent_type = "backend-senior", model = "claude-opus-4-6" },
+  },
+}
+`)
+	tmpl, err := GetTemplate(dir, "myteam")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tmpl.Name != "myteam" {
+		t.Errorf("name: got %q, want %q", tmpl.Name, "myteam")
+	}
+	if tmpl.Description != "test team" {
+		t.Errorf("description: got %q", tmpl.Description)
+	}
+	if len(tmpl.Members) != 1 {
+		t.Fatalf("members: got %d, want 1", len(tmpl.Members))
+	}
+	m := tmpl.Members[0]
+	if m.Name != "alice" || m.SubagentType != "backend-senior" || m.Model != "claude-opus-4-6" {
+		t.Errorf("member mismatch: %+v", m)
+	}
+}
+
+func TestGetTemplate_LuaAdvisor(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "advised", `
+return {
+  name = "advised",
+  members = {
+    {
+      name = "bob", subagent_type = "backend-mid", model = "claude-haiku-4-5-20251001",
+      auto_compact_threshold = 30,
+      advisor = { subagent_type = "advisor-sr", model = "claude-opus-4-6", max_uses = 4 },
+    },
+  },
+}
+`)
+	tmpl, err := GetTemplate(dir, "advised")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := tmpl.Members[0]
+	if m.AutoCompactThreshold != 30 {
+		t.Errorf("auto_compact_threshold: got %d, want 30", m.AutoCompactThreshold)
+	}
+	if m.Advisor == nil {
+		t.Fatal("advisor is nil")
+	}
+	if m.Advisor.SubagentType != "advisor-sr" {
+		t.Errorf("advisor subagent_type: got %q", m.Advisor.SubagentType)
+	}
+	if m.Advisor.MaxUses != 4 {
+		t.Errorf("advisor max_uses: got %d, want 4", m.Advisor.MaxUses)
+	}
+}
+
+func TestGetTemplate_LuaTakesPrecedenceOverJson(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "dual", `return { name = "dual-lua", members = {} }`)
+	writeTemplate(t, dir, "dual", `{"name":"dual-json","members":[]}`)
+
+	tmpl, err := GetTemplate(dir, "dual")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tmpl.Name != "dual-lua" {
+		t.Errorf("expected lua to win, got name %q", tmpl.Name)
+	}
+}
+
+func TestGetTemplate_LuaInvalidSyntax(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "bad", `this is not valid lua %%%`)
+	_, err := GetTemplate(dir, "bad")
+	if err == nil {
+		t.Error("expected error for invalid lua syntax")
+	}
+}
+
+func TestGetTemplate_LuaReturnsNonTable(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "str", `return "just a string"`)
+	_, err := GetTemplate(dir, "str")
+	if err == nil {
+		t.Error("expected error when lua returns non-table")
+	}
+}
+
+func TestGetTemplate_LuaNameFallsBackToFilename(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "inferred", `return { members = {} }`)
+	tmpl, err := GetTemplate(dir, "inferred")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tmpl.Name != "inferred" {
+		t.Errorf("name: got %q, want %q", tmpl.Name, "inferred")
+	}
+}
+
+func TestLoadTemplates_LuaShadowsJson(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "same", `return { name = "same-lua", members = {} }`)
+	writeTemplate(t, dir, "same", `{"name":"same-json","members":[]}`)
+
+	templates := LoadTemplates(dir)
+	for _, tmpl := range templates {
+		if tmpl.Name == "same-json" {
+			t.Error("json version should be shadowed by lua")
+		}
+	}
+	found := false
+	for _, tmpl := range templates {
+		if tmpl.Name == "same-lua" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("lua version should be present")
+	}
+}
+
+func TestLoadTemplates_LoadsBothLuaAndJson(t *testing.T) {
+	dir := t.TempDir()
+	writeLuaTemplate(t, dir, "lua-only", `return { name = "lua-only", members = {} }`)
+	writeTemplate(t, dir, "json-only", `{"name":"json-only","members":[]}`)
+
+	templates := LoadTemplates(dir)
+	names := map[string]bool{}
+	for _, tmpl := range templates {
+		names[tmpl.Name] = true
+	}
+	if !names["lua-only"] {
+		t.Error("lua-only template missing")
+	}
+	if !names["json-only"] {
+		t.Error("json-only template missing")
+	}
+}
+
 // TestGetTemplate_EmptyStringDir: empty string skipped
 func TestGetTemplate_EmptyStringDir(t *testing.T) {
 	dirExtra := t.TempDir()

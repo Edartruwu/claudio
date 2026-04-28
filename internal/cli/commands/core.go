@@ -7,11 +7,52 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/config"
 )
+
+// builtinThemes maps theme names to semantic color palettes.
+var builtinThemes = map[string]map[string]string{
+	"tokyonight": {
+		"primary": "#7aa2f7", "secondary": "#9ece6a", "success": "#9ece6a",
+		"warning": "#e0af68", "error": "#f7768e", "muted": "#565f89",
+		"surface": "#1a1b26", "surface_alt": "#24283b", "text": "#c0caf5",
+		"dim": "#9aa5ce", "subtle": "#414868", "orange": "#ff9e64", "aqua": "#73daca",
+	},
+	"gruvbox": {
+		"primary": "#d3869b", "secondary": "#83a598", "success": "#b8bb26",
+		"warning": "#fabd2f", "error": "#fb4934", "muted": "#928374",
+		"surface": "#282828", "surface_alt": "#3c3836", "text": "#ebdbb2",
+		"dim": "#bdae93", "subtle": "#504945", "orange": "#fe8019", "aqua": "#8ec07c",
+	},
+	"catppuccin": {
+		"primary": "#cba6f7", "secondary": "#89dceb", "success": "#a6e3a1",
+		"warning": "#f9e2af", "error": "#f38ba8", "muted": "#6c7086",
+		"surface": "#1e1e2e", "surface_alt": "#313244", "text": "#cdd6f4",
+		"dim": "#bac2de", "subtle": "#45475a", "orange": "#fab387", "aqua": "#94e2d5",
+	},
+	"nord": {
+		"primary": "#88c0d0", "secondary": "#81a1c1", "success": "#a3be8c",
+		"warning": "#ebcb8b", "error": "#bf616a", "muted": "#616e88",
+		"surface": "#2e3440", "surface_alt": "#3b4252", "text": "#eceff4",
+		"dim": "#d8dee9", "subtle": "#434c5e", "orange": "#d08770", "aqua": "#8fbcbb",
+	},
+	"dracula": {
+		"primary": "#bd93f9", "secondary": "#8be9fd", "success": "#50fa7b",
+		"warning": "#f1fa8c", "error": "#ff5555", "muted": "#6272a4",
+		"surface": "#282a36", "surface_alt": "#44475a", "text": "#f8f8f2",
+		"dim": "#bfbfbf", "subtle": "#44475a", "orange": "#ffb86c", "aqua": "#8be9fd",
+	},
+	"rose-pine": {
+		"primary": "#c4a7e7", "secondary": "#9ccfd8", "success": "#31748f",
+		"warning": "#f6c177", "error": "#eb6f92", "muted": "#6e6a86",
+		"surface": "#191724", "surface_alt": "#1f1d2e", "text": "#e0def4",
+		"dim": "#908caa", "subtle": "#403d52", "orange": "#ea9a97", "aqua": "#9ccfd8",
+	},
+}
 
 // RegisterCoreCommands adds all built-in slash commands.
 func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
@@ -720,6 +761,239 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		},
 	})
 
+	// ── :lua — run Lua code inline ────────────────────────────
+	r.Register(&Command{
+		Name:        "lua",
+		Description: "Execute Lua code in the Claudio runtime  e.g. :lua print(claudio.ui.get_colors().primary)",
+		Execute: func(args string) (string, error) {
+			if deps.ExecLua == nil {
+				return "", fmt.Errorf("Lua runtime not available")
+			}
+			if strings.TrimSpace(args) == "" {
+				return "", fmt.Errorf("usage: :lua <code>")
+			}
+			out, err := deps.ExecLua(args)
+			if err != nil {
+				return "", err
+			}
+			if out == "" {
+				return "ok", nil
+			}
+			return out, nil
+		},
+	})
+
+	// ── :set — set options ────────────────────────────────────
+	r.Register(&Command{
+		Name:        "set",
+		Description: "Set a Claudio option  e.g. :set model claude-opus-4-6  :set color.primary #7aa2f7",
+		Execute: func(args string) (string, error) {
+			args = strings.TrimSpace(args)
+
+			// :set with no args — print everything
+			if args == "" {
+				var sb strings.Builder
+				// config settings
+				if deps.GetConfig != nil {
+					s := deps.GetConfig()
+					sb.WriteString(fmt.Sprintf("%-22s = %s\n", "model", s.Model))
+					sb.WriteString(fmt.Sprintf("%-22s = %s\n", "smallModel", s.SmallModel))
+					sb.WriteString(fmt.Sprintf("%-22s = %s\n", "permissionMode", string(s.PermissionMode)))
+					sb.WriteString(fmt.Sprintf("%-22s = %v\n", "autoCompact", s.AutoCompact))
+					sb.WriteString(fmt.Sprintf("%-22s = %s\n", "compactMode", s.CompactMode))
+					sb.WriteString(fmt.Sprintf("%-22s = %d\n", "compactKeepN", s.CompactKeepN))
+					sb.WriteString(fmt.Sprintf("%-22s = %v\n", "sessionPersist", s.SessionPersist))
+					sb.WriteString(fmt.Sprintf("%-22s = %s\n", "hookProfile", s.HookProfile))
+					sb.WriteString(fmt.Sprintf("%-22s = %v\n", "caveman", s.Caveman))
+					sb.WriteString(fmt.Sprintf("%-22s = %v\n", "autoMemoryExtract", s.AutoMemoryExtract))
+					sb.WriteString(fmt.Sprintf("%-22s = %s\n", "memorySelection", s.MemorySelection))
+					sb.WriteString(fmt.Sprintf("%-22s = %v\n", "maxBudget", s.MaxBudget))
+					sb.WriteString(fmt.Sprintf("%-22s = %v\n", "outputFilter", s.OutputFilter))
+					sb.WriteString(fmt.Sprintf("%-22s = %s\n", "outputStyle", s.OutputStyle))
+					sb.WriteString("\n")
+				}
+				// colors
+				if deps.GetColors != nil {
+					colors := deps.GetColors()
+					keys := make([]string, 0, len(colors))
+					for k := range colors {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					for _, k := range keys {
+						sb.WriteString(fmt.Sprintf("color.%-14s = %s\n", k, colors[k]))
+					}
+				}
+				return strings.TrimRight(sb.String(), "\n"), nil
+			}
+
+			parts := strings.SplitN(args, " ", 2)
+			key := parts[0]
+
+			// :set <key>  (no value) — print current value
+			if len(parts) < 2 {
+				if deps.GetConfig != nil {
+					s := deps.GetConfig()
+					switch key {
+					case "model":
+						return fmt.Sprintf("model = %s", s.Model), nil
+					case "smallModel":
+						return fmt.Sprintf("smallModel = %s", s.SmallModel), nil
+					case "permissionMode":
+						return fmt.Sprintf("permissionMode = %s", string(s.PermissionMode)), nil
+					case "autoCompact":
+						return fmt.Sprintf("autoCompact = %v", s.AutoCompact), nil
+					case "compactMode":
+						return fmt.Sprintf("compactMode = %s", s.CompactMode), nil
+					case "compactKeepN":
+						return fmt.Sprintf("compactKeepN = %d", s.CompactKeepN), nil
+					case "sessionPersist":
+						return fmt.Sprintf("sessionPersist = %v", s.SessionPersist), nil
+					case "hookProfile":
+						return fmt.Sprintf("hookProfile = %s", s.HookProfile), nil
+					case "caveman":
+						return fmt.Sprintf("caveman = %v", s.Caveman), nil
+					case "autoMemoryExtract":
+						return fmt.Sprintf("autoMemoryExtract = %v", s.AutoMemoryExtract), nil
+					case "memorySelection":
+						return fmt.Sprintf("memorySelection = %s", s.MemorySelection), nil
+					case "maxBudget":
+						return fmt.Sprintf("maxBudget = %v", s.MaxBudget), nil
+					case "outputFilter":
+						return fmt.Sprintf("outputFilter = %v", s.OutputFilter), nil
+					case "outputStyle":
+						return fmt.Sprintf("outputStyle = %s", s.OutputStyle), nil
+					}
+				}
+				return "", fmt.Errorf("unknown option %q", key)
+			}
+
+			val := strings.TrimSpace(parts[1])
+
+			// color.* — UI color slots
+			if strings.HasPrefix(key, "color.") {
+				if deps.SetColor == nil {
+					return "", fmt.Errorf("UI not available")
+				}
+				slot := strings.TrimPrefix(key, "color.")
+				if err := deps.SetColor(slot, val); err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("color.%s = %s", slot, val), nil
+			}
+
+			// border — panel border style
+			if key == "border" {
+				if deps.SetBorder == nil {
+					return "", fmt.Errorf("UI not available")
+				}
+				deps.SetBorder(val)
+				return fmt.Sprintf("border = %s", val), nil
+			}
+
+			// config settings
+			if deps.GetConfig == nil || deps.SaveConfig == nil {
+				return "", fmt.Errorf("config not available")
+			}
+			s := deps.GetConfig()
+			switch key {
+			case "model":
+				s.Model = val
+			case "smallModel":
+				s.SmallModel = val
+			case "permissionMode":
+				s.PermissionMode = val
+			case "autoCompact":
+				b, err := parseBool(val)
+				if err != nil {
+					return "", fmt.Errorf("autoCompact: %w", err)
+				}
+				s.AutoCompact = b
+			case "compactMode":
+				s.CompactMode = val
+			case "compactKeepN":
+				n, err := parseInt(val)
+				if err != nil {
+					return "", fmt.Errorf("compactKeepN: %w", err)
+				}
+				s.CompactKeepN = n
+			case "sessionPersist":
+				b, err := parseBool(val)
+				if err != nil {
+					return "", fmt.Errorf("sessionPersist: %w", err)
+				}
+				s.SessionPersist = b
+			case "hookProfile":
+				s.HookProfile = val
+			case "caveman":
+				b, err := parseBool(val)
+				if err != nil {
+					return "", fmt.Errorf("caveman: %w", err)
+				}
+				s.Caveman = &b
+			case "autoMemoryExtract":
+				b, err := parseBool(val)
+				if err != nil {
+					return "", fmt.Errorf("autoMemoryExtract: %w", err)
+				}
+				s.AutoMemoryExtract = &b
+			case "memorySelection":
+				s.MemorySelection = val
+			case "maxBudget":
+				f, err := parseFloat(val)
+				if err != nil {
+					return "", fmt.Errorf("maxBudget: %w", err)
+				}
+				s.MaxBudget = f
+			case "outputFilter":
+				b, err := parseBool(val)
+				if err != nil {
+					return "", fmt.Errorf("outputFilter: %w", err)
+				}
+				s.OutputFilter = b
+			case "outputStyle":
+				s.OutputStyle = val
+			default:
+				return "", fmt.Errorf("unknown option %q", key)
+			}
+			if err := deps.SaveConfig(s); err != nil {
+				return "", fmt.Errorf("save: %w", err)
+			}
+			return fmt.Sprintf("%s = %s", key, val), nil
+		},
+	})
+
+	// ── :colorscheme — apply a built-in theme ─────────────────
+	r.Register(&Command{
+		Name:        "colorscheme",
+		Aliases:     []string{"cs", "theme"},
+		Description: "Apply a built-in color scheme  e.g. :colorscheme tokyonight",
+		Execute: func(args string) (string, error) {
+			name := strings.TrimSpace(args)
+			if name == "" {
+				names := make([]string, 0, len(builtinThemes))
+				for k := range builtinThemes {
+					names = append(names, k)
+				}
+				sort.Strings(names)
+				return "Available: " + strings.Join(names, ", "), nil
+			}
+			colors, ok := builtinThemes[name]
+			if !ok {
+				names := make([]string, 0, len(builtinThemes))
+				for k := range builtinThemes {
+					names = append(names, k)
+				}
+				sort.Strings(names)
+				return "", fmt.Errorf("unknown theme %q — available: %s", name, strings.Join(names, ", "))
+			}
+			if deps.SetTheme == nil {
+				return "", fmt.Errorf("UI not available")
+			}
+			deps.SetTheme(colors)
+			return fmt.Sprintf("colorscheme: %s applied", name), nil
+		},
+	})
 }
 
 func openBrowser(url string) error {
@@ -924,4 +1198,35 @@ write:
 	}
 
 	return fmt.Sprintf("Set %s = %v in %s", key, parsed, settingsPath), nil
+}
+
+// ── helpers used by :set ────────────────────────────────────────────────────
+
+func parseBool(s string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "yes", "on":
+		return true, nil
+	case "false", "0", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("expected true/false, got %q", s)
+	}
+}
+
+func parseInt(s string) (int, error) {
+	var n int
+	_, err := fmt.Sscanf(strings.TrimSpace(s), "%d", &n)
+	if err != nil {
+		return 0, fmt.Errorf("expected integer, got %q", s)
+	}
+	return n, nil
+}
+
+func parseFloat(s string) (float64, error) {
+	var f float64
+	_, err := fmt.Sscanf(strings.TrimSpace(s), "%g", &f)
+	if err != nil {
+		return 0, fmt.Errorf("expected number, got %q", s)
+	}
+	return f, nil
 }

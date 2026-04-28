@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Abraxas-365/claudio/internal/config"
 )
 
 // Command represents a slash command.
@@ -46,6 +48,16 @@ type CommandDeps struct {
 	ListTeams func() string // returns formatted team/agent listing
 	// AutoNameSession generates a name for the current session via AI
 	AutoNameSession func() (string, error)
+	// Lua
+	ExecLua func(code string) (string, error)
+	// UI/Theme
+	SetTheme  func(colors map[string]string)
+	SetColor  func(slot, hex string) error
+	SetBorder func(style string) error
+	GetColors func() map[string]string
+	// Config
+	GetConfig  func() *config.Settings
+	SaveConfig func(*config.Settings) error
 }
 
 // SkillInfo holds skill data for command registration.
@@ -116,6 +128,18 @@ func (r *Registry) ListCommands() []*Command {
 		return cmds[i].Name < cmds[j].Name
 	})
 	return cmds
+}
+
+// Execute looks up a command by name and runs it with the given args.
+func (r *Registry) Execute(name, args string) (string, error) {
+	cmd, ok := r.commands[name]
+	if !ok {
+		return "", fmt.Errorf("unknown command: %s", name)
+	}
+	if cmd.Execute == nil {
+		return "", fmt.Errorf("command %q has no executor", name)
+	}
+	return cmd.Execute(args)
 }
 
 // HelpText returns formatted help for all commands.

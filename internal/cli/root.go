@@ -1187,6 +1187,7 @@ func runInteractive() error {
 		Auditor:     appInstance.Auditor,
 		TeamManager: appInstance.Teams,
 		TeamRunner:  appInstance.TeamRunner,
+		LuaRuntime:  appInstance.LuaRuntime,
 	}
 	tuiOpts := []tui.ModelOption{
 		tui.WithSkills(appInstance.Skills),

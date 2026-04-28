@@ -94,6 +94,17 @@ func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, 
 		maxW = 40
 	}
 
+	// Defensive: only the last MsgAssistant can be streaming. If an earlier one
+	// has Streaming=true (e.g. finalizeStreamingMessage missed it because a
+	// non-assistant message was inserted at the tail), treat it as finalized so
+	// glamour renders it instead of raw word-wrap.
+	lastAssistantIdx := -1
+	for idx, m := range msgs {
+		if m.Type == MsgAssistant {
+			lastAssistantIdx = idx
+		}
+	}
+
 	var rendered []string
 	var sections []Section
 	currentLine := 0
@@ -125,12 +136,18 @@ func renderMessages(msgs []ChatMessage, width int, expandedGroups map[int]bool, 
 			i += countGroupMessages(group)
 			lastWasToolGroup = true
 		} else {
+			// Defensive: only the last MsgAssistant may be Streaming=true.
+			// Earlier ones are always finalized regardless of their flag.
+			renderMsg := msg
+			if renderMsg.Type == MsgAssistant && renderMsg.Streaming && i != lastAssistantIdx {
+				renderMsg.Streaming = false
+			}
 			// Assistant text after a tool group is a continuation — render without ● prefix
-			if msg.Type == MsgAssistant && lastWasToolGroup {
-				block = renderAssistantContinuation(msg, maxW)
+			if renderMsg.Type == MsgAssistant && lastWasToolGroup {
+				block = renderAssistantContinuation(renderMsg, maxW)
 			} else {
 				expanded := thinkingExpanded != nil && thinkingExpanded[i]
-				block = renderMessage(msg, maxW, expanded)
+				block = renderMessage(renderMsg, maxW, expanded)
 			}
 			sec = Section{MsgIndex: i}
 			i++

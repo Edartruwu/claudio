@@ -220,6 +220,125 @@ func TestLoadLspConfigs_WithEnv(t *testing.T) {
 	}
 }
 
+// ── LoadLuaLspConfigs tests ───────────────────────────────────────────────────
+
+func TestLoadLuaLspConfigs_Basic(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go.lua"), []byte(`
+return {
+  gopls = {
+    command    = "gopls",
+    args       = { "serve" },
+    extensions = { ".go", ".mod" },
+  }
+}
+`), 0600)
+	result := LoadLuaLspConfigs(dir)
+	cfg, ok := result["gopls"]
+	if !ok {
+		t.Fatal("gopls not found")
+	}
+	if cfg.Command != "gopls" {
+		t.Errorf("command: got %q, want gopls", cfg.Command)
+	}
+	if len(cfg.Args) != 1 || cfg.Args[0] != "serve" {
+		t.Errorf("args: got %v", cfg.Args)
+	}
+	if len(cfg.Extensions) != 2 {
+		t.Errorf("extensions: got %v", cfg.Extensions)
+	}
+}
+
+func TestLoadLuaLspConfigs_MultipleServersInOneFile(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "multi.lua"), []byte(`
+return {
+  gopls  = { command = "gopls" },
+  tsls   = { command = "typescript-language-server", args = { "--stdio" } },
+}
+`), 0600)
+	result := LoadLuaLspConfigs(dir)
+	if _, ok := result["gopls"]; !ok {
+		t.Error("gopls missing")
+	}
+	if cfg, ok := result["tsls"]; !ok {
+		t.Error("tsls missing")
+	} else if cfg.Command != "typescript-language-server" {
+		t.Errorf("tsls command: got %q", cfg.Command)
+	}
+}
+
+func TestLoadLuaLspConfigs_MultipleFiles(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go.lua"), []byte(`return { gopls = { command = "gopls" } }`), 0600)
+	os.WriteFile(filepath.Join(dir, "rust.lua"), []byte(`return { rust_analyzer = { command = "rust-analyzer" } }`), 0600)
+	result := LoadLuaLspConfigs(dir)
+	if _, ok := result["gopls"]; !ok {
+		t.Error("gopls missing")
+	}
+	if _, ok := result["rust_analyzer"]; !ok {
+		t.Error("rust_analyzer missing")
+	}
+}
+
+func TestLoadLuaLspConfigs_EnvParsed(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "env.lua"), []byte(`
+return {
+  myls = {
+    command = "myls",
+    env = { MYLS_DEBUG = "1", MYLS_ROOT = "/src" },
+  }
+}
+`), 0600)
+	result := LoadLuaLspConfigs(dir)
+	cfg, ok := result["myls"]
+	if !ok {
+		t.Fatal("myls missing")
+	}
+	if cfg.Env["MYLS_DEBUG"] != "1" {
+		t.Errorf("env MYLS_DEBUG: got %q", cfg.Env["MYLS_DEBUG"])
+	}
+	if cfg.Env["MYLS_ROOT"] != "/src" {
+		t.Errorf("env MYLS_ROOT: got %q", cfg.Env["MYLS_ROOT"])
+	}
+}
+
+func TestLoadLuaLspConfigs_InvalidLuaSkipped(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "bad.lua"), []byte(`this is not valid lua %%%`), 0600)
+	os.WriteFile(filepath.Join(dir, "good.lua"), []byte(`return { gopls = { command = "gopls" } }`), 0600)
+	result := LoadLuaLspConfigs(dir)
+	if _, ok := result["gopls"]; !ok {
+		t.Error("good.lua should still load despite bad.lua")
+	}
+}
+
+func TestLoadLuaLspConfigs_NonTableReturnSkipped(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "str.lua"), []byte(`return "not a table"`), 0600)
+	result := LoadLuaLspConfigs(dir)
+	if len(result) != 0 {
+		t.Errorf("expected empty, got %v", result)
+	}
+}
+
+func TestLoadLuaLspConfigs_MissingDirReturnsEmpty(t *testing.T) {
+	result := LoadLuaLspConfigs("/this/does/not/exist")
+	if len(result) != 0 {
+		t.Errorf("expected empty, got %v", result)
+	}
+}
+
+func TestLoadLuaLspConfigs_IgnoresNonLuaFiles(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go.lsp.json"), []byte(`{"gopls":{"command":"gopls"}}`), 0600)
+	result := LoadLuaLspConfigs(dir)
+	if _, ok := result["gopls"]; ok {
+		t.Error("JSON files should be ignored by LoadLuaLspConfigs")
+	}
+}
+
 func TestLoadLspConfigs_UnreadableFile(t *testing.T) {
 	dir := t.TempDir()
 
