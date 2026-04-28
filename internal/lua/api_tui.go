@@ -12,14 +12,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// SidebarBlockDef holds a sidebar block registered by a Lua plugin.
-type SidebarBlockDef struct {
-	ID       string
-	Title    string
-	Plugin   *loadedPlugin
-	RenderFn *lua.LFunction
-}
-
 // StatuslineCtx holds contextual data passed to the Lua statusline function.
 type StatuslineCtx struct {
 	Mode    string
@@ -89,72 +81,12 @@ func (r *Runtime) PendingPaletteEntries() []PaletteEntry {
 	return out
 }
 
-// CallRender calls the Lua render function for this sidebar block with the given dimensions.
-func (b *SidebarBlockDef) CallRender(width, height int) string {
-	if b.Plugin == nil || b.Plugin.L == nil || b.RenderFn == nil {
-		return ""
-	}
-	b.Plugin.mu.Lock()
-	defer b.Plugin.mu.Unlock()
-	defer func() {
-		if rv := recover(); rv != nil {
-			log.Printf("[lua] sidebar block %q render panic: %v", b.ID, rv)
-		}
-	}()
-	if err := b.Plugin.L.CallByParam(lua.P{
-		Fn:      b.RenderFn,
-		NRet:    1,
-		Protect: true,
-	}, lua.LNumber(width), lua.LNumber(height)); err != nil {
-		log.Printf("[lua] sidebar block %q render error: %v", b.ID, err)
-		return ""
-	}
-	result := b.Plugin.L.Get(-1)
-	b.Plugin.L.Pop(1)
-	if s, ok := result.(lua.LString); ok {
-		return string(s)
-	}
-	return ""
-}
-
-// GetSidebarBlocks returns all sidebar blocks registered by plugins.
-func (r *Runtime) GetSidebarBlocks() []SidebarBlockDef {
-	r.pendingSidebarBlocksMu.Lock()
-	defer r.pendingSidebarBlocksMu.Unlock()
-	out := make([]SidebarBlockDef, len(r.pendingSidebarBlocks))
-	copy(out, r.pendingSidebarBlocks)
-	return out
-}
-
-// SetBlockRegistry wires the sidebar BlockRegistry and flushes any pending
-// Lua-registered blocks. After this call, new register_sidebar_block calls
-// register directly into the registry instead of the pending queue.
-func (r *Runtime) SetBlockRegistry(reg *sidebar.BlockRegistry) {
-	r.sidebarRegistryMu.Lock()
-	r.sidebarRegistry = reg
-	r.sidebarRegistryMu.Unlock()
-
-	r.pendingSidebarBlocksMu.Lock()
-	pending := r.pendingSidebarBlocks
-	r.pendingSidebarBlocks = nil
-	r.pendingSidebarBlocksMu.Unlock()
-
-	for _, def := range pending {
-		d := def // capture for closure
-		block := sidebar.NewLuaBlock(d.ID, d.Title, 1, 3, func(w, h int) string {
-			return d.CallRender(w, h)
-		})
-		reg.Register(block)
-	}
-}
-
 // injectUIAPI registers claudio.ui.* bindings and returns the table.
 func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 	ui := L.NewTable()
 	L.SetField(ui, "set_statusline", L.NewFunction(r.apiSetStatusline(plugin)))
 	L.SetField(ui, "popup", L.NewFunction(r.apiPopup(plugin)))
 	L.SetField(ui, "register_palette_entry", L.NewFunction(r.apiRegisterPaletteEntry()))
-	L.SetField(ui, "register_sidebar_block", L.NewFunction(r.apiRegisterSidebarBlock(plugin)))
 	// Color / theme controls
 	L.SetField(ui, "set_color", L.NewFunction(func(L *lua.LState) int {
 		slot := L.CheckString(1)
@@ -294,75 +226,15 @@ func (r *Runtime) apiRegisterPaletteEntry() lua.LGFunction {
 	}
 }
 
-// injectPluginUIAPI adds plugin-aware UI bindings to the claudio.ui sub-table.
-// Called from injectAPI after injectGlobalConfigAPI has set up the ui table.
-func (r *Runtime) injectPluginUIAPI(L *lua.LState, plugin *loadedPlugin, claudio *lua.LTable) {
-	uiTable, ok := L.GetField(claudio, "ui").(*lua.LTable)
-	if !ok || uiTable == nil {
-		uiTable = L.NewTable()
-		L.SetField(claudio, "ui", uiTable)
-	}
-	L.SetField(uiTable, "register_sidebar_block", L.NewFunction(r.apiRegisterSidebarBlock(plugin)))
-}
+// injectPluginUIAPI is a no-op retained for call-site compatibility.
+// Sidebar blocks have been replaced by claudio.win.new_panel.
+func (r *Runtime) injectPluginUIAPI(_ *lua.LState, _ *loadedPlugin, _ *lua.LTable) {}
 
-// apiRegisterSidebarBlock implements claudio.ui.register_sidebar_block({id, title, render}).
-//
-// Lua surface:
-//
-//	claudio.ui.register_sidebar_block({
-//	  id     = "my-block",
-//	  title  = "My Plugin",
-//	  render = function(ctx) return "content string" end,
-//	})
-func (r *Runtime) apiRegisterSidebarBlock(plugin *loadedPlugin) lua.LGFunction {
-	return func(L *lua.LState) int {
-		tbl := L.CheckTable(1)
+// SetBlockRegistry is a deprecated no-op. Retained so root.go compiles until
+// the TUI agent replaces the call with SetPanelRegistry.
+// Deprecated: use SetPanelRegistry instead.
+func (r *Runtime) SetBlockRegistry(_ *sidebar.BlockRegistry) {}
 
-		idVal := L.GetField(tbl, "id")
-		id, ok := idVal.(lua.LString)
-		if !ok || string(id) == "" {
-			L.RaiseError("register_sidebar_block: id must be a non-empty string")
-			return 0
-		}
-
-		titleVal := L.GetField(tbl, "title")
-		title, ok := titleVal.(lua.LString)
-		if !ok {
-			L.RaiseError("register_sidebar_block: title must be a string")
-			return 0
-		}
-
-		renderVal := L.GetField(tbl, "render")
-		renderFn, ok := renderVal.(*lua.LFunction)
-		if !ok {
-			L.RaiseError("register_sidebar_block: render must be a function")
-			return 0
-		}
-
-		def := SidebarBlockDef{
-			ID:       string(id),
-			Title:    string(title),
-			Plugin:   plugin,
-			RenderFn: renderFn,
-		}
-
-		// If a registry is already wired, register immediately; otherwise queue.
-		r.sidebarRegistryMu.RLock()
-		reg := r.sidebarRegistry
-		r.sidebarRegistryMu.RUnlock()
-
-		if reg != nil {
-			d := def // capture for closure
-			block := sidebar.NewLuaBlock(d.ID, d.Title, 1, 3, func(w, h int) string {
-				return d.CallRender(w, h)
-			})
-			reg.Register(block)
-		} else {
-			r.pendingSidebarBlocksMu.Lock()
-			r.pendingSidebarBlocks = append(r.pendingSidebarBlocks, def)
-			r.pendingSidebarBlocksMu.Unlock()
-		}
-
-		return 0
-	}
-}
+// GetSidebarBlocks is a deprecated no-op. Returns nil.
+// Deprecated: panels now accessed via GetPanelRegistry().
+func (r *Runtime) GetSidebarBlocks() []struct{} { return nil }

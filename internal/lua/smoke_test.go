@@ -5,8 +5,8 @@ package lua
 // These tests validate the end-to-end adapter paths that root.go exercises at
 // runtime without requiring an interactive TUI session:
 //
-//  1. sidebar_block: register_sidebar_block → GetSidebarBlocks → luaSidebarBlock
-//     adapter → CallRender returns plugin content.
+//  1. panel: claudio.win.new_panel → add_section → SectionDef.CallRender
+//     returns plugin content.
 //  2. register_window: claudio.buf.new + claudio.ui.register_window → Manager.Open
 //     → Window.View renders buffer content.
 //
@@ -20,82 +20,102 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
 )
 
-// ─── sidebar_block smoke ───────────────────────────────────────────────────
+// ─── panel smoke ──────────────────────────────────────────────────────────
 
-// TestSmoke_SidebarBlock_CallRenderReturnsContent mirrors the root.go
-// luaSidebarBlock adapter path: load plugin → get block via GetSidebarBlocks
-// → call CallRender → verify returned string.
-func TestSmoke_SidebarBlock_CallRenderReturnsContent(t *testing.T) {
+// TestSmoke_Panel_CallRenderReturnsContent creates a panel with a section and
+// verifies that CallRender returns the expected string.
+func TestSmoke_Panel_CallRenderReturnsContent(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
 
-	dir := writePlugin(t, "smoke-sidebar", `
-claudio.ui.register_sidebar_block({
-  id     = "smoke-block",
+	dir := writePlugin(t, "smoke-panel", `
+local p = claudio.win.new_panel({ position = "left", width = 30 })
+p:add_section({
+  id     = "smoke-section",
   title  = "Smoke Panel",
+  weight = 1,
+  min_height = 3,
   render = function(w, h)
     return "width=" .. w .. " height=" .. h
   end,
 })
 `)
-	if err := rt.LoadPlugin("smoke-sidebar", dir); err != nil {
+	if err := rt.LoadPlugin("smoke-panel", dir); err != nil {
 		t.Fatalf("LoadPlugin: %v", err)
 	}
 
-	blocks := rt.GetSidebarBlocks()
-	if len(blocks) != 1 {
-		t.Fatalf("GetSidebarBlocks: got %d blocks, want 1", len(blocks))
+	rt.pendingPanelsMu.Lock()
+	panels := rt.pendingPanels
+	rt.pendingPanelsMu.Unlock()
+	if len(panels) != 1 {
+		t.Fatalf("pending panels: got %d, want 1", len(panels))
 	}
 
-	b := blocks[0]
-	if b.ID != "smoke-block" {
-		t.Errorf("block ID = %q, want %q", b.ID, "smoke-block")
-	}
-	if b.Title != "Smoke Panel" {
-		t.Errorf("block Title = %q, want %q", b.Title, "Smoke Panel")
+	p := panels[0]
+	p.Mu.Lock()
+	sections := p.Sections
+	p.Mu.Unlock()
+	if len(sections) != 1 {
+		t.Fatalf("sections: got %d, want 1", len(sections))
 	}
 
-	// Simulate the root.go luaSidebarBlock.Render call.
-	got := b.CallRender(40, 10)
+	sec := sections[0]
+	if sec.ID != "smoke-section" {
+		t.Errorf("section ID = %q, want %q", sec.ID, "smoke-section")
+	}
+	if sec.Title != "Smoke Panel" {
+		t.Errorf("section Title = %q, want %q", sec.Title, "Smoke Panel")
+	}
+
+	got := sec.CallRender(40, 10)
 	if got != "width=40 height=10" {
 		t.Errorf("CallRender(40,10) = %q, want %q", got, "width=40 height=10")
 	}
 }
 
-// TestSmoke_SidebarBlock_MultipleBlocks verifies multiple blocks co-exist and
-// each renders independently — guards against shared-state bugs.
-func TestSmoke_SidebarBlock_MultipleBlocks(t *testing.T) {
+// TestSmoke_Panel_MultipleSections verifies multiple sections co-exist and
+// each renders independently.
+func TestSmoke_Panel_MultipleSections(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
 
-	dir := writePlugin(t, "smoke-multi-sidebar", `
-claudio.ui.register_sidebar_block({
-  id     = "block-a",
-  title  = "Block A",
+	dir := writePlugin(t, "smoke-multi-panel", `
+local p = claudio.win.new_panel({ position = "left", width = 30 })
+p:add_section({
+  id = "sec-a", title = "A", weight = 1,
   render = function(w, h) return "A" end,
 })
-claudio.ui.register_sidebar_block({
-  id     = "block-b",
-  title  = "Block B",
+p:add_section({
+  id = "sec-b", title = "B", weight = 2,
   render = function(w, h) return "B" end,
 })
 `)
-	if err := rt.LoadPlugin("smoke-multi-sidebar", dir); err != nil {
+	if err := rt.LoadPlugin("smoke-multi-panel", dir); err != nil {
 		t.Fatalf("LoadPlugin: %v", err)
 	}
 
-	blocks := rt.GetSidebarBlocks()
-	if len(blocks) != 2 {
-		t.Fatalf("GetSidebarBlocks: got %d, want 2", len(blocks))
+	rt.pendingPanelsMu.Lock()
+	panels := rt.pendingPanels
+	rt.pendingPanelsMu.Unlock()
+	if len(panels) != 1 {
+		t.Fatalf("pending panels: got %d, want 1", len(panels))
 	}
 
-	for _, b := range blocks {
-		got := b.CallRender(20, 5)
-		if b.ID == "block-a" && got != "A" {
-			t.Errorf("block-a render = %q, want %q", got, "A")
+	p := panels[0]
+	p.Mu.Lock()
+	sections := p.Sections
+	p.Mu.Unlock()
+	if len(sections) != 2 {
+		t.Fatalf("sections: got %d, want 2", len(sections))
+	}
+
+	for _, sec := range sections {
+		got := sec.CallRender(20, 5)
+		if sec.ID == "sec-a" && got != "A" {
+			t.Errorf("sec-a render = %q, want %q", got, "A")
 		}
-		if b.ID == "block-b" && got != "B" {
-			t.Errorf("block-b render = %q, want %q", got, "B")
+		if sec.ID == "sec-b" && got != "B" {
+			t.Errorf("sec-b render = %q, want %q", got, "B")
 		}
 	}
 }
