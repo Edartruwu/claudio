@@ -3161,10 +3161,55 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// :ls / :buffers → show buffer list with markers
+	// :ls / :buffers → interactive buffer picker
 	if name == "ls" || name == "buffers" {
-		m.showBufferList()
+		return m, m.openBufferPicker()
+	}
+
+	// :b [name] → open buffer picker or jump directly to named buffer
+	if name == "b" {
+		if args == "" {
+			return m, m.openBufferPicker()
+		}
+		// Find best matching window by name (case-insensitive prefix/contains)
+		if m.windowMgr != nil {
+			needle := strings.ToLower(strings.TrimSpace(args))
+			var exact, prefix, contains *windows.Window
+			for _, w := range m.windowMgr.AllWindows() {
+				lower := strings.ToLower(w.Name)
+				if lower == needle {
+					exact = w
+					break
+				}
+				if strings.HasPrefix(lower, needle) && prefix == nil {
+					prefix = w
+				} else if strings.Contains(lower, needle) && contains == nil {
+					contains = w
+				}
+			}
+			match := exact
+			if match == nil {
+				match = prefix
+			}
+			if match == nil {
+				match = contains
+			}
+			if match != nil {
+				if err := m.windowMgr.Open(match.Name); err != nil {
+					m.addMessage(ChatMessage{Type: MsgError, Content: err.Error()})
+					m.refreshViewport()
+				}
+				return m, nil
+			}
+		}
+		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("No buffer matching %q. Use :b to list all.", args)})
+		m.refreshViewport()
 		return m, nil
+	}
+
+	// :agents → open agent picker (same as Space+a)
+	if name == "agents" {
+		return m, m.openAgentPicker()
 	}
 
 	// /agent → interactive agent persona picker
@@ -3432,7 +3477,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		if output == "__new_session__" {
 			return m, nil
 		}
-		// Clear: wipe UI messages and engine history
+		// Clear: wipe UI messages, engine history, and terminal screen
 		if output == "[action:clear]" {
 			m.messages = nil
 			m.streamText.Reset()
@@ -3450,7 +3495,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.refreshViewport()
-			return m, nil
+			return m, tea.ClearScreen
 		}
 		if output == "[action:details]" {
 			// Toggle expand/collapse for every tool group currently rendered.
