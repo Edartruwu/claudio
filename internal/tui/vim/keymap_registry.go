@@ -78,6 +78,31 @@ func init() {
 	}
 }
 
+// Delete removes a keymap for the given mode and key. No-op if not found.
+func (r *KeymapRegistry) Delete(mode Mode, key rune) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if modeMap, ok := r.keymaps[mode]; ok {
+		delete(modeMap, key)
+	}
+}
+
+// AllForMode returns a snapshot of all keymaps registered for the given mode.
+func (r *KeymapRegistry) AllForMode(mode Mode) []Keymap {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []Keymap
+	for _, km := range r.keymaps[mode] {
+		out = append(out, km)
+	}
+	return out
+}
+
+// DefaultRegistry returns the package-level default keymap registry.
+func DefaultRegistry() *KeymapRegistry {
+	return defaultRegistry
+}
+
 // RegisterKeymap adds a keymap to the package-level default registry.
 // Intended for use by Lua plugins at startup — last registration wins.
 func RegisterKeymap(km Keymap) {

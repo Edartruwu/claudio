@@ -118,6 +118,92 @@ func (r *Runtime) apiRegisterKeymap(plugin *loadedPlugin) lua.LGFunction {
 	}
 }
 
+// apiKeymapDel returns the claudio.keymap.del(mode, key) binding.
+//
+// Lua usage:
+//
+//	claudio.keymap.del("normal", "j")
+//
+// Removes the keymap from the runtime's keymapRegistry (if set) and from
+// the package-level default registry.
+func (r *Runtime) apiKeymapDel(plugin *loadedPlugin) lua.LGFunction {
+	return func(L *lua.LState) int {
+		modeStr := L.CheckString(1)
+		keyStr := L.CheckString(2)
+
+		mode, ok := parseVimMode(modeStr)
+		if !ok {
+			L.ArgError(1, "keymap.del: invalid mode: "+modeStr)
+			return 0
+		}
+		key, ok := parseKeyRune(keyStr)
+		if !ok {
+			L.ArgError(2, "keymap.del: invalid key: "+keyStr)
+			return 0
+		}
+
+		// Remove from instance registry if wired.
+		r.mu.Lock()
+		reg := r.keymapRegistry
+		r.mu.Unlock()
+
+		if reg != nil {
+			reg.Delete(mode, key)
+		}
+		// Also remove from package-level default registry.
+		vim.DefaultRegistry().Delete(mode, key)
+
+		return 0
+	}
+}
+
+// apiKeymapList returns the claudio.keymap.list(mode) binding.
+//
+// Lua usage:
+//
+//	local maps = claudio.keymap.list("normal")
+//	for _, m in ipairs(maps) do
+//	  print(m.key .. " -> " .. m.action)
+//	end
+//
+// Returns a Lua array of tables: { key, action, description }.
+// "action" is the description string (no function refs cross the boundary).
+// Unknown mode → empty table.
+func (r *Runtime) apiKeymapList(plugin *loadedPlugin) lua.LGFunction {
+	return func(L *lua.LState) int {
+		modeStr := L.CheckString(1)
+
+		mode, ok := parseVimMode(modeStr)
+		if !ok {
+			// Unknown mode → return empty table.
+			L.Push(L.NewTable())
+			return 1
+		}
+
+		r.mu.Lock()
+		reg := r.keymapRegistry
+		r.mu.Unlock()
+
+		var keymaps []vim.Keymap
+		if reg != nil {
+			keymaps = reg.AllForMode(mode)
+		} else {
+			keymaps = vim.DefaultRegistry().AllForMode(mode)
+		}
+
+		result := L.NewTable()
+		for i, km := range keymaps {
+			entry := L.NewTable()
+			L.SetField(entry, "key", lua.LString(string(km.Key)))
+			L.SetField(entry, "action", lua.LString(km.Description))
+			L.SetField(entry, "description", lua.LString(km.Description))
+			result.RawSetInt(i+1, entry)
+		}
+		L.Push(result)
+		return 1
+	}
+}
+
 // LoadKeybindings loads a keybindings.lua file (e.g. ~/.claudio/keybindings.lua) in a
 // sandboxed Lua VM. The file may call claudio.register_keymap(), claudio.log(), and
 // claudio.notify(). Missing files are silently skipped.

@@ -10,13 +10,20 @@ import (
 
 	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/capabilities"
+	"github.com/Abraxas-365/claudio/internal/cli/commands"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tools"
+	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	lua "github.com/yuin/gopher-lua"
 )
+
+// pendingCommand holds a command registered from Lua before commandRegistry is wired.
+type pendingCommand struct {
+	cmd *commands.Command
+}
 
 // Runtime manages Lua plugin lifecycle: loading, sandbox creation, and shutdown.
 type Runtime struct {
@@ -27,6 +34,10 @@ type Runtime struct {
 	cfg     *config.Settings
 	db      *storage.DB
 	caps    *capabilities.Registry
+
+	commandRegistry *commands.Registry
+	keymapRegistry  *vim.KeymapRegistry
+	pendingCommands []*pendingCommand
 
 	mu      sync.Mutex
 	plugins []*loadedPlugin
@@ -60,6 +71,25 @@ func New(
 		db:      db,
 		caps:    caps,
 	}
+}
+
+// SetCommandRegistry wires a command registry into the runtime and flushes any
+// commands that were registered from Lua before this call.
+func (r *Runtime) SetCommandRegistry(reg *commands.Registry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.commandRegistry = reg
+	for _, p := range r.pendingCommands {
+		reg.Register(p.cmd)
+	}
+	r.pendingCommands = nil
+}
+
+// SetKeymapRegistry wires a keymap registry into the runtime.
+func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.keymapRegistry = reg
 }
 
 // LoadAll scans pluginsDir for subdirectories containing init.lua and loads each
@@ -137,6 +167,14 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(claudio, "notify", L.NewFunction(r.apiNotify(plugin)))
 	L.SetField(claudio, "log", L.NewFunction(r.apiLog(plugin)))
 	L.SetField(claudio, "register_keymap", L.NewFunction(r.apiRegisterKeymap(plugin)))
+	L.SetField(claudio, "register_command", L.NewFunction(r.apiRegisterCommand(plugin)))
+	L.SetField(claudio, "cmd", L.NewFunction(r.apiCmd(plugin)))
+
+	// keymap subtable: del + list (register_keymap stays at top level for compat)
+	keymapTbl := L.NewTable()
+	L.SetField(keymapTbl, "del", L.NewFunction(r.apiKeymapDel(plugin)))
+	L.SetField(keymapTbl, "list", L.NewFunction(r.apiKeymapList(plugin)))
+	L.SetField(claudio, "keymap", keymapTbl)
 
 	L.SetGlobal("claudio", claudio)
 }
