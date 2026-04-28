@@ -18,6 +18,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
+	keymapPkg "github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/picker"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
@@ -42,6 +43,13 @@ type LuaCapability struct {
 // pendingCommand queues a command registered before commandRegistry is wired.
 type pendingCommand struct {
 	cmd *commands.Command
+}
+
+// pendingLeaderBinding queues a leader-keymap binding registered before the
+// TUI's leader keymap is wired via SetLeaderKeymap.
+type pendingLeaderBinding struct {
+	seq      string
+	actionID keymapPkg.ActionID
 }
 
 // Runtime manages Lua plugin lifecycle: loading, sandbox creation, and shutdown.
@@ -116,6 +124,12 @@ type Runtime struct {
 	// Pending window registrations (registered before WindowManager is wired)
 	pendingWindowsMu sync.Mutex
 	pendingWindows   []WindowDef
+
+	// Leader keymap (wired after TUI init via SetLeaderKeymap)
+	leaderKeymapMu       sync.Mutex
+	leaderKeymap         *keymapPkg.Keymap
+	pendingLeaderMu      sync.Mutex
+	pendingLeaderBindings []pendingLeaderBinding
 
 	// Picker opener (wired after TUI is ready)
 	pickerOpenerMu sync.RWMutex
@@ -280,6 +294,8 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	keymapTable := L.NewTable()
 	L.SetField(keymapTable, "del", L.NewFunction(r.apiKeymapDel(plugin)))
 	L.SetField(keymapTable, "list", L.NewFunction(r.apiKeymapList(plugin)))
+	L.SetField(keymapTable, "map", L.NewFunction(r.apiLeaderKeymapMap(plugin)))
+	L.SetField(keymapTable, "unmap", L.NewFunction(r.apiLeaderKeymapUnmap(plugin)))
 	L.SetField(claudio, "keymap", keymapTable)
 
 	// claudio.agent sub-table
@@ -368,6 +384,28 @@ func (r *Runtime) GetWindowManager() *windows.Manager {
 	r.windowManagerMu.RLock()
 	defer r.windowManagerMu.RUnlock()
 	return r.windowManager
+}
+
+// SetLeaderKeymap wires the TUI's leader keymap so that claudio.keymap.map/unmap
+// calls take effect immediately. Any bindings registered before this call (e.g.
+// from defaults.lua) are flushed now. Lua defaults only apply if the user has
+// not already set a binding for that sequence via keymap.json.
+func (r *Runtime) SetLeaderKeymap(km *keymapPkg.Keymap) {
+	r.leaderKeymapMu.Lock()
+	r.leaderKeymap = km
+	r.leaderKeymapMu.Unlock()
+
+	r.pendingLeaderMu.Lock()
+	pending := r.pendingLeaderBindings
+	r.pendingLeaderBindings = nil
+	r.pendingLeaderMu.Unlock()
+
+	for _, pb := range pending {
+		// Don't overwrite bindings the user has already saved via :map / keymap.json.
+		if _, already := km.Resolve(pb.seq); !already {
+			km.SetCustom(pb.seq, pb.actionID)
+		}
+	}
 }
 
 // SetPickerOpener wires the opener callback so Lua plugins can open picker overlays.

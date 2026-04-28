@@ -26,63 +26,10 @@ type Keymap struct {
 }
 
 // defaultBindings returns the project's default key-to-action mapping.
-// These mirror the hardcoded bindings from handleLeaderKey.
+// All bindings are now registered via Lua (defaults.lua) — Go ships with an
+// empty set so users can configure everything through claudio.keymap.map().
 func defaultBindings() map[string]ActionID {
-	return map[string]ActionID{
-		// Window sub-menu
-		"ww": ActionWindowCycle,
-		"wh": ActionWindowFocusLeft,
-		"wj": ActionWindowFocusDown,
-		"wk": ActionWindowFocusUp,
-		"wl": ActionWindowFocusRight,
-		"wp": ActionWindowFocusDown, // alias: wj/wp both go to prompt
-		"wv": ActionWindowSplitVertical,
-		"wq": ActionWindowClose,
-		"wc": ActionFloatWindowClose,
-		"wo": ActionFloatWindowHint,
-
-		// Buffer/session sub-menu
-		"bn": ActionBufferNext,
-		"bp": ActionBufferPrev,
-		"bc": ActionBufferNew,
-		"bk": ActionBufferClose,
-		"br": ActionBufferRename,
-		"bl": ActionBufferList,
-
-		// Buffer alternate (,<enter>)
-		",\n": ActionBufferAlternate,
-
-		// Panels (direct leader keys)
-		"op": ActionPanelSessionTree,
-		"oa": ActionPanelAgentGUI,
-		"K":  ActionPanelSkills,
-		"M":  ActionPanelMemory,
-		"T":  ActionPanelTasks,
-		"O":  ActionPanelTools,
-		"A":  ActionPanelAnalytics,
-		"f":  ActionPanelFiles,
-		"a":  ActionPickerAgents, // <Space>a → agent picker
-
-		// Info panel sub-menu (i prefix)
-		"ik": ActionPanelSkills,
-		"im": ActionPanelMemory,
-		"ia": ActionPanelAnalytics,
-		"it": ActionPanelTasks,
-		"io": ActionPanelTools,
-
-		// Navigation
-		".": ActionPickerBuffers, // <Space>. → buffer/window picker
-		"/": ActionSearch,
-		";": ActionSessionRecent,
-		"p": ActionCommandPalette,
-
-		// Editor
-		"e":  ActionEditorEditPrompt,
-		"ev": ActionEditorViewSection,
-
-		// Misc
-		"t": ActionTodoDock,
-	}
+	return map[string]ActionID{}
 }
 
 // Default returns a Keymap with the project's default bindings.
@@ -147,6 +94,23 @@ func (km *Keymap) Unset(keySeq string) error {
 		km.removed[keySeq] = true
 	}
 	return km.save()
+}
+
+// SetCustom adds or overwrites a binding without validating the action against
+// the built-in registry and without persisting to config. Used by the Lua API
+// to register Lua-defined action IDs (e.g. "lua.fn.<seq>") and standard
+// ActionIDs that are resolved before the user's saved overrides are applied.
+func (km *Keymap) SetCustom(keySeq string, action ActionID) {
+	km.bindings[keySeq] = action
+}
+
+// Delete removes a binding without returning an error. Unlike Unset it does not
+// persist the removal — it is used by the Lua API where persistence happens
+// through the Lua config layer, not the Go keymap config file.
+func (km *Keymap) Delete(keySeq string) {
+	delete(km.bindings, keySeq)
+	delete(km.overrides, keySeq)
+	delete(km.removed, keySeq)
 }
 
 // List returns all bindings sorted by key sequence, optionally filtered by

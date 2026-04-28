@@ -59,7 +59,6 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/stree"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
-	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
@@ -96,7 +95,6 @@ type Model struct {
 	currentAgent        string   // type of the active persona ("" = default Claudio)
 	baseSystemPrompt    string   // system prompt before any agent persona is applied
 	baseModel           string   // model before any agent override
-	whichKey            whichkey.Model
 	sessionPicker       *panelsessions.Panel
 	toast               Toast
 	todoDock            *docks.TodoDock
@@ -133,7 +131,6 @@ type Model struct {
 	toolStartTimes      map[string]time.Time // ToolUseID → execution start time
 	km                  *keymap.Keymap       // remappable key bindings
 	leaderSeq           string               // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
-	leaderSeqGen        int                  // incremented each time a new timeout is scheduled; stale TimeoutMsgs are ignored
 	prevSessionID       string               // for alternate session switching
 	vpCursor            int                  // viewport section cursor (-1 = none)
 	vpSections          []Section            // cached section metadata from last render
@@ -389,7 +386,6 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		toolStartTimes:      make(map[string]time.Time),
 		vpCursor:            -1,
 		km:                  loadKeymap(),
-		whichKey:            whichkey.New(),
 		sessionRuntimes:     make(map[string]*SessionRuntime),
 		panelPool:           make(map[PanelID]panels.Panel),
 	}
@@ -478,13 +474,11 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		})
 	}
 
-	// Apply Lua plugin UI extensions (whichkey groups, palette entries)
+	// Apply Lua plugin UI extensions (palette entries etc.) and wire leader keymap.
 	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		m.appCtx.LuaRuntime.SetLeaderKeymap(m.km)
 		m.applyLuaUIExtensions()
 	}
-
-	// Wire keymap into which-key for dynamic binding display
-	m.whichKey.SetKeymap(m.km)
 
 	// Initialize sidebar
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
@@ -945,37 +939,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toast.Dismiss()
 		return m, nil
 
-	case whichkey.TimeoutMsg:
-		// Ignore stale timeouts from previous leader sequences.
-		if msg.Gen != m.leaderSeqGen {
-			return m, nil
-		}
-		// If the sequence was already fully dispatched, don't show the popup.
-		if m.leaderSeq == "" {
-			return m, nil
-		}
-		// Show which-key popup based on current leader sequence, reading from keymap.
-		prefix := m.leaderSeq
-		if prefix == "" {
-			// "pending" was normalised to "" — show top-level bindings
-			prefix = ""
-		}
-		bindings := m.km.BindingsForPrefix(prefix)
-		if len(bindings) > 0 {
-			wkBindings := make([]whichkey.Binding, len(bindings))
-			for i, b := range bindings {
-				wkBindings[i] = whichkey.Binding{Key: b.KeySeq, Desc: b.Action.Description}
-			}
-			m.whichKey.Show(wkBindings)
-			m.whichKey.SetWidth(m.width)
-		}
-		return m, nil
-
 	case tea.KeyMsg:
-		// Dismiss which-key popup on any keypress
-		if m.whichKey.IsActive() {
-			m.whichKey.Hide()
-		}
 		// Dismiss Lua popup on any keypress
 		if m.popupVisible {
 			m.popupVisible = false
@@ -1424,8 +1388,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case " ":
 				m.leaderSeq = "pending"
-				m.leaderSeqGen++
-				return m, whichkey.ScheduleTimeout(m.leaderSeqGen)
+				return m, nil
 			}
 			return m, nil
 		}
@@ -1442,8 +1405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Start leader sequence on Space
 			if msg.String() == " " {
 				m.leaderSeq = "pending"
-				m.leaderSeqGen++
-				return m, whichkey.ScheduleTimeout(m.leaderSeqGen)
+				return m, nil
 			}
 		}
 
@@ -4321,10 +4283,9 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 		// Check if this is also a prefix — if so, we need to wait.
 		if m.km.HasPrefix(fullSeq) {
 			// Ambiguous: "e" matches but "ev" also exists.
-			// Buffer and schedule timeout — on next key we'll extend or dispatch.
+			// Buffer and wait for the next key to extend or dispatch.
 			m.leaderSeq = fullSeq
-			m.leaderSeqGen++
-			return true, whichkey.ScheduleTimeout(m.leaderSeqGen)
+			return true, nil
 		}
 		return true, m.dispatchAction(action)
 	}
@@ -4332,8 +4293,7 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 	// Not an exact match — is it a valid prefix?
 	if m.km.HasPrefix(fullSeq) {
 		m.leaderSeq = fullSeq
-		m.leaderSeqGen++
-		return true, whichkey.ScheduleTimeout(m.leaderSeqGen)
+		return true, nil
 	}
 
 	// Try dispatching the accumulated prefix if there was one.
@@ -4608,6 +4568,21 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 
 	case keymap.ActionPickerAgents:
 		return m.openAgentPicker()
+
+	default:
+		// Lua-registered leader handler: action IDs starting with "lua.fn." are
+		// synthetic IDs assigned to Lua function callbacks by claudio.keymap.map().
+		if strings.HasPrefix(string(action), "lua.fn.") {
+			if m.appCtx != nil && m.appCtx.Bus != nil {
+				payload, _ := json.Marshal(map[string]any{"action": string(action)})
+				m.appCtx.Bus.Publish(bus.Event{
+					Type:      "leader." + string(action),
+					Payload:   payload,
+					Timestamp: time.Now(),
+				})
+			}
+			return nil
+		}
 	}
 
 	return nil
@@ -6854,19 +6829,10 @@ func (m *Model) sidebarWidth() int {
 	return w
 }
 
-// applyLuaUIExtensions applies plugin-registered whichkey groups and palette entries.
+// applyLuaUIExtensions applies plugin-registered palette entries.
 // Called once during New() after all panels are initialized.
 func (m *Model) applyLuaUIExtensions() {
 	rt := m.appCtx.LuaRuntime
-
-	// Apply whichkey extra bindings
-	for _, group := range rt.PendingWhichkeyGroups() {
-		var bindings []whichkey.Binding
-		for _, e := range group.Bindings {
-			bindings = append(bindings, whichkey.Binding{Key: e.Key, Desc: e.Desc})
-		}
-		m.whichKey.AddExtraBindings(bindings)
-	}
 
 	// Apply palette entries
 	var items []commandpalette.Item
@@ -7011,10 +6977,6 @@ func (m Model) View() string {
 	}
 	if m.teamSelector.IsActive() {
 		overlay := m.teamSelector.View()
-		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
-	}
-	if m.whichKey.IsActive() {
-		overlay := m.whichKey.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
 	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
