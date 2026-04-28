@@ -91,7 +91,7 @@ func (r *Runtime) PendingPaletteEntries() []PaletteEntry {
 
 // CallRender calls the Lua render function for this sidebar block with the given dimensions.
 func (b *SidebarBlockDef) CallRender(width, height int) string {
-	if b.Plugin == nil || b.RenderFn == nil {
+	if b.Plugin == nil || b.Plugin.L == nil || b.RenderFn == nil {
 		return ""
 	}
 	b.Plugin.mu.Lock()

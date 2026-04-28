@@ -292,17 +292,20 @@ func (r *Runtime) ExecString(code string) (string, error) {
 	return "", nil
 }
 
-// execString runs a Lua string in a transient sandboxed state wired to the
-// runtime's API. The state is closed after execution; it is NOT added to
-// r.plugins. Use this for one-shot init scripts (defaults, user init).
+// execString runs a Lua string in a persistent sandboxed state wired to the
+// runtime's API. The state is kept alive (added to r.plugins) so that any
+// callbacks or sidebar blocks registered during execution remain valid.
 func (r *Runtime) execString(code, name string) error {
 	L := newSandboxedState()
-	defer L.Close()
-	dummy := &loadedPlugin{name: name, dir: ""}
-	r.injectAPI(L, dummy)
+	plugin := &loadedPlugin{name: name, dir: "", L: L}
+	r.injectAPI(L, plugin)
 	if err := L.DoString(code); err != nil {
+		L.Close()
 		return fmt.Errorf("lua: exec %s: %w", name, err)
 	}
+	r.mu.Lock()
+	r.plugins = append(r.plugins, plugin)
+	r.mu.Unlock()
 	return nil
 }
 
