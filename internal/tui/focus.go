@@ -23,7 +23,6 @@ type PanelID int
 const (
 	PanelNone PanelID = iota
 	PanelSessions
-	PanelConfig
 	PanelSkills
 	PanelMemory
 	PanelAnalytics

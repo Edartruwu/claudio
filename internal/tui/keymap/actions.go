@@ -29,7 +29,6 @@ const (
 	// Panels
 	ActionPanelSessionTree ActionID = "panel.session-tree"
 	ActionPanelAgentGUI    ActionID = "panel.agent-gui"
-	ActionPanelConfig      ActionID = "panel.config"
 	ActionPanelSkills      ActionID = "panel.skills"
 	ActionPanelMemory      ActionID = "panel.memory"
 	ActionPanelTasks       ActionID = "panel.tasks"
@@ -80,7 +79,6 @@ var Registry = map[ActionID]ActionMeta{
 	// Panels
 	ActionPanelSessionTree: {ActionPanelSessionTree, "Session tree (STREE)", "panel"},
 	ActionPanelAgentGUI:    {ActionPanelAgentGUI, "Agent inspector (AGUI)", "panel"},
-	ActionPanelConfig:      {ActionPanelConfig, "Config panel", "panel"},
 	ActionPanelSkills:      {ActionPanelSkills, "Skills panel", "panel"},
 	ActionPanelMemory:      {ActionPanelMemory, "Memory panel", "panel"},
 	ActionPanelTasks:       {ActionPanelTasks, "Tasks panel", "panel"},

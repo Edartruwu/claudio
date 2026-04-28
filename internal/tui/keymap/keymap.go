@@ -53,7 +53,6 @@ func defaultBindings() map[string]ActionID {
 		// Panels (direct leader keys)
 		"op": ActionPanelSessionTree,
 		"oa": ActionPanelAgentGUI,
-		"C":  ActionPanelConfig,
 		"K":  ActionPanelSkills,
 		"M":  ActionPanelMemory,
 		"T":  ActionPanelTasks,
@@ -63,7 +62,6 @@ func defaultBindings() map[string]ActionID {
 		"a":  ActionPanelAgentGUI,
 
 		// Info panel sub-menu (i prefix)
-		"ic": ActionPanelConfig,
 		"ik": ActionPanelSkills,
 		"im": ActionPanelMemory,
 		"ia": ActionPanelAnalytics,
