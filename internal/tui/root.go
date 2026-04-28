@@ -45,6 +45,8 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/filepicker"
 	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/modelselector"
+	"github.com/Abraxas-365/claudio/internal/tui/picker"
+	"github.com/Abraxas-365/claudio/internal/tui/picker/finders"
 	"github.com/Abraxas-365/claudio/internal/tui/panels"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/analyticspanel"
@@ -222,6 +224,12 @@ type Model struct {
 	// Window manager — owns float/sidebar window registry and z-stack.
 	// Initialized from AppContext.WindowManager (app-level) or created locally.
 	windowMgr *windows.Manager
+
+	// Telescope-style fuzzy picker overlay (Task 5).
+	// pickerModel is live only while isPickerOpen is true.
+	pickerModel picker.Model
+	isPickerOpen bool
+	pickerKind   string // "buffers" | "agents" — disambiguates PickerDoneMsg handling
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -863,6 +871,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.palette.SetWidth(m.width)
 		m.cmdline.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
+		if m.isPickerOpen {
+			m.pickerModel.SetSize(m.width*3/4, m.height*3/4)
+		}
 		m.modelSelector.SetWidth(m.width)
 		m.agentSelector.SetWidth(m.width)
 		m.agentSelector.SetHeight(m.height)
@@ -1447,6 +1458,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Picker overlay intercepts all keys when open.
+		if m.isPickerOpen {
+			var pickerCmd tea.Cmd
+			var pickerMdl tea.Model
+			pickerMdl, pickerCmd = m.pickerModel.Update(msg)
+			m.pickerModel = pickerMdl.(picker.Model)
+			cmds = append(cmds, pickerCmd)
+			return m, tea.Batch(cmds...)
+		}
+
 		// Model selector gets priority when active
 		if m.focus == FocusModelSelector {
 			var cmd tea.Cmd
@@ -1564,6 +1585,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prompt.SetValue(val[:atIdx] + "@" + msg.Path + " ")
 		}
 		return m, nil
+
+	// ── Picker overlay messages ────────────────────────────────────────────────
+
+	case picker.EntryMsg:
+		// Forward asynchronous entry arrivals to the picker model.
+		if m.isPickerOpen {
+			var pickerCmd tea.Cmd
+			var pickerMdl tea.Model
+			pickerMdl, pickerCmd = m.pickerModel.Update(msg)
+			m.pickerModel = pickerMdl.(picker.Model)
+			cmds = append(cmds, pickerCmd)
+		}
+		return m, tea.Batch(cmds...)
+
+	case picker.PickerClosedMsg:
+		// User cancelled (Esc/q).
+		m.closePicker()
+		return m, tea.Batch(cmds...)
+
+	case picker.PickerDoneMsg:
+		// User confirmed a selection.
+		kind := m.pickerKind
+		m.closePicker()
+		switch kind {
+		case "buffers":
+			// Entry.Value is *windows.Window — open it in the window manager.
+			if m.windowMgr != nil {
+				if w, ok := msg.Entry.Value.(*windows.Window); ok {
+					_ = m.windowMgr.Open(w.Name)
+				}
+			}
+		case "agents":
+			// Show selected agent info; AGUI panel holds deeper detail.
+			cmds = append(cmds, m.toast.Show("Agent: "+msg.Entry.Ordinal))
+		}
+		return m, tea.Batch(cmds...)
+
+	// ── End picker overlay messages ────────────────────────────────────────────
 
 	case modelselector.ModelSelectedMsg:
 		m.focus = FocusPrompt
@@ -4463,6 +4522,13 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 			m.refreshViewport()
 		}
 		return nil
+
+	// ── Picker overlays ────────────────────
+	case keymap.ActionPickerBuffers:
+		return m.openBufferPicker()
+
+	case keymap.ActionPickerAgents:
+		return m.openAgentPicker()
 	}
 
 	return nil
@@ -4519,6 +4585,63 @@ func (m *Model) toggleAguiFloat() {
 		m.activePanelID = PanelAgentGUI
 		_ = m.windowMgr.Open("AgentGUI")
 	}
+}
+
+// openBufferPicker opens the telescope-style buffer/window picker (<Space>.).
+// Toggle: a second invocation while the picker is already open closes it.
+func (m *Model) openBufferPicker() tea.Cmd {
+	if m.isPickerOpen {
+		m.closePicker()
+		return nil
+	}
+	if m.windowMgr == nil {
+		return m.toast.Show("no window manager available")
+	}
+	mdl := picker.New(picker.Config{
+		Title:  "Buffers",
+		Finder: finders.NewBufferFinder(m.windowMgr),
+		Layout: picker.LayoutDropdown,
+	})
+	mdl.SetSize(m.width*3/4, m.height*3/4)
+	m.pickerModel = mdl
+	m.isPickerOpen = true
+	m.pickerKind = "buffers"
+	m.focus = FocusPicker
+	m.prompt.Blur()
+	return m.pickerModel.Init()
+}
+
+// openAgentPicker opens the telescope-style agent picker (<Space>a).
+// Toggle: a second invocation while the picker is already open closes it.
+func (m *Model) openAgentPicker() tea.Cmd {
+	if m.isPickerOpen {
+		m.closePicker()
+		return nil
+	}
+	if m.appCtx == nil || m.appCtx.TeamRunner == nil {
+		return m.toast.Show("no active team")
+	}
+	mdl := picker.New(picker.Config{
+		Title:  "Agents",
+		Finder: finders.NewAgentFinder(m.appCtx.TeamRunner),
+		Layout: picker.LayoutDropdown,
+	})
+	mdl.SetSize(m.width*3/4, m.height*3/4)
+	m.pickerModel = mdl
+	m.isPickerOpen = true
+	m.pickerKind = "agents"
+	m.focus = FocusPicker
+	m.prompt.Blur()
+	return m.pickerModel.Init()
+}
+
+// closePicker closes the picker overlay and restores focus to the prompt.
+func (m *Model) closePicker() {
+	m.isPickerOpen = false
+	m.pickerKind = ""
+	m.focus = FocusPrompt
+	m.prompt.Focus()
+	m.refreshViewport()
 }
 
 func (m *Model) openSessionPicker() (bool, tea.Cmd) {
@@ -6965,6 +7088,17 @@ func (m Model) View() string {
 	// Composite open float windows over the base layout.
 	if m.windowMgr != nil && len(m.windowMgr.OpenFloats()) > 0 {
 		base = m.windowMgr.RenderOverlay(base, m.width, m.height)
+	}
+
+	// Render fuzzy picker overlay on top of everything else.
+	if m.isPickerOpen {
+		pickerView := m.pickerModel.View()
+		base = lipgloss.Place(
+			m.width, m.height,
+			lipgloss.Center, lipgloss.Center,
+			pickerView,
+			lipgloss.WithWhitespaceChars(" "),
+		)
 	}
 
 	return base

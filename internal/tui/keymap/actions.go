@@ -51,6 +51,10 @@ const (
 
 	// Misc
 	ActionTodoDock ActionID = "todo.dock"
+
+	// Picker overlays (telescope-style fuzzy finder)
+	ActionPickerBuffers ActionID = "picker.buffers"
+	ActionPickerAgents  ActionID = "picker.agents"
 )
 
 // ActionMeta holds metadata for a registered action.
@@ -103,6 +107,10 @@ var Registry = map[ActionID]ActionMeta{
 
 	// Misc
 	ActionTodoDock: {ActionTodoDock, "Toggle todo dock", "misc"},
+
+	// Picker overlays
+	ActionPickerBuffers: {ActionPickerBuffers, "Buffer/window picker", "navigation"},
+	ActionPickerAgents:  {ActionPickerAgents, "Agent picker", "navigation"},
 }
 
 // ValidAction returns true if the given action ID exists in the registry.
