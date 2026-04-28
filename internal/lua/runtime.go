@@ -18,6 +18,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
+	"github.com/Abraxas-365/claudio/internal/tui/picker"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	lua "github.com/yuin/gopher-lua"
@@ -115,6 +116,10 @@ type Runtime struct {
 	// Pending window registrations (registered before WindowManager is wired)
 	pendingWindowsMu sync.Mutex
 	pendingWindows   []WindowDef
+
+	// Picker opener (wired after TUI is ready)
+	pickerOpenerMu sync.RWMutex
+	pickerOpener   func(picker.Config)
 
 	// Team inspection (wired after teams are initialised)
 	teamRunnerMu sync.RWMutex
@@ -314,6 +319,9 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// claudio.buf + claudio.ui.register_window
 	r.injectWindowsAPI(L, plugin, claudio)
 
+	// claudio.picker + claudio.finder
+	r.injectPickerAPI(L, plugin, claudio)
+
 	L.SetGlobal("claudio", claudio)
 }
 
@@ -357,6 +365,14 @@ func (r *Runtime) GetWindowManager() *windows.Manager {
 	r.windowManagerMu.RLock()
 	defer r.windowManagerMu.RUnlock()
 	return r.windowManager
+}
+
+// SetPickerOpener wires the opener callback so Lua plugins can open picker overlays.
+// The fn is called with a picker.Config whenever Lua requests a picker open.
+func (r *Runtime) SetPickerOpener(fn func(picker.Config)) {
+	r.pickerOpenerMu.Lock()
+	defer r.pickerOpenerMu.Unlock()
+	r.pickerOpener = fn
 }
 
 // SetTeamRunner wires the TeammateRunner so Lua plugins can inspect agent state.
