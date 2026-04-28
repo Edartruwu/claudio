@@ -4,9 +4,12 @@
 package outputfilter
 
 import (
+	"log"
 	"strings"
 
+	"github.com/Abraxas-365/claudio/internal/filters/luaregistry"
 	"github.com/Abraxas-365/claudio/internal/tools/outputfilter/tomlfilter"
+	lua "github.com/yuin/gopher-lua"
 )
 
 func init() {
@@ -23,7 +26,12 @@ func Filter(command, output string) string {
 
 	cmd := normalizeCommand(command)
 
-	// Try TOML-defined filters first (before hardcoded Go dispatch)
+	// Priority 1: Lua-registered filters (highest priority)
+	if filtered, ok := applyLuaFilter(cmd, output); ok {
+		return filtered
+	}
+
+	// Priority 2: TOML-defined filters
 	if filtered, ok := tomlfilter.DefaultRegistry().Apply(cmd, output); ok {
 		return filtered
 	}
@@ -144,4 +152,41 @@ func normalizeCommand(cmd string) string {
 		break
 	}
 	return cmd
+}
+
+// applyLuaFilter checks the Lua registry for a matching filter and runs
+// the declarative pipeline + optional transform function.
+func applyLuaFilter(cmd, output string) (string, bool) {
+	entry, ok := luaregistry.Lookup(cmd)
+	if !ok {
+		return "", false
+	}
+
+	// Run 8-stage declarative pipeline
+	result, err := tomlfilter.ApplyPipeline(entry.Def, output)
+	if err != nil {
+		log.Printf("[claudio-filter] lua filter %q pipeline error: %v", entry.Name, err)
+		return output, true // return original on error
+	}
+
+	// Run optional transform function under VM mutex
+	if entry.Transform != nil {
+		entry.Mu.Lock()
+		defer entry.Mu.Unlock()
+		if err := entry.VM.CallByParam(lua.P{
+			Fn:      entry.Transform,
+			NRet:    1,
+			Protect: true,
+		}, lua.LString(result)); err != nil {
+			log.Printf("[claudio-filter] lua filter %q transform error: %v", entry.Name, err)
+			return result, true
+		}
+		ret := entry.VM.Get(-1)
+		entry.VM.Pop(1)
+		if s, ok := ret.(lua.LString); ok {
+			result = string(s)
+		}
+	}
+
+	return result, true
 }
