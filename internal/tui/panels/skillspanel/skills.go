@@ -13,6 +13,13 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ── Package-level styles (avoids per-frame allocations) ───────────────────
+var (
+	skillsBorderBase  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	skillsQueryText   = lipgloss.NewStyle().Foreground(styles.Text)
+	skillsQueryCursor = lipgloss.NewStyle().Foreground(styles.Warning)
+)
+
 // InvokeSkillMsg is emitted when the user selects a skill to invoke.
 type InvokeSkillMsg struct {
 	Name    string
@@ -231,8 +238,8 @@ func (p *Panel) renderSplitView() string {
 		rightBorderColor = styles.Primary
 	}
 
-	leftBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(leftBorderColor)
-	rightBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(rightBorderColor)
+	leftBorder := skillsBorderBase.Copy().BorderForeground(leftBorderColor)
+	rightBorder := skillsBorderBase.Copy().BorderForeground(rightBorderColor)
 
 	leftStyled := leftBorder.Width(leftW).Height(innerH).Render(p.renderLeftPane(leftW))
 	rightStyled := rightBorder.Width(rightW).Height(innerH).Render(p.renderRightPane(rightW))
@@ -262,8 +269,8 @@ func (p *Panel) renderLeftPane(w int) string {
 
 	if p.searching {
 		lb.WriteString(" " + styles.PanelSearch.Render("/") + " ")
-		lb.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render(p.query))
-		lb.WriteString(lipgloss.NewStyle().Foreground(styles.Warning).Render("▋"))
+		lb.WriteString(skillsQueryText.Render(p.query))
+		lb.WriteString(skillsQueryCursor.Render("▋"))
 		lb.WriteString("\n")
 	}
 

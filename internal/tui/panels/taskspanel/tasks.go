@@ -55,7 +55,9 @@ var (
 	tpErrorStyle   = lipgloss.NewStyle().Foreground(styles.Error)
 	tpAquaStyle    = lipgloss.NewStyle().Foreground(styles.Aqua)
 	tpOrangeStyle  = lipgloss.NewStyle().Foreground(styles.Orange)
-	tpBorderBase   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	tpBorderBase    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	tpActiveTab     = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Underline(true)
+	tpInactiveTab   = lipgloss.NewStyle().Foreground(styles.Muted)
 )
 
 // Panel is the unified tasks panel with full-screen split layout.
@@ -561,8 +563,8 @@ func (p *Panel) renderLeftPane() string {
 	b.WriteString("\n")
 
 	// Tabs
-	activeTab := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Underline(true)
-	inactiveTab := lipgloss.NewStyle().Foreground(styles.Muted)
+	activeTab := tpActiveTab
+	inactiveTab := tpInactiveTab
 	tab1, tab2 := inactiveTab.Render("1 Plan"), inactiveTab.Render("2 BG")
 	if p.tab == tabPlanning {
 		tab1 = activeTab.Render("1 Plan")

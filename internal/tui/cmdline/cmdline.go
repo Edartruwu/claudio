@@ -44,13 +44,19 @@ type Model struct {
 	popupActive bool
 }
 
+var (
+	cmdlinePromptStyle      = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	cmdlineTextStyle        = lipgloss.NewStyle().Foreground(styles.Text)
+	cmdlinePlaceholderStyle = lipgloss.NewStyle().Foreground(styles.Muted)
+)
+
 // New creates a cmdline model backed by the given command registry.
 func New(reg *commands.Registry) Model {
 	ti := textinput.New()
 	ti.Prompt = ":"
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-	ti.TextStyle = lipgloss.NewStyle().Foreground(styles.Text)
-	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(styles.Muted)
+	ti.PromptStyle = cmdlinePromptStyle
+	ti.TextStyle = cmdlineTextStyle
+	ti.PlaceholderStyle = cmdlinePlaceholderStyle
 	ti.CharLimit = 1024
 
 	return Model{

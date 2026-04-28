@@ -14,6 +14,17 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ── Package-level styles (avoids per-frame allocations) ───────────────────
+var (
+	filesTitleStyle    = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	filesAddStyle      = lipgloss.NewStyle().Foreground(styles.Success)
+	filesModStyle      = lipgloss.NewStyle().Foreground(styles.Warning)
+	filesReadStyle     = lipgloss.NewStyle().Foreground(styles.Text)
+	filesSelectedStyle = lipgloss.NewStyle().Background(styles.Primary).Foreground(styles.Surface).Bold(true)
+	filesDimStyle      = lipgloss.NewStyle().Foreground(styles.Muted)
+	filesHintStyle     = lipgloss.NewStyle().Foreground(styles.Warning)
+)
+
 // FileStatus tracks how a file was interacted with.
 type FileStatus int
 
@@ -145,12 +156,12 @@ func (p *Panel) View() string {
 		return ""
 	}
 
-	titleStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-	addStyle := lipgloss.NewStyle().Foreground(styles.Success)
-	modStyle := lipgloss.NewStyle().Foreground(styles.Warning)
-	readStyle := lipgloss.NewStyle().Foreground(styles.Text)
-	selectedStyle := lipgloss.NewStyle().Background(styles.Primary).Foreground(styles.Surface).Bold(true)
-	dimStyle := lipgloss.NewStyle().Foreground(styles.Muted)
+	titleStyle := filesTitleStyle
+	addStyle := filesAddStyle
+	modStyle := filesModStyle
+	readStyle := filesReadStyle
+	selectedStyle := filesSelectedStyle
+	dimStyle := filesDimStyle
 
 	maxPathW := p.width - 8
 	if maxPathW < 10 {
@@ -225,7 +236,7 @@ func (p *Panel) View() string {
 	// Hint line at the bottom
 	var hintText string
 	if p.focused {
-		hintText = lipgloss.NewStyle().Foreground(styles.Warning).Render("j/k nav · esc close")
+		hintText = filesHintStyle.Render("j/k nav · esc close")
 	} else {
 		hintText = dimStyle.Render("<space>f focus · esc close")
 	}

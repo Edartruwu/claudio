@@ -22,6 +22,11 @@ var (
 	asValueStyle          = lipgloss.NewStyle().Foreground(styles.Dim)
 	asSepStyle            = lipgloss.NewStyle().Foreground(styles.Dim)
 	asHintStyle           = lipgloss.NewStyle().Foreground(styles.Warning).Italic(true)
+	// Base styles for dynamic-width variants (avoid per-frame NewStyle allocations).
+	asRowBase    = lipgloss.NewStyle().Background(styles.Subtle)
+	asColumnBase = lipgloss.NewStyle()
+	asBoxBase    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.Primary)
+	asCenterBase = lipgloss.NewStyle().Align(lipgloss.Center)
 )
 
 type AgentSelectedMsg struct {
@@ -275,9 +280,7 @@ func (m Model) View() string {
 	leftLines = append(leftLines, filterCopy.View())
 	leftLines = append(leftLines, "") // blank
 
-	selectedRowStyle := lipgloss.NewStyle().
-		Background(styles.Subtle).
-		Width(leftW)
+	selectedRowStyle := asRowBase.Copy().Width(leftW)
 
 	for i := offset; i < end; i++ {
 		a := items[i]
@@ -368,8 +371,8 @@ func (m Model) View() string {
 	}
 
 	// --- build rows ---
-	leftStyle := lipgloss.NewStyle().Width(leftW).MaxWidth(leftW)
-	rightStyle := lipgloss.NewStyle().Width(rightW).MaxWidth(rightW)
+	leftStyle := asColumnBase.Copy().Width(leftW).MaxWidth(leftW)
+	rightStyle := asColumnBase.Copy().Width(rightW).MaxWidth(rightW)
 
 	sepStyle := asSepStyle
 
@@ -384,11 +387,7 @@ func (m Model) View() string {
 	body := strings.Join(rows, "\n")
 
 	// --- outer box ---
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.Primary).
-		Width(innerW).
-		Render(body)
+	box := asBoxBase.Copy().Width(innerW).Render(body)
 
 	var hintText string
 	if m.confirmingReset {
@@ -400,10 +399,7 @@ func (m Model) View() string {
 
 	full := lipgloss.JoinVertical(lipgloss.Left, box, hint)
 
-	return lipgloss.NewStyle().
-		Width(m.width).
-		Align(lipgloss.Center).
-		Render(full)
+	return asCenterBase.Copy().Width(m.width).Render(full)
 }
 
 // wordWrap breaks s into lines of at most maxW runes.

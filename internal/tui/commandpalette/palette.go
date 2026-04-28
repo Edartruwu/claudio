@@ -10,7 +10,10 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
-var paletteWrapStyle = lipgloss.NewStyle().Padding(0, 1)
+var (
+	paletteWrapStyle        = lipgloss.NewStyle().Padding(0, 1)
+	paletteRowSelectedBase  = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+)
 
 // Item represents a command in the palette.
 type Item struct {
@@ -219,10 +222,7 @@ func (m Model) View() string {
 
 		var line string
 		if i == m.selected {
-			rowStyle := lipgloss.NewStyle().
-				Foreground(styles.Primary).
-				Bold(true).
-				Width(m.width - 2)
+			rowStyle := paletteRowSelectedBase.Copy().Width(m.width - 2)
 			prefix := styles.PalettePrefix.Render("\u203A ")
 			n := styles.PaletteItemSelected.Width(nameW).Render(name)
 			d := styles.PaletteDescSelected.Render(desc)

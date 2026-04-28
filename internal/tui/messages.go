@@ -14,6 +14,12 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ── Package-level styles (avoids per-frame allocations) ───────────────────
+var (
+	msgDividerStyle  = lipgloss.NewStyle().Foreground(styles.Subtle)
+	msgBarColorBase  = lipgloss.NewStyle().Bold(false)
+)
+
 // brailleFrames are the spinner animation frames for in-progress tool status.
 var brailleFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
@@ -1209,7 +1215,7 @@ func indentContinuation(s, prefix string) string {
 // renderTurnDivider renders a subtle horizontal rule between conversation turns.
 func renderTurnDivider(maxW int) string {
 	line := strings.Repeat("─", maxW)
-	return lipgloss.NewStyle().Foreground(styles.Subtle).Render(line)
+	return msgDividerStyle.Render(line)
 }
 
 // renderAssistantContinuation renders assistant text that follows a tool group.
@@ -1254,8 +1260,8 @@ func renderContextBar(used, max int) string {
 		barColor = styles.Success // green — healthy
 	}
 
-	filledStyle := lipgloss.NewStyle().Foreground(barColor)
-	pctStyle := lipgloss.NewStyle().Foreground(barColor)
+	filledStyle := msgBarColorBase.Copy().Foreground(barColor)
+	pctStyle := msgBarColorBase.Copy().Foreground(barColor)
 
 	bar := filledStyle.Render(strings.Repeat("█", filled)) +
 		styles.ContextBarEmpty.Render(strings.Repeat("░", barWidth-filled))

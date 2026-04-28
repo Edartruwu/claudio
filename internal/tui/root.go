@@ -101,8 +101,6 @@ type Model struct {
 	fileOps             []filespanel.FileOp
 	sidebar             *sidebar.Sidebar
 	sidebarFiles        *sidebarblocks.FilesBlock
-	windowManager       *windows.Manager
-
 	// Panels
 	activePanel   panels.Panel
 	activePanelID PanelID
@@ -474,12 +472,6 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	// Wire keymap into which-key for dynamic binding display
 	m.whichKey.SetKeymap(m.km)
 
-	// Initialize window manager
-	m.windowManager = windows.New()
-	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
-		m.appCtx.LuaRuntime.SetWindowManager(m.windowManager)
-	}
-
 	// Initialize sidebar
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
 	m.sidebar = m.buildSidebar()
@@ -738,10 +730,10 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 			return config.SaveSettings(s)
 		},
 		OpenWindow: func(name string) error {
-			return m.windowManager.Open(name)
+			return m.windowMgr.Open(name)
 		},
 		CloseWindow: func(name string) {
-			m.windowManager.Close(name)
+			m.windowMgr.Close(name)
 		},
 	})
 	m.commands = cmdRegistry
