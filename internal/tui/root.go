@@ -101,6 +101,7 @@ type Model struct {
 	fileOps             []filespanel.FileOp
 	sidebar             *sidebar.Sidebar
 	sidebarFiles        *sidebarblocks.FilesBlock
+	windowManager       *windows.Manager
 
 	// Panels
 	activePanel   panels.Panel
@@ -473,6 +474,12 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	// Wire keymap into which-key for dynamic binding display
 	m.whichKey.SetKeymap(m.km)
 
+	// Initialize window manager
+	m.windowManager = windows.New()
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		m.appCtx.LuaRuntime.SetWindowManager(m.windowManager)
+	}
+
 	// Initialize sidebar
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
 	m.sidebar = m.buildSidebar()
@@ -729,6 +736,12 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		},
 		SaveConfig: func(s *config.Settings) error {
 			return config.SaveSettings(s)
+		},
+		OpenWindow: func(name string) error {
+			return m.windowManager.Open(name)
+		},
+		CloseWindow: func(name string) {
+			m.windowManager.Close(name)
 		},
 	})
 	m.commands = cmdRegistry
@@ -6464,6 +6477,16 @@ func (m *Model) isWelcomeScreen() bool {
 	return len(m.messages) == 0 && !m.streaming
 }
 
+// luaSidebarBlock adapts a luart.SidebarBlockDef to the sidebar.Block interface.
+type luaSidebarBlock struct {
+	def luart.SidebarBlockDef
+}
+
+func (b *luaSidebarBlock) Title() string                    { return b.def.Title }
+func (b *luaSidebarBlock) MinHeight() int                   { return 3 }
+func (b *luaSidebarBlock) Weight() int                      { return 1 }
+func (b *luaSidebarBlock) Render(width, maxHeight int) string { return b.def.CallRender(width, maxHeight) }
+
 // buildSidebar constructs the sidebar from config (or defaults).
 func (m *Model) buildSidebar() *sidebar.Sidebar {
 	cfg := m.sidebarConfig()
@@ -6508,6 +6531,13 @@ func (m *Model) buildSidebar() *sidebar.Sidebar {
 			))
 		}
 	}
+	// Append Lua-registered sidebar blocks (fixes the pendingSidebarBlocks gap).
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		for _, def := range m.appCtx.LuaRuntime.GetSidebarBlocks() {
+			blks = append(blks, &luaSidebarBlock{def: def})
+		}
+	}
+
 	if len(blks) == 0 {
 		return nil
 	}

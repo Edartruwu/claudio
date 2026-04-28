@@ -109,6 +109,34 @@ func (r *Runtime) PendingPaletteEntries() []PaletteEntry {
 	return out
 }
 
+// CallRender calls the Lua render function for this sidebar block with the given dimensions.
+func (b *SidebarBlockDef) CallRender(width, height int) string {
+	if b.Plugin == nil || b.RenderFn == nil {
+		return ""
+	}
+	b.Plugin.mu.Lock()
+	defer b.Plugin.mu.Unlock()
+	defer func() {
+		if rv := recover(); rv != nil {
+			log.Printf("[lua] sidebar block %q render panic: %v", b.ID, rv)
+		}
+	}()
+	if err := b.Plugin.L.CallByParam(lua.P{
+		Fn:      b.RenderFn,
+		NRet:    1,
+		Protect: true,
+	}, lua.LNumber(width), lua.LNumber(height)); err != nil {
+		log.Printf("[lua] sidebar block %q render error: %v", b.ID, err)
+		return ""
+	}
+	result := b.Plugin.L.Get(-1)
+	b.Plugin.L.Pop(1)
+	if s, ok := result.(lua.LString); ok {
+		return string(s)
+	}
+	return ""
+}
+
 // GetSidebarBlocks returns all sidebar blocks registered by plugins.
 func (r *Runtime) GetSidebarBlocks() []SidebarBlockDef {
 	r.uiMu.RLock()
