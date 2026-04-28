@@ -12,13 +12,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Event represents a lifecycle event type.
 type Event string
 
-const (
+var (
 	// PreToolUse fires before a tool is executed.
 	PreToolUse Event = "PreToolUse"
 	// PostToolUse fires after a tool completes.
@@ -58,6 +59,46 @@ const (
 	// Notification fires when a system notification is triggered.
 	Notification Event = "Notification"
 )
+
+// EventTypeInfo describes a registered hook event type.
+type EventTypeInfo struct {
+	Name        string
+	Description string
+	BuiltIn     bool // true for Claudio core events
+}
+
+// eventRegistry holds all known hook event types.
+type eventRegistry struct {
+	mu    sync.RWMutex
+	types map[string]*EventTypeInfo
+}
+
+func newEventRegistry() *eventRegistry {
+	return &eventRegistry{types: make(map[string]*EventTypeInfo)}
+}
+
+func (r *eventRegistry) register(name, description string, builtin bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.types[name] = &EventTypeInfo{Name: name, Description: description, BuiltIn: builtin}
+}
+
+func (r *eventRegistry) isKnown(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.types[name]
+	return ok
+}
+
+func (r *eventRegistry) all() []*EventTypeInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]*EventTypeInfo, 0, len(r.types))
+	for _, v := range r.types {
+		out = append(out, v)
+	}
+	return out
+}
 
 // HookDef defines a single hook configuration.
 type HookDef struct {
@@ -140,14 +181,48 @@ type Manager struct {
 	config      HooksConfig
 	enabled     bool
 	inlineHooks []inlineHook
+	eventTypes  *eventRegistry
 }
 
 // NewManager creates a hooks manager from a configuration.
 func NewManager(config HooksConfig) *Manager {
-	return &Manager{
-		config:  config,
-		enabled: true,
+	m := &Manager{
+		config:     config,
+		enabled:    true,
+		eventTypes: newEventRegistry(),
 	}
+	// Pre-register all built-in event types.
+	m.eventTypes.register(string(PreToolUse), "Fires before any tool executes", true)
+	m.eventTypes.register(string(PostToolUse), "Fires after a tool completes", true)
+	m.eventTypes.register(string(PostToolUseFailure), "Fires when a tool fails", true)
+	m.eventTypes.register(string(PreCompact), "Fires before conversation compaction", true)
+	m.eventTypes.register(string(PostCompact), "Fires after conversation compaction completes", true)
+	m.eventTypes.register(string(SessionStart), "Fires when a new session begins", true)
+	m.eventTypes.register(string(SessionEnd), "Fires when a session ends", true)
+	m.eventTypes.register(string(Stop), "Fires when the assistant finishes responding", true)
+	m.eventTypes.register(string(SubagentStart), "Fires before a sub-agent is launched", true)
+	m.eventTypes.register(string(SubagentStop), "Fires after a sub-agent completes", true)
+	m.eventTypes.register(string(UserPromptSubmit), "Fires before processing user input", true)
+	m.eventTypes.register(string(TaskCreated), "Fires when a new task is created", true)
+	m.eventTypes.register(string(TaskCompleted), "Fires when a task is marked complete", true)
+	m.eventTypes.register(string(WorktreeCreate), "Fires when a git worktree is created", true)
+	m.eventTypes.register(string(WorktreeRemove), "Fires when a git worktree is removed", true)
+	m.eventTypes.register(string(ConfigChange), "Fires when a settings value is changed", true)
+	m.eventTypes.register(string(CwdChanged), "Fires when the working directory changes", true)
+	m.eventTypes.register(string(FileChanged), "Fires when a watched file is modified", true)
+	m.eventTypes.register(string(Notification), "Fires when a system notification is triggered", true)
+	return m
+}
+
+// RegisterEventType registers a new hook event type (e.g. for plugins).
+// Built-in types are pre-registered at Manager construction.
+func (m *Manager) RegisterEventType(name, description string) {
+	m.eventTypes.register(name, description, false)
+}
+
+// GetRegisteredEventTypes returns all known event types (built-in + plugin).
+func (m *Manager) GetRegisteredEventTypes() []*EventTypeInfo {
+	return m.eventTypes.all()
 }
 
 // RegisterInlineHook registers a Go function as a hook handler.
