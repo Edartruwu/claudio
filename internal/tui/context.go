@@ -5,6 +5,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	"github.com/Abraxas-365/claudio/internal/learning"
+	luart "github.com/Abraxas-365/claudio/internal/lua"
 	"github.com/Abraxas-365/claudio/internal/rules"
 	"github.com/Abraxas-365/claudio/internal/security"
 	"github.com/Abraxas-365/claudio/internal/services/analytics"
@@ -34,6 +35,7 @@ type AppContext struct {
 	Auditor     *security.Auditor
 	TeamManager *teams.Manager
 	TeamRunner  *teams.TeammateRunner
+	LuaRuntime  *luart.Runtime // optional; nil when Lua plugin system is disabled
 }
 
 // WithAppContext sets the shared application context for TUI panels.

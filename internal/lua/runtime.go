@@ -30,6 +30,13 @@ type Runtime struct {
 
 	mu      sync.Mutex
 	plugins []*loadedPlugin
+
+	// UI extension state — protected by uiMu.
+	uiMu                 sync.RWMutex
+	StatuslineFn         *lua.LFunction // set by claudio.ui.set_statusline
+	statuslinePlugin     *loadedPlugin  // plugin that owns StatuslineFn
+	pendingWhichkeyGroups []WhichkeyGroup
+	pendingPaletteEntries []PaletteEntry
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -137,6 +144,7 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(claudio, "notify", L.NewFunction(r.apiNotify(plugin)))
 	L.SetField(claudio, "log", L.NewFunction(r.apiLog(plugin)))
 	L.SetField(claudio, "register_keymap", L.NewFunction(r.apiRegisterKeymap(plugin)))
+	L.SetField(claudio, "ui", r.injectUIAPI(L, plugin))
 
 	L.SetGlobal("claudio", claudio)
 }

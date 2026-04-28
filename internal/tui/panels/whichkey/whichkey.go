@@ -109,10 +109,11 @@ func OpenBindings() []Binding {
 
 // Model is the which-key popup overlay.
 type Model struct {
-	active   bool
-	bindings []Binding
-	width    int
-	km       *keymap.Keymap // optional keymap reference for dynamic bindings
+	active        bool
+	bindings      []Binding
+	extraBindings []Binding  // plugin-registered bindings shown in the default view
+	width         int
+	km            *keymap.Keymap // optional keymap reference for dynamic bindings
 }
 
 // New creates a new which-key popup.
@@ -146,6 +147,11 @@ func (m *Model) ShowSessions() {
 // ShowOpen shows the open-panel sub-menu bindings (Space+O).
 func (m *Model) ShowOpen() {
 	m.Show(OpenBindings())
+}
+
+// AddExtraBindings appends plugin-registered bindings to show alongside the default view.
+func (m *Model) AddExtraBindings(bindings []Binding) {
+	m.extraBindings = append(m.extraBindings, bindings...)
 }
 
 // SetKeymap sets the keymap reference for dynamic binding generation.
@@ -254,6 +260,14 @@ func (m Model) View() string {
 			lines = append(lines, "")
 			for _, b := range defaultMulti {
 				line := "  " + styles.WhichKeyKey.Render(b.Key) + "  " + styles.WhichKeyDesc.Render(b.Desc)
+				lines = append(lines, line)
+			}
+		}
+		if len(m.extraBindings) > 0 {
+			lines = append(lines, "")
+			lines = append(lines, styles.WhichKeyTitle.Render(" Plugins "))
+			for _, b := range m.extraBindings {
+				line := "  " + styles.WhichKeyKey.Render(b.Key) + " " + styles.WhichKeySep.Render("→") + " " + styles.WhichKeyDesc.Render(b.Desc)
 				lines = append(lines, line)
 			}
 		}

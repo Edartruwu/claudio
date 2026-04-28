@@ -119,6 +119,12 @@ func (m *Model) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// AddItems appends extra items (e.g. from Lua plugins) to the palette.
+func (m *Model) AddItems(items []Item) {
+	m.items = append(m.items, items...)
+	m.filter()
+}
+
 // UpdateQuery updates the filter query.
 func (m *Model) UpdateQuery(query string) {
 	m.query = query
