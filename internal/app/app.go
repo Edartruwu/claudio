@@ -15,6 +15,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/attach"
 	"github.com/Abraxas-365/claudio/internal/api/provider"
 	"github.com/Abraxas-365/claudio/internal/auth"
+	"github.com/Abraxas-365/claudio/internal/capabilities"
 	authstorage "github.com/Abraxas-365/claudio/internal/auth/storage"
 	"github.com/Abraxas-365/claudio/internal/bus"
 	"github.com/Abraxas-365/claudio/internal/config"
@@ -98,6 +99,7 @@ type App struct {
 	CronRunner   *tasks.CronRunner
 	LSP          *lsp.ServerManager
 	MCPManager          *mcp.Manager
+	Capabilities        *capabilities.Registry
 	HarnessTemplateDirs []string
 	InjectCh            chan attach.UserMsgPayload
 	InterruptCh         chan struct{}
@@ -672,6 +674,13 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		}
 	}
 
+	// Build dynamic capability registry and register built-in "design" capability.
+	// Must happen before any agent spawns so IsKnown() and ApplyToRegistry() work.
+	capReg := capabilities.New()
+	capReg.Register("design", capabilities.DesignFactories()...)
+	tools.SetCapabilityRegistry(capReg)
+	agents.SetCapabilityRegistry(capReg)
+
 	return &App{
 		Config:    settings,
 		Profile:   activeProfile,
@@ -696,6 +705,7 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		CronRunner:  cronRunner,
 		LSP:         lspManager,
 		MCPManager:          globalMCPMgr,
+		Capabilities:        capReg,
 		// Priority order for TUI (first-match wins): project-local > harness
 		// (~/.claudio/team-templates is prepended by TUI as the primary/writable dir)
 		HarnessTemplateDirs: append([]string{filepath.Join(cwd, ".claudio", "team-templates")}, harness.CollectTemplateDirs(harnesses)...),
