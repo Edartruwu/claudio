@@ -14,6 +14,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
+	lsp "github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/teams"
@@ -126,6 +127,10 @@ type Runtime struct {
 	teamRunner   *teams.TeammateRunner
 	teamManagerMu sync.RWMutex
 	teamManager  *teams.Manager
+
+	// LSP server manager (wired after LSP init)
+	lspManagerMu sync.RWMutex
+	lspManager   *lsp.ServerManager
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -325,6 +330,9 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// claudio.filter sub-table
 	r.injectFilterAPI(L, plugin, claudio)
 
+	// claudio.lsp sub-table
+	r.injectLSPAPI(L, plugin, claudio)
+
 	L.SetGlobal("claudio", claudio)
 }
 
@@ -390,4 +398,11 @@ func (r *Runtime) SetTeamManager(mgr *teams.Manager) {
 	r.teamManagerMu.Lock()
 	defer r.teamManagerMu.Unlock()
 	r.teamManager = mgr
+}
+
+// SetLSPManager wires the LSP ServerManager so Lua plugins can register and control LSP servers.
+func (r *Runtime) SetLSPManager(mgr *lsp.ServerManager) {
+	r.lspManagerMu.Lock()
+	defer r.lspManagerMu.Unlock()
+	r.lspManager = mgr
 }
