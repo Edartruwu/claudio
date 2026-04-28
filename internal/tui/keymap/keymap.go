@@ -61,7 +61,7 @@ func defaultBindings() map[string]ActionID {
 		"O":  ActionPanelTools,
 		"A":  ActionPanelAnalytics,
 		"f":  ActionPanelFiles,
-		"a":  ActionPanelAgentGUI,
+		"a":  ActionPickerAgents, // <Space>a → agent picker
 
 		// Info panel sub-menu (i prefix)
 		"ik": ActionPanelSkills,
@@ -71,7 +71,7 @@ func defaultBindings() map[string]ActionID {
 		"io": ActionPanelTools,
 
 		// Navigation
-		".": ActionSessionPicker,
+		".": ActionPickerBuffers, // <Space>. → buffer/window picker
 		"/": ActionSearch,
 		";": ActionSessionRecent,
 		"p": ActionCommandPalette,
