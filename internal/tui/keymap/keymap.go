@@ -38,6 +38,8 @@ func defaultBindings() map[string]ActionID {
 		"wp": ActionWindowFocusDown, // alias: wj/wp both go to prompt
 		"wv": ActionWindowSplitVertical,
 		"wq": ActionWindowClose,
+		"wc": ActionFloatWindowClose,
+		"wo": ActionFloatWindowHint,
 
 		// Buffer/session sub-menu
 		"bn": ActionBufferNext,

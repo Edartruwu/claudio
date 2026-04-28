@@ -64,6 +64,7 @@ import (
 	sidebarblocks "github.com/Abraxas-365/claudio/internal/tui/sidebar/blocks"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	"github.com/Abraxas-365/claudio/internal/utils"
 )
 
@@ -219,6 +220,10 @@ type Model struct {
 	popupContent string
 	popupWidth   int
 	popupHeight  int
+
+	// Window manager — owns float/sidebar window registry and z-stack.
+	// Initialized from AppContext.WindowManager (app-level) or created locally.
+	windowMgr *windows.Manager
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -768,6 +773,18 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	// Initialize main window state from session (may be nil if lazy-created)
 	m.syncMainWindowState()
 
+	// Wire window manager: prefer app-level instance (shared with Lua runtime);
+	// fall back to a TUI-local one so tests and headless use cases still work.
+	if m.appCtx != nil && m.appCtx.WindowManager != nil {
+		m.windowMgr = m.appCtx.WindowManager
+	} else {
+		m.windowMgr = windows.New()
+	}
+	// Expose windowMgr to Lua runtime (no-op if already wired from app.go).
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		m.appCtx.LuaRuntime.SetWindowManager(m.windowMgr)
+	}
+
 	return m
 }
 
@@ -1047,6 +1064,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.cmdline, cmd = m.cmdline.Update(msg)
 			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
+		// Float window key routing — focused float intercepts all keys.
+		// Esc dismisses the top float; other keys are routed to its Update.
+		if m.windowMgr != nil && m.windowMgr.FocusedFloat() != nil {
+			// Esc closes the focused float before routing so the window is gone
+			// before the next render.
+			if msg.String() == "esc" {
+				if f := m.windowMgr.FocusedFloat(); f != nil {
+					m.windowMgr.Close(f.Name)
+				}
+				return m, tea.Batch(cmds...)
+			}
+			var wCmd tea.Cmd
+			m.windowMgr, wCmd = m.windowMgr.Update(msg)
+			cmds = append(cmds, wCmd)
 			return m, tea.Batch(cmds...)
 		}
 
@@ -4148,6 +4182,24 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 	switch action {
 	// ── Window Management ──────────────────
 	case keymap.ActionWindowCycle:
+		// When float windows are open, ww cycles focus through them instead of
+		// the normal viewport/prompt/panel rotation.
+		if m.windowMgr != nil {
+			floats := m.windowMgr.OpenFloats()
+			if len(floats) > 1 {
+				// More than one float: rotate the stack by closing top and re-opening
+				// it at the bottom so the next-highest becomes focused.
+				top := floats[len(floats)-1]
+				m.windowMgr.Close(top.Name)
+				_ = m.windowMgr.Open(top.Name) // re-opens at bottom of z-stack
+				return nil
+			} else if len(floats) == 1 {
+				// Single float: close it (toggle off).
+				m.windowMgr.Close(floats[0].Name)
+				return nil
+			}
+		}
+		// No floats — fall through to normal viewport/prompt/panel cycle.
 		hasPanel := m.activePanel != nil && m.activePanel.IsActive()
 		switch m.focus {
 		case FocusPrompt:
@@ -4180,6 +4232,19 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 			m.prompt.Focus()
 		}
 		return nil
+
+	case keymap.ActionFloatWindowClose:
+		// <leader>wc — close the topmost focused float window.
+		if m.windowMgr != nil {
+			if f := m.windowMgr.FocusedFloat(); f != nil {
+				m.windowMgr.Close(f.Name)
+			}
+		}
+		return nil
+
+	case keymap.ActionFloatWindowHint:
+		// <leader>wo — hint: float windows are opened via :open <name> command.
+		return m.toast.Show("Use :open <name> to open a float window")
 
 	case keymap.ActionWindowFocusUp:
 		m.focus = FocusViewport
@@ -6812,7 +6877,14 @@ func (m Model) View() string {
 		IsUsingOverage:     m.isUsingOverage,
 	}))
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	base := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
+	// Composite open float windows over the base layout.
+	if m.windowMgr != nil && len(m.windowMgr.OpenFloats()) > 0 {
+		base = m.windowMgr.RenderOverlay(base, m.width, m.height)
+	}
+
+	return base
 }
 
 // teamStatus returns the team summary string and unread mailbox count.

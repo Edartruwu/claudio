@@ -22,6 +22,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/harness"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	luart "github.com/Abraxas-365/claudio/internal/lua"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	"github.com/Abraxas-365/claudio/internal/learning"
 	"github.com/Abraxas-365/claudio/internal/models"
 	"github.com/Abraxas-365/claudio/internal/plugins"
@@ -102,6 +103,7 @@ type App struct {
 	MCPManager          *mcp.Manager
 	Capabilities        *capabilities.Registry
 	LuaRuntime          *luart.Runtime
+	WindowManager       *windows.Manager
 	HarnessTemplateDirs []string
 	InjectCh            chan attach.UserMsgPayload
 	InterruptCh         chan struct{}
@@ -717,6 +719,11 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	// Apply any providers registered by Lua plugins / init.lua
 	luaRuntime.ApplyProviders(apiClient)
 
+	// Initialize window manager; wire it into the Lua runtime so plugins can
+	// open/close floating windows via claudio.window API once it is exposed.
+	windowMgr := windows.New()
+	luaRuntime.SetWindowManager(windowMgr)
+
 	return &App{
 		Config:    settings,
 		Profile:   activeProfile,
@@ -743,6 +750,7 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		MCPManager:          globalMCPMgr,
 		Capabilities:        capReg,
 		LuaRuntime:          luaRuntime,
+		WindowManager:       windowMgr,
 		// Priority order for TUI (first-match wins): project-local > harness
 		// (~/.claudio/team-templates is prepended by TUI as the primary/writable dir)
 		HarnessTemplateDirs: append([]string{filepath.Join(cwd, ".claudio", "team-templates")}, harness.CollectTemplateDirs(harnesses)...),
