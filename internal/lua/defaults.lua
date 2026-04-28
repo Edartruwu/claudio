@@ -84,58 +84,9 @@ claudio.keymap.map("<space>ev", "editor.view")
 claudio.keymap.map("<space>t",  "todo.toggle")
 
 
--- Default sidebar via claudio.win.new_panel
--- Remove or override sections in your ~/.claudio/init.lua.
-
-local sidebar = claudio.win.new_panel({ position = "left", width = 30 })
-
-sidebar:add_section({
-  id = "session", title = "Session", weight = 1, min_height = 3,
-  render = function(w, h)
-    local s = claudio.session.current()
-    if s == nil then return "" end
-    local lines = {}
-    if s.name  and s.name  ~= "" then table.insert(lines, "  " .. s.name)  end
-    if s.model and s.model ~= "" then table.insert(lines, "  " .. s.model) end
-    return table.concat(lines, "\n")
-  end,
-})
-
-sidebar:add_section({
-  id = "todos", title = "Tasks", weight = 2, min_height = 3,
-  render = function(w, h)
-    local tasks = claudio.tasks.list()
-    if tasks == nil or #tasks == 0 then return "  no tasks" end
-    local lines = {}
-    for _, t in ipairs(tasks) do
-      local icon = t.status == "completed" and "✓" or (t.status == "in_progress" and "●" or "○")
-      table.insert(lines, "  " .. icon .. " " .. t.title)
-    end
-    return table.concat(lines, "\n")
-  end,
-})
-
-sidebar:add_section({
-  id = "files", title = "Files", weight = 3, min_height = 3,
-  render = function(w, h)
-    local files = claudio.files.list()
-    if files == nil or #files == 0 then return "  no files" end
-    local lines = {}
-    for _, f in ipairs(files) do
-      table.insert(lines, "  " .. f)
-    end
-    return table.concat(lines, "\n")
-  end,
-})
-
-sidebar:add_section({
-  id = "tokens", title = "Tokens", weight = 4, min_height = 2,
-  render = function(w, h)
-    local t = claudio.tokens.usage()
-    if t == nil then return "" end
-    return string.format("  %d tok  $%.4f", t.total, t.cost)
-  end,
-})
+-- No default sidebar. Create your own in ~/.claudio/init.lua:
+--   local sidebar = claudio.win.new_panel({ position = "left", width = 30 })
+--   sidebar:add_section({ id = "session", title = "Session", ... })
 
 -- Branching
 claudio.keymap.map("<space>gb", "branch.session")
