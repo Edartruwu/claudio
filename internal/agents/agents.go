@@ -25,9 +25,21 @@ func AgentTypeFromContext(ctx context.Context) string {
 	return v
 }
 
-// knownCapabilities is the set of valid capability tokens agents may declare.
-var knownCapabilities = map[string]bool{
-	"design": true,
+// capabilityChecker is implemented by capabilities.Registry.
+// Using a local interface avoids importing internal/capabilities here
+// and keeps the agents package free of circular dependencies.
+type capabilityChecker interface {
+	IsKnown(name string) bool
+}
+
+// capReg is set during App.New() via SetCapabilityRegistry.
+// Nil until then — unknown capabilities just emit a warning.
+var capReg capabilityChecker
+
+// SetCapabilityRegistry wires the dynamic capability registry so agent loaders
+// can validate capability tokens declared in agent definition files.
+func SetCapabilityRegistry(r capabilityChecker) {
+	capReg = r
 }
 
 var (
@@ -430,7 +442,7 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 				}
 
 				for _, cap := range def.Capabilities {
-					if !knownCapabilities[cap] {
+					if capReg == nil || !capReg.IsKnown(cap) {
 						fmt.Fprintf(os.Stderr, "warning: agent %q declares unknown capability %q (ignored)\n", agentType, cap)
 					}
 				}
@@ -499,7 +511,7 @@ func LoadCustomAgents(dirs ...string) []AgentDefinition {
 			}
 
 			for _, cap := range def.Capabilities {
-				if !knownCapabilities[cap] {
+				if capReg == nil || !capReg.IsKnown(cap) {
 					fmt.Fprintf(os.Stderr, "warning: agent %q declares unknown capability %q (ignored)\n", agentType, cap)
 				}
 			}
