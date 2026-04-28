@@ -62,6 +62,13 @@ func (b *FilesBlock) Title() string  { return fmt.Sprintf("Files (%d)", len(b.en
 func (b *FilesBlock) MinHeight() int { return 1 }
 func (b *FilesBlock) Weight() int    { return 3 }
 
+// Entries returns a snapshot of the current file entries for use by Lua providers.
+func (b *FilesBlock) Entries() []filespanel.FileEntry {
+	result := make([]filespanel.FileEntry, len(b.entries))
+	copy(result, b.entries)
+	return result
+}
+
 func (b *FilesBlock) Render(width, maxHeight int) string {
 	if len(b.entries) == 0 {
 		return fileDimStyle.Render("  No files yet")

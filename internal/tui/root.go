@@ -233,6 +233,10 @@ type Model struct {
 	// Channels are reference types: all Model copies share the same channel.
 	// Nil when no LuaRuntime is present.
 	luaPickerCh chan picker.Config
+
+	// luaTokens is a shared token/cost snapshot updated after each turn and
+	// session reset. It is a pointer so all BubbleTea Model copies see the same data.
+	luaTokens *luaTokenState
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -487,6 +491,12 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 
 	// Initialize sidebar (sidebarFiles kept for file-op refresh; not registered in sidebar)
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
+
+	// Wire Lua data providers so sidebar.lua blocks can read live session/file/task/token state.
+	m.luaTokens = &luaTokenState{}
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		wireLuaDataProviders(m.appCtx.LuaRuntime, m.session, m.sidebarFiles, m.luaTokens)
+	}
 	m.sidebar = m.buildSidebar()
 
 	cmdRegistry := commands.NewRegistry()
@@ -2926,6 +2936,9 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		}
 		m.usageTracker.Add(event.usage)
 		m.totalTokens, m.totalCost = m.usageTracker.Snapshot()
+		if m.luaTokens != nil {
+			m.luaTokens.set(m.totalTokens, m.totalCost)
+		}
 		m.turns++
 
 	case "done":
@@ -3498,6 +3511,9 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 			m.turns = 0
 			m.totalTokens = 0
 			m.totalCost = 0
+			if m.luaTokens != nil {
+				m.luaTokens.set(0, 0)
+			}
 			m.undoStash = nil
 			m.usageTracker = api.NewUsageTracker(m.model, 0)
 			if m.engine != nil {
@@ -4891,6 +4907,9 @@ func (m *Model) doSwitchSession(id string) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.pendingEngineMessages = nil
 
@@ -4996,6 +5015,9 @@ func (m *Model) doSwitchSession(id string) {
 		}
 		// Rough cost estimate (use Sonnet pricing as baseline)
 		m.totalCost = float64(m.totalTokens) * 3.0 / 1_000_000
+		if m.luaTokens != nil {
+			m.luaTokens.set(m.totalTokens, m.totalCost)
+		}
 	}
 
 	// Re-apply agent and team from resumed session.
@@ -5303,6 +5325,9 @@ func (m *Model) saveSessionRuntime(sessionID string) {
 	m.streaming = false
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.turns = 0
 	m.expandedGroups = make(map[int]bool)
@@ -5330,6 +5355,9 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 	m.streaming = rt.Streaming
 	m.totalTokens = rt.TotalTokens
 	m.totalCost = rt.TotalCost
+	if m.luaTokens != nil {
+		m.luaTokens.set(m.totalTokens, m.totalCost)
+	}
 	m.turns = rt.Turns
 	m.expandedGroups = rt.ExpandedGroups
 	m.lastToolGroup = rt.LastToolGroup
@@ -5415,6 +5443,9 @@ func (m *Model) createNewSession() (bool, tea.Cmd) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
@@ -5472,6 +5503,9 @@ func (m *Model) deleteCurrentSession() (bool, tea.Cmd) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
