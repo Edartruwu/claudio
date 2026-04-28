@@ -141,10 +141,18 @@ func (m Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case tea.KeyTab:
 		m.autocomplete()
 		return m, nil
+
+	case tea.KeySpace:
+		// Reset autocomplete state when user types a space (starts arguments).
+		m.suggestions = nil
+		m.suggIdx = 0
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+		return m, cmd
 	}
 
 	// Reset suggestions when user types normally
-	if msg.Type == tea.KeyRunes || msg.Type == tea.KeyBackspace || msg.Type == tea.KeyDelete {
+	if msg.Type == tea.KeyRunes || msg.Type == tea.KeyBackspace || msg.Type == tea.KeyDelete || msg.Type == tea.KeySpace {
 		m.suggestions = nil
 		m.suggIdx = 0
 	}

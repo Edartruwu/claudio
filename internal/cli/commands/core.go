@@ -14,8 +14,8 @@ import (
 	"github.com/Abraxas-365/claudio/internal/config"
 )
 
-// builtinThemes maps theme names to semantic color palettes.
-var builtinThemes = map[string]map[string]string{
+// BuiltinThemes maps theme names to semantic color palettes.
+var BuiltinThemes = map[string]map[string]string{
 	"tokyonight": {
 		"primary": "#7aa2f7", "secondary": "#9ece6a", "success": "#9ece6a",
 		"warning": "#e0af68", "error": "#f7768e", "muted": "#565f89",
@@ -971,17 +971,17 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		Execute: func(args string) (string, error) {
 			name := strings.TrimSpace(args)
 			if name == "" {
-				names := make([]string, 0, len(builtinThemes))
-				for k := range builtinThemes {
+				names := make([]string, 0, len(BuiltinThemes))
+				for k := range BuiltinThemes {
 					names = append(names, k)
 				}
 				sort.Strings(names)
 				return "Available: " + strings.Join(names, ", "), nil
 			}
-			colors, ok := builtinThemes[name]
+			colors, ok := BuiltinThemes[name]
 			if !ok {
-				names := make([]string, 0, len(builtinThemes))
-				for k := range builtinThemes {
+				names := make([]string, 0, len(BuiltinThemes))
+				for k := range BuiltinThemes {
 					names = append(names, k)
 				}
 				sort.Strings(names)
@@ -991,6 +991,12 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 				return "", fmt.Errorf("UI not available")
 			}
 			deps.SetTheme(colors)
+			if deps.GetConfig != nil && deps.SaveConfig != nil {
+				if cfg := deps.GetConfig(); cfg != nil {
+					cfg.ColorScheme = name
+					_ = deps.SaveConfig(cfg)
+				}
+			}
 			return fmt.Sprintf("colorscheme: %s applied", name), nil
 		},
 	})

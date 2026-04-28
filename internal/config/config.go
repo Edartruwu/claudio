@@ -105,6 +105,9 @@ type Settings struct {
 	// AutoLoadSkills configures skills pre-loaded into agent system prompts on spawn.
 	AutoLoadSkills AutoLoadSkillsConfig `json:"autoLoadSkills,omitempty"`
 
+	// ColorScheme is the active built-in color theme (e.g. "gruvbox", "tokyonight").
+	ColorScheme string `json:"colorScheme,omitempty"`
+
 	// PluginConfigs holds per-plugin configuration keyed by plugin name.
 	// Plugins read/write their own namespace: settings.PluginConfigs["my-plugin"]["key"]
 	PluginConfigs map[string]map[string]any `json:"pluginConfigs,omitempty"`
@@ -325,6 +328,7 @@ func DefaultSettings() *Settings {
 		APIBaseURL:           "https://api.anthropic.com",
 		AgentAutoDeleteAfter: 3,
 		CodeFilterLevel:      "none",
+		ColorScheme:          "gruvbox",
 	}
 }
 
@@ -566,6 +570,9 @@ func mergeFromFile(settings *Settings, path string) {
 	if overlay.Caveman != nil {
 		settings.Caveman = overlay.Caveman
 	}
+	if overlay.ColorScheme != "" {
+		settings.ColorScheme = overlay.ColorScheme
+	}
 }
 
 func applyEnvOverrides(settings *Settings) {
@@ -581,6 +588,9 @@ func applyEnvOverrides(settings *Settings) {
 	if v := os.Getenv("CLAUDIO_CAVEMAN"); v == "true" || v == "1" {
 		b := true
 		settings.Caveman = &b
+	}
+	if v := os.Getenv("CLAUDIO_COLOR_SCHEME"); v != "" {
+		settings.ColorScheme = v
 	}
 }
 

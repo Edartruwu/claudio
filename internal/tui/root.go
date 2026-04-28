@@ -729,6 +729,15 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	})
 	m.commands = cmdRegistry
 
+	// Apply configured color scheme on startup.
+	if m.appCtx != nil && m.appCtx.Config != nil {
+		if scheme := m.appCtx.Config.ColorScheme; scheme != "" {
+			if colors, ok := commands.BuiltinThemes[scheme]; ok {
+				styles.SetTheme(colors)
+			}
+		}
+	}
+
 	// Build palette items from registered commands + model shortcuts
 	paletteItems := buildPaletteItems(cmdRegistry)
 	for shortcut, modelID := range m.apiClient.GetModelShortcuts() {
