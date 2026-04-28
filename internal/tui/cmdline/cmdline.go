@@ -4,6 +4,7 @@
 package cmdline
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -30,6 +31,10 @@ type Model struct {
 	active   bool
 	width    int
 	registry *commands.Registry
+
+	// ActionCompleter, if set, returns a list of action IDs to include in
+	// tab-completion alongside registry commands.
+	ActionCompleter func() []string
 
 	history []string
 	histIdx int // -1 = not browsing history
@@ -238,6 +243,15 @@ func (m *Model) autocomplete() {
 				m.suggestions = append(m.suggestions, cmd.Name)
 			}
 		}
+		// Include keymap action IDs.
+		if m.ActionCompleter != nil {
+			for _, id := range m.ActionCompleter() {
+				if strings.HasPrefix(id, val) {
+					m.suggestions = append(m.suggestions, id)
+				}
+			}
+		}
+		sort.Strings(m.suggestions)
 		m.suggIdx = 0
 	}
 

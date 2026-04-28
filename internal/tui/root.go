@@ -809,6 +809,14 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 
 	// nvim-style ":" command line
 	m.cmdline = cmdline.New(cmdRegistry)
+	m.cmdline.ActionCompleter = func() []string {
+		ids := make([]string, 0, len(keymap.Registry))
+		for id := range keymap.Registry {
+			ids = append(ids, string(id))
+		}
+		slices.Sort(ids)
+		return ids
+	}
 
 	// File picker for @ mentions
 	cwd, _ := os.Getwd()
@@ -3297,6 +3305,11 @@ func (m Model) runCmdlineCommand(msg cmdline.ExecuteMsg) (tea.Model, tea.Cmd) {
 		}
 		m.doSwitchSession(newSess.ID)
 		return m, m.resumeStreamingCmds()
+	}
+
+	// If the command name matches a registered keymap action, dispatch it directly.
+	if _, ok := keymap.Registry[keymap.ActionID(msg.Name)]; ok {
+		return m, m.dispatchAction(keymap.ActionID(msg.Name))
 	}
 
 	result, err := m.commands.Execute(msg.Name, msg.Args)
