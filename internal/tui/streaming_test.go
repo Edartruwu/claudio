@@ -1,32 +1,31 @@
 package tui
 
 import (
-	"strings"
 	"testing"
 )
 
 // newStreamingModel returns a minimal Model suitable for testing streaming logic.
 // It initialises streamText and leaves session nil (persistMessage is nil-safe).
 func newStreamingModel() *Model {
+	pane := newPaneState("")
 	return &Model{
-		streamText:          &strings.Builder{},
-		pendingPostToolText: &strings.Builder{},
+		panes: []PaneState{pane},
 	}
 }
 
 // simulateTextDelta mirrors what handleEngineEvent does for "text_delta".
 func simulateTextDelta(m *Model, text string) {
-	if m.pendingToolCount > 0 {
-		m.pendingPostToolText.WriteString(text)
+	if m.activePane().pendingToolCount > 0 {
+		m.activePane().pendingPostToolText.WriteString(text)
 	} else {
-		m.streamText.WriteString(text)
+		m.activePane().streamText.WriteString(text)
 		m.updateStreamingMessage()
 	}
 }
 
 // simulateToolStart mirrors what handleEngineEvent does for "tool_start".
 func simulateToolStart(m *Model, id, name string) {
-	m.pendingToolCount++
+	m.activePane().pendingToolCount++
 	m.finalizeStreamingMessage()
 	m.addMessage(ChatMessage{Type: MsgToolUse, ToolUseID: id, Content: name})
 }
@@ -34,12 +33,12 @@ func simulateToolStart(m *Model, id, name string) {
 // simulateToolEnd mirrors what handleEngineEvent does for "tool_end".
 func simulateToolEnd(m *Model, id, result string) {
 	m.addMessage(ChatMessage{Type: MsgToolResult, ToolUseID: id, Content: result})
-	if m.pendingToolCount > 0 {
-		m.pendingToolCount--
+	if m.activePane().pendingToolCount > 0 {
+		m.activePane().pendingToolCount--
 	}
-	if m.pendingToolCount == 0 && m.pendingPostToolText.Len() > 0 {
-		m.streamText.WriteString(m.pendingPostToolText.String())
-		m.pendingPostToolText.Reset()
+	if m.activePane().pendingToolCount == 0 && m.activePane().pendingPostToolText.Len() > 0 {
+		m.activePane().streamText.WriteString(m.activePane().pendingPostToolText.String())
+		m.activePane().pendingPostToolText.Reset()
 		m.finalizeStreamingMessage()
 	}
 }
@@ -186,11 +185,11 @@ func TestPendingToolText_TextBeforeToolNotBuffered(t *testing.T) {
 	m := newStreamingModel()
 	simulateTextDelta(m, "preamble before tool")
 
-	if m.pendingPostToolText.Len() != 0 {
-		t.Errorf("pre-tool text must not go to pendingPostToolText; got %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.Len() != 0 {
+		t.Errorf("pre-tool text must not go to pendingPostToolText; got %q", m.activePane().pendingPostToolText.String())
 	}
-	if m.streamText.String() != "preamble before tool" {
-		t.Errorf("streamText = %q, want %q", m.streamText.String(), "preamble before tool")
+	if m.activePane().streamText.String() != "preamble before tool" {
+		t.Errorf("streamText = %q, want %q", m.activePane().streamText.String(), "preamble before tool")
 	}
 }
 
@@ -200,11 +199,11 @@ func TestPendingToolText_NoBufferingWithoutTool(t *testing.T) {
 	m := newStreamingModel()
 	simulateTextDelta(m, "hello world")
 
-	if m.pendingPostToolText.Len() != 0 {
-		t.Errorf("expected no buffering, got %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.Len() != 0 {
+		t.Errorf("expected no buffering, got %q", m.activePane().pendingPostToolText.String())
 	}
-	if m.streamText.String() != "hello world" {
-		t.Errorf("expected streamText to hold text, got %q", m.streamText.String())
+	if m.activePane().streamText.String() != "hello world" {
+		t.Errorf("expected streamText to hold text, got %q", m.activePane().streamText.String())
 	}
 }
 
@@ -216,11 +215,11 @@ func TestPendingToolText_BufferedDuringToolExecution(t *testing.T) {
 
 	simulateTextDelta(m, "both.")
 
-	if m.streamText.String() != "" {
-		t.Errorf("streamText should be empty while tool in-flight, got %q", m.streamText.String())
+	if m.activePane().streamText.String() != "" {
+		t.Errorf("streamText should be empty while tool in-flight, got %q", m.activePane().streamText.String())
 	}
-	if m.pendingPostToolText.String() != "both." {
-		t.Errorf("pendingPostToolText = %q, want %q", m.pendingPostToolText.String(), "both.")
+	if m.activePane().pendingPostToolText.String() != "both." {
+		t.Errorf("pendingPostToolText = %q, want %q", m.activePane().pendingPostToolText.String(), "both.")
 	}
 }
 
@@ -233,14 +232,14 @@ func TestPendingToolText_NoPendingText_ToolEndNoExtraMessage(t *testing.T) {
 	simulateToolEnd(m, "id1", "exit 0")
 
 	// Expect exactly: MsgToolUse + MsgToolResult — no extra MsgAssistant
-	if len(m.messages) != 2 {
-		t.Fatalf("message count = %d, want 2; messages: %v", len(m.messages), m.messages)
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("message count = %d, want 2; messages: %v", len(m.activePane().messages), m.activePane().messages)
 	}
-	if m.messages[0].Type != MsgToolUse {
-		t.Errorf("messages[0].Type = %v, want MsgToolUse", m.messages[0].Type)
+	if m.activePane().messages[0].Type != MsgToolUse {
+		t.Errorf("messages[0].Type = %v, want MsgToolUse", m.activePane().messages[0].Type)
 	}
-	if m.messages[1].Type != MsgToolResult {
-		t.Errorf("messages[1].Type = %v, want MsgToolResult", m.messages[1].Type)
+	if m.activePane().messages[1].Type != MsgToolResult {
+		t.Errorf("messages[1].Type = %v, want MsgToolResult", m.activePane().messages[1].Type)
 	}
 }
 
@@ -257,16 +256,16 @@ func TestPendingToolText_FlushedAfterToolEnd(t *testing.T) {
 
 	// Expected message order: assistant → tool_use → tool_result → assistant
 	wantTypes := []MessageType{MsgAssistant, MsgToolUse, MsgToolResult, MsgAssistant}
-	if len(m.messages) != len(wantTypes) {
-		t.Fatalf("message count = %d, want %d; messages: %v", len(m.messages), len(wantTypes), m.messages)
+	if len(m.activePane().messages) != len(wantTypes) {
+		t.Fatalf("message count = %d, want %d; messages: %v", len(m.activePane().messages), len(wantTypes), m.activePane().messages)
 	}
 	for i, want := range wantTypes {
-		if m.messages[i].Type != want {
-			t.Errorf("messages[%d].Type = %v, want %v", i, m.messages[i].Type, want)
+		if m.activePane().messages[i].Type != want {
+			t.Errorf("messages[%d].Type = %v, want %v", i, m.activePane().messages[i].Type, want)
 		}
 	}
-	if m.messages[3].Content != "both." {
-		t.Errorf("final assistant content = %q, want %q", m.messages[3].Content, "both.")
+	if m.activePane().messages[3].Content != "both." {
+		t.Errorf("final assistant content = %q, want %q", m.activePane().messages[3].Content, "both.")
 	}
 }
 
@@ -279,10 +278,10 @@ func TestPendingToolText_SingleTool_FlushedImmediately(t *testing.T) {
 	simulateTextDelta(m, "result commentary")
 	simulateToolEnd(m, "id1", "ok")
 
-	if m.pendingPostToolText.Len() != 0 {
-		t.Errorf("buffer not flushed after single tool_end; got %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.Len() != 0 {
+		t.Errorf("buffer not flushed after single tool_end; got %q", m.activePane().pendingPostToolText.String())
 	}
-	last := m.messages[len(m.messages)-1]
+	last := m.activePane().messages[len(m.activePane().messages)-1]
 	if last.Type != MsgAssistant || last.Content != "result commentary" {
 		t.Errorf("last message = {%v %q}, want MsgAssistant %q", last.Type, last.Content, "result commentary")
 	}
@@ -299,18 +298,18 @@ func TestPendingToolText_NotFlushedUntilLastToolEnd(t *testing.T) {
 
 	// First tool ends — text must still be buffered (second tool still in-flight)
 	simulateToolEnd(m, "a", "result-a")
-	if m.pendingPostToolText.String() != "post-tool commentary" {
-		t.Errorf("buffer should not be flushed yet; pendingPostToolText = %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.String() != "post-tool commentary" {
+		t.Errorf("buffer should not be flushed yet; pendingPostToolText = %q", m.activePane().pendingPostToolText.String())
 	}
 
 	// Second tool ends — now text should be flushed
 	simulateToolEnd(m, "b", "result-b")
-	if m.pendingPostToolText.Len() != 0 {
-		t.Errorf("buffer should be empty after last tool_end; got %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.Len() != 0 {
+		t.Errorf("buffer should be empty after last tool_end; got %q", m.activePane().pendingPostToolText.String())
 	}
 
 	// MsgAssistant should be last
-	last := m.messages[len(m.messages)-1]
+	last := m.activePane().messages[len(m.activePane().messages)-1]
 	if last.Type != MsgAssistant {
 		t.Errorf("last message type = %v, want MsgAssistant", last.Type)
 	}
@@ -339,12 +338,12 @@ func TestPendingToolText_MessageOrderWithParallelTools(t *testing.T) {
 		MsgToolResult, // result-b
 		MsgAssistant,  // "interleaved text" — must come AFTER results
 	}
-	if len(m.messages) != len(wantTypes) {
-		t.Fatalf("message count = %d, want %d", len(m.messages), len(wantTypes))
+	if len(m.activePane().messages) != len(wantTypes) {
+		t.Fatalf("message count = %d, want %d", len(m.activePane().messages), len(wantTypes))
 	}
 	for i, want := range wantTypes {
-		if m.messages[i].Type != want {
-			t.Errorf("messages[%d].Type = %v, want %v", i, m.messages[i].Type, want)
+		if m.activePane().messages[i].Type != want {
+			t.Errorf("messages[%d].Type = %v, want %v", i, m.activePane().messages[i].Type, want)
 		}
 	}
 }
@@ -360,19 +359,19 @@ func TestPendingToolText_MessageOrder_SingleTool(t *testing.T) {
 	simulateToolEnd(m, "id1", "saved")
 
 	wantTypes := []MessageType{MsgAssistant, MsgToolUse, MsgToolResult, MsgAssistant}
-	if len(m.messages) != len(wantTypes) {
-		t.Fatalf("message count = %d, want %d", len(m.messages), len(wantTypes))
+	if len(m.activePane().messages) != len(wantTypes) {
+		t.Fatalf("message count = %d, want %d", len(m.activePane().messages), len(wantTypes))
 	}
 	for i, want := range wantTypes {
-		if m.messages[i].Type != want {
-			t.Errorf("messages[%d].Type = %v, want %v", i, m.messages[i].Type, want)
+		if m.activePane().messages[i].Type != want {
+			t.Errorf("messages[%d].Type = %v, want %v", i, m.activePane().messages[i].Type, want)
 		}
 	}
-	if m.messages[0].Content != "before" {
-		t.Errorf("messages[0].Content = %q, want %q", m.messages[0].Content, "before")
+	if m.activePane().messages[0].Content != "before" {
+		t.Errorf("messages[0].Content = %q, want %q", m.activePane().messages[0].Content, "before")
 	}
-	if m.messages[3].Content != "after" {
-		t.Errorf("messages[3].Content = %q, want %q", m.messages[3].Content, "after")
+	if m.activePane().messages[3].Content != "after" {
+		t.Errorf("messages[3].Content = %q, want %q", m.activePane().messages[3].Content, "after")
 	}
 }
 
@@ -387,7 +386,7 @@ func TestPendingToolText_MultipleTextsAccumulate(t *testing.T) {
 	simulateTextDelta(m, " — combine both.")
 	simulateToolEnd(m, "id1", "success")
 
-	last := m.messages[len(m.messages)-1]
+	last := m.activePane().messages[len(m.activePane().messages)-1]
 	if last.Type != MsgAssistant {
 		t.Fatalf("last message type = %v, want MsgAssistant", last.Type)
 	}
@@ -406,11 +405,11 @@ func TestPendingToolText_NoPendingText_NoAccumulate(t *testing.T) {
 	// no text_delta during tool
 	simulateToolEnd(m, "id1", "exit 0")
 
-	if m.pendingPostToolText.Len() != 0 {
-		t.Errorf("buffer should be empty; got %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.Len() != 0 {
+		t.Errorf("buffer should be empty; got %q", m.activePane().pendingPostToolText.String())
 	}
 	// Only MsgToolUse + MsgToolResult — no trailing MsgAssistant
-	for _, msg := range m.messages {
+	for _, msg := range m.activePane().messages {
 		if msg.Type == MsgAssistant {
 			t.Errorf("unexpected MsgAssistant when no text was buffered: %q", msg.Content)
 		}
@@ -436,12 +435,12 @@ func TestPendingToolText_SequentialTurns(t *testing.T) {
 		MsgAssistant, MsgToolUse, MsgToolResult, // turn 1
 		MsgAssistant, MsgToolUse, MsgToolResult, // turn 2
 	}
-	if len(m.messages) != len(wantTypes) {
-		t.Fatalf("message count = %d, want %d", len(m.messages), len(wantTypes))
+	if len(m.activePane().messages) != len(wantTypes) {
+		t.Fatalf("message count = %d, want %d", len(m.activePane().messages), len(wantTypes))
 	}
 	for i, want := range wantTypes {
-		if m.messages[i].Type != want {
-			t.Errorf("messages[%d].Type = %v, want %v", i, m.messages[i].Type, want)
+		if m.activePane().messages[i].Type != want {
+			t.Errorf("messages[%d].Type = %v, want %v", i, m.activePane().messages[i].Type, want)
 		}
 	}
 }
@@ -453,17 +452,17 @@ func simulateRetry(m *Model, ids ...string) {
 	for _, id := range ids {
 		retryIDs[id] = true
 	}
-	filtered := m.messages[:0]
-	for _, msg := range m.messages {
+	filtered := m.activePane().messages[:0]
+	for _, msg := range m.activePane().messages {
 		if msg.Type == MsgToolUse && retryIDs[msg.ToolUseID] {
 			continue
 		}
 		filtered = append(filtered, msg)
 	}
-	m.messages = filtered
-	m.pendingToolCount = 0
-	m.pendingPostToolText.Reset()
-	m.streamText.Reset()
+	m.activePane().messages = filtered
+	m.activePane().pendingToolCount = 0
+	m.activePane().pendingPostToolText.Reset()
+	m.activePane().streamText.Reset()
 }
 
 // TestRetry_ResetsStreamingState verifies that a retry (max_tokens escalation)
@@ -477,20 +476,20 @@ func TestRetry_ResetsStreamingState(t *testing.T) {
 	simulateToolStart(m, "id1", "Read")
 
 	// Sanity: pendingToolCount is 1, streamText has been finalized to a message
-	if m.pendingToolCount != 1 {
-		t.Fatalf("pre-retry pendingToolCount = %d, want 1", m.pendingToolCount)
+	if m.activePane().pendingToolCount != 1 {
+		t.Fatalf("pre-retry pendingToolCount = %d, want 1", m.activePane().pendingToolCount)
 	}
 
 	simulateRetry(m, "id1")
 
-	if m.pendingToolCount != 0 {
-		t.Errorf("after retry pendingToolCount = %d, want 0", m.pendingToolCount)
+	if m.activePane().pendingToolCount != 0 {
+		t.Errorf("after retry pendingToolCount = %d, want 0", m.activePane().pendingToolCount)
 	}
-	if m.pendingPostToolText.Len() != 0 {
-		t.Errorf("after retry pendingPostToolText not cleared: %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.Len() != 0 {
+		t.Errorf("after retry pendingPostToolText not cleared: %q", m.activePane().pendingPostToolText.String())
 	}
-	if m.streamText.Len() != 0 {
-		t.Errorf("after retry streamText not cleared: %q", m.streamText.String())
+	if m.activePane().streamText.Len() != 0 {
+		t.Errorf("after retry streamText not cleared: %q", m.activePane().streamText.String())
 	}
 }
 
@@ -512,13 +511,13 @@ func TestRetry_ReStreamDoesNotDoubleCount(t *testing.T) {
 	simulateTextDelta(m, "post-tool commentary") // buffered while tool in-flight
 	simulateToolEnd(m, "id1", "ok")
 
-	if m.pendingToolCount != 0 {
-		t.Errorf("after re-stream tool_end, pendingToolCount = %d, want 0", m.pendingToolCount)
+	if m.activePane().pendingToolCount != 0 {
+		t.Errorf("after re-stream tool_end, pendingToolCount = %d, want 0", m.activePane().pendingToolCount)
 	}
-	if m.pendingPostToolText.Len() != 0 {
-		t.Errorf("pendingPostToolText not flushed after re-stream tool_end: %q", m.pendingPostToolText.String())
+	if m.activePane().pendingPostToolText.Len() != 0 {
+		t.Errorf("pendingPostToolText not flushed after re-stream tool_end: %q", m.activePane().pendingPostToolText.String())
 	}
-	last := m.messages[len(m.messages)-1]
+	last := m.activePane().messages[len(m.activePane().messages)-1]
 	if last.Type != MsgAssistant || last.Content != "post-tool commentary" {
 		t.Errorf("last message = {%v %q}, want MsgAssistant %q", last.Type, last.Content, "post-tool commentary")
 	}
@@ -534,13 +533,13 @@ func TestPendingToolText_ResetOnDone(t *testing.T) {
 	simulateTextDelta(m, "orphaned text")
 
 	// Simulate engine "done" reset (mirrors what engineDoneMsg and "done" event do)
-	m.pendingToolCount = 0
-	m.pendingPostToolText.Reset()
+	m.activePane().pendingToolCount = 0
+	m.activePane().pendingPostToolText.Reset()
 
-	if m.pendingToolCount != 0 {
-		t.Errorf("pendingToolCount = %d, want 0", m.pendingToolCount)
+	if m.activePane().pendingToolCount != 0 {
+		t.Errorf("pendingToolCount = %d, want 0", m.activePane().pendingToolCount)
 	}
-	if m.pendingPostToolText.Len() != 0 {
+	if m.activePane().pendingPostToolText.Len() != 0 {
 		t.Errorf("pendingPostToolText not cleared")
 	}
 }
