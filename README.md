@@ -14,7 +14,7 @@
 **Configure everything in Lua · Parallel multi-agent teams · Vim-grade TUI · Single Go binary**
 
 [![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
+[![License](https://img.shields.io/badge/license-AGPL%20v3-green.svg)](#license)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](#requirements)
 [![Pure Go](https://img.shields.io/badge/CGO-free-success)](#key-constraints)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
@@ -2195,7 +2195,9 @@ internal/
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GNU Affero General Public License v3.0 — see [LICENSE](LICENSE).
+
+Free software under a strong copyleft license. You may use, modify, and distribute Claudio, including for commercial purposes, provided that derivative works are released under the same license. If you run a modified version on a network server, you must make the corresponding source available to its users.
 
 ---
 
