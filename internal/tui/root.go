@@ -205,6 +205,17 @@ func (m *Model) activePane() *PaneState {
 	return &m.panes[m.activePaneIdx]
 }
 
+// findPaneBySession returns the index of the pane with the given session ID,
+// or -1 if no such pane exists (e.g. it was already closed).
+func (m *Model) findPaneBySession(sessionID string) int {
+	for i := range m.panes {
+		if m.panes[i].SessionID == sessionID {
+			return i
+		}
+	}
+	return -1
+}
+
 // ToolCallEntry represents a single tool call in the real-time feed.
 type ToolCallEntry struct {
 	ToolName string // name of the tool
@@ -891,16 +902,17 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) waitForEvent() tea.Cmd {
-	// Capture pane index and channel at call time so the goroutine always
-	// reads from the correct pane even after activePaneIdx changes.
-	idx := m.activePaneIdx
-	ch := m.panes[idx].eventCh
+	// Capture session ID and channel at call time so the goroutine routes by
+	// identity, not index — immune to index shifts when panes are closed.
+	pane := &m.panes[m.activePaneIdx]
+	sessionID := pane.SessionID
+	ch := pane.eventCh
 	return func() tea.Msg {
 		event, ok := <-ch
 		if !ok {
 			return nil
 		}
-		return paneEventMsg{paneIdx: idx, event: event}
+		return paneEventMsg{sessionID: sessionID, event: event}
 	}
 }
 
@@ -2113,19 +2125,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleEngineEvent(tuiEvent(msg))
 
 	case paneEventMsg:
-		// Stale event from a closed pane: paneIdx is now out of bounds because
-		// ActionPaneClose removed the pane from the slice. Discard without
-		// re-arming to terminate the waitForPaneEvent goroutine cleanly.
-		if msg.paneIdx >= len(m.panes) {
+		// Route by session ID so index shifts from pane close cannot misdeliver.
+		idx := m.findPaneBySession(msg.sessionID)
+		if idx == -1 {
+			// Pane was closed — event is stale, discard without re-arming so
+			// the goroutine terminates naturally.
 			return m, nil
 		}
-		if msg.paneIdx == m.activePaneIdx {
+		if idx == m.activePaneIdx {
 			// Active pane: full event handling via existing handler.
 			return m.handleEngineEvent(msg.event)
 		}
 		// Background pane: update minimal state without touching viewport/focus,
 		// then re-arm so the pane's channel stays drained.
-		pane := &m.panes[msg.paneIdx]
+		pane := &m.panes[idx]
 		switch msg.event.typ {
 		case "text_delta":
 			pane.streamText.WriteString(msg.event.text)
@@ -2148,7 +2161,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			pane.spinText = ""
 			pane.pendingToolCount = 0
 		}
-		return m, waitForPaneEvent(msg.paneIdx, pane.eventCh)
+		return m, waitForPaneEvent(msg.sessionID, pane.eventCh)
 
 	case engineDoneMsg:
 		m.activePane().streaming = false
@@ -4920,9 +4933,9 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 
 			// Cancel the engine context so any running query stops and its
 			// goroutine exits after sending a "done" event.  The "done" event
-			// unblocks the waitForPaneEvent goroutine; the bounds check in the
-			// paneEventMsg handler then discards it without re-arming, which
-			// terminates the goroutine cleanly (no leak).
+			// unblocks the waitForPaneEvent goroutine; findPaneBySession then
+			// returns -1 and the paneEventMsg handler discards it without
+			// re-arming, terminating the goroutine cleanly (no leak).
 			if closedPane.cancelFunc != nil {
 				closedPane.cancelFunc()
 			} else {
@@ -8190,7 +8203,7 @@ func (m *Model) openNewPane(agentName string) (int, tea.Cmd) {
 
 	newIdx := len(m.panes)
 	m.panes = append(m.panes, pane)
-	return newIdx, waitForPaneEvent(newIdx, pane.eventCh)
+	return newIdx, waitForPaneEvent(pane.SessionID, pane.eventCh)
 }
 
 // ── Event Handler ────────────────────────────────────────

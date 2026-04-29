@@ -110,21 +110,22 @@ func newPaneState(sessionID string) PaneState {
 	}
 }
 
-// paneEventMsg wraps a tuiEvent with the pane index it originated from.
-// Used for fan-in from multiple pane event channels.
+// paneEventMsg wraps a tuiEvent with the session ID of the pane it originated
+// from. Using session ID instead of index makes routing immune to index shifts
+// that occur when a pane is closed from a multi-pane set.
 type paneEventMsg struct {
-	paneIdx int
-	event   tuiEvent
+	sessionID string
+	event     tuiEvent
 }
 
 // waitForPaneEvent returns a tea.Cmd that blocks on a pane's event channel
-// and wraps the result with the pane index.
-func waitForPaneEvent(idx int, ch chan tuiEvent) tea.Cmd {
+// and wraps the result with the pane's session ID.
+func waitForPaneEvent(sessionID string, ch chan tuiEvent) tea.Cmd {
 	return func() tea.Msg {
 		event, ok := <-ch
 		if !ok {
 			return nil
 		}
-		return paneEventMsg{paneIdx: idx, event: event}
+		return paneEventMsg{sessionID: sessionID, event: event}
 	}
 }
