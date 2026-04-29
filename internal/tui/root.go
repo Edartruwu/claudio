@@ -1182,6 +1182,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Panel focus mode: delegate all keys to active panel
 		if m.focus == FocusPanel && m.activePanel != nil {
+			// When the panel has an active input bar, route ALL keys to InputUpdate.
+			// The InputPanel implementation is responsible for handling Esc to deactivate.
+			if ip, ok := m.activePanel.(panels.InputPanel); ok && ip.HasInput() {
+				cmd := ip.InputUpdate(msg)
+				return m, cmd
+			}
 			cmd, consumed := m.activePanel.Update(msg)
 			if consumed {
 				// Check if panel closed itself after consuming the key.
