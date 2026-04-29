@@ -127,6 +127,11 @@ func (m *Model) SetValue(s string) {
 	m.textarea.CursorEnd()
 }
 
+// SetPlaceholder sets the placeholder text shown when the prompt is empty.
+func (m *Model) SetPlaceholder(s string) {
+	m.textarea.Placeholder = s
+}
+
 // ToggleVim enables/disables vim mode.
 func (m *Model) ToggleVim() {
 	m.vimEnabled = !m.vimEnabled

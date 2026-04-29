@@ -507,6 +507,7 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	// Apply Lua plugin UI extensions (palette entries etc.) and wire leader keymap.
 	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
 		m.appCtx.LuaRuntime.SetLeaderKeymap(m.km)
+		m.appCtx.LuaRuntime.SetPrompt(&m.prompt)
 		m.applyLuaUIExtensions()
 	}
 
@@ -2701,6 +2702,15 @@ func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (t
 	// Handle >>agent messages
 	if strings.HasPrefix(text, ">>") {
 		return m.handleAgentMessage(text)
+	}
+
+	// Run Lua on_submit hooks — hooks may transform text or cancel submission.
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		var cancelled bool
+		text, cancelled = m.appCtx.LuaRuntime.RunPromptHooks(text)
+		if cancelled {
+			return m, nil
+		}
 	}
 
 	// If already streaming, enqueue the message for later

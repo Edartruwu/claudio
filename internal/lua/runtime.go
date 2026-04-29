@@ -23,6 +23,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tools"
 	keymapPkg "github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/picker"
+	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
 	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	lua "github.com/yuin/gopher-lua"
@@ -155,6 +156,16 @@ type Runtime struct {
 	teamRunner   *teams.TeammateRunner
 	teamManagerMu sync.RWMutex
 	teamManager  *teams.Manager
+
+	// Prompt (wired after TUI init via SetPrompt)
+	promptMu          sync.RWMutex
+	prompt            *prompt.Model
+	promptPlaceholder string
+	promptDesiredMode string // "vim" or "simple"; empty = leave as-is
+
+	// on_submit hooks (append-only; run in registration order)
+	promptHooksMu sync.RWMutex
+	promptHooks   []luaHandler
 
 	// shutdown context — cancelled by Close() to stop in-flight Lua AI/agent calls.
 	shutdownCtx    context.Context
@@ -354,6 +365,13 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(keymapTable, "unmap", L.NewFunction(r.apiLeaderKeymapUnmap(plugin)))
 	L.SetField(claudio, "keymap", keymapTable)
 
+	// claudio.prompt sub-table
+	promptTable := L.NewTable()
+	L.SetField(promptTable, "set_placeholder", L.NewFunction(r.apiPromptSetPlaceholder(plugin)))
+	L.SetField(promptTable, "set_mode", L.NewFunction(r.apiPromptSetMode(plugin)))
+	L.SetField(promptTable, "on_submit", L.NewFunction(r.apiPromptOnSubmit(plugin)))
+	L.SetField(claudio, "prompt", promptTable)
+
 	// claudio.ai sub-table
 	aiTable := L.NewTable()
 	L.SetField(aiTable, "run", L.NewFunction(r.apiAIRun(plugin)))
@@ -522,6 +540,34 @@ func (r *Runtime) GetWindowManager() *windows.Manager {
 	r.windowManagerMu.RLock()
 	defer r.windowManagerMu.RUnlock()
 	return r.windowManager
+}
+
+// SetPrompt wires the prompt model so claudio.prompt.* calls can mutate it.
+// Any placeholder or mode set before TUI init is applied immediately.
+func (r *Runtime) SetPrompt(p *prompt.Model) {
+	r.promptMu.Lock()
+	defer r.promptMu.Unlock()
+	r.prompt = p
+	if r.promptPlaceholder != "" {
+		p.SetPlaceholder(r.promptPlaceholder)
+	}
+	if r.promptDesiredMode != "" {
+		applyPromptMode(p, r.promptDesiredMode)
+	}
+}
+
+// applyPromptMode enables or disables vim mode on the prompt.
+func applyPromptMode(p *prompt.Model, mode string) {
+	switch mode {
+	case "vim":
+		if !p.IsVimEnabled() {
+			p.ToggleVim()
+		}
+	case "simple":
+		if p.IsVimEnabled() {
+			p.ToggleVim()
+		}
+	}
 }
 
 // SetLeaderKeymap wires the TUI's leader keymap so that claudio.keymap.map/unmap
