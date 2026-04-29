@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -55,7 +56,9 @@ var (
 	tpErrorStyle   = lipgloss.NewStyle().Foreground(styles.Error)
 	tpAquaStyle    = lipgloss.NewStyle().Foreground(styles.Aqua)
 	tpOrangeStyle  = lipgloss.NewStyle().Foreground(styles.Orange)
-	tpBorderBase   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	tpBorderBase    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	tpActiveTab     = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Underline(true)
+	tpInactiveTab   = lipgloss.NewStyle().Foreground(styles.Muted)
 )
 
 // Panel is the unified tasks panel with full-screen split layout.
@@ -80,11 +83,21 @@ type Panel struct {
 	// Right pane: rendered detail lines + scroll
 	detailLines  []string
 	detailScroll int
+
+	// Filter / search bar (implements panels.InputPanel)
+	filterInput  textinput.Model
+	filterActive bool
 }
 
 // New creates a new unified tasks panel.
 func New(rt *tasks.Runtime) *Panel {
-	return &Panel{runtime: rt}
+	fi := textinput.New()
+	fi.Placeholder = "filter tasks…"
+	fi.CharLimit = 60
+	return &Panel{
+		runtime:     rt,
+		filterInput: fi,
+	}
 }
 
 func (p *Panel) IsActive() bool { return p.active }
@@ -169,9 +182,25 @@ func (p *Panel) clampCursor() {
 	}
 }
 
+// filteredPlanItems returns planItems filtered by the current search text.
+// Returns the full slice when filter is empty.
+func (p *Panel) filteredPlanItems() []*tools.Task {
+	q := strings.ToLower(p.filterInput.Value())
+	if q == "" {
+		return p.planItems
+	}
+	out := make([]*tools.Task, 0, len(p.planItems))
+	for _, t := range p.planItems {
+		if strings.Contains(strings.ToLower(t.Subject), q) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func (p *Panel) itemCount() int {
 	if p.tab == tabPlanning {
-		return len(p.planItems)
+		return len(p.filteredPlanItems())
 	}
 	return len(p.bgItems)
 }
@@ -188,11 +217,12 @@ func (p *Panel) hasRunningBg() bool {
 // buildDetailLines populates p.detailLines for the currently selected item.
 func (p *Panel) buildDetailLines() {
 	if p.tab == tabPlanning {
-		if p.cursor >= len(p.planItems) {
+		filtered := p.filteredPlanItems()
+		if p.cursor >= len(filtered) {
 			p.detailLines = nil
 			return
 		}
-		p.detailLines = p.buildPlanDetail(p.planItems[p.cursor])
+		p.detailLines = p.buildPlanDetail(filtered[p.cursor])
 	} else {
 		if p.cursor >= len(p.bgItems) {
 			p.detailLines = nil
@@ -358,6 +388,10 @@ func (p *Panel) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 func (p *Panel) updateList(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch msg.String() {
+	case "/":
+		p.filterActive = true
+		p.filterInput.Focus()
+		return nil, true
 	case "1":
 		if p.tab != tabPlanning {
 			p.tab = tabPlanning
@@ -561,8 +595,8 @@ func (p *Panel) renderLeftPane() string {
 	b.WriteString("\n")
 
 	// Tabs
-	activeTab := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Underline(true)
-	inactiveTab := lipgloss.NewStyle().Foreground(styles.Muted)
+	activeTab := tpActiveTab
+	inactiveTab := tpInactiveTab
 	tab1, tab2 := inactiveTab.Render("1 Plan"), inactiveTab.Render("2 BG")
 	if p.tab == tabPlanning {
 		tab1 = activeTab.Render("1 Plan")
@@ -581,14 +615,20 @@ func (p *Panel) renderLeftPane() string {
 	}
 
 	var items int
+	var filteredPlan []*tools.Task
 	if p.tab == tabPlanning {
-		items = len(p.planItems)
+		filteredPlan = p.filteredPlanItems()
+		items = len(filteredPlan)
 	} else {
 		items = len(p.bgItems)
 	}
 
 	if items == 0 {
-		b.WriteString(tpMutedStyle.Render("  (empty)"))
+		if p.tab == tabPlanning && p.filterInput.Value() != "" {
+			b.WriteString(tpMutedStyle.Render("  (no match)"))
+		} else {
+			b.WriteString(tpMutedStyle.Render("  (empty)"))
+		}
 		b.WriteString("\n")
 	} else {
 		startIdx := 0
@@ -601,7 +641,7 @@ func (p *Panel) renderLeftPane() string {
 		}
 		if p.tab == tabPlanning {
 			for i := startIdx; i < endIdx; i++ {
-				b.WriteString(p.renderPlanRow(p.planItems[i], i == p.cursor, w))
+				b.WriteString(p.renderPlanRow(filteredPlan[i], i == p.cursor, w))
 				b.WriteString("\n")
 			}
 		} else {
@@ -799,13 +839,54 @@ func max(a, b int) int {
 	return b
 }
 
+// ── InputPanel interface ──────────────────────────────────────────────────────
+
+// HasInput returns true when the filter input bar should be rendered.
+func (p *Panel) HasInput() bool { return p.filterActive }
+
+// InputUpdate handles keystrokes for the filter input bar.
+// Esc deactivates the filter and clears the query.
+func (p *Panel) InputUpdate(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		p.filterActive = false
+		p.filterInput.SetValue("")
+		p.filterInput.Blur()
+		p.cursor = 0
+		p.clampCursor()
+		return nil
+	}
+	var cmd tea.Cmd
+	p.filterInput, cmd = p.filterInput.Update(msg)
+	// Reset cursor when filter text changes so the user sees matches from top.
+	p.cursor = 0
+	p.clampCursor()
+	return cmd
+}
+
+// InputView renders the one-line filter bar.
+func (p *Panel) InputView() string {
+	prefix := tpWarningStyle.Render("/")
+	line := " " + prefix + " " + p.filterInput.View()
+	if lipgloss.Width(line) > p.width {
+		runes := []rune(line)
+		if p.width > 0 && int(p.width) < len(runes) {
+			line = string(runes[:p.width])
+		}
+	}
+	return line
+}
+
 // Help returns a short keybinding hint line for the panel footer.
 func (p *Panel) Help() string {
+	if p.filterActive {
+		return "type to filter · esc clear"
+	}
 	if p.focus == paneDetail {
 		return "j/k scroll · ctrl+d/u half-page · g/G top/bot · h/esc back"
 	}
 	if p.tab == tabPlanning {
-		return "j/k nav · l/enter detail · 1/2 tab · r refresh · esc close"
+		return "j/k nav · / filter · l/enter detail · 1/2 tab · r refresh · esc close"
 	}
 	return "j/k nav · l/enter detail · x kill · 1/2 tab · r refresh · esc close"
 }

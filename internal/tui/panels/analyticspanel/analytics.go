@@ -12,6 +12,19 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ── Package-level styles (avoids per-frame allocations) ───────────────────
+var (
+	analyticsLabelStyle   = lipgloss.NewStyle().Foreground(styles.Dim).Width(16)
+	analyticsValStyle     = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	analyticsCacheStyle   = lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
+	analyticsCostStyle    = lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	analyticsWarnStyle    = lipgloss.NewStyle().Foreground(styles.Warning)
+	analyticsBoldBase     = lipgloss.NewStyle().Bold(true)
+	analyticsGaugeEmpty   = lipgloss.NewStyle().Foreground(styles.Subtle)
+	analyticsColorBase    = lipgloss.NewStyle()
+	analyticsOuterBase    = lipgloss.NewStyle()
+)
+
 // Panel is the analytics dashboard side panel.
 type Panel struct {
 	tracker *analytics.Tracker
@@ -52,8 +65,8 @@ func (p *Panel) View() string {
 	b.WriteString(styles.SeparatorLine(p.width))
 	b.WriteString("\n\n")
 
-	labelStyle := lipgloss.NewStyle().Foreground(styles.Dim).Width(16)
-	valStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	labelStyle := analyticsLabelStyle
+	valStyle := analyticsValStyle
 
 	inputTok := p.tracker.InputTokens()
 	outputTok := p.tracker.OutputTokens()
@@ -72,7 +85,7 @@ func (p *Panel) View() string {
 	b.WriteString(valStyle.Render(formatTokens(outputTok)))
 	b.WriteString("\n")
 
-	cacheStyle := lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
+	cacheStyle := analyticsCacheStyle
 	b.WriteString(labelStyle.Render("  Cache read"))
 	b.WriteString(cacheStyle.Render(formatTokens(cacheRead)))
 	b.WriteString("\n")
@@ -92,12 +105,12 @@ func (p *Panel) View() string {
 	} else if cacheHitRate >= 50 {
 		hitColor = styles.Warning
 	}
-	hitStyle := lipgloss.NewStyle().Foreground(hitColor).Bold(true)
+	hitStyle := analyticsBoldBase.Copy().Foreground(hitColor)
 	b.WriteString(hitStyle.Render(fmt.Sprintf("%.1f%%", cacheHitRate)))
 	b.WriteString("\n\n")
 
 	// Cost
-	costStyle := lipgloss.NewStyle().Foreground(styles.Warning).Bold(true)
+	costStyle := analyticsCostStyle
 	b.WriteString(labelStyle.Render("  Cost"))
 	b.WriteString(costStyle.Render(fmt.Sprintf("$%.4f", cost)))
 	b.WriteString("\n\n")
@@ -125,7 +138,7 @@ func (p *Panel) View() string {
 			b.WriteString(styles.ErrorStyle.Render("  ⚠ Budget exceeded!"))
 			b.WriteString("\n")
 		} else if warning != "" {
-			warnStyle := lipgloss.NewStyle().Foreground(styles.Warning)
+			warnStyle := analyticsWarnStyle
 			b.WriteString(warnStyle.Render("  ⚠ " + warning))
 			b.WriteString("\n")
 		}
@@ -134,10 +147,7 @@ func (p *Panel) View() string {
 	b.WriteString("\n")
 	b.WriteString(styles.PanelHint.Render("  esc close"))
 
-	return lipgloss.NewStyle().
-		Width(p.width).
-		Height(p.height).
-		Render(b.String())
+	return analyticsOuterBase.Copy().Width(p.width).Height(p.height).Render(b.String())
 }
 
 func formatTokens(n int) string {
@@ -169,8 +179,8 @@ func renderGauge(pct float64, width int) string {
 		color = styles.Success
 	}
 
-	filledStyle := lipgloss.NewStyle().Foreground(color)
-	emptyStyle := lipgloss.NewStyle().Foreground(styles.Subtle)
+	filledStyle := analyticsColorBase.Copy().Foreground(color)
+	emptyStyle := analyticsGaugeEmpty
 
 	return "[" + filledStyle.Render(strings.Repeat("█", filled)) +
 		emptyStyle.Render(strings.Repeat("░", width-filled)) + "]"

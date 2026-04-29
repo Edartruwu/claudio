@@ -17,6 +17,10 @@ const (
 	ActionWindowSplitVertical ActionID = "window.split-vertical"
 	ActionWindowClose         ActionID = "window.close"
 
+	// Float window management
+	ActionFloatWindowClose ActionID = "float.window.close"
+	ActionFloatWindowHint  ActionID = "float.window.hint"
+
 	// Buffer/session management
 	ActionBufferNext      ActionID = "buffer.next"
 	ActionBufferPrev      ActionID = "buffer.prev"
@@ -29,7 +33,6 @@ const (
 	// Panels
 	ActionPanelSessionTree ActionID = "panel.session-tree"
 	ActionPanelAgentGUI    ActionID = "panel.agent-gui"
-	ActionPanelConfig      ActionID = "panel.config"
 	ActionPanelSkills      ActionID = "panel.skills"
 	ActionPanelMemory      ActionID = "panel.memory"
 	ActionPanelTasks       ActionID = "panel.tasks"
@@ -48,6 +51,14 @@ const (
 
 	// Misc
 	ActionTodoDock ActionID = "todo.dock"
+
+	// Picker overlays (telescope-style fuzzy finder)
+	ActionPickerBuffers ActionID = "picker.buffers"
+	ActionPickerAgents  ActionID = "picker.agents"
+
+	// Branch / conversation branching
+	ActionBranchSession    ActionID = "branch.session"
+	ActionBranchParentJump ActionID = "branch.parent-jump"
 )
 
 // ActionMeta holds metadata for a registered action.
@@ -60,13 +71,15 @@ type ActionMeta struct {
 // Registry maps every action ID to its metadata.
 var Registry = map[ActionID]ActionMeta{
 	// Window management
-	ActionWindowCycle:         {ActionWindowCycle, "Cycle windows", "window"},
+	ActionWindowCycle:         {ActionWindowCycle, "Cycle windows / float focus", "window"},
 	ActionWindowFocusLeft:     {ActionWindowFocusLeft, "Focus left window", "window"},
 	ActionWindowFocusDown:     {ActionWindowFocusDown, "Focus prompt", "window"},
 	ActionWindowFocusUp:       {ActionWindowFocusUp, "Focus viewport", "window"},
 	ActionWindowFocusRight:    {ActionWindowFocusRight, "Focus right panel", "window"},
 	ActionWindowSplitVertical: {ActionWindowSplitVertical, "Mirror panel", "window"},
 	ActionWindowClose:         {ActionWindowClose, "Close panel", "window"},
+	ActionFloatWindowClose:    {ActionFloatWindowClose, "Close focused float window", "window"},
+	ActionFloatWindowHint:     {ActionFloatWindowHint, "Open float window (use :open <name>)", "window"},
 
 	// Buffer/session management
 	ActionBufferNext:      {ActionBufferNext, "Next session", "buffer"},
@@ -80,7 +93,6 @@ var Registry = map[ActionID]ActionMeta{
 	// Panels
 	ActionPanelSessionTree: {ActionPanelSessionTree, "Session tree (STREE)", "panel"},
 	ActionPanelAgentGUI:    {ActionPanelAgentGUI, "Agent inspector (AGUI)", "panel"},
-	ActionPanelConfig:      {ActionPanelConfig, "Config panel", "panel"},
 	ActionPanelSkills:      {ActionPanelSkills, "Skills panel", "panel"},
 	ActionPanelMemory:      {ActionPanelMemory, "Memory panel", "panel"},
 	ActionPanelTasks:       {ActionPanelTasks, "Tasks panel", "panel"},
@@ -99,6 +111,14 @@ var Registry = map[ActionID]ActionMeta{
 
 	// Misc
 	ActionTodoDock: {ActionTodoDock, "Toggle todo dock", "misc"},
+
+	// Picker overlays
+	ActionPickerBuffers: {ActionPickerBuffers, "Buffer/window picker", "navigation"},
+	ActionPickerAgents:  {ActionPickerAgents, "Agent picker", "navigation"},
+
+	// Branching
+	ActionBranchSession:    {ActionBranchSession, "Branch from cursor message", "buffer"},
+	ActionBranchParentJump: {ActionBranchParentJump, "Jump to parent (branch) session", "buffer"},
 }
 
 // ValidAction returns true if the given action ID exists in the registry.

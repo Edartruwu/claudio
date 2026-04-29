@@ -20,6 +20,17 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ── Package-level styles (avoids per-frame allocations) ───────────────────
+
+var (
+	streeMarkerStyle  = lipgloss.NewStyle().Foreground(styles.Success)
+	streeAquaStyle    = lipgloss.NewStyle().Foreground(styles.Aqua)
+	streeWarningStyle = lipgloss.NewStyle().Foreground(styles.Warning)
+	streeMutedStyle   = lipgloss.NewStyle().Foreground(styles.Muted)
+	streeLabelStyle   = lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
+	streeDimStyle     = lipgloss.NewStyle().Foreground(styles.Dim)
+)
+
 // ── Node types ─────────────────────────────────────────────────────────────
 
 // NodeKind identifies the type of a tree node.
@@ -229,10 +240,7 @@ func (p *Panel) View() string {
 	}
 	b.WriteString(styles.PanelHint.Render(hint))
 
-	return lipgloss.NewStyle().
-		Width(p.width).
-		Height(p.height).
-		Render(b.String())
+	return lipgloss.NewStyle().Width(p.width).Height(p.height).Render(b.String())
 }
 
 func (p *Panel) Help() string {
@@ -255,25 +263,24 @@ func (p *Panel) renderNode(node Node, selected bool, currentID string) string {
 		label = indent + arrow + " " + folderIcon + " " + node.Label
 		// Active session marker
 		if node.Data == currentID {
-			marker := lipgloss.NewStyle().Foreground(styles.Success).Render(" [●]")
+			marker := streeMarkerStyle.Render(" [●]")
 			label = label + marker
 		}
 
 	case NodeConversation:
 		icon = "~"
-		label = indent + "├ " + lipgloss.NewStyle().Foreground(styles.Aqua).Render(icon) + " " + node.Label
+		label = indent + "├ " + streeAquaStyle.Render(icon) + " " + node.Label
 
 	case NodeMemory:
 		icon = "*"
-		label = indent + "├ " + lipgloss.NewStyle().Foreground(styles.Warning).Render(icon) + " " + node.Label
+		label = indent + "├ " + streeWarningStyle.Render(icon) + " " + node.Label
 
 	case NodeFile:
 		icon = "-"
-		label = indent + "└ " + lipgloss.NewStyle().Foreground(styles.Muted).Render(icon) + " " + node.Label
+		label = indent + "└ " + streeMutedStyle.Render(icon) + " " + node.Label
 	}
 
 	if selected {
-		labelStyle := lipgloss.NewStyle().Foreground(styles.Text).Bold(true)
 		cursorStr := styles.ViewportCursor.Render("▸")
 		// Replace leading spaces with cursor indicator for the selected row.
 		stripped := strings.TrimLeft(label, " ")
@@ -284,10 +291,10 @@ func (p *Panel) renderNode(node Node, selected bool, currentID string) string {
 		} else {
 			prefix = cursorStr
 		}
-		return labelStyle.Render(prefix + " " + stripped)
+		return streeLabelStyle.Render(prefix + " " + stripped)
 	}
 
-	return lipgloss.NewStyle().Foreground(styles.Dim).Render(label)
+	return streeDimStyle.Render(label)
 }
 
 // ── Data loading ───────────────────────────────────────────────────────────

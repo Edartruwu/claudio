@@ -347,6 +347,22 @@ func (r *Registry) SetSmallModelClient(client *api.Client, smallModel string) {
 	}
 }
 
+// FilterByNames returns a cloned registry containing only tools whose names
+// appear in the provided list. Unknown names are silently ignored.
+func (r *Registry) FilterByNames(names []string) *Registry {
+	clone := r.Clone()
+	keep := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		keep[n] = struct{}{}
+	}
+	for _, name := range clone.Names() {
+		if _, ok := keep[name]; !ok {
+			clone.Remove(name)
+		}
+	}
+	return clone
+}
+
 // Names returns the names of all registered tools.
 func (r *Registry) Names() []string {
 	result := make([]string, len(r.order))
@@ -361,6 +377,7 @@ var TeamToolNames = []string{
 	"SpawnTeammate",
 	"InstantiateTeam",
 	"PurgeTeammates",
+	"ListTeammates",
 }
 
 // TeamEagerToolNames lists all tools that should be force-eager (non-deferred)
@@ -371,6 +388,7 @@ var TeamEagerToolNames = []string{
 	"SpawnTeammate",
 	"InstantiateTeam",
 	"PurgeTeammates",
+	"ListTeammates",
 	"TaskCreate",
 	"TaskList",
 	"TaskGet",
@@ -444,6 +462,8 @@ func DefaultRegistry() *Registry {
 	r.Register(&SpawnTeammateTool{deferrable: newDeferrable("spawn teammate agent background parallel named")})
 	r.Register(&InstantiateTeamTool{deferrable: newDeferrable("instantiate team template load roster")})
 	r.Register(&PurgeTeammatesTool{deferrable: newDeferrable("purge remove completed failed agents worktrees")})
+	r.Register(&ListTeammatesTool{deferrable: newDeferrable("list teammates agents spawned running status")})
+
 
 	// Master session coordination (AttachClient/AttachURL injected later)
 	r.Register(&SendToSessionTool{deferrable: newDeferrable("send message to master session ComandCenter")})

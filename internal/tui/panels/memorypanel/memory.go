@@ -16,6 +16,11 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 )
 
+// ── Package-level styles (avoids per-frame allocations) ───────────────────
+var (
+	memBorderBase = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+)
+
 // Tab identifies which tab is active.
 type Tab int
 
@@ -268,8 +273,8 @@ func (p *Panel) renderSplitView() string {
 		rightBorderColor = styles.Primary
 	}
 
-	leftBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(leftBorderColor)
-	rightBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(rightBorderColor)
+	leftBorder := memBorderBase.Copy().BorderForeground(leftBorderColor)
+	rightBorder := memBorderBase.Copy().BorderForeground(rightBorderColor)
 
 	leftStyled := leftBorder.Width(leftW).Height(innerH).Render(p.renderLeftPane(leftW))
 	rightStyled := rightBorder.Width(rightW).Height(innerH).Render(p.renderRightPane(rightW))

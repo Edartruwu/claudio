@@ -15,6 +15,7 @@ const (
 	FocusAskUser                     // AskUser question dialog
 	FocusAgentDetail                 // full-screen agent conversation overlay
 	FocusFiles                       // file changes panel has focus
+	FocusPicker                      // telescope-style fuzzy picker overlay
 )
 
 // PanelID identifies which panel is currently active.
@@ -23,7 +24,6 @@ type PanelID int
 const (
 	PanelNone PanelID = iota
 	PanelSessions
-	PanelConfig
 	PanelSkills
 	PanelMemory
 	PanelAnalytics

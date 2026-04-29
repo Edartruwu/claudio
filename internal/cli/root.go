@@ -1185,9 +1185,10 @@ func runInteractive() error {
 		Hooks:       appInstance.Hooks,
 		Rules:       nil, // Rules are loaded separately in system prompt building
 		Auditor:     appInstance.Auditor,
-		TeamManager: appInstance.Teams,
-		TeamRunner:  appInstance.TeamRunner,
-		LuaRuntime:  appInstance.LuaRuntime,
+		TeamManager:   appInstance.Teams,
+		TeamRunner:    appInstance.TeamRunner,
+		LuaRuntime:    appInstance.LuaRuntime,
+		WindowManager: appInstance.WindowManager,
 	}
 	tuiOpts := []tui.ModelOption{
 		tui.WithSkills(appInstance.Skills),

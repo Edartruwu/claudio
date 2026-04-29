@@ -777,6 +777,156 @@ func TestSharedSession_MetadataPreserved(t *testing.T) {
 
 // TestExportedAtTimezone verifies that the exported timestamp survives JSON
 // round-trip with the same UTC instant.
+// ---------------------------------------------------------------------------
+// Branch tests
+// ---------------------------------------------------------------------------
+
+// TestBranch_CreatesChildSession verifies that Branch() creates a branch session
+// with correct ParentSessionID and BranchFromMessageID, without changing current.
+func TestBranch_CreatesChildSession(t *testing.T) {
+	db := openTestDB(t)
+	s := New(db)
+
+	parent, err := s.Start("claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Add a message so we have a valid message ID to fork from.
+	if err := s.AddMessage("user", "hello", "text"); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	msgs, err := s.GetMessages()
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	if len(msgs) == 0 {
+		t.Fatal("expected at least one message")
+	}
+	forkMsgID := msgs[0].ID
+
+	child, err := s.Branch(forkMsgID)
+	if err != nil {
+		t.Fatalf("Branch: %v", err)
+	}
+
+	if child == nil {
+		t.Fatal("Branch returned nil")
+	}
+	if child.ParentSessionID != parent.ID {
+		t.Errorf("ParentSessionID = %q, want %q", child.ParentSessionID, parent.ID)
+	}
+	if child.BranchFromMessageID == nil {
+		t.Fatal("BranchFromMessageID is nil")
+	}
+	if *child.BranchFromMessageID != forkMsgID {
+		t.Errorf("BranchFromMessageID = %d, want %d", *child.BranchFromMessageID, forkMsgID)
+	}
+
+	// Current session must NOT change after Branch().
+	if s.Current().ID != parent.ID {
+		t.Errorf("Current() changed after Branch(); got %q, want %q", s.Current().ID, parent.ID)
+	}
+}
+
+// TestBranch_DoesNotChangeCurrentSession verifies that Branch() does not
+// update the active session — caller is responsible for switching.
+func TestBranch_DoesNotChangeCurrentSession(t *testing.T) {
+	db := openTestDB(t)
+	s := New(db)
+
+	if _, err := s.Start("claude-sonnet-4-6"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := s.AddMessage("user", "hi", "text"); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	msgs, _ := s.GetMessages()
+	originalID := s.Current().ID
+
+	if _, err := s.Branch(msgs[0].ID); err != nil {
+		t.Fatalf("Branch: %v", err)
+	}
+
+	if s.Current().ID != originalID {
+		t.Errorf("Current() changed to %q; want unchanged %q", s.Current().ID, originalID)
+	}
+}
+
+// TestBranch_NoCurrentSession_ReturnsError verifies that Branch() returns an
+// error when no session is active.
+func TestBranch_NoCurrentSession_ReturnsError(t *testing.T) {
+	s := newTestSession(t)
+	// No Start() called — current is nil.
+	_, err := s.Branch(1)
+	if err == nil {
+		t.Fatal("expected error when no session active, got nil")
+	}
+}
+
+// TestBranch_DeepChain verifies Branch() on a branch session produces a valid
+// grandchild whose GetBranchMessages returns the full ancestry chain.
+func TestBranch_DeepChain(t *testing.T) {
+	db := openTestDB(t)
+	s := New(db)
+
+	// Root session with two messages.
+	if _, err := s.Start("claude-sonnet-4-6"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := s.AddMessage("user", "root-1", "text"); err != nil {
+		t.Fatalf("AddMessage root-1: %v", err)
+	}
+	if err := s.AddMessage("user", "root-2", "text"); err != nil {
+		t.Fatalf("AddMessage root-2: %v", err)
+	}
+	rootMsgs, _ := s.GetMessages()
+	rootID := s.Current().ID
+
+	// Branch from root at first message.
+	child, err := s.Branch(rootMsgs[0].ID)
+	if err != nil {
+		t.Fatalf("Branch from root: %v", err)
+	}
+
+	// Switch current to child, add a message, then branch again.
+	childSess := New(db)
+	if _, err := childSess.Resume(child.ID); err != nil {
+		t.Fatalf("Resume child: %v", err)
+	}
+	if err := childSess.AddMessage("user", "child-1", "text"); err != nil {
+		t.Fatalf("AddMessage child-1: %v", err)
+	}
+	childMsgs, _ := childSess.GetMessages()
+
+	grandchild, err := childSess.Branch(childMsgs[0].ID)
+	if err != nil {
+		t.Fatalf("Branch from child: %v", err)
+	}
+
+	// Grandchild's parent chain: grandchild → child → root.
+	if grandchild.ParentSessionID != child.ID {
+		t.Errorf("grandchild.ParentSessionID = %q, want %q", grandchild.ParentSessionID, child.ID)
+	}
+
+	// Verify full message chain via GetBranchMessages.
+	allMsgs, err := db.GetBranchMessages(grandchild.ID)
+	if err != nil {
+		t.Fatalf("GetBranchMessages(grandchild): %v", err)
+	}
+	// root-1 (≤ rootMsgs[0]) + child-1 (≤ childMsgs[0]) = 2 msgs; grandchild has 0 own.
+	if len(allMsgs) != 2 {
+		t.Fatalf("grandchild chain: got %d messages, want 2", len(allMsgs))
+	}
+	_ = rootID // suppress unused
+	if allMsgs[0].Content != "root-1" {
+		t.Errorf("allMsgs[0].Content = %q, want root-1", allMsgs[0].Content)
+	}
+	if allMsgs[1].Content != "child-1" {
+		t.Errorf("allMsgs[1].Content = %q, want child-1", allMsgs[1].Content)
+	}
+}
+
 func TestExportedAtTimezone(t *testing.T) {
 	msgs := []api.Message{{Role: "user", Content: rawMsg("hi")}}
 	shared := ExportSession(msgs, "m", "s")

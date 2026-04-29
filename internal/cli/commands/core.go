@@ -66,14 +66,6 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	})
 
 	r.Register(&Command{
-		Name:        "clear",
-		Description: "Clear the screen",
-		Execute: func(args string) (string, error) {
-			return "\033[2J\033[H", nil // ANSI clear
-		},
-	})
-
-	r.Register(&Command{
 		Name:        "agent",
 		Description: "Switch agent persona for this session",
 		Execute: func(args string) (string, error) {
@@ -525,7 +517,7 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 
 	r.Register(&Command{
 		Name:        "clear",
-		Description: "Clear conversation history (keeps session)",
+		Description: "Clear screen and conversation history",
 		Execute: func(args string) (string, error) {
 			return "[action:clear]", nil
 		},
@@ -726,6 +718,16 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	r.Register(&Command{
 		Name:        "output-style",
 		Description: "Show or set output style (normal, concise, verbose, markdown)",
+		ArgCompleter: func(prefix string) []string {
+			vals := []string{"normal", "concise", "verbose", "markdown"}
+			var matches []string
+			for _, s := range vals {
+				if strings.HasPrefix(s, prefix) {
+					matches = append(matches, s)
+				}
+			}
+			return matches
+		},
 		Execute: func(args string) (string, error) {
 			if deps.GetOutputStyle == nil {
 				return "Output style not available.", nil
@@ -787,6 +789,24 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 	r.Register(&Command{
 		Name:        "set",
 		Description: "Set a Claudio option  e.g. :set model claude-opus-4-6  :set color.primary #7aa2f7",
+		ArgCompleter: func(prefix string) []string {
+			keys := []string{
+				"model", "smallModel", "permissionMode", "autoCompact",
+				"compactMode", "compactKeepN", "sessionPersist", "hookProfile",
+				"caveman", "autoMemoryExtract", "memorySelection", "maxBudget",
+				"outputFilter", "outputStyle", "border",
+				"color.primary", "color.secondary", "color.success", "color.warning",
+				"color.error", "color.muted", "color.surface", "color.surface_alt",
+				"color.text", "color.dim", "color.subtle", "color.orange", "color.aqua",
+			}
+			var matches []string
+			for _, k := range keys {
+				if strings.HasPrefix(k, prefix) {
+					matches = append(matches, k)
+				}
+			}
+			return matches
+		},
 		Execute: func(args string) (string, error) {
 			args = strings.TrimSpace(args)
 
@@ -968,6 +988,16 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 		Name:        "colorscheme",
 		Aliases:     []string{"cs", "theme"},
 		Description: "Apply a built-in color scheme  e.g. :colorscheme tokyonight",
+		ArgCompleter: func(prefix string) []string {
+			var names []string
+			for name := range BuiltinThemes {
+				if strings.HasPrefix(name, prefix) {
+					names = append(names, name)
+				}
+			}
+			sort.Strings(names)
+			return names
+		},
 		Execute: func(args string) (string, error) {
 			name := strings.TrimSpace(args)
 			if name == "" {
@@ -999,6 +1029,90 @@ func RegisterCoreCommands(r *Registry, deps *CommandDeps) {
 			}
 			return fmt.Sprintf("colorscheme: %s applied", name), nil
 		},
+	})
+
+	r.Register(&Command{
+		Name:        "open",
+		Description: "Open a named window: /open <window-name>",
+		Execute: func(args string) (string, error) {
+			name := strings.TrimSpace(args)
+			if name == "" {
+				return "", fmt.Errorf("usage: /open <window-name>")
+			}
+			if deps.OpenWindow == nil {
+				return "", fmt.Errorf("window manager not available")
+			}
+			if err := deps.OpenWindow(name); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("opened window: %s", name), nil
+		},
+	})
+
+	r.Register(&Command{
+		Name:        "close",
+		Description: "Close a named window: /close <window-name>",
+		Execute: func(args string) (string, error) {
+			name := strings.TrimSpace(args)
+			if name == "" {
+				return "", fmt.Errorf("usage: /close <window-name>")
+			}
+			if deps.CloseWindow == nil {
+				return "", fmt.Errorf("window manager not available")
+			}
+			deps.CloseWindow(name)
+			return fmt.Sprintf("closed window: %s", name), nil
+		},
+	})
+
+	// :b — open buffer picker or jump to named buffer (handled in TUI root)
+	r.Register(&Command{
+		Name:        "b",
+		Description: "Open buffer by name (:b to list all, :b <name> to jump)",
+		Execute: func(args string) (string, error) {
+			return "", nil // handled directly in TUI root
+		},
+	})
+
+	// :agents — open agent picker (same as Space+a, handled in TUI root)
+	r.Register(&Command{
+		Name:        "agents",
+		Description: "Open agent picker",
+		Execute: func(args string) (string, error) {
+			return "", nil // handled directly in TUI root
+		},
+	})
+
+	// ── TUI-only stubs: visible in /help and tab-complete; logic in TUI ─────
+	r.Register(&Command{
+		Name:        "map",
+		Description: "Map a key sequence to an action (:map <key> <action>)",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "unmap",
+		Description: "Remove a key mapping (:unmap <key>)",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "maps",
+		Description: "List all key mappings (:maps [group])",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "agui",
+		Description: "Toggle agent inspector panel",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "gain",
+		Description: "Show context filter savings stats",
+		Execute: func(args string) (string, error) { return "", nil },
+	})
+	r.Register(&Command{
+		Name:        "discover",
+		Description: "Show unfiltered command suggestions",
+		Execute: func(args string) (string, error) { return "", nil },
 	})
 }
 

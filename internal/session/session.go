@@ -197,6 +197,15 @@ func (s *Session) Delete(id string) error {
 	return s.db.DeleteSession(id)
 }
 
+// Branch creates a new branch session forking from fromMessageID.
+// Does NOT change s.current — caller decides whether to switch.
+func (s *Session) Branch(fromMessageID int64) (*storage.Session, error) {
+	if s.current == nil {
+		return nil, fmt.Errorf("no active session to branch from")
+	}
+	return s.db.CreateBranchSession(s.current.ID, fromMessageID, s.current.ProjectDir, s.current.Model)
+}
+
 // Search finds sessions matching the query string.
 func (s *Session) Search(query string, limit int) ([]storage.Session, error) {
 	if query == "" {

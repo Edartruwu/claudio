@@ -22,6 +22,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/harness"
 	"github.com/Abraxas-365/claudio/internal/hooks"
 	luart "github.com/Abraxas-365/claudio/internal/lua"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	"github.com/Abraxas-365/claudio/internal/learning"
 	"github.com/Abraxas-365/claudio/internal/models"
 	"github.com/Abraxas-365/claudio/internal/plugins"
@@ -102,6 +103,7 @@ type App struct {
 	MCPManager          *mcp.Manager
 	Capabilities        *capabilities.Registry
 	LuaRuntime          *luart.Runtime
+	WindowManager       *windows.Manager
 	HarnessTemplateDirs []string
 	InjectCh            chan attach.UserMsgPayload
 	InterruptCh         chan struct{}
@@ -340,9 +342,9 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 			skillTool.SkillsRegistry = skillsRegistry
 			skillTool.HooksManager = hooksMgr
 			skillTool.ProjectRoot = cwd
-			if settings.CavemanEnabled() {
-				skillTool.ExcludedNames = []string{"caveman"}
-			}
+			// caveman is always hidden from the skill listing — it is only activated
+			// via config (":set caveman true") not by calling Skill("caveman").
+			skillTool.ExcludedNames = []string{"caveman"}
 		}
 	}
 
@@ -649,6 +651,11 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 			tool.Runner = teamRunner
 		}
 	}
+	if lt, err := registry.Get("ListTeammates"); err == nil {
+		if tool, ok := lt.(*tools.ListTeammatesTool); ok {
+			tool.Runner = teamRunner
+		}
+	}
 
 	// Wire memory store into MemoryTool and RecallTool
 	if memTool, err := registry.Get("Memory"); err == nil {
@@ -717,6 +724,71 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 	// Apply any providers registered by Lua plugins / init.lua
 	luaRuntime.ApplyProviders(apiClient)
 
+	// Initialize window manager; wire it into the Lua runtime so plugins can
+	// open/close floating windows via claudio.window API once it is exposed.
+	windowMgr := windows.New()
+	luaRuntime.SetWindowManager(windowMgr)
+
+	// Wire window manager into team runner so agent runs surface as LiveBuffers.
+	teamRunner.SetWindowManager(windowMgr)
+
+	// Picker opener: the TUI (root.go New()) wires the real interactive opener
+	// via luaRuntime.SetPickerOpener once it starts, replacing any placeholder.
+	// No static window fallback is needed — callPickerOpener handles nil gracefully.
+
+	// Wire team runner and manager so Lua plugins can inspect agent/team state.
+	luaRuntime.SetTeamRunner(teamRunner)
+	luaRuntime.SetTeamManager(teamMgr)
+
+	// Wire LSP manager so Lua plugins can register/control LSP servers at runtime.
+	luaRuntime.SetLSPManager(lspManager)
+
+	// Wire background task runtime so Lua plugins can list/kill tasks.
+	luaRuntime.SetTaskRuntime(taskRuntime)
+
+	// Wire lightweight AI call for Lua plugins (claudio.ai.run)
+	luaRuntime.SetRunAICall(func(ctx context.Context, system, user, model string) (string, error) {
+		client := apiClient
+		if model != "" {
+			resolved := resolveModelAlias(model)
+			if resolved != apiClient.GetModel() {
+				client = api.NewClientFromExisting(apiClient, resolved)
+			}
+		}
+		contentJSON, _ := json.Marshal([]api.UserContentBlock{api.NewTextBlock(user)})
+		req := &api.MessagesRequest{
+			System:    system,
+			Messages:  []api.Message{{Role: "user", Content: contentJSON}},
+			MaxTokens: 4096,
+		}
+		resp, err := client.SendMessage(ctx, req)
+		if err != nil {
+			return "", err
+		}
+		var result strings.Builder
+		for _, block := range resp.Content {
+			if block.Type == "text" {
+				result.WriteString(block.Text)
+			}
+		}
+		return result.String(), nil
+	})
+
+	// Wire full sub-agent for Lua plugins (claudio.agent.spawn)
+	luaRuntime.SetRunAgentCall(func(ctx context.Context, system, prompt, model string, maxTurns int, allowedTools []string) (string, error) {
+		if maxTurns > 0 {
+			ctx = tools.WithMaxTurns(ctx, maxTurns)
+		}
+		if model != "" {
+			ctx = tools.WithSubAgentModel(ctx, model)
+		}
+		reg := registry
+		if len(allowedTools) > 0 {
+			reg = registry.FilterByNames(allowedTools)
+		}
+		return runSubAgentWithMemory(ctx, apiClient, reg, system, prompt, "", subAgentCfg, eventBus)
+	})
+
 	return &App{
 		Config:    settings,
 		Profile:   activeProfile,
@@ -743,6 +815,7 @@ func New(settings *config.Settings, projectRoot string, profile ...string) (*App
 		MCPManager:          globalMCPMgr,
 		Capabilities:        capReg,
 		LuaRuntime:          luaRuntime,
+		WindowManager:       windowMgr,
 		// Priority order for TUI (first-match wins): project-local > harness
 		// (~/.claudio/team-templates is prepended by TUI as the primary/writable dir)
 		HarnessTemplateDirs: append([]string{filepath.Join(cwd, ".claudio", "team-templates")}, harness.CollectTemplateDirs(harnesses)...),

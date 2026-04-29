@@ -159,40 +159,6 @@ claudio.ui.popup({
 	}
 }
 
-// TestUIAPI_RegisterWhichkey_Stored verifies pending whichkey groups are stored.
-func TestUIAPI_RegisterWhichkey_Stored(t *testing.T) {
-	rt := testRuntime(t)
-	defer rt.Close()
-
-	dir := writePlugin(t, "wk_plugin", `
-claudio.ui.register_whichkey("Plugin", {
-  { key = "p", desc = "Open plugin panel" },
-  { key = "r", desc = "Reload plugin" },
-})
-`)
-	if err := rt.LoadPlugin("wk_plugin", dir); err != nil {
-		t.Fatalf("LoadPlugin: %v", err)
-	}
-
-	groups := rt.PendingWhichkeyGroups()
-	if len(groups) != 1 {
-		t.Fatalf("PendingWhichkeyGroups count = %d; want 1", len(groups))
-	}
-	g := groups[0]
-	if g.Group != "Plugin" {
-		t.Errorf("group name = %q; want 'Plugin'", g.Group)
-	}
-	if len(g.Bindings) != 2 {
-		t.Fatalf("bindings count = %d; want 2", len(g.Bindings))
-	}
-	if g.Bindings[0].Key != "p" || g.Bindings[0].Desc != "Open plugin panel" {
-		t.Errorf("binding[0] = {%q,%q}; want {p, Open plugin panel}", g.Bindings[0].Key, g.Bindings[0].Desc)
-	}
-	if g.Bindings[1].Key != "r" || g.Bindings[1].Desc != "Reload plugin" {
-		t.Errorf("binding[1] = {%q,%q}; want {r, Reload plugin}", g.Bindings[1].Key, g.Bindings[1].Desc)
-	}
-}
-
 // TestUIAPI_RegisterPaletteEntry_Stored verifies pending palette entries are stored.
 func TestUIAPI_RegisterPaletteEntry_Stored(t *testing.T) {
 	rt := testRuntime(t)
@@ -231,74 +197,90 @@ claudio.ui.register_palette_entry({
 	}
 }
 
-// TestUIAPI_RegisterSidebarBlock_Stored verifies that register_sidebar_block
-// stores the block definition in the runtime and it is retrievable via GetSidebarBlocks.
-func TestUIAPI_RegisterSidebarBlock_Stored(t *testing.T) {
+// TestUIAPI_NewPanel_Stored verifies that claudio.win.new_panel stores the panel
+// definition in the PanelRegistry and it is retrievable via GetPanelRegistry.
+func TestUIAPI_NewPanel_Stored(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
 
-	dir := writePlugin(t, "sidebar-block", `
-claudio.ui.register_sidebar_block({
-  id     = "my-block",
+	reg := NewPanelRegistry()
+	rt.SetPanelRegistry(reg)
+
+	dir := writePlugin(t, "win-panel", `
+local p = claudio.win.new_panel({ position = "left", width = 30 })
+p:add_section({
+  id     = "my-section",
   title  = "My Plugin",
-  render = function(ctx) return "hello from plugin" end,
+  render = function(w, h) return "hello from plugin" end,
 })
 `)
-	if err := rt.LoadPlugin("sidebar-block", dir); err != nil {
+	if err := rt.LoadPlugin("win-panel", dir); err != nil {
 		t.Fatalf("LoadPlugin: %v", err)
 	}
 
-	blocks := rt.GetSidebarBlocks()
-	if len(blocks) != 1 {
-		t.Fatalf("GetSidebarBlocks len = %d, want 1", len(blocks))
+	panels := reg.AllPanels()
+	if len(panels) != 1 {
+		t.Fatalf("AllPanels len = %d, want 1", len(panels))
 	}
 
-	b := blocks[0]
-	if b.ID != "my-block" {
-		t.Errorf("ID = %q, want %q", b.ID, "my-block")
+	p := panels[0]
+	if p.Position != "left" {
+		t.Errorf("Position = %q, want %q", p.Position, "left")
 	}
-	if b.Title != "My Plugin" {
-		t.Errorf("Title = %q, want %q", b.Title, "My Plugin")
+	if len(p.Sections) != 1 {
+		t.Fatalf("Sections len = %d, want 1", len(p.Sections))
 	}
-	if b.RenderFn == nil {
-		t.Error("RenderFn is nil, want non-nil")
+	sec := p.Sections[0]
+	if sec.ID != "my-section" {
+		t.Errorf("section ID = %q, want %q", sec.ID, "my-section")
 	}
-	if b.Plugin == nil {
-		t.Error("Plugin is nil, want non-nil")
+	if sec.Title != "My Plugin" {
+		t.Errorf("section Title = %q, want %q", sec.Title, "My Plugin")
+	}
+	// Verify render fn is callable.
+	rendered := sec.CallRender(10, 5)
+	if rendered == "" {
+		t.Error("CallRender returned empty string, want non-empty")
 	}
 }
 
-// TestUIAPI_RegisterSidebarBlock_MissingID verifies that missing id raises an error.
-func TestUIAPI_RegisterSidebarBlock_MissingID(t *testing.T) {
+// TestUIAPI_NewPanel_DefaultsToLeft verifies that omitting position defaults to "left".
+func TestUIAPI_NewPanel_DefaultsToLeft(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
 
-	dir := writePlugin(t, "sidebar-no-id", `
-claudio.ui.register_sidebar_block({
-  title  = "No ID",
-  render = function(ctx) return "" end,
-})
+	reg := NewPanelRegistry()
+	rt.SetPanelRegistry(reg)
+
+	dir := writePlugin(t, "win-no-position", `
+local p = claudio.win.new_panel({})
+p:add_section({ id = "s1", render = function(w, h) return "ok" end })
 `)
-	err := rt.LoadPlugin("sidebar-no-id", dir)
-	if err == nil {
-		t.Fatal("expected error for missing id, got nil")
+	if err := rt.LoadPlugin("win-no-position", dir); err != nil {
+		t.Fatalf("LoadPlugin: %v", err)
+	}
+
+	panels := reg.AllPanels()
+	if len(panels) != 1 {
+		t.Fatalf("AllPanels len = %d, want 1", len(panels))
+	}
+	if panels[0].Position != "left" {
+		t.Errorf("Position = %q, want %q", panels[0].Position, "left")
 	}
 }
 
-// TestUIAPI_RegisterSidebarBlock_MissingRender verifies that missing render fn raises an error.
-func TestUIAPI_RegisterSidebarBlock_MissingRender(t *testing.T) {
+// TestUIAPI_AddSection_MissingRender verifies that missing render fn raises an error.
+func TestUIAPI_AddSection_MissingRender(t *testing.T) {
 	rt := testRuntime(t)
 	defer rt.Close()
 
-	dir := writePlugin(t, "sidebar-no-render", `
-claudio.ui.register_sidebar_block({
-  id    = "block",
-  title = "No Render",
-})
+	dir := writePlugin(t, "win-no-render", `
+local p = claudio.win.new_panel({ position = "left" })
+p:add_section({ id = "s1", title = "No Render" })
 `)
-	err := rt.LoadPlugin("sidebar-no-render", dir)
+	err := rt.LoadPlugin("win-no-render", dir)
 	if err == nil {
-		t.Fatal("expected error for missing render, got nil")
+		t.Fatal("expected error for missing render fn, got nil")
 	}
 }
 

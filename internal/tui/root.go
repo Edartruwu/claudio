@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,10 +46,12 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/filepicker"
 	"github.com/Abraxas-365/claudio/internal/tui/keymap"
 	"github.com/Abraxas-365/claudio/internal/tui/modelselector"
+	"github.com/Abraxas-365/claudio/internal/tui/picker"
+	"github.com/Abraxas-365/claudio/internal/tui/picker/finders"
+	"github.com/Abraxas-365/claudio/internal/tui/picker/previewers"
 	"github.com/Abraxas-365/claudio/internal/tui/panels"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/agui"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/analyticspanel"
-	panelconfig "github.com/Abraxas-365/claudio/internal/tui/panels/config"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/conversationpanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/filespanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/memorypanel"
@@ -57,14 +60,13 @@ import (
 	"github.com/Abraxas-365/claudio/internal/tui/panels/stree"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/taskspanel"
 	"github.com/Abraxas-365/claudio/internal/tui/panels/toolspanel"
-	"github.com/Abraxas-365/claudio/internal/tui/panels/whichkey"
 	"github.com/Abraxas-365/claudio/internal/tui/permissions"
 	"github.com/Abraxas-365/claudio/internal/tui/prompt"
 	"github.com/Abraxas-365/claudio/internal/tui/sidebar"
 	sidebarblocks "github.com/Abraxas-365/claudio/internal/tui/sidebar/blocks"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	"github.com/Abraxas-365/claudio/internal/tui/teamselector"
-	"github.com/Abraxas-365/claudio/internal/utils"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 )
 
 // WindowState holds per-window session state so the main viewport and the
@@ -93,15 +95,13 @@ type Model struct {
 	currentAgent        string   // type of the active persona ("" = default Claudio)
 	baseSystemPrompt    string   // system prompt before any agent persona is applied
 	baseModel           string   // model before any agent override
-	whichKey            whichkey.Model
 	sessionPicker       *panelsessions.Panel
 	toast               Toast
 	todoDock            *docks.TodoDock
 	filesPanel          *filespanel.Panel
 	fileOps             []filespanel.FileOp
-	sidebar             *sidebar.Sidebar
+	panelHost           *sidebar.PanelHost
 	sidebarFiles        *sidebarblocks.FilesBlock
-
 	// Panels
 	activePanel   panels.Panel
 	activePanelID PanelID
@@ -110,6 +110,8 @@ type Model struct {
 
 	// State
 	messages            []ChatMessage
+	messageIDs          []int64              // storage IDs parallel to messages; 0 means no stored ID
+	branchParentTitle   string               // non-empty when current session is a branch (display only)
 	focus               Focus
 	width, height       int
 	streaming           bool
@@ -131,7 +133,6 @@ type Model struct {
 	toolStartTimes      map[string]time.Time // ToolUseID → execution start time
 	km                  *keymap.Keymap       // remappable key bindings
 	leaderSeq           string               // leader key sequence in progress ("", "pending", "w", "b", "i", ",")
-	leaderSeqGen        int                  // incremented each time a new timeout is scheduled; stale TimeoutMsgs are ignored
 	prevSessionID       string               // for alternate session switching
 	vpCursor            int                  // viewport section cursor (-1 = none)
 	vpSections          []Section            // cached section metadata from last render
@@ -212,6 +213,7 @@ type Model struct {
 	// busUnsub removes the EventBgTaskComplete subscription; called on quit.
 	busUnsub  func()
 	busUnsub2 func() // removes the ui.popup subscription
+	busUnsub3 func() // removes the session.switch subscription
 
 	// Lua popup overlay state
 	popupVisible bool
@@ -219,6 +221,29 @@ type Model struct {
 	popupContent string
 	popupWidth   int
 	popupHeight  int
+
+	// Window manager — owns float/sidebar window registry and z-stack.
+	// Initialized from AppContext.WindowManager (app-level) or created locally.
+	windowMgr *windows.Manager
+
+	// Full-content buffer view state.
+	activeBufferName   string // name of full-screen buffer ("" = none)
+	bufferScrollOffset int    // lines from tail (0=tail)
+
+	// Telescope-style fuzzy picker overlay (Task 5).
+	// pickerModel is live only while isPickerOpen is true.
+	pickerModel picker.Model
+	isPickerOpen bool
+	pickerKind   string // "buffers" | "agents" | "lua" — disambiguates PickerDoneMsg handling
+
+	// luaPickerCh receives picker.Config values from Lua goroutines.
+	// Channels are reference types: all Model copies share the same channel.
+	// Nil when no LuaRuntime is present.
+	luaPickerCh chan picker.Config
+
+	// luaTokens is a shared token/cost snapshot updated after each turn and
+	// session reset. It is a pointer so all BubbleTea Model copies see the same data.
+	luaTokens *luaTokenState
 }
 
 // ToolCallEntry represents a single tool call in the real-time feed.
@@ -265,6 +290,8 @@ type tuiEvent struct {
 	popupContent string
 	popupWidth   int
 	popupHeight  int
+	// session.switch event field
+	switchSessionID string
 }
 
 // Tea messages
@@ -368,11 +395,10 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		expandedGroups:      make(map[int]bool),
 		thinkingExpanded:    make(map[int]bool),
 		lastToolGroup:       -1,
-		lastPanelID:         PanelConfig,
+		lastPanelID:         PanelNone,
 		toolStartTimes:      make(map[string]time.Time),
 		vpCursor:            -1,
 		km:                  loadKeymap(),
-		whichKey:            whichkey.New(),
 		sessionRuntimes:     make(map[string]*SessionRuntime),
 		panelPool:           make(map[PanelID]panels.Panel),
 	}
@@ -461,17 +487,41 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		})
 	}
 
-	// Apply Lua plugin UI extensions (whichkey groups, palette entries)
+	// Subscribe to session.switch events (fired by Lua claudio.branch.switch)
+	if m.appCtx != nil && m.appCtx.Bus != nil {
+		eventCh := m.eventCh
+		m.busUnsub3 = m.appCtx.Bus.Subscribe("session.switch", func(event bus.Event) {
+			var p struct {
+				SessionID string `json:"session_id"`
+			}
+			if err := json.Unmarshal(event.Payload, &p); err != nil || p.SessionID == "" {
+				return
+			}
+			select {
+			case eventCh <- tuiEvent{typ: "session_switch", switchSessionID: p.SessionID}:
+			default:
+			}
+		})
+	}
+
+	// Apply Lua plugin UI extensions (palette entries etc.) and wire leader keymap.
 	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		m.appCtx.LuaRuntime.SetLeaderKeymap(m.km)
 		m.applyLuaUIExtensions()
 	}
 
-	// Wire keymap into which-key for dynamic binding display
-	m.whichKey.SetKeymap(m.km)
-
-	// Initialize sidebar
+	// sidebarFiles drives file-op tracking and feeds the Lua files data provider.
 	m.sidebarFiles = sidebarblocks.NewFilesBlock()
-	m.sidebar = m.buildSidebar()
+
+	// Wire Lua data providers so sidebar render closures can read live state.
+	m.luaTokens = &luaTokenState{}
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		wireLuaDataProviders(m.appCtx.LuaRuntime, m.session, m.sidebarFiles, m.luaTokens)
+		// Wire the panel registry so pending panels (from defaults.lua) are flushed.
+		reg := luart.NewPanelRegistry()
+		m.appCtx.LuaRuntime.SetPanelRegistry(reg)
+	}
+	m.panelHost = m.buildPanelHost()
 
 	cmdRegistry := commands.NewRegistry()
 	commands.RegisterCoreCommands(cmdRegistry, &commands.CommandDeps{
@@ -726,6 +776,12 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 		SaveConfig: func(s *config.Settings) error {
 			return config.SaveSettings(s)
 		},
+		OpenWindow: func(name string) error {
+			return m.windowMgr.Open(name)
+		},
+		CloseWindow: func(name string) {
+			m.windowMgr.Close(name)
+		},
 	})
 	m.commands = cmdRegistry
 
@@ -750,6 +806,14 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 
 	// nvim-style ":" command line
 	m.cmdline = cmdline.New(cmdRegistry)
+	m.cmdline.ActionCompleter = func() []string {
+		ids := make([]string, 0, len(keymap.Registry))
+		for id := range keymap.Registry {
+			ids = append(ids, string(id))
+		}
+		slices.Sort(ids)
+		return ids
+	}
 
 	// File picker for @ mentions
 	cwd, _ := os.Getwd()
@@ -768,6 +832,59 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 	// Initialize main window state from session (may be nil if lazy-created)
 	m.syncMainWindowState()
 
+	// Wire window manager: prefer app-level instance (shared with Lua runtime);
+	// fall back to a TUI-local one so tests and headless use cases still work.
+	if m.appCtx != nil && m.appCtx.WindowManager != nil {
+		m.windowMgr = m.appCtx.WindowManager
+	} else {
+		m.windowMgr = windows.New()
+	}
+	// Expose windowMgr to Lua runtime (no-op if already wired from app.go).
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		m.appCtx.LuaRuntime.SetWindowManager(m.windowMgr)
+	}
+
+	// Wire interactive Lua picker opener: replace the static window-based
+	// opener set in app.go with one that dispatches into the running BubbleTea
+	// event loop via a buffered channel (channels are reference types — safe
+	// across all Model value copies that BubbleTea creates internally).
+	if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+		ch := make(chan picker.Config, 4)
+		m.luaPickerCh = ch
+		m.appCtx.LuaRuntime.SetPickerOpener(func(cfg picker.Config) {
+			select {
+			case ch <- cfg:
+			default:
+				// Buffer full — a picker is already queued; drop duplicate.
+			}
+		})
+	}
+
+	// Register AGUI panel as a managed float window.
+	// Render delegates to the pooled panel instance at call time so the
+	// window can be registered before the panel is created.
+	{
+		pool := m.panelPool // map is a reference type — shared with all copies
+		aguiBuf := &windows.Buffer{
+			Name: "agui",
+			Render: func(w, h int) string {
+				p, ok := pool[PanelAgentGUI]
+				if !ok {
+					return ""
+				}
+				return p.View()
+			},
+		}
+		m.windowMgr.Register(&windows.Window{
+			Name:   "AgentGUI",
+			Title:  "Agents",
+			Buffer: aguiBuf,
+			Layout: windows.LayoutFloat,
+			Width:  80,
+			Height: 40,
+		})
+	}
+
 	return m
 }
 
@@ -785,13 +902,17 @@ func buildPaletteItems(reg *commands.Registry) []commandpalette.Item {
 
 // Init initializes the model.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		tea.SetWindowTitle("Claudio"),
 		tea.EnableBracketedPaste,
 		m.waitForEvent(),
 		tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return logoTickMsg{} }),
 		tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return taskTickMsg{} }),
-	)
+	}
+	if m.luaPickerCh != nil {
+		cmds = append(cmds, m.waitForLuaPicker())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) waitForEvent() tea.Cmd {
@@ -801,6 +922,20 @@ func (m Model) waitForEvent() tea.Cmd {
 			return nil
 		}
 		return engineEventMsg(event)
+	}
+}
+
+// waitForLuaPicker blocks until a Lua plugin sends a picker.Config via luaPickerCh,
+// then returns an OpenLuaPickerMsg for the BubbleTea Update loop to handle.
+// Must be re-armed after each message so future calls are not missed.
+func (m Model) waitForLuaPicker() tea.Cmd {
+	ch := m.luaPickerCh
+	return func() tea.Msg {
+		cfg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return OpenLuaPickerMsg{Config: cfg}
 	}
 }
 
@@ -817,6 +952,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.palette.SetWidth(m.width)
 		m.cmdline.SetWidth(m.width)
 		m.filePicker.SetWidth(m.width)
+		if m.isPickerOpen {
+			m.pickerModel.SetSize(m.width*4/5, m.height*4/5)
+		}
 		m.modelSelector.SetWidth(m.width)
 		m.agentSelector.SetWidth(m.width)
 		m.agentSelector.SetHeight(m.height)
@@ -848,41 +986,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toast.Dismiss()
 		return m, nil
 
-	case whichkey.TimeoutMsg:
-		// Ignore stale timeouts from previous leader sequences.
-		if msg.Gen != m.leaderSeqGen {
-			return m, nil
-		}
-		// If the sequence was already fully dispatched, don't show the popup.
-		if m.leaderSeq == "" {
-			return m, nil
-		}
-		// Show which-key popup based on current leader sequence, reading from keymap.
-		prefix := m.leaderSeq
-		if prefix == "" {
-			// "pending" was normalised to "" — show top-level bindings
-			prefix = ""
-		}
-		bindings := m.km.BindingsForPrefix(prefix)
-		if len(bindings) > 0 {
-			wkBindings := make([]whichkey.Binding, len(bindings))
-			for i, b := range bindings {
-				wkBindings[i] = whichkey.Binding{Key: b.KeySeq, Desc: b.Action.Description}
-			}
-			m.whichKey.Show(wkBindings)
-			m.whichKey.SetWidth(m.width)
-		}
-		return m, nil
-
 	case tea.KeyMsg:
-		// Dismiss which-key popup on any keypress
-		if m.whichKey.IsActive() {
-			m.whichKey.Hide()
-		}
 		// Dismiss Lua popup on any keypress
 		if m.popupVisible {
 			m.popupVisible = false
 			return m, nil
+		}
+		// Buffer scroll keys (active when a buffer is open, but not while the picker overlay is open).
+		if m.activeBufferName != "" && m.windowMgr != nil && !m.isPickerOpen {
+			// ESC always closes the buffer regardless of vim mode.
+			if msg.String() == "esc" {
+				m.activeBufferName = ""
+				m.bufferScrollOffset = 0
+				return m, nil
+			}
+			// Scroll keys only fire in vim Normal mode (or when vim is disabled)
+			// so they don't interfere with typing in Insert mode.
+			if m.prompt.IsVimNormal() || !m.prompt.IsVimEnabled() {
+				lb, hasLive := m.windowMgr.GetLiveBuffer(m.activeBufferName)
+				var maxOffset int
+				if hasLive {
+					maxOffset = lb.Len() - (m.viewport.Height - 1)
+					if maxOffset < 0 {
+						maxOffset = 0
+					}
+				}
+				switch msg.String() {
+				case "k", "up":
+					m.bufferScrollOffset += 3
+					if m.bufferScrollOffset > maxOffset {
+						m.bufferScrollOffset = maxOffset
+					}
+					return m, nil
+				case "j", "down":
+					m.bufferScrollOffset -= 3
+					if m.bufferScrollOffset < 0 {
+						m.bufferScrollOffset = 0
+					}
+					return m, nil
+				case "ctrl+d":
+					half := (m.viewport.Height - 1) / 2
+					m.bufferScrollOffset += half
+					if m.bufferScrollOffset > maxOffset {
+						m.bufferScrollOffset = maxOffset
+					}
+					return m, nil
+				case "ctrl+u":
+					half := (m.viewport.Height - 1) / 2
+					m.bufferScrollOffset -= half
+					if m.bufferScrollOffset < 0 {
+						m.bufferScrollOffset = 0
+					}
+					return m, nil
+				case "G":
+					m.bufferScrollOffset = 0
+					return m, nil
+				}
+			}
 		}
 		switch msg.String() {
 		case "shift+tab":
@@ -982,8 +1142,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// In Normal mode during streaming: do nothing (use Ctrl+C to cancel)
 			// This allows navigating (Space+wk, etc.) without killing the stream.
-			// Exception: allow esc to close an open side panel even while streaming.
-			if m.streaming && m.focus != FocusPanel {
+			// Exception: allow esc to close an open side panel or picker overlay even while streaming.
+			if m.streaming && m.focus != FocusPanel && !m.isPickerOpen {
 				return m, nil
 			}
 			if m.filePicker.IsActive() {
@@ -1022,6 +1182,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Panel focus mode: delegate all keys to active panel
 		if m.focus == FocusPanel && m.activePanel != nil {
+			// When the panel has an active input bar, route ALL keys to InputUpdate.
+			// The InputPanel implementation is responsible for handling Esc to deactivate.
+			if ip, ok := m.activePanel.(panels.InputPanel); ok && ip.HasInput() {
+				cmd := ip.InputUpdate(msg)
+				return m, cmd
+			}
 			cmd, consumed := m.activePanel.Update(msg)
 			if consumed {
 				// Check if panel closed itself after consuming the key.
@@ -1047,6 +1213,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.cmdline, cmd = m.cmdline.Update(msg)
 			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
+		// Float window key routing — focused float intercepts all keys.
+		// Esc dismisses the top float; other keys are routed to its Update.
+		if m.windowMgr != nil && m.windowMgr.FocusedFloat() != nil {
+			f := m.windowMgr.FocusedFloat()
+			// Esc closes the focused float before routing so the window is gone
+			// before the next render.
+			if msg.String() == "esc" {
+				if f != nil {
+					m.windowMgr.Close(f.Name)
+					// If closing AgentGUI float, also deactivate the panel.
+					if f.Name == "AgentGUI" && m.activePanelID == PanelAgentGUI && m.activePanel != nil {
+						m.activePanel.Deactivate()
+						m.activePanel = nil
+						m.activePanelID = PanelNone
+						m.focus = FocusPrompt
+						m.prompt.Focus()
+					}
+				}
+				return m, tea.Batch(cmds...)
+			}
+			// AgentGUI float: route key events directly to the panel.
+			if f != nil && f.Name == "AgentGUI" && m.activePanelID == PanelAgentGUI && m.activePanel != nil {
+				cmd, _ := m.activePanel.Update(msg)
+				cmds = append(cmds, cmd)
+				return m, tea.Batch(cmds...)
+			}
+			var wCmd tea.Cmd
+			m.windowMgr, wCmd = m.windowMgr.Update(msg)
+			cmds = append(cmds, wCmd)
 			return m, tea.Batch(cmds...)
 		}
 
@@ -1185,6 +1383,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "p":
+				// If current session is a branch, 'p' jumps to the parent session.
+				if m.session != nil && m.session.Current() != nil &&
+					m.session.Current().BranchFromMessageID != nil &&
+					*m.session.Current().BranchFromMessageID != 0 {
+					if cmd := m.jumpToParentSession(); cmd != nil {
+						return m, cmd
+					}
+					return m, nil
+				}
 				// Toggle pin on current section's message
 				if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
 					msgIdx := m.vpSections[m.vpCursor].MsgIndex
@@ -1295,8 +1502,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case " ":
 				m.leaderSeq = "pending"
-				m.leaderSeqGen++
-				return m, whichkey.ScheduleTimeout(m.leaderSeqGen)
+				return m, nil
 			}
 			return m, nil
 		}
@@ -1313,8 +1519,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Start leader sequence on Space
 			if msg.String() == " " {
 				m.leaderSeq = "pending"
-				m.leaderSeqGen++
-				return m, whichkey.ScheduleTimeout(m.leaderSeqGen)
+				return m, nil
 			}
 		}
 
@@ -1367,6 +1572,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
+		}
+
+		// Picker overlay intercepts all keys when open.
+		if m.isPickerOpen {
+			var pickerCmd tea.Cmd
+			var pickerMdl tea.Model
+			pickerMdl, pickerCmd = m.pickerModel.Update(msg)
+			m.pickerModel = pickerMdl.(picker.Model)
+			cmds = append(cmds, pickerCmd)
+			return m, tea.Batch(cmds...)
 		}
 
 		// Model selector gets priority when active
@@ -1487,6 +1702,75 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	// ── Picker overlay messages ────────────────────────────────────────────────
+
+	case picker.EntryMsg:
+		// Forward asynchronous entry arrivals to the picker model.
+		if m.isPickerOpen {
+			var pickerCmd tea.Cmd
+			var pickerMdl tea.Model
+			pickerMdl, pickerCmd = m.pickerModel.Update(msg)
+			m.pickerModel = pickerMdl.(picker.Model)
+			cmds = append(cmds, pickerCmd)
+		}
+		return m, tea.Batch(cmds...)
+
+	case OpenLuaPickerMsg:
+		// Re-arm the listener immediately so subsequent Lua picker.open() calls
+		// are not missed while this picker is open or after it closes.
+		if m.luaPickerCh != nil {
+			cmds = append(cmds, m.waitForLuaPicker())
+		}
+		// If another picker is already open, close it first.
+		if m.isPickerOpen {
+			m.closePicker()
+		}
+		mdl := picker.New(msg.Config)
+		mdl.SetSize(m.width*3/4, m.height*3/4)
+		m.pickerModel = mdl
+		m.isPickerOpen = true
+		m.pickerKind = "lua"
+		m.focus = FocusPicker
+		m.prompt.Blur()
+		cmds = append(cmds, m.pickerModel.Init())
+		return m, tea.Batch(cmds...)
+
+	case picker.PickerClosedMsg:
+		// User cancelled (Esc/q).
+		m.closePicker()
+		return m, tea.Batch(cmds...)
+
+	case picker.PickerDoneMsg:
+		// User confirmed a selection.
+		kind := m.pickerKind
+		m.closePicker()
+		switch kind {
+		case "buffers":
+			// Entry.Value is *windows.Window — open it in the window manager.
+			// Agent-backed windows (agent://<agentID>) open the rich detail overlay.
+			if w, ok := msg.Entry.Value.(*windows.Window); ok {
+				if m.windowMgr != nil {
+					// All windows open as full-content buffer view
+					m.activeBufferName = w.Name
+					m.bufferScrollOffset = 0
+					// Prompt keeps focus — user can scroll with j/k or type to send >>
+				}
+			}
+		case "agents":
+			// Open the full-screen rich agent detail overlay.
+			if agentID, ok := msg.Entry.Meta["agentID"].(string); ok && agentID != "" {
+				newM, cmd := m.openAgentDetail(agentID)
+				m = newM
+				cmds = append(cmds, cmd)
+			}
+		case "lua":
+			// OnSelect callback already fired inside picker.handleKey before
+			// PickerDoneMsg was emitted — nothing more to do here.
+		}
+		return m, tea.Batch(cmds...)
+
+	// ── End picker overlay messages ────────────────────────────────────────────
+
 	case modelselector.ModelSelectedMsg:
 		m.focus = FocusPrompt
 		m.prompt.Focus()
@@ -1570,16 +1854,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.closePanel()
 		return m, nil
 
-	case panelconfig.InsertCommandMsg:
+	case panelsessions.BranchFromSessionMsg:
+		// User pressed 'b' in the session tree panel — branch from the last message of that session.
+		if m.db == nil {
+			return m, m.toast.Show("No database available")
+		}
+		msgs, err := m.db.GetMessages(msg.SessionID)
+		if err != nil || len(msgs) == 0 {
+			return m, m.toast.Show("No messages to branch from")
+		}
+		lastMsgID := msgs[len(msgs)-1].ID
+		// Temporarily switch to the target session so Branch() works on the right session.
+		if _, err := m.session.Resume(msg.SessionID); err != nil {
+			return m, m.toast.Show(fmt.Sprintf("Branch: %v", err))
+		}
+		newSess, err := m.session.Branch(lastMsgID)
+		if err != nil {
+			return m, m.toast.Show(fmt.Sprintf("Branch: %v", err))
+		}
+		if m.appCtx != nil && m.appCtx.LuaRuntime != nil {
+			m.appCtx.LuaRuntime.NotifyBranchCreated(newSess.ID, msg.SessionID, strconv.FormatInt(lastMsgID, 10))
+		}
+		if m.sessionPicker != nil {
+			m.sessionPicker.Deactivate()
+			m.sessionPicker = nil
+		}
 		m.closePanel()
 		m.focus = FocusPrompt
 		m.prompt.Focus()
-		m.prompt.SetValue(msg.Command + " ")
-		return m, nil
-
-	case panelconfig.ConfigChangedMsg:
-		m.applyConfigChange(msg.Key, msg.Value)
-		return m, nil
+		m.doSwitchSession(newSess.ID)
+		return m, m.resumeStreamingCmds()
 
 	case memorypanel.EditorDoneMsg:
 		// Memory was edited in external editor — refresh panel
@@ -2387,6 +2691,13 @@ func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (t
 		return m.handleCommand(cmdName, cmdArgs)
 	}
 
+	// When a buffer is active, route message directly to that agent.
+	if m.activeBufferName != "" && m.windowMgr != nil {
+		if w := m.windowMgr.Get(m.activeBufferName); w != nil && w.AgentName != "" {
+			return m.handleAgentMessage(">>" + w.AgentName + " " + text)
+		}
+	}
+
 	// Handle >>agent messages
 	if strings.HasPrefix(text, ">>") {
 		return m.handleAgentMessage(text)
@@ -2438,7 +2749,16 @@ func (m Model) handleSubmit(text string, extraImages ...api.UserContentBlock) (t
 		// No auto-title: session label shows the short hash until the user runs /set-name
 	}
 
-	m.addMessage(ChatMessage{Type: MsgUser, Content: displayText})
+	// Task-notifications and bg-task-notifications are injected into the AI
+	// context programmatically — the human-facing status is already shown by
+	// handleTeammateEvent / bg-task handlers as a MsgSystem message.
+	// Showing the raw XML as a MsgUser would duplicate the same content.
+	isSystemNotification := strings.HasPrefix(text, "<task-notification>") ||
+		strings.HasPrefix(text, "<bg-task-notification>") ||
+		strings.HasPrefix(text, "<bg-task-error>")
+	if !isSystemNotification {
+		m.addMessage(ChatMessage{Type: MsgUser, Content: displayText})
+	}
 	m.refreshViewport()
 
 	// Increment inactivity counters for all done agents — this human message
@@ -2598,6 +2918,9 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 			return m.handleSubmit(event.text)
 		}
 
+	case "session_switch":
+		m.doSwitchSession(event.switchSessionID)
+
 	case "ui_popup":
 		m.popupVisible = true
 		m.popupTitle = event.popupTitle
@@ -2751,6 +3074,9 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 		}
 		m.usageTracker.Add(event.usage)
 		m.totalTokens, m.totalCost = m.usageTracker.Snapshot()
+		if m.luaTokens != nil {
+			m.luaTokens.set(m.totalTokens, m.totalCost)
+		}
 		m.turns++
 
 	case "done":
@@ -2955,6 +3281,40 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 // runCmdlineCommand handles a command entered via the nvim-style ":" command line.
 // It executes the command through the registry and shows the result as a system message.
 func (m Model) runCmdlineCommand(msg cmdline.ExecuteMsg) (tea.Model, tea.Cmd) {
+	// :branch — create a branch from the last message of the current session.
+	if msg.Name == "branch" {
+		if m.session == nil || m.session.Current() == nil {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "E: no active session"})
+			m.refreshViewport()
+			return m, nil
+		}
+		if m.db == nil {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "E: no database"})
+			m.refreshViewport()
+			return m, nil
+		}
+		storedMsgs, err := m.db.GetMessages(m.session.Current().ID)
+		if err != nil || len(storedMsgs) == 0 {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: "E: no messages to branch from"})
+			m.refreshViewport()
+			return m, nil
+		}
+		lastMsgID := storedMsgs[len(storedMsgs)-1].ID
+		newSess, err := m.session.Branch(lastMsgID)
+		if err != nil {
+			m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("E: branch: %v", err)})
+			m.refreshViewport()
+			return m, nil
+		}
+		m.doSwitchSession(newSess.ID)
+		return m, m.resumeStreamingCmds()
+	}
+
+	// If the command name matches a registered keymap action, dispatch it directly.
+	if _, ok := keymap.Registry[keymap.ActionID(msg.Name)]; ok {
+		return m, m.dispatchAction(keymap.ActionID(msg.Name))
+	}
+
 	result, err := m.commands.Execute(msg.Name, msg.Args)
 	if err != nil {
 		m.addMessage(ChatMessage{Type: MsgSystem, Content: fmt.Sprintf("E: %s", err.Error())})
@@ -3000,10 +3360,55 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// :ls / :buffers → show buffer list with markers
+	// :ls / :buffers → interactive buffer picker
 	if name == "ls" || name == "buffers" {
-		m.showBufferList()
+		return m, m.openBufferPicker()
+	}
+
+	// :b [name] → open buffer picker or jump directly to named buffer
+	if name == "b" {
+		if args == "" {
+			return m, m.openBufferPicker()
+		}
+		// Find best matching window by name (case-insensitive prefix/contains)
+		if m.windowMgr != nil {
+			needle := strings.ToLower(strings.TrimSpace(args))
+			var exact, prefix, contains *windows.Window
+			for _, w := range m.windowMgr.AllWindows() {
+				lower := strings.ToLower(w.Name)
+				if lower == needle {
+					exact = w
+					break
+				}
+				if strings.HasPrefix(lower, needle) && prefix == nil {
+					prefix = w
+				} else if strings.Contains(lower, needle) && contains == nil {
+					contains = w
+				}
+			}
+			match := exact
+			if match == nil {
+				match = prefix
+			}
+			if match == nil {
+				match = contains
+			}
+			if match != nil {
+				if err := m.windowMgr.Open(match.Name); err != nil {
+					m.addMessage(ChatMessage{Type: MsgError, Content: err.Error()})
+					m.refreshViewport()
+				}
+				return m, nil
+			}
+		}
+		m.addMessage(ChatMessage{Type: MsgError, Content: fmt.Sprintf("No buffer matching %q. Use :b to list all.", args)})
+		m.refreshViewport()
 		return m, nil
+	}
+
+	// :agents → open agent picker (same as Space+a)
+	if name == "agents" {
+		return m, m.openAgentPicker()
 	}
 
 	// /agent → interactive agent persona picker
@@ -3029,9 +3434,9 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// /agui (or :AGUI) → open the two-pane agent inspector panel
+	// /agui (or :AGUI) → open the two-pane agent inspector panel (float window)
 	if strings.EqualFold(name, "agui") {
-		m.togglePanel(PanelAgentGUI)
+		m.toggleAguiFloat()
 		return m, nil
 	}
 
@@ -3271,13 +3676,16 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 		if output == "__new_session__" {
 			return m, nil
 		}
-		// Clear: wipe UI messages and engine history
+		// Clear: wipe UI messages, engine history, and terminal screen
 		if output == "[action:clear]" {
 			m.messages = nil
 			m.streamText.Reset()
 			m.turns = 0
 			m.totalTokens = 0
 			m.totalCost = 0
+			if m.luaTokens != nil {
+				m.luaTokens.set(0, 0)
+			}
 			m.undoStash = nil
 			m.usageTracker = api.NewUsageTracker(m.model, 0)
 			if m.engine != nil {
@@ -3289,7 +3697,7 @@ func (m Model) handleCommand(name, args string) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.refreshViewport()
-			return m, nil
+			return m, tea.ClearScreen
 		}
 		if output == "[action:details]" {
 			// Toggle expand/collapse for every tool group currently rendered.
@@ -4032,6 +4440,12 @@ func (m *Model) applyPermissionRule(rule config.PermissionRule) {
 // permissionRuleSavedMsg is a no-op message indicating disk persistence completed.
 type permissionRuleSavedMsg struct{}
 
+// OpenLuaPickerMsg is dispatched when a Lua plugin calls claudio.picker.open().
+// The root model handles it by launching a fully interactive picker overlay.
+type OpenLuaPickerMsg struct {
+	Config picker.Config
+}
+
 // persistPermissionRuleCmd returns a tea.Cmd that persists a permission rule to disk
 // without blocking the BubbleTea event loop.
 func persistPermissionRuleCmd(rule config.PermissionRule) tea.Cmd {
@@ -4116,10 +4530,9 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 		// Check if this is also a prefix — if so, we need to wait.
 		if m.km.HasPrefix(fullSeq) {
 			// Ambiguous: "e" matches but "ev" also exists.
-			// Buffer and schedule timeout — on next key we'll extend or dispatch.
+			// Buffer and wait for the next key to extend or dispatch.
 			m.leaderSeq = fullSeq
-			m.leaderSeqGen++
-			return true, whichkey.ScheduleTimeout(m.leaderSeqGen)
+			return true, nil
 		}
 		return true, m.dispatchAction(action)
 	}
@@ -4127,8 +4540,7 @@ func (m *Model) handleLeaderKey(key string) (bool, tea.Cmd) {
 	// Not an exact match — is it a valid prefix?
 	if m.km.HasPrefix(fullSeq) {
 		m.leaderSeq = fullSeq
-		m.leaderSeqGen++
-		return true, whichkey.ScheduleTimeout(m.leaderSeqGen)
+		return true, nil
 	}
 
 	// Try dispatching the accumulated prefix if there was one.
@@ -4148,6 +4560,24 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 	switch action {
 	// ── Window Management ──────────────────
 	case keymap.ActionWindowCycle:
+		// When float windows are open, ww cycles focus through them instead of
+		// the normal viewport/prompt/panel rotation.
+		if m.windowMgr != nil {
+			floats := m.windowMgr.OpenFloats()
+			if len(floats) > 1 {
+				// More than one float: rotate the stack by closing top and re-opening
+				// it at the bottom so the next-highest becomes focused.
+				top := floats[len(floats)-1]
+				m.windowMgr.Close(top.Name)
+				_ = m.windowMgr.Open(top.Name) // re-opens at bottom of z-stack
+				return nil
+			} else if len(floats) == 1 {
+				// Single float: close it (toggle off).
+				m.windowMgr.Close(floats[0].Name)
+				return nil
+			}
+		}
+		// No floats — fall through to normal viewport/prompt/panel cycle.
 		hasPanel := m.activePanel != nil && m.activePanel.IsActive()
 		switch m.focus {
 		case FocusPrompt:
@@ -4180,6 +4610,19 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 			m.prompt.Focus()
 		}
 		return nil
+
+	case keymap.ActionFloatWindowClose:
+		// <leader>wc — close the topmost focused float window.
+		if m.windowMgr != nil {
+			if f := m.windowMgr.FocusedFloat(); f != nil {
+				m.windowMgr.Close(f.Name)
+			}
+		}
+		return nil
+
+	case keymap.ActionFloatWindowHint:
+		// <leader>wo — hint: float windows are opened via :open <name> command.
+		return m.toast.Show("Use :open <name> to open a float window")
 
 	case keymap.ActionWindowFocusUp:
 		m.focus = FocusViewport
@@ -4277,10 +4720,6 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 		return nil
 
 	// ── Panels ─────────────────────────────
-	case keymap.ActionPanelConfig:
-		m.togglePanel(PanelConfig)
-		return nil
-
 	case keymap.ActionPanelSkills:
 		m.togglePanel(PanelSkills)
 		return nil
@@ -4325,7 +4764,7 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 		return nil
 
 	case keymap.ActionPanelAgentGUI:
-		m.togglePanel(PanelAgentGUI)
+		m.toggleAguiFloat()
 		return nil
 
 	// ── Navigation ─────────────────────────
@@ -4369,6 +4808,35 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 			m.refreshViewport()
 		}
 		return nil
+
+	// ── Picker overlays ────────────────────
+	case keymap.ActionPickerBuffers:
+		return m.openBufferPicker()
+
+	case keymap.ActionPickerAgents:
+		return m.openAgentPicker()
+
+	// ── Branching ──────────────────────────
+	case keymap.ActionBranchSession:
+		return m.branchFromCursor()
+
+	case keymap.ActionBranchParentJump:
+		return m.jumpToParentSession()
+
+	default:
+		// Lua-registered leader handler: action IDs starting with "lua.fn." are
+		// synthetic IDs assigned to Lua function callbacks by claudio.keymap.map().
+		if strings.HasPrefix(string(action), "lua.fn.") {
+			if m.appCtx != nil && m.appCtx.Bus != nil {
+				payload, _ := json.Marshal(map[string]any{"action": string(action)})
+				m.appCtx.Bus.Publish(bus.Event{
+					Type:      "leader." + string(action),
+					Payload:   payload,
+					Timestamp: time.Now(),
+				})
+			}
+			return nil
+		}
 	}
 
 	return nil
@@ -4386,6 +4854,111 @@ func (m *Model) togglePanel(id PanelID) {
 	m.refreshViewport()
 }
 
+// toggleAguiFloat opens or closes the AgentGUI as a managed float window.
+// The agui panel state (cursor, entries, etc.) is preserved in panelPool.
+// Open/close lifecycle is routed through windowMgr; key events reach the
+// panel via the float key-routing block in handleKeyMsg.
+func (m *Model) toggleAguiFloat() {
+	if m.windowMgr == nil {
+		// Fallback: no window manager — use sidebar panel as before.
+		m.togglePanel(PanelAgentGUI)
+		return
+	}
+	win := m.windowMgr.Get("AgentGUI")
+	if win == nil {
+		return
+	}
+	if win.IsOpen() {
+		// Close: deactivate panel, clear activePanel, restore focus.
+		m.windowMgr.Close("AgentGUI")
+		if m.activePanelID == PanelAgentGUI && m.activePanel != nil {
+			m.activePanel.Deactivate()
+			m.activePanel = nil
+			m.activePanelID = PanelNone
+		}
+		m.focus = FocusPrompt
+		m.prompt.Focus()
+	} else {
+		// Open: get or create panel, activate it, then open the window.
+		panel, ok := m.panelPool[PanelAgentGUI]
+		if !ok {
+			panel = m.createPanel(PanelAgentGUI)
+			if panel == nil {
+				return
+			}
+			m.panelPool[PanelAgentGUI] = panel
+		}
+		panel.Activate()
+		m.activePanel = panel
+		m.activePanelID = PanelAgentGUI
+		_ = m.windowMgr.Open("AgentGUI")
+	}
+}
+
+// openBufferPicker opens the telescope-style buffer/window picker (<Space>.).
+// Toggle: a second invocation while the picker is already open closes it.
+func (m *Model) openBufferPicker() tea.Cmd {
+	if m.isPickerOpen {
+		m.closePicker()
+		return nil
+	}
+	if m.windowMgr == nil {
+		return m.toast.Show("no window manager available")
+	}
+	mdl := picker.New(picker.Config{
+		Title:     "Buffers",
+		Finder:    finders.NewBufferFinder(m.windowMgr),
+		Layout:    picker.LayoutHorizontal,
+		Previewer: previewers.NewBufferPreviewer(),
+	})
+	mdl.SetSize(m.width*4/5, m.height*4/5)
+	m.pickerModel = mdl
+	m.isPickerOpen = true
+	m.pickerKind = "buffers"
+	m.focus = FocusPicker
+	m.prompt.Blur()
+	return m.pickerModel.Init()
+}
+
+// openAgentPicker opens the telescope-style agent picker (<Space>a).
+// Toggle: a second invocation while the picker is already open closes it.
+func (m *Model) openAgentPicker() tea.Cmd {
+	if m.isPickerOpen {
+		m.closePicker()
+		return nil
+	}
+	if m.appCtx == nil || m.appCtx.TeamRunner == nil {
+		return m.toast.Show("no active team")
+	}
+	mdl := picker.New(picker.Config{
+		Title:     "Agents",
+		Finder:    finders.NewAgentFinder(m.appCtx.TeamRunner),
+		Layout:    picker.LayoutHorizontal,
+		Previewer: previewers.NewAgentPreviewer(m.appCtx.TeamRunner),
+	})
+	mdl.SetSize(m.width*4/5, m.height*4/5)
+	m.pickerModel = mdl
+	m.isPickerOpen = true
+	m.pickerKind = "agents"
+	m.focus = FocusPicker
+	m.prompt.Blur()
+	return m.pickerModel.Init()
+}
+
+// closePicker closes the picker overlay and restores focus to the prompt.
+// It also cancels the underlying finder goroutine so resources are not leaked
+// when the picker is dismissed programmatically (e.g. replaced by a new picker).
+func (m *Model) closePicker() {
+	if m.isPickerOpen {
+		m.pickerModel.Cancel() // cancel finder goroutine / context
+	}
+	m.isPickerOpen = false
+	m.pickerKind = ""
+	m.focus = FocusPrompt
+	m.prompt.Focus()
+	m.refreshViewport()
+}
+
 func (m *Model) openSessionPicker() (bool, tea.Cmd) {
 	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
 		m.sessionPicker.Deactivate()
@@ -4393,7 +4966,7 @@ func (m *Model) openSessionPicker() (bool, tea.Cmd) {
 		m.focus = FocusPrompt
 		m.prompt.Focus()
 	} else if m.session != nil {
-		picker := panelsessions.New(m.session)
+		picker := panelsessions.NewWithDB(m.session, m.db)
 		picker.SetSize(m.width, m.height)
 		picker.Activate()
 		m.sessionPicker = picker
@@ -4514,10 +5087,14 @@ func (m *Model) doSwitchSession(id string) {
 	}
 	// Clear current conversation and show resume context
 	m.messages = nil
+	m.messageIDs = nil
 	m.streamText.Reset()
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.pendingEngineMessages = nil
 
@@ -4537,11 +5114,21 @@ func (m *Model) doSwitchSession(id string) {
 	if resumed.Summary != "" {
 		ctx.WriteString(fmt.Sprintf("\n\n  %s", resumed.Summary))
 	}
-	// Append resume header directly — don't persist to DB
+	// Append resume header directly — don't persist to DB; no storage ID for it
 	m.messages = append(m.messages, ChatMessage{Type: MsgSystem, Content: ctx.String()})
+	m.messageIDs = append(m.messageIDs, 0)
 
-	// Load previous messages from DB
-	if storedMsgs, err := m.session.GetMessages(); err == nil && len(storedMsgs) > 0 {
+	// Load previous messages from DB.
+	// For branch sessions, use GetBranchMessages to include parent chain up to the fork point.
+	var loadedMsgs []storage.MessageRecord
+	var loadErr error
+	if resumed.BranchFromMessageID != nil && *resumed.BranchFromMessageID != 0 && m.db != nil {
+		loadedMsgs, loadErr = m.db.GetBranchMessages(resumed.ID)
+	} else {
+		loadedMsgs, loadErr = m.session.GetMessages()
+	}
+	if loadErr == nil && len(loadedMsgs) > 0 {
+		storedMsgs := loadedMsgs
 		for _, msg := range storedMsgs {
 			var msgType MessageType
 			switch msg.Type {
@@ -4562,6 +5149,7 @@ func (m *Model) doSwitchSession(id string) {
 				ToolName:  msg.ToolName,
 				ToolUseID: msg.ToolUseID,
 			})
+			m.messageIDs = append(m.messageIDs, msg.ID)
 		}
 
 		// Restore engine conversation history so the model has full context.
@@ -4623,6 +5211,9 @@ func (m *Model) doSwitchSession(id string) {
 		}
 		// Rough cost estimate (use Sonnet pricing as baseline)
 		m.totalCost = float64(m.totalTokens) * 3.0 / 1_000_000
+		if m.luaTokens != nil {
+			m.luaTokens.set(m.totalTokens, m.totalCost)
+		}
 	}
 
 	// Re-apply agent and team from resumed session.
@@ -4673,8 +5264,75 @@ func (m *Model) doSwitchSession(id string) {
 		}
 	}
 
+	// Populate branch parent title for display in status line.
+	m.branchParentTitle = ""
+	if resumed.BranchFromMessageID != nil && *resumed.BranchFromMessageID != 0 &&
+		resumed.ParentSessionID != "" && m.db != nil {
+		if parent, err := m.db.GetSession(resumed.ParentSessionID); err == nil && parent != nil {
+			t := parent.Title
+			if t == "" {
+				t = parent.Summary
+			}
+			if t == "" {
+				t = resumed.ParentSessionID
+			}
+			m.branchParentTitle = t
+		}
+	}
+
 	m.syncMainWindowState()
 	m.refreshViewport()
+}
+
+// branchFromCursor creates a branch session from the message at the current viewport cursor.
+// Called by ActionBranchSession (Space+g+b keybinding).
+func (m *Model) branchFromCursor() tea.Cmd {
+	if m.session == nil || m.session.Current() == nil {
+		return m.toast.Show("No active session")
+	}
+	if m.db == nil {
+		return m.toast.Show("No database available")
+	}
+	// Find the message at the current cursor position.
+	var msgID int64
+	if m.vpCursor >= 0 && m.vpCursor < len(m.vpSections) {
+		msgIdx := m.vpSections[m.vpCursor].MsgIndex
+		if msgIdx >= 0 && msgIdx < len(m.messageIDs) {
+			msgID = m.messageIDs[msgIdx]
+		}
+	}
+	// Fall back to the last message if cursor has no stored ID.
+	if msgID == 0 {
+		for i := len(m.messageIDs) - 1; i >= 0; i-- {
+			if m.messageIDs[i] != 0 {
+				msgID = m.messageIDs[i]
+				break
+			}
+		}
+	}
+	if msgID == 0 {
+		return m.toast.Show("No message to branch from")
+	}
+	newSess, err := m.session.Branch(msgID)
+	if err != nil {
+		return m.toast.Show(fmt.Sprintf("Branch: %v", err))
+	}
+	m.doSwitchSession(newSess.ID)
+	return m.resumeStreamingCmds()
+}
+
+// jumpToParentSession switches to the parent session of the current branch.
+// Called by 'p' key when focused on a branch session, or by ActionBranchParentJump.
+func (m *Model) jumpToParentSession() tea.Cmd {
+	if m.session == nil || m.session.Current() == nil {
+		return m.toast.Show("No active session")
+	}
+	cur := m.session.Current()
+	if cur.ParentSessionID == "" {
+		return m.toast.Show("Not a branch session")
+	}
+	m.doSwitchSession(cur.ParentSessionID)
+	return m.resumeStreamingCmds()
 }
 
 // isRightWindowFocused returns true when focus is on the conversation mirror panel.
@@ -4930,6 +5588,9 @@ func (m *Model) saveSessionRuntime(sessionID string) {
 	m.streaming = false
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.turns = 0
 	m.expandedGroups = make(map[int]bool)
@@ -4957,6 +5618,9 @@ func (m *Model) restoreSessionRuntime(rt *SessionRuntime) {
 	m.streaming = rt.Streaming
 	m.totalTokens = rt.TotalTokens
 	m.totalCost = rt.TotalCost
+	if m.luaTokens != nil {
+		m.luaTokens.set(m.totalTokens, m.totalCost)
+	}
 	m.turns = rt.Turns
 	m.expandedGroups = rt.ExpandedGroups
 	m.lastToolGroup = rt.LastToolGroup
@@ -5042,6 +5706,9 @@ func (m *Model) createNewSession() (bool, tea.Cmd) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
@@ -5099,6 +5766,9 @@ func (m *Model) deleteCurrentSession() (bool, tea.Cmd) {
 	m.turns = 0
 	m.totalTokens = 0
 	m.totalCost = 0
+	if m.luaTokens != nil {
+		m.luaTokens.set(0, 0)
+	}
 	m.usageTracker = api.NewUsageTracker(m.model, 0)
 	m.expandedGroups = make(map[int]bool)
 	m.lastToolGroup = -1
@@ -5814,10 +6484,6 @@ func (m *Model) createPanel(id PanelID) panels.Panel {
 	switch id {
 	case PanelSessions:
 		return nil // Sessions use Telescope-style overlay, not side panel
-	case PanelConfig:
-		if m.appCtx != nil && m.appCtx.Config != nil {
-			return panelconfig.New(m.appCtx.Config)
-		}
 	case PanelSkills:
 		if m.skills != nil {
 			return skillspanel.New(m.skills)
@@ -6419,54 +7085,17 @@ func (m *Model) isWelcomeScreen() bool {
 	return len(m.messages) == 0 && !m.streaming
 }
 
-// buildSidebar constructs the sidebar from config (or defaults).
-func (m *Model) buildSidebar() *sidebar.Sidebar {
+// buildPanelHost constructs the PanelHost backed by the Lua PanelRegistry.
+// All panels come from Lua plugins (including defaults.lua) at render time.
+func (m *Model) buildPanelHost() *sidebar.PanelHost {
 	cfg := m.sidebarConfig()
 	if !cfg.Enabled {
 		return nil
 	}
-
-	blockNames := cfg.Blocks
-	if len(blockNames) == 0 {
-		blockNames = []string{"session", "files", "todos", "tokens"}
-	}
-
-	var blks []sidebar.Block
-	for _, name := range blockNames {
-		switch name {
-		case "files":
-			blks = append(blks, m.sidebarFiles)
-		case "todos":
-			blks = append(blks, sidebarblocks.NewTodosBlock())
-		case "tokens":
-			blks = append(blks, sidebarblocks.NewTokensBlock(
-				func() int { return m.totalTokens },
-				func() float64 { return m.totalCost },
-				func() int { return utils.MaxContextForModel(m.model) },
-				func() string { return m.model },
-			))
-		case "session":
-			blks = append(blks, sidebarblocks.NewSessionBlock(
-				func() string {
-					if m.session != nil && m.session.Current() != nil {
-						return m.session.Current().Title
-					}
-					return ""
-				},
-				func() int { return len(m.messages) },
-				func() time.Time {
-					if m.session != nil && m.session.Current() != nil {
-						return m.session.Current().CreatedAt
-					}
-					return time.Time{}
-				},
-			))
-		}
-	}
-	if len(blks) == 0 {
+	if m.appCtx == nil || m.appCtx.LuaRuntime == nil {
 		return nil
 	}
-	return sidebar.New(blks...)
+	return sidebar.New(m.appCtx.LuaRuntime.GetPanelRegistry())
 }
 
 // sidebarConfig returns the effective sidebar config (from settings or defaults).
@@ -6486,36 +7115,31 @@ func (m *Model) sidebarConfig() config.SidebarConfig {
 	}
 }
 
-// sidebarWidth returns the pixel width the sidebar occupies (0 if disabled).
+// sidebarWidth returns the pixel width the panel host occupies (0 if disabled).
 func (m *Model) sidebarWidth() int {
-	if m.sidebar == nil {
+	if m.panelHost == nil {
 		return 0
 	}
 	cfg := m.sidebarConfig()
-	w := cfg.Width
-	if w == 0 {
-		w = 32
+	defaultW := cfg.Width
+	if defaultW == 0 {
+		defaultW = 32
 	}
-	// Don't show sidebar if terminal is too narrow
+	w := m.panelHost.Width("left", defaultW)
+	if w == 0 {
+		return 0
+	}
+	// Don't show panel host if terminal is too narrow.
 	if m.width-w-1 < 40 {
 		return 0
 	}
 	return w
 }
 
-// applyLuaUIExtensions applies plugin-registered whichkey groups and palette entries.
+// applyLuaUIExtensions applies plugin-registered palette entries.
 // Called once during New() after all panels are initialized.
 func (m *Model) applyLuaUIExtensions() {
 	rt := m.appCtx.LuaRuntime
-
-	// Apply whichkey extra bindings
-	for _, group := range rt.PendingWhichkeyGroups() {
-		var bindings []whichkey.Binding
-		for _, e := range group.Bindings {
-			bindings = append(bindings, whichkey.Binding{Key: e.Key, Desc: e.Desc})
-		}
-		m.whichKey.AddExtraBindings(bindings)
-	}
 
 	// Apply palette entries
 	var items []commandpalette.Item
@@ -6541,6 +7165,10 @@ func (m *Model) cleanup() {
 		m.busUnsub2()
 		m.busUnsub2 = nil
 	}
+	if m.busUnsub3 != nil {
+		m.busUnsub3()
+		m.busUnsub3 = nil
+	}
 }
 
 // ── Layout & View ────────────────────────────────────────
@@ -6548,7 +7176,7 @@ func (m *Model) cleanup() {
 func (m *Model) layout() {
 	promptH := m.prompt.Height()
 	paletteH := 0
-	if m.palette.IsActive() || m.filePicker.IsActive() {
+	if m.palette.IsActive() {
 		paletteH = 10
 	}
 
@@ -6662,10 +7290,6 @@ func (m Model) View() string {
 		overlay := m.teamSelector.View()
 		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
 	}
-	if m.whichKey.IsActive() {
-		overlay := m.whichKey.View()
-		vpView = placeOverlay(vpView, overlay, mw, m.viewport.Height)
-	}
 	if m.sessionPicker != nil && m.sessionPicker.IsActive() {
 		overlay := m.sessionPicker.View()
 		vpView = placeOverlay(vpView, overlay, m.width, m.viewport.Height)
@@ -6726,31 +7350,75 @@ func (m Model) View() string {
 	} else if m.filesPanel != nil && m.filesPanel.IsActive() && m.focus != FocusAgentDetail {
 		// layout() already computed and applied filesPanel dimensions.
 		topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, m.filesPanel.View())
-	} else if m.sidebar != nil && m.focus != FocusAgentDetail {
-		// Rebuild sidebar each frame so token/cost closures capture
-		// the current (value-receiver) Model copy. Otherwise the
-		// closures formed in New() reference a stale stack-local m
-		// and the Usage panel always renders zeros.
-		m.sidebar = m.buildSidebar()
+	} else if m.panelHost != nil && m.panelHost.HasPanels("left") && m.focus != FocusAgentDetail {
 		sw := m.sidebarWidth()
 		if sw > 0 {
-			m.sidebar.SetSize(sw, m.viewport.Height)
 			sep := buildSeparator(m.viewport.Height)
-			sidebarView := lipgloss.NewStyle().Width(sw).Height(m.viewport.Height).Render(m.sidebar.View())
+			sidebarView := lipgloss.NewStyle().Width(sw).Height(m.viewport.Height).Render(
+				m.panelHost.View("left", sw, m.viewport.Height),
+			)
 			topArea = lipgloss.JoinHorizontal(lipgloss.Top, vpView, sep, sidebarView)
 		}
+	}
+
+	// Full-content buffer view: replaces topArea when a buffer is active.
+	if m.activeBufferName != "" && m.windowMgr != nil {
+		w := m.windowMgr.Get(m.activeBufferName)
+		lb, hasLive := m.windowMgr.GetLiveBuffer(m.activeBufferName)
+		bufH := m.viewport.Height - 1 // -1 for title bar line
+		if bufH < 1 {
+			bufH = 1
+		}
+
+		var content string
+		if hasLive {
+			content = lb.RenderWithOffset(m.viewport.Width, bufH, m.bufferScrollOffset)
+		} else if w != nil {
+			content = w.View(m.viewport.Width, bufH)
+		}
+
+		// Title bar
+		agentName := ""
+		statusStr := "running"
+		if w != nil {
+			agentName = w.AgentName
+		}
+		if hasLive {
+			statusStr = lb.Status()
+		}
+		scrollHint := ""
+		if m.bufferScrollOffset > 0 {
+			scrollHint = fmt.Sprintf(" ↑%d", m.bufferScrollOffset)
+		}
+		agentPart := agentName
+		if agentPart == "" {
+			agentPart = strings.TrimPrefix(m.activeBufferName, "agent://")
+		}
+		titleBar := lipgloss.NewStyle().
+			Width(m.viewport.Width).
+			Background(lipgloss.Color("237")).
+			Foreground(lipgloss.Color("252")).
+			Bold(true).
+			Render(fmt.Sprintf(" %s [%s]%s  ESC close  j/k scroll  type to send >>", agentPart, statusStr, scrollHint))
+
+		topArea = lipgloss.JoinVertical(lipgloss.Left,
+			titleBar,
+			lipgloss.NewStyle().Width(m.viewport.Width).Height(bufH).Render(content),
+		)
+	}
+
+	// File picker floats over the bottom of the viewport — no layout shift.
+	if pickerView := m.filePicker.View(); pickerView != "" {
+		topArea = overlayBottomLeft(topArea, pickerView, mw, m.viewport.Height)
 	}
 
 	var sections []string
 	sections = append(sections, lipgloss.NewStyle().Height(1).Render("")) // top padding — prevents content from being clipped at terminal edge
 	sections = append(sections, topArea)
 
-	// 3. Command palette or file picker (full width, between viewport and prompt)
+	// 3. Command palette (full width, between viewport and prompt)
 	if paletteView := m.palette.View(); paletteView != "" {
 		sections = append(sections, paletteView)
-	}
-	if pickerView := m.filePicker.View(); pickerView != "" {
-		sections = append(sections, pickerView)
 	}
 
 	// 4. Dock slot — permission dock (highest priority) or todo dock
@@ -6812,7 +7480,21 @@ func (m Model) View() string {
 		IsUsingOverage:     m.isUsingOverage,
 	}))
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	base := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
+	// Composite open float windows over the base layout.
+	if m.windowMgr != nil && len(m.windowMgr.OpenFloats()) > 0 {
+		base = m.windowMgr.RenderOverlay(base, m.width, m.height)
+	}
+
+	// Render fuzzy picker overlay on top of everything else.
+	// overlayCenter keeps background TUI visible around the picker (Telescope-style).
+	if m.isPickerOpen {
+		pickerView := m.pickerModel.View()
+		base = overlayCenter(base, pickerView, m.width, m.height)
+	}
+
+	return base
 }
 
 // teamStatus returns the team summary string and unread mailbox count.
@@ -7000,12 +7682,18 @@ func (m Model) renderStatusLine() string {
 	}
 	pill := pillStyle.Render("● " + modeLabel)
 
-	// Center: session name + optional agent name.
+	// Center: session name + optional branch ancestry + optional agent name.
 	sessName := m.sessionName()
 	if sessName == "" {
 		sessName = "new session"
 	}
 	center := sessName
+	if m.branchParentTitle != "" {
+		branchIndicator := lipgloss.NewStyle().
+			Foreground(styles.Muted).
+			Render("  ⎇ " + truncateStr(m.branchParentTitle, 30))
+		center += branchIndicator
+	}
 	if m.currentAgent != "" {
 		center += " · " + m.currentAgent
 	}
@@ -7141,8 +7829,6 @@ func (m Model) panelName() string {
 	switch m.activePanelID {
 	case PanelSessions:
 		return "sessions"
-	case PanelConfig:
-		return "config"
 	case PanelSkills:
 		return "skills"
 	case PanelMemory:

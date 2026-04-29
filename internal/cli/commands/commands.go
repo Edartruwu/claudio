@@ -13,7 +13,8 @@ type Command struct {
 	Name        string
 	Aliases     []string
 	Description string
-	Execute     func(args string) (string, error)
+	Execute      func(args string) (string, error)
+	ArgCompleter func(argPrefix string) []string
 }
 
 // CommandDeps provides access to app state for commands that need it.
@@ -58,6 +59,9 @@ type CommandDeps struct {
 	// Config
 	GetConfig  func() *config.Settings
 	SaveConfig func(*config.Settings) error
+	// Window manager
+	OpenWindow  func(name string) error
+	CloseWindow func(name string)
 }
 
 // SkillInfo holds skill data for command registration.

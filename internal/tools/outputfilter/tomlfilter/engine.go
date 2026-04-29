@@ -238,3 +238,14 @@ func (cf *compiledFilter) apply(output string) string {
 
 	return result
 }
+
+// ApplyPipeline compiles a FilterDef and runs the 8-stage pipeline on output.
+// The match_command field is not checked — the caller is responsible for matching.
+// Returns an error if any regex in the def fails to compile.
+func ApplyPipeline(def FilterDef, output string) (string, error) {
+	cf, err := compile("lua", def)
+	if err != nil {
+		return output, err
+	}
+	return cf.apply(output), nil
+}

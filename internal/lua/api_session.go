@@ -1,6 +1,8 @@
 package lua
 
 import (
+	"log"
+
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -84,5 +86,58 @@ func (r *Runtime) apiSessionOnMessage(plugin *loadedPlugin) lua.LGFunction {
 		r.messageHdlrs = append(r.messageHdlrs, luaHandler{plugin: plugin, fn: fn})
 		r.sessionMu.Unlock()
 		return 0
+	}
+}
+
+// apiSessionMessages returns the claudio.session.messages(limit) binding.
+//
+// Lua usage:
+//
+//	local msgs = claudio.session.messages(10)
+//	-- returns [{role="user", content="..."}, ...]
+func (r *Runtime) apiSessionMessages(_ *loadedPlugin) lua.LGFunction {
+	return func(L *lua.LState) int {
+		limit := L.OptInt(1, 20)
+
+		r.sessionMu.RLock()
+		sessionID := r.currentSessionID
+		r.sessionMu.RUnlock()
+
+		if sessionID == "" || r.db == nil {
+			L.Push(L.NewTable())
+			return 1
+		}
+
+		records, err := r.db.GetMessages(sessionID)
+		if err != nil {
+			log.Printf("[lua] session.messages: %v", err)
+			L.Push(L.NewTable())
+			return 1
+		}
+
+		// Only keep user/assistant messages with content
+		var filtered []struct{ role, content string }
+		for _, rec := range records {
+			if rec.Role == "user" || rec.Role == "assistant" {
+				if rec.Content != "" {
+					filtered = append(filtered, struct{ role, content string }{rec.Role, rec.Content})
+				}
+			}
+		}
+
+		// Apply limit from end (most recent messages)
+		if limit > 0 && len(filtered) > limit {
+			filtered = filtered[len(filtered)-limit:]
+		}
+
+		result := L.NewTable()
+		for _, msg := range filtered {
+			entry := L.NewTable()
+			L.SetField(entry, "role", lua.LString(msg.role))
+			L.SetField(entry, "content", lua.LString(msg.content))
+			result.Append(entry)
+		}
+		L.Push(result)
+		return 1
 	}
 }

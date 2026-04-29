@@ -69,14 +69,21 @@ func placeOverlayAt(base, overlay string, x, y, width, height int) string {
 	return strings.Join(baseLines, "\n")
 }
 
-// renderPanelWithHelp sizes a panel (reserving space for its help footer if
-// present) and renders the view plus footer. The caller should NOT call
-// panel.SetSize before this — renderPanelWithHelp handles it.
+// renderPanelWithHelp sizes a panel (reserving space for its help footer and
+// optional input bar if present) and renders the view plus extras.
+// The caller should NOT call panel.SetSize before this — renderPanelWithHelp handles it.
 func renderPanelWithHelp(panel panels.Panel, w, h int) string {
 	helpText := panel.Help()
 	if h < 2 {
 		helpText = ""
 	}
+
+	// Detect optional input bar — check before SetSize so we can shrink contentH.
+	hasInput := false
+	if ip, ok := panel.(panels.InputPanel); ok && ip.HasInput() {
+		hasInput = true
+	}
+
 	contentH := h
 	if helpText != "" {
 		contentH = h - 1
@@ -84,13 +91,28 @@ func renderPanelWithHelp(panel panels.Panel, w, h int) string {
 			contentH = 1
 		}
 	}
+	if hasInput {
+		contentH--
+		if contentH < 1 {
+			contentH = 1
+		}
+	}
+
 	panel.SetSize(w, contentH)
 	panelView := panel.View()
 
-	if helpText == "" {
+	if helpText == "" && !hasInput {
 		return panelView
 	}
 
-	footer := panelFooterBase.Width(w).Render(helpText)
-	return lipgloss.JoinVertical(lipgloss.Left, panelView, footer)
+	parts := []string{panelView}
+	if hasInput {
+		// InputView is called after SetSize so panel.width is already current.
+		ip := panel.(panels.InputPanel)
+		parts = append(parts, ip.InputView())
+	}
+	if helpText != "" {
+		parts = append(parts, panelFooterBase.Width(w).Render(helpText))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }

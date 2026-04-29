@@ -15,6 +15,7 @@ import (
 	"github.com/Abraxas-365/claudio/internal/storage"
 	"github.com/Abraxas-365/claudio/internal/tasks"
 	"github.com/Abraxas-365/claudio/internal/teams"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 )
 
 // AppContext provides shared application state to TUI panels.
@@ -33,9 +34,10 @@ type AppContext struct {
 	Hooks       *hooks.Manager
 	Rules       *rules.Registry
 	Auditor     *security.Auditor
-	TeamManager *teams.Manager
-	TeamRunner  *teams.TeammateRunner
-	LuaRuntime  *luart.Runtime // optional; nil when Lua plugin system is disabled
+	TeamManager   *teams.Manager
+	TeamRunner    *teams.TeammateRunner
+	LuaRuntime    *luart.Runtime  // optional; nil when Lua plugin system is disabled
+	WindowManager *windows.Manager // optional; nil falls back to TUI-local instance
 }
 
 // WithAppContext sets the shared application context for TUI panels.

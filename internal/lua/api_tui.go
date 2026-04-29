@@ -3,21 +3,16 @@ package lua
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/Abraxas-365/claudio/internal/bus"
+	"github.com/Abraxas-365/claudio/internal/tui/picker"
+	"github.com/Abraxas-365/claudio/internal/tui/picker/finders"
 	"github.com/Abraxas-365/claudio/internal/tui/styles"
 	lua "github.com/yuin/gopher-lua"
 )
-
-// SidebarBlockDef holds a sidebar block registered by a Lua plugin.
-type SidebarBlockDef struct {
-	ID       string
-	Title    string
-	Plugin   *loadedPlugin
-	RenderFn *lua.LFunction
-}
 
 // StatuslineCtx holds contextual data passed to the Lua statusline function.
 type StatuslineCtx struct {
@@ -25,18 +20,6 @@ type StatuslineCtx struct {
 	Model   string
 	Tokens  int
 	Session string
-}
-
-// WhichkeyEntry is a single key binding contributed by a plugin.
-type WhichkeyEntry struct {
-	Key  string
-	Desc string
-}
-
-// WhichkeyGroup is a named group of key bindings registered by a plugin.
-type WhichkeyGroup struct {
-	Group    string
-	Bindings []WhichkeyEntry
 }
 
 // PaletteEntry is a command palette entry registered by a plugin.
@@ -91,15 +74,6 @@ func (r *Runtime) RenderStatusline(ctx StatuslineCtx) string {
 	return ""
 }
 
-// PendingWhichkeyGroups returns all whichkey groups registered by plugins.
-func (r *Runtime) PendingWhichkeyGroups() []WhichkeyGroup {
-	r.uiMu.RLock()
-	defer r.uiMu.RUnlock()
-	out := make([]WhichkeyGroup, len(r.pendingWhichkeyGroups))
-	copy(out, r.pendingWhichkeyGroups)
-	return out
-}
-
 // PendingPaletteEntries returns all palette entries registered by plugins.
 func (r *Runtime) PendingPaletteEntries() []PaletteEntry {
 	r.uiMu.RLock()
@@ -109,23 +83,15 @@ func (r *Runtime) PendingPaletteEntries() []PaletteEntry {
 	return out
 }
 
-// GetSidebarBlocks returns all sidebar blocks registered by plugins.
-func (r *Runtime) GetSidebarBlocks() []SidebarBlockDef {
-	r.uiMu.RLock()
-	defer r.uiMu.RUnlock()
-	out := make([]SidebarBlockDef, len(r.pendingSidebarBlocks))
-	copy(out, r.pendingSidebarBlocks)
-	return out
-}
-
 // injectUIAPI registers claudio.ui.* bindings and returns the table.
 func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 	ui := L.NewTable()
 	L.SetField(ui, "set_statusline", L.NewFunction(r.apiSetStatusline(plugin)))
 	L.SetField(ui, "popup", L.NewFunction(r.apiPopup(plugin)))
-	L.SetField(ui, "register_whichkey", L.NewFunction(r.apiRegisterWhichkey()))
 	L.SetField(ui, "register_palette_entry", L.NewFunction(r.apiRegisterPaletteEntry()))
-	L.SetField(ui, "register_sidebar_block", L.NewFunction(r.apiRegisterSidebarBlock(plugin)))
+	// register_sidebar_block is a no-op shim for backward compat.
+	// New plugins should use claudio.win.new_panel() instead.
+	L.SetField(ui, "register_sidebar_block", L.NewFunction(func(L *lua.LState) int { return 0 }))
 	// Color / theme controls
 	L.SetField(ui, "set_color", L.NewFunction(func(L *lua.LState) int {
 		slot := L.CheckString(1)
@@ -161,6 +127,7 @@ func (r *Runtime) injectUIAPI(L *lua.LState, plugin *loadedPlugin) *lua.LTable {
 		L.Push(tbl)
 		return 1
 	}))
+	L.SetField(ui, "pick", L.NewFunction(r.apiUIPick(plugin)))
 	return ui
 }
 
@@ -232,42 +199,6 @@ func (r *Runtime) apiPopup(plugin *loadedPlugin) lua.LGFunction {
 	}
 }
 
-// apiRegisterWhichkey returns the claudio.ui.register_whichkey(group, bindings) binding.
-//
-// Lua usage:
-//
-//	claudio.ui.register_whichkey("Plugin", {
-//	  { key = "p", desc = "Open plugin panel" },
-//	  { key = "r", desc = "Reload plugin" },
-//	})
-func (r *Runtime) apiRegisterWhichkey() lua.LGFunction {
-	return func(L *lua.LState) int {
-		group := L.CheckString(1)
-		bindingsTbl := L.CheckTable(2)
-
-		var entries []WhichkeyEntry
-		bindingsTbl.ForEach(func(_, v lua.LValue) {
-			tbl, ok := v.(*lua.LTable)
-			if !ok {
-				return
-			}
-			key := lua.LVAsString(tbl.RawGetString("key"))
-			desc := lua.LVAsString(tbl.RawGetString("desc"))
-			if key != "" {
-				entries = append(entries, WhichkeyEntry{Key: key, Desc: desc})
-			}
-		})
-
-		r.uiMu.Lock()
-		r.pendingWhichkeyGroups = append(r.pendingWhichkeyGroups, WhichkeyGroup{
-			Group:    group,
-			Bindings: entries,
-		})
-		r.uiMu.Unlock()
-		return 0
-	}
-}
-
 // apiRegisterPaletteEntry returns the claudio.ui.register_palette_entry(entry) binding.
 //
 // Lua usage:
@@ -301,62 +232,133 @@ func (r *Runtime) apiRegisterPaletteEntry() lua.LGFunction {
 	}
 }
 
-// injectPluginUIAPI adds plugin-aware UI bindings to the claudio.ui sub-table.
-// Called from injectAPI after injectGlobalConfigAPI has set up the ui table.
-func (r *Runtime) injectPluginUIAPI(L *lua.LState, plugin *loadedPlugin, claudio *lua.LTable) {
-	uiTable, ok := L.GetField(claudio, "ui").(*lua.LTable)
-	if !ok || uiTable == nil {
-		uiTable = L.NewTable()
-		L.SetField(claudio, "ui", uiTable)
-	}
-	L.SetField(uiTable, "register_sidebar_block", L.NewFunction(r.apiRegisterSidebarBlock(plugin)))
-}
-
-// apiRegisterSidebarBlock implements claudio.ui.register_sidebar_block({id, title, render}).
+// apiUIPick returns the claudio.ui.pick(items, opts) binding — vim.ui.select() equivalent.
 //
-// Lua surface:
+// Lua usage:
 //
-//	claudio.ui.register_sidebar_block({
-//	  id     = "my-block",
-//	  title  = "My Plugin",
-//	  render = function(ctx) return "content string" end,
-//	})
-func (r *Runtime) apiRegisterSidebarBlock(plugin *loadedPlugin) lua.LGFunction {
+//	claudio.ui.pick(
+//	  { {label="Foo", value="foo"}, {label="Bar", value="bar", description="desc"} },
+//	  {
+//	    title     = "Pick something",
+//	    on_select = function(item) claudio.notify(item.value) end,
+//	    on_cancel = function() claudio.notify("cancelled") end,
+//	    multi     = false,
+//	  }
+//	)
+func (r *Runtime) apiUIPick(plugin *loadedPlugin) lua.LGFunction {
 	return func(L *lua.LState) int {
-		tbl := L.CheckTable(1)
+		itemsTbl := L.CheckTable(1)
+		optsTbl := L.CheckTable(2)
 
-		idVal := L.GetField(tbl, "id")
-		id, ok := idVal.(lua.LString)
-		if !ok || string(id) == "" {
-			L.RaiseError("register_sidebar_block: id must be a non-empty string")
-			return 0
+		// Build picker entries from items table.
+		var entries []picker.Entry
+		itemsTbl.ForEach(func(_, v lua.LValue) {
+			tbl, ok := v.(*lua.LTable)
+			if !ok {
+				return
+			}
+			label := lua.LVAsString(tbl.RawGetString("label"))
+			value := lua.LVAsString(tbl.RawGetString("value"))
+			desc := lua.LVAsString(tbl.RawGetString("description"))
+			if label == "" {
+				label = value
+			}
+			meta := map[string]any{
+				"value":       value,
+				"description": desc,
+			}
+			entries = append(entries, picker.Entry{
+				Display: label,
+				Ordinal: label,
+				Value:   value,
+				Meta:    meta,
+			})
+		})
+
+		// Read opts.
+		title := ""
+		if v := optsTbl.RawGetString("title"); v != lua.LNil {
+			title = lua.LVAsString(v)
+		}
+		var onSelectFn *lua.LFunction
+		if fn, ok := optsTbl.RawGetString("on_select").(*lua.LFunction); ok {
+			onSelectFn = fn
+		}
+		var onCancelFn *lua.LFunction
+		if fn, ok := optsTbl.RawGetString("on_cancel").(*lua.LFunction); ok {
+			onCancelFn = fn
+		}
+		multiSelect := false
+		if v, ok := optsTbl.RawGetString("multi").(lua.LBool); ok {
+			multiSelect = bool(v)
+		}
+		var onMultiFn *lua.LFunction
+		if fn, ok := optsTbl.RawGetString("on_multi").(*lua.LFunction); ok {
+			onMultiFn = fn
 		}
 
-		titleVal := L.GetField(tbl, "title")
-		title, ok := titleVal.(lua.LString)
-		if !ok {
-			L.RaiseError("register_sidebar_block: title must be a string")
-			return 0
+		// Build callback that marshals Entry back to Lua table.
+		capturedPlugin := plugin
+		entryToLua := func(e picker.Entry) *lua.LTable {
+			t := capturedPlugin.L.NewTable()
+			capturedPlugin.L.SetField(t, "label", lua.LString(e.Display))
+			if s, ok := e.Value.(string); ok {
+				capturedPlugin.L.SetField(t, "value", lua.LString(s))
+			} else {
+				capturedPlugin.L.SetField(t, "value", lua.LString(fmt.Sprintf("%v", e.Value)))
+			}
+			if m, ok := e.Meta["description"]; ok {
+				if ds, ok := m.(string); ok {
+					capturedPlugin.L.SetField(t, "description", lua.LString(ds))
+				}
+			}
+			return t
 		}
 
-		renderVal := L.GetField(tbl, "render")
-		renderFn, ok := renderVal.(*lua.LFunction)
-		if !ok {
-			L.RaiseError("register_sidebar_block: render must be a function")
-			return 0
+		cfg := picker.Config{
+			Title:  title,
+			Finder: finders.NewTableFinder(entries),
+			Layout: picker.LayoutDropdown,
 		}
 
-		def := SidebarBlockDef{
-			ID:       string(id),
-			Title:    string(title),
-			Plugin:   plugin,
-			RenderFn: renderFn,
+		if onSelectFn != nil {
+			fn := onSelectFn
+			cfg.OnSelect = func(entry picker.Entry) {
+				capturedPlugin.mu.Lock()
+				defer capturedPlugin.mu.Unlock()
+				t := entryToLua(entry)
+				if err := capturedPlugin.L.CallByParam(lua.P{
+					Fn: fn, NRet: 0, Protect: true,
+				}, t); err != nil {
+					log.Printf("[lua] ui.pick on_select error: %v", err)
+				}
+			}
 		}
 
-		r.pendingSidebarBlocksMu.Lock()
-		r.pendingSidebarBlocks = append(r.pendingSidebarBlocks, def)
-		r.pendingSidebarBlocksMu.Unlock()
+		if multiSelect && onMultiFn != nil {
+			fn := onMultiFn
+			cfg.OnMultiSelect = func(selected []picker.Entry) {
+				capturedPlugin.mu.Lock()
+				defer capturedPlugin.mu.Unlock()
+				arr := capturedPlugin.L.NewTable()
+				for i, e := range selected {
+					arr.RawSetInt(i+1, entryToLua(e))
+				}
+				if err := capturedPlugin.L.CallByParam(lua.P{
+					Fn: fn, NRet: 0, Protect: true,
+				}, arr); err != nil {
+					log.Printf("[lua] ui.pick on_multi error: %v", err)
+				}
+			}
+		}
 
+		_ = onCancelFn // picker.Config has no OnCancel; reserved for future use
+
+		r.callPickerOpener(cfg)
 		return 0
 	}
 }
+
+// injectPluginUIAPI is a no-op retained for call-site compatibility.
+// Sidebar blocks are replaced by claudio.win.new_panel (see panel_api.go).
+func (r *Runtime) injectPluginUIAPI(_ *lua.LState, _ *loadedPlugin, _ *lua.LTable) {}

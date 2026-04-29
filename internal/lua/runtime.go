@@ -4,6 +4,7 @@
 package lua
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -14,10 +15,16 @@ import (
 	"github.com/Abraxas-365/claudio/internal/cli/commands"
 	"github.com/Abraxas-365/claudio/internal/config"
 	"github.com/Abraxas-365/claudio/internal/hooks"
+	lsp "github.com/Abraxas-365/claudio/internal/services/lsp"
 	"github.com/Abraxas-365/claudio/internal/services/skills"
 	"github.com/Abraxas-365/claudio/internal/storage"
+	"github.com/Abraxas-365/claudio/internal/tasks"
+	"github.com/Abraxas-365/claudio/internal/teams"
 	"github.com/Abraxas-365/claudio/internal/tools"
+	keymapPkg "github.com/Abraxas-365/claudio/internal/tui/keymap"
+	"github.com/Abraxas-365/claudio/internal/tui/picker"
 	"github.com/Abraxas-365/claudio/internal/tui/vim"
+	"github.com/Abraxas-365/claudio/internal/tui/windows"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -39,6 +46,13 @@ type LuaCapability struct {
 // pendingCommand queues a command registered before commandRegistry is wired.
 type pendingCommand struct {
 	cmd *commands.Command
+}
+
+// pendingLeaderBinding queues a leader-keymap binding registered before the
+// TUI's leader keymap is wired via SetLeaderKeymap.
+type pendingLeaderBinding struct {
+	seq      string
+	actionID keymapPkg.ActionID
 }
 
 // Runtime manages Lua plugin lifecycle: loading, sandbox creation, and shutdown.
@@ -66,6 +80,10 @@ type Runtime struct {
 	keymapRegistryMu sync.Mutex
 	keymapRegistry   *vim.KeymapRegistry
 
+	// Window manager (wired after TUI init)
+	windowManagerMu sync.RWMutex
+	windowManager   *windows.Manager
+
 	// Pending commands (registered before registry is wired)
 	pendingCommandsMu sync.Mutex
 	pendingCommands   []pendingCommand
@@ -91,6 +109,10 @@ type Runtime struct {
 	sessionEndHdlrs     []luaHandler
 	messageHdlrs        []luaHandler
 
+	// Branch tracking
+	branchHdlrsMu sync.RWMutex
+	branchHdlrs   []luaHandler
+
 	// Pending capabilities
 	pendingCapsMu sync.Mutex
 	pendingCaps   []LuaCapability
@@ -99,12 +121,73 @@ type Runtime struct {
 	uiMu                  sync.RWMutex
 	StatuslineFn          *lua.LFunction
 	statuslinePlugin      *loadedPlugin
-	pendingWhichkeyGroups []WhichkeyGroup
 	pendingPaletteEntries []PaletteEntry
 
-	// Pending sidebar blocks (registered before TUI is wired)
-	pendingSidebarBlocksMu sync.Mutex
-	pendingSidebarBlocks   []SidebarBlockDef
+	// Panel registry (wired after TUI is ready via SetPanelRegistry).
+	// Panels queued before wiring are held in pendingPanels.
+	panelRegistryMu sync.RWMutex
+	panelRegistry   *PanelRegistry
+
+	pendingPanelsMu sync.Mutex
+	pendingPanels   []*PanelDef
+
+	// Pending window registrations (registered before WindowManager is wired)
+	pendingWindowsMu sync.Mutex
+	pendingWindows   []WindowDef
+
+	// Leader keymap (wired after TUI init via SetLeaderKeymap)
+	leaderKeymapMu       sync.Mutex
+	leaderKeymap         *keymapPkg.Keymap
+	pendingLeaderMu      sync.Mutex
+	pendingLeaderBindings []pendingLeaderBinding
+
+	// leaderFnUnsubs tracks bus unsubscribe fns for Lua-function-backed leader
+	// bindings, keyed by normalised seq. Protected by leaderFnUnsubsMu.
+	leaderFnUnsubsMu sync.Mutex
+	leaderFnUnsubs   map[string]func()
+
+	// Picker opener (wired after TUI is ready)
+	pickerOpenerMu sync.RWMutex
+	pickerOpener   func(picker.Config)
+
+	// Team inspection (wired after teams are initialised)
+	teamRunnerMu sync.RWMutex
+	teamRunner   *teams.TeammateRunner
+	teamManagerMu sync.RWMutex
+	teamManager  *teams.Manager
+
+	// shutdown context — cancelled by Close() to stop in-flight Lua AI/agent calls.
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+
+	// LSP server manager (wired after LSP init)
+	lspManagerMu sync.RWMutex
+	lspManager   *lsp.ServerManager
+
+	// Background task runtime (wired after task runtime init)
+	taskRuntimeMu sync.RWMutex
+	taskRuntime   *tasks.Runtime
+
+	// Data providers (wired after TUI init by root.go)
+	sessionProviderMu sync.RWMutex
+	sessionProvider   SessionProvider
+
+	filesProviderMu sync.RWMutex
+	filesProvider   FilesProvider
+
+	tasksProviderMu sync.RWMutex
+	tasksProvider   TasksProvider
+
+	tokensProviderMu sync.RWMutex
+	tokensProvider   TokensProvider
+
+	// Lightweight AI call (no tools)
+	runAICallMu sync.RWMutex
+	runAICall   func(ctx context.Context, system, user, model string) (string, error)
+
+	// Full sub-agent call (with tool whitelist)
+	runAgentCallMu sync.RWMutex
+	runAgentCall   func(ctx context.Context, system, prompt, model string, maxTurns int, allowedTools []string) (string, error)
 }
 
 // loadedPlugin tracks a single plugin's Lua VM and cleanup handles.
@@ -126,14 +209,18 @@ func New(
 	db *storage.DB,
 	caps *capabilities.Registry,
 ) *Runtime {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Runtime{
-		toolReg: toolReg,
-		skills:  skillsReg,
-		bus:     eventBus,
-		hooks:   hooksMgr,
-		cfg:     cfg,
-		db:      db,
-		caps:    caps,
+		toolReg:        toolReg,
+		skills:         skillsReg,
+		bus:            eventBus,
+		hooks:          hooksMgr,
+		cfg:            cfg,
+		db:             db,
+		caps:           caps,
+		leaderFnUnsubs: make(map[string]func()),
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
 	}
 }
 
@@ -209,22 +296,26 @@ func (r *Runtime) ExecString(code string) (string, error) {
 	return "", nil
 }
 
-// execString runs a Lua string in a transient sandboxed state wired to the
-// runtime's API. The state is closed after execution; it is NOT added to
-// r.plugins. Use this for one-shot init scripts (defaults, user init).
+// execString runs a Lua string in a persistent sandboxed state wired to the
+// runtime's API. The state is kept alive (added to r.plugins) so that any
+// callbacks or sidebar blocks registered during execution remain valid.
 func (r *Runtime) execString(code, name string) error {
 	L := newSandboxedState()
-	defer L.Close()
-	dummy := &loadedPlugin{name: name, dir: ""}
-	r.injectAPI(L, dummy)
+	plugin := &loadedPlugin{name: name, dir: "", L: L}
+	r.injectAPI(L, plugin)
 	if err := L.DoString(code); err != nil {
+		L.Close()
 		return fmt.Errorf("lua: exec %s: %w", name, err)
 	}
+	r.mu.Lock()
+	r.plugins = append(r.plugins, plugin)
+	r.mu.Unlock()
 	return nil
 }
 
-// Close shuts down all Lua VMs and unsubscribes bus handlers.
+// Close shuts down all Lua VMs, cancels in-flight AI/agent calls, and unsubscribes bus handlers.
 func (r *Runtime) Close() {
+	r.shutdownCancel()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, p := range r.plugins {
@@ -259,7 +350,14 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	keymapTable := L.NewTable()
 	L.SetField(keymapTable, "del", L.NewFunction(r.apiKeymapDel(plugin)))
 	L.SetField(keymapTable, "list", L.NewFunction(r.apiKeymapList(plugin)))
+	L.SetField(keymapTable, "map", L.NewFunction(r.apiLeaderKeymapMap(plugin)))
+	L.SetField(keymapTable, "unmap", L.NewFunction(r.apiLeaderKeymapUnmap(plugin)))
 	L.SetField(claudio, "keymap", keymapTable)
+
+	// claudio.ai sub-table
+	aiTable := L.NewTable()
+	L.SetField(aiTable, "run", L.NewFunction(r.apiAIRun(plugin)))
+	L.SetField(claudio, "ai", aiTable)
 
 	// claudio.agent sub-table
 	agentTable := L.NewTable()
@@ -267,7 +365,16 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(agentTable, "on_change", L.NewFunction(r.apiAgentOnChange(plugin)))
 	L.SetField(agentTable, "add_context", L.NewFunction(r.apiAgentAddContext(plugin)))
 	L.SetField(agentTable, "set_prompt_suffix", L.NewFunction(r.apiAgentSetPromptSuffix(plugin)))
+	L.SetField(agentTable, "list", L.NewFunction(r.apiAgentList(plugin)))
+	L.SetField(agentTable, "status", L.NewFunction(r.apiAgentStatus(plugin)))
+	L.SetField(agentTable, "spawn", L.NewFunction(r.apiAgentSpawn(plugin)))
 	L.SetField(claudio, "agent", agentTable)
+
+	// claudio.teams sub-table
+	teamsTable := L.NewTable()
+	L.SetField(teamsTable, "list", L.NewFunction(r.apiTeamsList(plugin)))
+	L.SetField(teamsTable, "members", L.NewFunction(r.apiTeamsMembers(plugin)))
+	L.SetField(claudio, "teams", teamsTable)
 
 	// claudio.session sub-table
 	sessionTable := L.NewTable()
@@ -276,7 +383,52 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	L.SetField(sessionTable, "on_start", L.NewFunction(r.apiSessionOnStart(plugin)))
 	L.SetField(sessionTable, "on_end", L.NewFunction(r.apiSessionOnEnd(plugin)))
 	L.SetField(sessionTable, "on_message", L.NewFunction(r.apiSessionOnMessage(plugin)))
+	L.SetField(sessionTable, "messages", L.NewFunction(r.apiSessionMessages(plugin)))
 	L.SetField(claudio, "session", sessionTable)
+
+	// claudio.branch sub-table
+	branchTable := L.NewTable()
+	L.SetField(branchTable, "current", L.NewFunction(r.apiBranchCurrent(plugin)))
+	L.SetField(branchTable, "create", L.NewFunction(r.apiBranchCreate(plugin)))
+	L.SetField(branchTable, "parent", L.NewFunction(r.apiBranchParent(plugin)))
+	L.SetField(branchTable, "children", L.NewFunction(r.apiBranchChildren(plugin)))
+	L.SetField(branchTable, "root", L.NewFunction(r.apiBranchRoot(plugin)))
+	L.SetField(branchTable, "messages", L.NewFunction(r.apiBranchMessages(plugin)))
+	L.SetField(branchTable, "switch", L.NewFunction(r.apiBranchSwitch(plugin)))
+	L.SetField(branchTable, "on_branch", L.NewFunction(r.apiBranchOnBranch(plugin)))
+	L.SetField(claudio, "branch", branchTable)
+
+	// claudio.sessions sub-table (list/search all sessions — NOT current session)
+	sessionsTable := L.NewTable()
+	L.SetField(sessionsTable, "list", L.NewFunction(r.apiSessionsList(plugin)))
+	L.SetField(sessionsTable, "search", L.NewFunction(r.apiSessionsSearch(plugin)))
+	L.SetField(claudio, "sessions", sessionsTable)
+
+	// claudio.models sub-table
+	modelsTable := L.NewTable()
+	L.SetField(modelsTable, "list", L.NewFunction(r.apiModelsList(plugin)))
+	L.SetField(claudio, "models", modelsTable)
+
+	// claudio.commands sub-table
+	commandsTable := L.NewTable()
+	L.SetField(commandsTable, "list", L.NewFunction(r.apiCommandsList(plugin)))
+	L.SetField(claudio, "commands", commandsTable)
+
+	// claudio.skills sub-table
+	skillsTable := L.NewTable()
+	L.SetField(skillsTable, "list", L.NewFunction(r.apiSkillsList(plugin)))
+	L.SetField(claudio, "skills", skillsTable)
+
+	// claudio.windows sub-table
+	windowsTable := L.NewTable()
+	L.SetField(windowsTable, "list", L.NewFunction(r.apiWindowsList(plugin)))
+	L.SetField(windowsTable, "read", L.NewFunction(r.apiWindowsRead(plugin)))
+	L.SetField(claudio, "windows", windowsTable)
+
+	// claudio.actions sub-table
+	actionsTable := L.NewTable()
+	L.SetField(actionsTable, "list", L.NewFunction(r.apiActionsList(plugin)))
+	L.SetField(claudio, "actions", actionsTable)
 
 	// claudio.ui sub-table (real impl from api_tui.go)
 	L.SetField(claudio, "ui", r.injectUIAPI(L, plugin))
@@ -284,8 +436,26 @@ func (r *Runtime) injectAPI(L *lua.LState, plugin *loadedPlugin) {
 	// Global settings + config APIs
 	r.injectGlobalConfigAPI(L, claudio)
 
-	// Plugin-aware UI extensions (sidebar blocks, etc.)
+	// Plugin-aware UI extensions (no-op; blocks replaced by claudio.win.new_panel)
 	r.injectPluginUIAPI(L, plugin, claudio)
+
+	// claudio.win — new_panel / section API
+	r.injectWinAPI(L, plugin, claudio)
+
+	// claudio.buf + claudio.ui.register_window
+	r.injectWindowsAPI(L, plugin, claudio)
+
+	// claudio.picker + claudio.finder
+	r.injectPickerAPI(L, plugin, claudio)
+
+	// claudio.filter sub-table
+	r.injectFilterAPI(L, plugin, claudio)
+
+	// claudio.lsp sub-table
+	r.injectLSPAPI(L, plugin, claudio)
+
+	// claudio.session.current, claudio.files, claudio.tasks, claudio.tokens
+	r.injectDataAPIs(L, claudio)
 
 	L.SetGlobal("claudio", claudio)
 }
@@ -303,11 +473,153 @@ func (r *Runtime) SetCommandRegistry(reg *commands.Registry) {
 	r.pendingCommands = nil
 }
 
-// GetSidebarBlocks returns a snapshot of all sidebar blocks registered by plugins.
+// SetPanelRegistry wires the panel registry. Any panels queued before this call
+// are flushed into the live registry.
+func (r *Runtime) SetPanelRegistry(reg *PanelRegistry) {
+	r.panelRegistryMu.Lock()
+	r.panelRegistry = reg
+	r.panelRegistryMu.Unlock()
+
+	r.pendingPanelsMu.Lock()
+	pending := r.pendingPanels
+	r.pendingPanels = nil
+	r.pendingPanelsMu.Unlock()
+
+	for _, p := range pending {
+		reg.Register(p)
+	}
+}
+
+// GetPanelRegistry returns the wired PanelRegistry (nil until TUI is ready).
+func (r *Runtime) GetPanelRegistry() *PanelRegistry {
+	r.panelRegistryMu.RLock()
+	defer r.panelRegistryMu.RUnlock()
+	return r.panelRegistry
+}
 
 // SetKeymapRegistry wires the keymap registry.
 func (r *Runtime) SetKeymapRegistry(reg *vim.KeymapRegistry) {
 	r.keymapRegistryMu.Lock()
 	defer r.keymapRegistryMu.Unlock()
 	r.keymapRegistry = reg
+}
+
+// SetWindowManager wires the window manager and flushes any pending window registrations.
+func (r *Runtime) SetWindowManager(wm *windows.Manager) {
+	r.windowManagerMu.Lock()
+	defer r.windowManagerMu.Unlock()
+	r.windowManager = wm
+	r.pendingWindowsMu.Lock()
+	defer r.pendingWindowsMu.Unlock()
+	for _, def := range r.pendingWindows {
+		wm.Register(def.Window)
+	}
+	r.pendingWindows = nil
+}
+
+// GetWindowManager returns the wired window manager (nil until TUI is ready).
+func (r *Runtime) GetWindowManager() *windows.Manager {
+	r.windowManagerMu.RLock()
+	defer r.windowManagerMu.RUnlock()
+	return r.windowManager
+}
+
+// SetLeaderKeymap wires the TUI's leader keymap so that claudio.keymap.map/unmap
+// calls take effect immediately. Any bindings registered before this call (e.g.
+// from defaults.lua) are flushed now. Lua defaults only apply if the user has
+// not already set a binding for that sequence via keymap.json.
+func (r *Runtime) SetLeaderKeymap(km *keymapPkg.Keymap) {
+	r.leaderKeymapMu.Lock()
+	r.leaderKeymap = km
+	r.leaderKeymapMu.Unlock()
+
+	r.pendingLeaderMu.Lock()
+	pending := r.pendingLeaderBindings
+	r.pendingLeaderBindings = nil
+	r.pendingLeaderMu.Unlock()
+
+	for _, pb := range pending {
+		// Don't overwrite bindings the user has already saved via :map / keymap.json.
+		if _, already := km.Resolve(pb.seq); !already {
+			km.SetCustom(pb.seq, pb.actionID)
+		}
+	}
+}
+
+// SetPickerOpener wires the opener callback so Lua plugins can open picker overlays.
+// The fn is called with a picker.Config whenever Lua requests a picker open.
+func (r *Runtime) SetPickerOpener(fn func(picker.Config)) {
+	r.pickerOpenerMu.Lock()
+	defer r.pickerOpenerMu.Unlock()
+	r.pickerOpener = fn
+}
+
+// SetTeamRunner wires the TeammateRunner so Lua plugins can inspect agent state.
+func (r *Runtime) SetTeamRunner(runner *teams.TeammateRunner) {
+	r.teamRunnerMu.Lock()
+	defer r.teamRunnerMu.Unlock()
+	r.teamRunner = runner
+}
+
+// SetTeamManager wires the team Manager so Lua plugins can inspect team configuration.
+func (r *Runtime) SetTeamManager(mgr *teams.Manager) {
+	r.teamManagerMu.Lock()
+	defer r.teamManagerMu.Unlock()
+	r.teamManager = mgr
+}
+
+// SetLSPManager wires the LSP ServerManager so Lua plugins can register and control LSP servers.
+func (r *Runtime) SetLSPManager(mgr *lsp.ServerManager) {
+	r.lspManagerMu.Lock()
+	defer r.lspManagerMu.Unlock()
+	r.lspManager = mgr
+}
+
+// SetTaskRuntime wires the background task runtime so Lua plugins can list/kill tasks.
+func (r *Runtime) SetTaskRuntime(rt *tasks.Runtime) {
+	r.taskRuntimeMu.Lock()
+	defer r.taskRuntimeMu.Unlock()
+	r.taskRuntime = rt
+}
+
+// SetSessionProvider wires the session data provider for claudio.session.current().
+func (r *Runtime) SetSessionProvider(p SessionProvider) {
+	r.sessionProviderMu.Lock()
+	defer r.sessionProviderMu.Unlock()
+	r.sessionProvider = p
+}
+
+// SetFilesProvider wires the files data provider for claudio.files.list().
+func (r *Runtime) SetFilesProvider(p FilesProvider) {
+	r.filesProviderMu.Lock()
+	defer r.filesProviderMu.Unlock()
+	r.filesProvider = p
+}
+
+// SetTasksProvider wires the tasks data provider for claudio.tasks.list().
+func (r *Runtime) SetTasksProvider(p TasksProvider) {
+	r.tasksProviderMu.Lock()
+	defer r.tasksProviderMu.Unlock()
+	r.tasksProvider = p
+}
+
+// SetTokensProvider wires the tokens data provider for claudio.tokens.usage().
+func (r *Runtime) SetTokensProvider(p TokensProvider) {
+	r.tokensProviderMu.Lock()
+	defer r.tokensProviderMu.Unlock()
+	r.tokensProvider = p
+}
+
+// SetRunAICall wires the lightweight AI call callback for claudio.ai.run().
+func (r *Runtime) SetRunAICall(fn func(ctx context.Context, system, user, model string) (string, error)) {
+	r.runAICallMu.Lock()
+	defer r.runAICallMu.Unlock()
+	r.runAICall = fn
+}
+
+// SetRunAgentCall wires the sub-agent call callback for claudio.agent.spawn().
+func (r *Runtime) SetRunAgentCall(fn func(ctx context.Context, system, prompt, model string, maxTurns int, allowedTools []string) (string, error)) {
+	r.runAgentCallMu.Lock()
+	defer r.runAgentCallMu.Unlock()
+	r.runAgentCall = fn
 }
