@@ -1000,13 +1000,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Buffer scroll keys (active when a buffer is open, but not while the picker overlay is open).
 		if m.activeBufferName != "" && m.windowMgr != nil && !m.isPickerOpen {
 			switch msg.String() {
-			case "q":
-				// q always closes the buffer (like :q in nvim).
-				m.activeBufferName = ""
-				m.bufferScrollOffset = 0
-				return m, nil
 			case "esc":
-				// ESC only closes if the buffer is configured to allow it.
+				// ESC only closes if the buffer opts in (AllowEscClose). Like nvim,
+				// ESC alone does not close a buffer — use :q or :bd instead.
 				if w := m.windowMgr.Get(m.activeBufferName); w != nil && w.AllowEscClose {
 					m.activeBufferName = ""
 					m.bufferScrollOffset = 0
@@ -3381,6 +3377,13 @@ func (m Model) handleEngineEvent(event tuiEvent) (tea.Model, tea.Cmd) {
 // runCmdlineCommand handles a command entered via the nvim-style ":" command line.
 // It executes the command through the registry and shows the result as a system message.
 func (m Model) runCmdlineCommand(msg cmdline.ExecuteMsg) (tea.Model, tea.Cmd) {
+	// :q / :bd / :bdelete — close the active buffer (nvim-style).
+	if m.activeBufferName != "" && (msg.Name == "q" || msg.Name == "quit" || msg.Name == "bd" || msg.Name == "bdelete" || msg.Name == "bclose") {
+		m.activeBufferName = ""
+		m.bufferScrollOffset = 0
+		return m, nil
+	}
+
 	// :branch — create a branch from the last message of the current session.
 	if msg.Name == "branch" {
 		if m.session == nil || m.session.Current() == nil {
