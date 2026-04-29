@@ -110,6 +110,9 @@ func (b *LiveBuffer) RenderWithOffset(width, height, scrollOffset int) string {
 	return strings.Join(slice, "\n")
 }
 
+// Name returns the buffer's name.
+func (b *LiveBuffer) Name() string { return b.name }
+
 // Buffer returns a *Buffer whose Render func displays a viewport-sized window
 // into the live content (most-recent lines, no scrolling). The Buffer is
 // suitable for passing to a Window or windows.Manager.
