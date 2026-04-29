@@ -891,12 +891,16 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) waitForEvent() tea.Cmd {
+	// Capture pane index and channel at call time so the goroutine always
+	// reads from the correct pane even after activePaneIdx changes.
+	idx := m.activePaneIdx
+	ch := m.panes[idx].eventCh
 	return func() tea.Msg {
-		event, ok := <-m.activePane().eventCh
+		event, ok := <-ch
 		if !ok {
 			return nil
 		}
-		return engineEventMsg(event)
+		return paneEventMsg{paneIdx: idx, event: event}
 	}
 }
 
@@ -2105,7 +2109,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case engineEventMsg:
+		// Legacy path (kept for safety); waitForEvent() now produces paneEventMsg.
 		return m.handleEngineEvent(tuiEvent(msg))
+
+	case paneEventMsg:
+		if msg.paneIdx == m.activePaneIdx {
+			// Active pane: full event handling via existing handler.
+			return m.handleEngineEvent(msg.event)
+		}
+		// Background pane: update minimal state without touching viewport/focus,
+		// then re-arm so the pane's channel stays drained.
+		pane := &m.panes[msg.paneIdx]
+		switch msg.event.typ {
+		case "text_delta":
+			pane.streamText.WriteString(msg.event.text)
+			pane.streamDirty = true
+			pane.streaming = true
+			pane.spinText = "Responding..."
+		case "thinking_delta":
+			pane.streaming = true
+			pane.spinText = "Thinking deeply..."
+		case "tool_start":
+			pane.pendingToolCount++
+			pane.streaming = true
+			pane.spinText = fmt.Sprintf("Using %s...", msg.event.toolUse.Name)
+		case "tool_end":
+			if pane.pendingToolCount > 0 {
+				pane.pendingToolCount--
+			}
+		case "done", "error":
+			pane.streaming = false
+			pane.spinText = ""
+			pane.pendingToolCount = 0
+		}
+		return m, waitForPaneEvent(msg.paneIdx, pane.eventCh)
 
 	case engineDoneMsg:
 		m.activePane().streaming = false
@@ -4837,6 +4874,39 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 	case keymap.ActionBranchParentJump:
 		return m.jumpToParentSession()
 
+	// ── Pane Management ────────────────────
+	case keymap.ActionPaneNext:
+		if len(m.panes) > 1 {
+			// Save scroll position for the pane we're leaving.
+			m.panes[m.activePaneIdx].viewportOffset = m.viewport.YOffset
+			m.activePaneIdx = (m.activePaneIdx + 1) % len(m.panes)
+			// Restore scroll position for the pane we're entering.
+			m.viewport.YOffset = m.panes[m.activePaneIdx].viewportOffset
+			m.refreshViewport()
+		}
+		return nil
+
+	case keymap.ActionPanePrev:
+		if len(m.panes) > 1 {
+			m.panes[m.activePaneIdx].viewportOffset = m.viewport.YOffset
+			m.activePaneIdx = (m.activePaneIdx - 1 + len(m.panes)) % len(m.panes)
+			m.viewport.YOffset = m.panes[m.activePaneIdx].viewportOffset
+			m.refreshViewport()
+		}
+		return nil
+
+	case keymap.ActionPaneClose:
+		if len(m.panes) > 1 {
+			oldIdx := m.activePaneIdx
+			m.panes = append(m.panes[:oldIdx], m.panes[oldIdx+1:]...)
+			if m.activePaneIdx >= len(m.panes) {
+				m.activePaneIdx = len(m.panes) - 1
+			}
+			m.viewport.YOffset = m.panes[m.activePaneIdx].viewportOffset
+			m.refreshViewport()
+		}
+		return nil
+
 	default:
 		// Lua-registered leader handler: action IDs starting with "lua.fn." are
 		// synthetic IDs assigned to Lua function callbacks by claudio.keymap.map().
@@ -6933,6 +7003,103 @@ func (m *Model) refreshViewport() {
 	}
 }
 
+// renderMultiPane renders all panes side by side for the multi-pane layout.
+// The active pane uses the live viewport (with scroll state); inactive panes
+// render their messages directly at the correct column width.
+// View() is a value receiver so modifying m.viewport.Width here is safe
+// (does not affect the model stored in the BubbleTea runtime).
+func (m Model) renderMultiPane(totalWidth, height int) string {
+	n := len(m.panes)
+	if n == 0 {
+		return ""
+	}
+	paneWidth := totalWidth / n
+	if paneWidth < 10 {
+		paneWidth = 10
+	}
+
+	const titleH = 1
+	contentH := height - titleH
+	if contentH < 1 {
+		contentH = 1
+	}
+
+	cols := make([]string, 0, n)
+	for i := range m.panes {
+		cols = append(cols, m.renderPaneColumn(i, paneWidth, contentH))
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+}
+
+// renderPaneColumn renders a single pane column (title bar + content) at the
+// given width and content height. Active pane uses the live viewport; inactive
+// panes render messages at fixed height.
+func (m Model) renderPaneColumn(paneIdx, width, contentH int) string {
+	pane := m.panes[paneIdx]
+	isActive := paneIdx == m.activePaneIdx
+
+	// ── Title bar ──────────────────────────────────────────────────────────
+	title := pane.SessionID
+	if len(title) > 8 {
+		title = title[:8]
+	}
+	if title == "" {
+		title = fmt.Sprintf("pane-%d", paneIdx+1)
+	}
+	indicator := "  "
+	if isActive {
+		indicator = "● "
+	}
+	label := indicator + title
+
+	var titleBar string
+	if isActive {
+		titleBar = lipgloss.NewStyle().
+			Width(width).
+			Background(styles.Primary).
+			Foreground(styles.Surface).
+			Bold(true).
+			Render(label)
+	} else {
+		titleBar = lipgloss.NewStyle().
+			Width(width).
+			Background(styles.SurfaceAlt).
+			Foreground(styles.Muted).
+			Render(label)
+	}
+
+	// ── Content ────────────────────────────────────────────────────────────
+	var content string
+	if isActive {
+		// Resize viewport copy to pane width and render.
+		m.viewport.Width = width
+		content = m.viewport.View()
+		// Ensure correct height via lipgloss (viewport may be shorter on first render).
+		content = lipgloss.NewStyle().Width(width).Height(contentH).Render(content)
+	} else {
+		msgs := pane.messages
+		if len(msgs) == 0 && !pane.streaming {
+			content = lipgloss.NewStyle().
+				Width(width).Height(contentH).
+				Foreground(styles.Muted).
+				Render("  (empty)")
+		} else {
+			result := renderMessages(msgs, width, pane.expandedGroups, -1, pane.toolSpinFrame, pane.thinkingExpanded)
+			raw := result.Content
+			// Show only the last contentH lines (tail-follow for inactive panes).
+			lines := strings.Split(raw, "\n")
+			if len(lines) > contentH {
+				lines = lines[len(lines)-contentH:]
+			}
+			content = lipgloss.NewStyle().
+				Width(width).Height(contentH).
+				Render(strings.Join(lines, "\n"))
+		}
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, titleBar, content)
+}
+
 // renderRightWindowContent renders the right window's session messages into
 // a string suitable for the conversation panel viewport.
 func (m *Model) renderRightWindowContent(conv *conversationpanel.Panel) string {
@@ -7424,6 +7591,12 @@ func (m Model) View() string {
 	// File picker floats over the bottom of the viewport — no layout shift.
 	if pickerView := m.filePicker.View(); pickerView != "" {
 		topArea = overlayBottomLeft(topArea, pickerView, mw, m.viewport.Height)
+	}
+
+	// Multi-pane: when more than one pane exists, replace topArea with a
+	// side-by-side column layout. Single-pane path is visually unchanged.
+	if len(m.panes) > 1 && m.focus != FocusAgentDetail && m.activeBufferName == "" {
+		topArea = m.renderMultiPane(mw, m.viewport.Height)
 	}
 
 	var sections []string

@@ -54,6 +54,7 @@ type PaneState struct {
 	messageQueue    []string             // messages queued while streaming
 
 	// Viewport state
+	viewportOffset  int       // scroll position saved when this pane is not active
 	vpCursor        int       // viewport section cursor (-1 = none)
 	vpSections      []Section // cached section metadata from last render
 
