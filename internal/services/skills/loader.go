@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,8 @@ type Skill struct {
 	Paths        []string    `json:"paths,omitempty"`
 	Hooks        []SkillHook `json:"hooks,omitempty"`
 	Capabilities []string    `json:"capabilities,omitempty"`
+	Agents       []string    `json:"agents,omitempty"`       // allowlist of agent names; empty = all agents
+	RequireTeam  bool        `json:"require_team,omitempty"` // if true, hidden when no team template is loaded
 }
 
 // SkillHook defines a hook that auto-registers when the skill is invoked.
@@ -95,28 +98,89 @@ func (r *Registry) Remove(name string) {
 	delete(r.skills, name)
 }
 
-// FilterByCapabilities returns a new registry containing only skills whose
-// Capabilities list is empty (available to all agents) OR contains at least
-// one capability from agentCaps. If agentCaps is empty, only skills with no
-// capability requirements are included.
-func (r *Registry) FilterByCapabilities(agentCaps []string) *Registry {
+// FilterSkills returns a new registry containing only skills visible to the
+// given agent. All four conditions must pass for a skill to be included:
+//  1. Agent filter:      skill.Agents is empty OR agentName is in skill.Agents
+//  2. Capability filter: skill.Capabilities is empty OR intersection with agentCaps is non-empty
+//  3. Team filter:       skill.RequireTeam is false OR hasActiveTeam is true
+//  4. Exclusion filter:  skill name is not in excluded list (case-insensitive)
+func (r *Registry) FilterSkills(agentName string, agentCaps []string, hasActiveTeam bool, excluded []string) *Registry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := NewRegistry()
 	for _, s := range r.skills {
-		if len(s.Capabilities) == 0 {
-			out.skills[s.Name] = s
-			continue
-		}
-		for _, ac := range agentCaps {
-			for _, sc := range s.Capabilities {
-				if ac == sc {
-					out.skills[s.Name] = s
+		// 1. Agent filter
+		if len(s.Agents) > 0 {
+			found := false
+			for _, a := range s.Agents {
+				if strings.EqualFold(a, agentName) {
+					found = true
+					break
 				}
 			}
+			if !found {
+				continue
+			}
 		}
+		// 2. Capability filter
+		if len(s.Capabilities) > 0 {
+			found := false
+		capLoop:
+			for _, ac := range agentCaps {
+				for _, sc := range s.Capabilities {
+					if ac == sc {
+						found = true
+						break capLoop
+					}
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		// 3. Team filter
+		if s.RequireTeam && !hasActiveTeam {
+			continue
+		}
+		// 4. Exclusion filter
+		if len(excluded) > 0 {
+			skip := false
+			for _, ex := range excluded {
+				if strings.EqualFold(ex, s.Name) {
+					skip = true
+					break
+				}
+			}
+			if skip {
+				continue
+			}
+		}
+		out.skills[s.Name] = s
 	}
 	return out
+}
+
+// FilterByCapabilities is a compatibility alias for FilterSkills with no agent
+// name, team, or exclusion filters applied. Prefer FilterSkills for new call sites.
+func (r *Registry) FilterByCapabilities(agentCaps []string) *Registry {
+	return r.FilterSkills("", agentCaps, true, nil)
+}
+
+// MigrateLegacyCaps converts the deprecated "team" capability to RequireTeam=true.
+// Returns the cleaned capability list and whether RequireTeam should be set.
+// Logs a deprecation warning if "team" is found.
+func MigrateLegacyCaps(skillName string, caps []string) (newCaps []string, requireTeam bool) {
+	for _, c := range caps {
+		if c == "team" {
+			if !requireTeam {
+				log.Printf("[skills] DEPRECATED: skill %q uses capabilities=[\"team\"]; use require_team=true instead", skillName)
+			}
+			requireTeam = true
+		} else {
+			newCaps = append(newCaps, c)
+		}
+	}
+	return
 }
 
 // LoadAll loads skills from all sources: bundled, user, project, and any extra dirs.
@@ -161,19 +225,22 @@ func loadFromDir(r *Registry, dir, source string) {
 			for _, fname := range []string{"SKILL.md", "skill.md", "index.md", "README.md"} {
 				path := filepath.Join(dir, entry.Name(), fname)
 				if content, err := os.ReadFile(path); err == nil {
-					name, desc, paths, hooks, body := parseSkillFile(string(content))
+					name, desc, paths, hooks, caps, agents, requireTeam, body := parseSkillFile(string(content))
 					if name == "" {
 						name = entry.Name()
 					}
 					r.Register(&Skill{
-						Name:        name,
-						Description: desc,
-						Content:     body,
-						Source:      source,
-						FilePath:    path,
-						SkillDir:    filepath.Join(dir, entry.Name()),
-						Paths:       paths,
-						Hooks:       hooks,
+						Name:         name,
+						Description:  desc,
+						Content:      body,
+						Source:       source,
+						FilePath:     path,
+						SkillDir:     filepath.Join(dir, entry.Name()),
+						Paths:        paths,
+						Hooks:        hooks,
+						Capabilities: caps,
+						Agents:       agents,
+						RequireTeam:  requireTeam,
 					})
 					break
 				}
@@ -184,33 +251,39 @@ func loadFromDir(r *Registry, dir, source string) {
 			if err != nil {
 				continue
 			}
-			name, desc, paths, hooks, body := parseSkillFile(string(content))
+			name, desc, paths, hooks, caps, agents, requireTeam, body := parseSkillFile(string(content))
 			if name == "" {
 				name = strings.TrimSuffix(entry.Name(), ".md")
 			}
 			r.Register(&Skill{
-				Name:        name,
-				Description: desc,
-				Content:     body,
-				Source:      source,
-				FilePath:    path,
-				Paths:       paths,
-				Hooks:       hooks,
+				Name:         name,
+				Description:  desc,
+				Content:      body,
+				Source:       source,
+				FilePath:     path,
+				Paths:        paths,
+				Hooks:        hooks,
+				Capabilities: caps,
+				Agents:       agents,
+				RequireTeam:  requireTeam,
 			})
 		}
 	}
 }
 
-// parseSkillFile extracts frontmatter (name, description, paths, hooks) and body from a skill file.
-func parseSkillFile(content string) (name, description string, paths []string, hooks []SkillHook, body string) {
+// parseSkillFile extracts frontmatter (name, description, paths, hooks, capabilities, agents, require_team) and body from a skill file.
+func parseSkillFile(content string) (name, description string, paths []string, hooks []SkillHook, capabilities []string, agents []string, requireTeam bool, body string) {
 	lines := strings.Split(content, "\n")
 
 	// internal frontmatter struct for yaml unmarshalling
 	type frontmatterData struct {
-		Name        string      `yaml:"name"`
-		Description string      `yaml:"description"`
-		Paths       []string    `yaml:"paths"`
-		Hooks       []SkillHook `yaml:"hooks"`
+		Name         string      `yaml:"name"`
+		Description  string      `yaml:"description"`
+		Paths        []string    `yaml:"paths"`
+		Hooks        []SkillHook `yaml:"hooks"`
+		Capabilities []string    `yaml:"capabilities"`
+		Agents       []string    `yaml:"agents"`
+		RequireTeam  bool        `yaml:"require_team"`
 	}
 
 	// Check for YAML frontmatter
@@ -230,6 +303,12 @@ func parseSkillFile(content string) (name, description string, paths []string, h
 				description = fm.Description
 				paths = fm.Paths
 				hooks = fm.Hooks
+				agents = fm.Agents
+				// Migrate legacy "team" capability from frontmatter
+				capabilities, requireTeam = MigrateLegacyCaps(fm.Name, fm.Capabilities)
+				if fm.RequireTeam {
+					requireTeam = true
+				}
 			}
 			body = strings.Join(lines[endIdx+1:], "\n")
 			return

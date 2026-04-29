@@ -2304,7 +2304,7 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 		if m.appCtx != nil {
 			removeCfg = m.appCtx.Config
 		}
-		applySkillFiltering(m.registry, nil, removeCfg, m.skills)
+		applySkillFiltering(m.registry, "", nil, activeTeamName(m.appCtx) != "", removeCfg, m.skills)
 		// Persist the cleared agent type so the next session doesn't re-apply the old persona.
 		if m.db != nil && m.session != nil && m.session.Current() != nil {
 			_ = m.db.UpdateSessionAgentType(m.session.Current().ID, "")
@@ -2334,7 +2334,7 @@ func (m Model) applyAgentPersona(msg agentselector.AgentSelectedMsg) Model {
 		agentCfg = m.appCtx.Config
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID, agentCfg)
-	applySkillFiltering(filtered, msg.Capabilities, agentCfg, m.skills)
+	applySkillFiltering(filtered, msg.AgentType, msg.Capabilities, activeTeamName(m.appCtx) != "", agentCfg, m.skills)
 	if pluginSection := app.ApplyAgentExtras(filtered, msg.AgentType); pluginSection != "" {
 		base += "\n\n" + pluginSection
 	}
@@ -2530,7 +2530,7 @@ func (m Model) ApplyAgentPersonaAtStartup(msg agentselector.AgentSelectedMsg) Mo
 		startupCfg = m.appCtx.Config
 	}
 	registerCapabilityTools(filtered, msg.Capabilities, m.apiClient, m.screenshotPusher, capSessID2, startupCfg)
-	applySkillFiltering(filtered, msg.Capabilities, startupCfg, m.skills)
+	applySkillFiltering(filtered, msg.AgentType, msg.Capabilities, activeTeamName(m.appCtx) != "", startupCfg, m.skills)
 	if pluginSection := app.ApplyAgentExtras(filtered, msg.AgentType); pluginSection != "" {
 		base += "\n\n" + pluginSection
 	}
@@ -2558,16 +2558,28 @@ func registerCapabilityTools(registry *tools.Registry, capabilities []string, cl
 	tools.RegisterCapabilityTools(registry, capabilities, client, pusher, sessionID, cfg)
 }
 
+// activeTeamName returns the currently active team name, or empty string if none.
+func activeTeamName(appCtx *AppContext) string {
+	if appCtx == nil || appCtx.TeamRunner == nil {
+		return ""
+	}
+	return appCtx.TeamRunner.ActiveTeamName()
+}
+
 // applySkillFiltering updates the SkillTool inside toolRegistry with a filtered
-// skills registry based on the agent's capabilities and design config.
+// skills registry based on the agent name, capabilities, and design config.
 // It creates a new SkillTool instance (never mutates the shared pointer) so the
 // cached description is rebuilt for the new skill set.
 //
-// Filtering rules:
-//   - Non-design agents: only skills with empty Capabilities (i.e. no design skills).
-//   - Design agents: all design skills, then apply EnabledSkills whitelist or
-//     DisabledSkills denylist from cfg.Design.
-func applySkillFiltering(toolRegistry *tools.Registry, capabilities []string, cfg *config.Settings, fullSkills *skills.Registry) {
+// Filtering rules (all must pass):
+//  1. Agent filter:      skill.Agents is empty OR agentName is in skill.Agents
+//  2. Capability filter: skill.Capabilities is empty OR intersection with agentCaps non-empty
+//  3. Team filter:       skill.RequireTeam is false OR hasActiveTeam is true
+//  4. Exclusion filter:  skill name not in existing SkillTool ExcludedNames
+//
+// Additionally, for design-capable agents the per-settings design skill
+// whitelist/denylist from cfg.Design is applied after the main filter.
+func applySkillFiltering(toolRegistry *tools.Registry, agentName string, agentCaps []string, hasActiveTeam bool, cfg *config.Settings, fullSkills *skills.Registry) {
 	if fullSkills == nil {
 		return
 	}
@@ -2580,11 +2592,11 @@ func applySkillFiltering(toolRegistry *tools.Registry, capabilities []string, cf
 		return
 	}
 
-	// Start from the full registry, keep only skills accessible to this agent.
-	filteredSkills := fullSkills.FilterByCapabilities(capabilities)
+	// Single-pass filter: agent + capability + team + exclusion.
+	filteredSkills := fullSkills.FilterSkills(agentName, agentCaps, hasActiveTeam, existing.ExcludedNames)
 
 	// For design-capable agents, apply the per-settings design skill config.
-	if slices.Contains(capabilities, "design") && cfg != nil {
+	if slices.Contains(agentCaps, "design") && cfg != nil {
 		if len(cfg.Design.EnabledSkills) > 0 {
 			// Whitelist mode: remove design skills not explicitly listed.
 			for _, s := range filteredSkills.All() {
@@ -5312,7 +5324,7 @@ func (m *Model) doSwitchSession(id string) {
 	if m.appCtx != nil {
 		resetCfg = m.appCtx.Config
 	}
-	applySkillFiltering(m.registry, nil, resetCfg, m.skills)
+	applySkillFiltering(m.registry, "", nil, activeTeamName(m.appCtx) != "", resetCfg, m.skills)
 
 	if resumed.AgentType != "" {
 		agentDef := agents.GetAgent(resumed.AgentType)
