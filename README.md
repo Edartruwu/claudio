@@ -493,8 +493,38 @@ claudio.register_skill({
   name         = "deploy",
   description  = "Deploy the current project",
   content      = "Run: make deploy && notify me when done",
-  capabilities = { "bash" },
+  capabilities = { },          -- empty = visible to all agents (most common)
 })
+
+-- The `capabilities` field controls which agents can see this skill.
+-- A skill is visible when its capabilities list is empty, or when at least
+-- one entry matches the active agent's own capabilities.
+--
+--   capabilities = {}           → visible to every agent (default / most common)
+--   capabilities = { "myapp" }  → visible only to agents that declare "myapp"
+--
+-- Two special built-in values change behaviour beyond simple visibility:
+--
+--   "design" — the skill is shown only to design agents AND Claudio also
+--              unlocks 8 extra tools for those agents:
+--              RenderMockup, BundleMockup, VerifyMockup, ExportHandoff,
+--              CreateDesignSession, ExportVideo, ExportDeckPPTX, VerifyPrototype
+--
+--   "team"   — the skill is hidden for everyone when no team template is
+--              loaded; once a team is active the skill becomes visible again
+--
+-- Custom capabilities — pair register_skill with register_capability so the
+-- named capability also unlocks specific tools for those agents:
+claudio.register_capability("myapp", { "MyCustomTool", "AnotherTool" })
+claudio.register_skill({
+  name         = "deploy",
+  description  = "Deploy the current project",
+  content      = "Run: make deploy && notify me when done",
+  capabilities = { "myapp" },  -- only visible to agents that have "myapp"
+})
+--
+-- If you just want a skill available to everyone, leave capabilities empty or
+-- omit the field entirely.
 
 -- Register a hook (pre/post tool execution)
 claudio.register_hook("before_tool", "bash", function(ctx)
@@ -675,6 +705,10 @@ panel:add_section({
     return "Running: " .. (claudio.agent.current() or "none")
   end,
 })
+
+-- Open a running agent's live output buffer (lazy — created on first call)
+-- Equivalent to picking the agent from <Space>wa
+claudio.win.open_agent("agent-id-or-name")
 ```
 
 #### `claudio.agent.*` — agent context
@@ -701,7 +735,7 @@ end)
 
 -- List all running agents
 local agents = claudio.agent.list()
--- each: { id, name, status, team, has_window }
+-- each: { id, name, status, team, has_buffer }
 
 -- Programmatically spawn a sub-agent
 claudio.agent.spawn({
@@ -1097,6 +1131,8 @@ Press `:` in normal vim mode — exactly like Neovim:
 | `:lua <code>` | Execute Lua live — `:lua claudio.notify("hi")`, `:lua claudio.ui.set_color(...)` |
 | `:set <key> [value]` | Read or write any config — `:set model`, `:set caveman true` |
 | `:colorscheme <name>` | Switch theme — `tokyonight`, `gruvbox`, `catppuccin`, `nord`, `dracula` |
+| `:q` / `:quit` | Close the active buffer (when one is open), otherwise exit |
+| `:bd` / `:bdelete` / `:bclose` | Close/delete the active buffer |
 | `:checkhealth` | Diagnose plugins, capabilities, config, LSP |
 | `:health` | Alias for `:checkhealth` |
 | `:<command>` | Any `/command` also works as a `:command` |
@@ -1181,6 +1217,8 @@ Enter with `<Space>wk` or (in vim normal mode with empty prompt) scroll with `j`
 | `<Space>bk` | Delete current session |
 | `<Space>.` | Open session picker (telescope-style) |
 | `<Space>,<Enter>` | Switch to alternate session |
+| `<Space>wa` | Open agents picker — pick an agent to open its live buffer |
+| `<Space>wl` / `<Space>wh` | Cycle to next / previous pane |
 
 ### Panels (`<Space>i` + key)
 
@@ -1204,6 +1242,16 @@ Toggle vim mode with `/vim`. Full modal state machine:
 - **Operator-pending mode**: after `d/c/y`
 
 Press `:` in normal mode to open the command line — a live Lua REPL and config interface. Press `Tab` for wildmenu completion on commands and arguments.
+
+### Buffer navigation (nvim-style)
+
+Agent output and custom windows open as full-screen buffers. Buffer lifecycle follows Neovim conventions:
+
+- `j` / `k` — scroll the buffer
+- `:q` / `:bd` — close the buffer (like Neovim — `Esc` alone does **not** close it)
+- `Esc` — only closes if the buffer has `AllowEscClose` set (configurable per-buffer via Lua)
+
+Agent buffers are **lazy** — nothing is pre-opened when an agent starts. Open one by picking from the agents picker (`<Space>wa`) or via `claudio.win.open_agent(agentID)`.
 
 ### Keybinding Customization
 
