@@ -2113,6 +2113,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleEngineEvent(tuiEvent(msg))
 
 	case paneEventMsg:
+		// Stale event from a closed pane: paneIdx is now out of bounds because
+		// ActionPaneClose removed the pane from the slice. Discard without
+		// re-arming to terminate the waitForPaneEvent goroutine cleanly.
+		if msg.paneIdx >= len(m.panes) {
+			return m, nil
+		}
 		if msg.paneIdx == m.activePaneIdx {
 			// Active pane: full event handling via existing handler.
 			return m.handleEngineEvent(msg.event)
@@ -4898,6 +4904,25 @@ func (m *Model) dispatchAction(action keymap.ActionID) tea.Cmd {
 	case keymap.ActionPaneClose:
 		if len(m.panes) > 1 {
 			oldIdx := m.activePaneIdx
+			closedPane := m.panes[oldIdx]
+
+			// Cancel the engine context so any running query stops and its
+			// goroutine exits after sending a "done" event.  The "done" event
+			// unblocks the waitForPaneEvent goroutine; the bounds check in the
+			// paneEventMsg handler then discards it without re-arming, which
+			// terminates the goroutine cleanly (no leak).
+			if closedPane.cancelFunc != nil {
+				closedPane.cancelFunc()
+			} else {
+				// Engine never started for this pane, so nobody will send to
+				// eventCh.  Inject a sentinel to unblock the idle
+				// waitForPaneEvent goroutine.
+				select {
+				case closedPane.eventCh <- tuiEvent{typ: "done"}:
+				default:
+				}
+			}
+
 			m.panes = append(m.panes[:oldIdx], m.panes[oldIdx+1:]...)
 			if m.activePaneIdx >= len(m.panes) {
 				m.activePaneIdx = len(m.panes) - 1
