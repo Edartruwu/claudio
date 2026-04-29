@@ -415,12 +415,13 @@ claudio.register_capability("database", {
   tools = { "SQLQuery", "SchemaInspect", "MigrationRun" }
 })
 
--- ── Sidebar block ─────────────────────────────────────────────
-claudio.ui.register_sidebar_block({
+-- ── Sidebar panel ─────────────────────────────────────────────
+local panel = claudio.win.new_panel({ position = "right", width = 40 })
+panel:add_section({
   id       = "git-status",
   title    = "Git",
-  render   = function() return claudio.cmd("git status --short") end,
   priority = 10,
+  render   = function(w, h) return claudio.cmd("git status --short") end,
 })
 ```
 
