@@ -91,3 +91,8 @@ claudio.keymap.map("<space>t",  "todo.toggle")
 -- Branching
 claudio.keymap.map("<space>gb", "branch.session")
 claudio.keymap.map("<space>gp", "branch.parent-jump")
+
+-- Panes (split-pane multi-session)
+claudio.keymap.map("<space>wn", "pane.next")
+claudio.keymap.map("<space>wN", "pane.prev")
+claudio.keymap.map("<space>wx", "pane.close")
