@@ -107,10 +107,10 @@ func (t *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (*Res
 	// Reject files larger than 256 KB before reading — forces the model to
 	// use Grep/Glob to find the relevant section instead of reading everything.
 	const maxFileBytes = 256 * 1024
-	if info, err := os.Stat(in.FilePath); err == nil && info.Size() > maxFileBytes {
+	if info, err := os.Stat(in.FilePath); err == nil && info.Size() > maxFileBytes && in.Offset == 0 && in.Limit == 0 {
 		return &Result{
 			Content: fmt.Sprintf(
-				"File too large to read in full (%d KB). Use Grep to search for specific content, or read a targeted range with offset and limit parameters.",
+				"File too large to read in full (%d KB). Use Grep to search for specific content, or read a targeted range with offset and limit parameters (e.g. offset=100, limit=50).",
 				info.Size()/1024,
 			),
 			IsError: true,

@@ -72,7 +72,7 @@ Real agent parallelism — not just sub-agents. `Prab` (your PM) plans, creates 
 <td valign="top">
 
 ### Vim-Grade TUI
-Full modal state machine — normal, insert, visual, operator-pending — with registers, text objects, counts, and `.` repeat. Press `:` to open a Neovim-style command line: `:set model opus`, `:colorscheme gruvbox`, `:lua claudio.notify("hi")`.
+Full modal state machine — normal, insert, visual, operator-pending — with registers, text objects, counts, and `.` repeat. Press `:` to open a Neovim-style command line: `:set model opus`, `:colorscheme gruvbox`, `:lua claudio.notify("hi")`. Split panes let you run multiple agent sessions side-by-side: `<Space>wn` opens a new pane, `<Space>wN` cycles panes, `<Space>wx` closes one. Each pane has its own session, engine, message history, and scroll state.
 
 </td>
 <td valign="top">
@@ -219,7 +219,7 @@ Claudio is built ground-up in Go for engineers who want **more control, more age
 |---|---|---|
 | 🏗️ **Runtime** | Single Go binary — zero runtime deps | Node.js / TypeScript |
 | 🔌 **Extensibility** | Full Lua runtime — tools, keymaps, themes, providers, hooks from `init.lua`. No recompile. | Extension API in beta |
-| 🤝 **Multi-agent teams** | Parallel workers in isolated worktrees, mailbox messaging, `/harness` patterns | ❌ |
+| 🤝 **Multi-agent teams** | Parallel workers in isolated worktrees, mailbox messaging, `/harness` patterns + split-pane TUI sessions | ❌ |
 | 💎 **Session-as-agent** | Crystallize sessions into reusable personas with accumulated memory | ❌ |
 | 🧠 **Memory** | Scoped (project/agent/global), facts-based, `Recall` semantic search, `/dream` consolidation, cache-safe | Single directory |
 | 🗜️ **Token efficiency** | 11-layer optimization stack | Basic prompt caching |
@@ -320,6 +320,7 @@ claudio --attach http://localhost:8080 --name "my-session" --master
 - [CLI Flags](#cli-flags)
 - [Interactive Commands](#interactive-commands)
 - [Keybindings](#keybindings)
+  - [Pane Management](#pane-management)
 - [Vim Mode & `:` Command Line](#vim-mode---command-line)
 - [Context Management](#context-management)
 - [Token Efficiency](#token-efficiency)
@@ -675,6 +676,30 @@ panel:add_section({
     return "Running: " .. (claudio.agent.current() or "none")
   end,
 })
+
+-- Open a new agent pane (split view) — keybinding: <Space>wn
+claudio.win.open_agent({})                  -- new pane, default agent
+claudio.win.open_agent({ agent = "jj" })    -- new pane with jj persona
+```
+
+#### `claudio.prompt.*` — prompt customization
+
+```lua
+-- Set placeholder text shown in empty prompt
+claudio.prompt.set_placeholder("Ask anything...")
+
+-- Switch prompt editing mode: "vim" | "simple"
+claudio.prompt.set_mode("vim")
+
+-- Hook fired before submission — return false to cancel, return string to transform
+claudio.prompt.on_submit(function(text)
+  if text:sub(1,1) == "!" then
+    -- reroute to shell
+    claudio.cmd("bash " .. text:sub(2))
+    return false  -- cancel normal submission
+  end
+  return text
+end)
 ```
 
 #### `claudio.agent.*` — agent context
@@ -1182,6 +1207,16 @@ Enter with `<Space>wk` or (in vim normal mode with empty prompt) scroll with `j`
 | `<Space>.` | Open session picker (telescope-style) |
 | `<Space>,<Enter>` | Switch to alternate session |
 
+### Pane Management
+
+| Sequence | Action |
+|----------|--------|
+| `<Space>wn` | Open new agent pane (split) |
+| `<Space>wN` | Cycle to previous pane |
+| `<Space>wx` | Close current pane |
+
+Active pane shown with `●` indicator. Each pane has its own session, engine, message history, and scroll state.
+
 ### Panels (`<Space>i` + key)
 
 | Key | Panel | Description |
@@ -1190,7 +1225,7 @@ Enter with `<Space>wk` or (in vim normal mode with empty prompt) scroll with `j`
 | `m` | Memory | Browse, search, edit, add, delete memories |
 | `k` | Skills | Browse available skills |
 | `a` | Analytics | Session statistics and cache metrics |
-| `t` | Tasks | Background tasks and team agent status |
+| `t` | Tasks | Background tasks and team agent status — press `/` to filter by title |
 
 ---
 

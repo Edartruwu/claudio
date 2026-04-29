@@ -401,27 +401,15 @@ func (r *TeammateRunner) EmitEvent(event TeammateEvent) {
 		r.eventHandler.OnTeammateEvent(event)
 	}
 
-	// Update agent LiveBuffer when a window manager is set.
-	if r.windowMgr == nil || event.AgentID == "" {
+	// Update agent LiveBuffer for text accumulation.
+	if event.AgentID == "" {
 		return
 	}
 	bufName := "agent://" + event.AgentID
 	switch event.Type {
 	case "started":
 		lb := windows.NewLiveBuffer(bufName)
-		if _, loaded := r.liveBufs.LoadOrStore(event.AgentID, lb); !loaded {
-			// First registration for this agent — create the window.
-			title := event.AgentName
-			if title == "" {
-				title = event.AgentID
-			}
-			// Recover from duplicate-name panic on re-use (shouldn't happen
-			// for unique agent IDs, but guard to avoid crashing the runner).
-			func() {
-				defer func() { recover() }() //nolint:errcheck
-				r.windowMgr.RegisterLiveBuffer(lb, event.AgentName, title)
-			}()
-		}
+		r.liveBufs.LoadOrStore(event.AgentID, lb)
 	case "text":
 		if v, ok := r.liveBufs.Load(event.AgentID); ok {
 			v.(*windows.LiveBuffer).Append(event.Text)
@@ -1057,6 +1045,15 @@ func (r *TeammateRunner) GetState(agentID string) (*TeammateState, bool) {
 	defer r.mu.RUnlock()
 	state, ok := r.teammates[agentID]
 	return state, ok
+}
+
+// GetAgentLiveBuffer returns the LiveBuffer for agentID, if one exists.
+func (r *TeammateRunner) GetAgentLiveBuffer(agentID string) (*windows.LiveBuffer, bool) {
+	v, ok := r.liveBufs.Load(agentID)
+	if !ok {
+		return nil, false
+	}
+	return v.(*windows.LiveBuffer), true
 }
 
 // AllStates returns all teammate states.

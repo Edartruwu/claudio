@@ -499,8 +499,10 @@ func TestReconstructEngineMessages_UnknownTypeIgnored(t *testing.T) {
 // to the system prompt exactly once even when the guard block is executed twice.
 // This simulates resumeSession being called multiple times on the same Model.
 func TestResumeSummary_NotDoubleAppended(t *testing.T) {
+	pane := newPaneState("")
+	pane.systemPrompt = "base system prompt"
 	m := Model{
-		systemPrompt: "base system prompt",
+		panes: []PaneState{pane},
 	}
 
 	const summary = "previous session: fixed bug in query engine"
@@ -508,38 +510,40 @@ func TestResumeSummary_NotDoubleAppended(t *testing.T) {
 
 	// Simulate the guard block from resumeSession twice.
 	applyResumeSummary := func(m *Model, sess *storage.Session) {
-		if sess.Summary != "" && !m.resumeSummarySet {
-			m.systemPrompt += "\n\n# Previous Session Context\n" + sess.Summary
-			m.resumeSummarySet = true
+		if sess.Summary != "" && !m.activePane().resumeSummarySet {
+			m.activePane().systemPrompt += "\n\n# Previous Session Context\n" + sess.Summary
+			m.activePane().resumeSummarySet = true
 		}
 	}
 
 	applyResumeSummary(&m, resumed)
 	applyResumeSummary(&m, resumed)
 
-	count := strings.Count(m.systemPrompt, summary)
+	count := strings.Count(m.activePane().systemPrompt, summary)
 	if count != 1 {
-		t.Fatalf("expected summary to appear exactly once in system prompt, got %d occurrences; prompt: %q", count, m.systemPrompt)
+		t.Fatalf("expected summary to appear exactly once in system prompt, got %d occurrences; prompt: %q", count, m.activePane().systemPrompt)
 	}
 }
 
 // TestResumeSummary_EmptySummarySkipped verifies that an empty summary does not
 // modify the system prompt or set the guard flag.
 func TestResumeSummary_EmptySummarySkipped(t *testing.T) {
+	pane2 := newPaneState("")
+	pane2.systemPrompt = "base"
 	m := Model{
-		systemPrompt: "base",
+		panes: []PaneState{pane2},
 	}
 	resumed := &storage.Session{Summary: ""}
 
-	if resumed.Summary != "" && !m.resumeSummarySet {
-		m.systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
-		m.resumeSummarySet = true
+	if resumed.Summary != "" && !m.activePane().resumeSummarySet {
+		m.activePane().systemPrompt += "\n\n# Previous Session Context\n" + resumed.Summary
+		m.activePane().resumeSummarySet = true
 	}
 
-	if m.systemPrompt != "base" {
-		t.Fatalf("expected system prompt unchanged, got: %q", m.systemPrompt)
+	if m.activePane().systemPrompt != "base" {
+		t.Fatalf("expected system prompt unchanged, got: %q", m.activePane().systemPrompt)
 	}
-	if m.resumeSummarySet {
+	if m.activePane().resumeSummarySet {
 		t.Fatal("resumeSummarySet should remain false for empty summary")
 	}
 }

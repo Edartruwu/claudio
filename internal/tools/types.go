@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 )
 
 // Tool defines the interface all tools must implement.
@@ -91,6 +92,98 @@ type AutoActivatable interface {
 	// AutoActivate returns true if this tool should be sent with full schema
 	// even though it is normally deferred.
 	AutoActivate() bool
+}
+
+// ToolFilter controls visibility of a tool based on agent context.
+type ToolFilter struct {
+	Agents       []string // allowlist by agent name; empty = all agents
+	Capabilities []string // allowlist by capability; empty = all
+	RequireTeam  bool     // hidden when no team template active
+}
+
+// IsVisible returns true if the tool should be visible to the given agent.
+// Logic mirrors skills.FilterSkills:
+//  1. Agents empty OR agentName in Agents
+//  2. Capabilities empty OR intersection with agentCaps non-empty
+//  3. RequireTeam false OR hasActiveTeam true
+func (f ToolFilter) IsVisible(agentName string, agentCaps []string, hasActiveTeam bool) bool {
+	// 1. Agent filter
+	if len(f.Agents) > 0 {
+		found := false
+		for _, a := range f.Agents {
+			if strings.EqualFold(a, agentName) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	// 2. Capability filter
+	if len(f.Capabilities) > 0 {
+		found := false
+		for _, ac := range agentCaps {
+			for _, fc := range f.Capabilities {
+				if ac == fc {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	// 3. Team filter
+	if f.RequireTeam && !hasActiveTeam {
+		return false
+	}
+	return true
+}
+
+// FilterableTool is an optional interface tools can implement to restrict
+// visibility based on agent name, capabilities, and team context.
+type FilterableTool interface {
+	Filter() ToolFilter
+}
+
+// DeferredCondition controls when a tool should be deferred.
+// Used by Lua tools that support `deferred = true` or `deferred = { agents = {...} }`.
+type DeferredCondition struct {
+	Always       bool     // deferred for all agents
+	Agents       []string // deferred only for these agents
+	Capabilities []string // deferred only for agents with these caps
+}
+
+// ShouldDeferForAgent returns true if the tool should be deferred for the given agent.
+func (d DeferredCondition) ShouldDeferForAgent(agentName string, agentCaps []string) bool {
+	if d.Always {
+		return true
+	}
+	for _, a := range d.Agents {
+		if strings.EqualFold(a, agentName) {
+			return true
+		}
+	}
+	for _, ac := range agentCaps {
+		for _, dc := range d.Capabilities {
+			if ac == dc {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ConditionalDeferrableTool extends DeferrableTool with agent-aware deferral.
+type ConditionalDeferrableTool interface {
+	DeferrableTool
+	// ShouldDeferForAgent returns true if this tool should be deferred for the given agent.
+	ShouldDeferForAgent(agentName string, agentCaps []string) bool
 }
 
 // APIToolDef is the format the Anthropic API expects for tool definitions.

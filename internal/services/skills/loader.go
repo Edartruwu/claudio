@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,8 @@ type Skill struct {
 	Paths        []string    `json:"paths,omitempty"`
 	Hooks        []SkillHook `json:"hooks,omitempty"`
 	Capabilities []string    `json:"capabilities,omitempty"`
+	Agents       []string    `json:"agents,omitempty"`       // allowlist of agent names; empty = all agents
+	RequireTeam  bool        `json:"require_team,omitempty"` // if true, hidden when no team template is loaded
 }
 
 // SkillHook defines a hook that auto-registers when the skill is invoked.
@@ -95,28 +98,89 @@ func (r *Registry) Remove(name string) {
 	delete(r.skills, name)
 }
 
-// FilterByCapabilities returns a new registry containing only skills whose
-// Capabilities list is empty (available to all agents) OR contains at least
-// one capability from agentCaps. If agentCaps is empty, only skills with no
-// capability requirements are included.
-func (r *Registry) FilterByCapabilities(agentCaps []string) *Registry {
+// FilterSkills returns a new registry containing only skills visible to the
+// given agent. All four conditions must pass for a skill to be included:
+//  1. Agent filter:      skill.Agents is empty OR agentName is in skill.Agents
+//  2. Capability filter: skill.Capabilities is empty OR intersection with agentCaps is non-empty
+//  3. Team filter:       skill.RequireTeam is false OR hasActiveTeam is true
+//  4. Exclusion filter:  skill name is not in excluded list (case-insensitive)
+func (r *Registry) FilterSkills(agentName string, agentCaps []string, hasActiveTeam bool, excluded []string) *Registry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := NewRegistry()
 	for _, s := range r.skills {
-		if len(s.Capabilities) == 0 {
-			out.skills[s.Name] = s
-			continue
-		}
-		for _, ac := range agentCaps {
-			for _, sc := range s.Capabilities {
-				if ac == sc {
-					out.skills[s.Name] = s
+		// 1. Agent filter
+		if len(s.Agents) > 0 {
+			found := false
+			for _, a := range s.Agents {
+				if strings.EqualFold(a, agentName) {
+					found = true
+					break
 				}
 			}
+			if !found {
+				continue
+			}
 		}
+		// 2. Capability filter
+		if len(s.Capabilities) > 0 {
+			found := false
+		capLoop:
+			for _, ac := range agentCaps {
+				for _, sc := range s.Capabilities {
+					if ac == sc {
+						found = true
+						break capLoop
+					}
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		// 3. Team filter
+		if s.RequireTeam && !hasActiveTeam {
+			continue
+		}
+		// 4. Exclusion filter
+		if len(excluded) > 0 {
+			skip := false
+			for _, ex := range excluded {
+				if strings.EqualFold(ex, s.Name) {
+					skip = true
+					break
+				}
+			}
+			if skip {
+				continue
+			}
+		}
+		out.skills[s.Name] = s
 	}
 	return out
+}
+
+// FilterByCapabilities is a compatibility alias for FilterSkills with no agent
+// name, team, or exclusion filters applied. Prefer FilterSkills for new call sites.
+func (r *Registry) FilterByCapabilities(agentCaps []string) *Registry {
+	return r.FilterSkills("", agentCaps, true, nil)
+}
+
+// MigrateLegacyCaps converts the deprecated "team" capability to RequireTeam=true.
+// Returns the cleaned capability list and whether RequireTeam should be set.
+// Logs a deprecation warning if "team" is found.
+func MigrateLegacyCaps(skillName string, caps []string) (newCaps []string, requireTeam bool) {
+	for _, c := range caps {
+		if c == "team" {
+			if !requireTeam {
+				log.Printf("[skills] DEPRECATED: skill %q uses capabilities=[\"team\"]; use require_team=true instead", skillName)
+			}
+			requireTeam = true
+		} else {
+			newCaps = append(newCaps, c)
+		}
+	}
+	return
 }
 
 // LoadAll loads skills from all sources: bundled, user, project, and any extra dirs.
@@ -161,19 +225,22 @@ func loadFromDir(r *Registry, dir, source string) {
 			for _, fname := range []string{"SKILL.md", "skill.md", "index.md", "README.md"} {
 				path := filepath.Join(dir, entry.Name(), fname)
 				if content, err := os.ReadFile(path); err == nil {
-					name, desc, paths, hooks, body := parseSkillFile(string(content))
+					name, desc, paths, hooks, caps, agents, requireTeam, body := parseSkillFile(string(content))
 					if name == "" {
 						name = entry.Name()
 					}
 					r.Register(&Skill{
-						Name:        name,
-						Description: desc,
-						Content:     body,
-						Source:      source,
-						FilePath:    path,
-						SkillDir:    filepath.Join(dir, entry.Name()),
-						Paths:       paths,
-						Hooks:       hooks,
+						Name:         name,
+						Description:  desc,
+						Content:      body,
+						Source:       source,
+						FilePath:     path,
+						SkillDir:     filepath.Join(dir, entry.Name()),
+						Paths:        paths,
+						Hooks:        hooks,
+						Capabilities: caps,
+						Agents:       agents,
+						RequireTeam:  requireTeam,
 					})
 					break
 				}
@@ -184,33 +251,39 @@ func loadFromDir(r *Registry, dir, source string) {
 			if err != nil {
 				continue
 			}
-			name, desc, paths, hooks, body := parseSkillFile(string(content))
+			name, desc, paths, hooks, caps, agents, requireTeam, body := parseSkillFile(string(content))
 			if name == "" {
 				name = strings.TrimSuffix(entry.Name(), ".md")
 			}
 			r.Register(&Skill{
-				Name:        name,
-				Description: desc,
-				Content:     body,
-				Source:      source,
-				FilePath:    path,
-				Paths:       paths,
-				Hooks:       hooks,
+				Name:         name,
+				Description:  desc,
+				Content:      body,
+				Source:       source,
+				FilePath:     path,
+				Paths:        paths,
+				Hooks:        hooks,
+				Capabilities: caps,
+				Agents:       agents,
+				RequireTeam:  requireTeam,
 			})
 		}
 	}
 }
 
-// parseSkillFile extracts frontmatter (name, description, paths, hooks) and body from a skill file.
-func parseSkillFile(content string) (name, description string, paths []string, hooks []SkillHook, body string) {
+// parseSkillFile extracts frontmatter (name, description, paths, hooks, capabilities, agents, require_team) and body from a skill file.
+func parseSkillFile(content string) (name, description string, paths []string, hooks []SkillHook, capabilities []string, agents []string, requireTeam bool, body string) {
 	lines := strings.Split(content, "\n")
 
 	// internal frontmatter struct for yaml unmarshalling
 	type frontmatterData struct {
-		Name        string      `yaml:"name"`
-		Description string      `yaml:"description"`
-		Paths       []string    `yaml:"paths"`
-		Hooks       []SkillHook `yaml:"hooks"`
+		Name         string      `yaml:"name"`
+		Description  string      `yaml:"description"`
+		Paths        []string    `yaml:"paths"`
+		Hooks        []SkillHook `yaml:"hooks"`
+		Capabilities []string    `yaml:"capabilities"`
+		Agents       []string    `yaml:"agents"`
+		RequireTeam  bool        `yaml:"require_team"`
 	}
 
 	// Check for YAML frontmatter
@@ -230,6 +303,12 @@ func parseSkillFile(content string) (name, description string, paths []string, h
 				description = fm.Description
 				paths = fm.Paths
 				hooks = fm.Hooks
+				agents = fm.Agents
+				// Migrate legacy "team" capability from frontmatter
+				capabilities, requireTeam = MigrateLegacyCaps(fm.Name, fm.Capabilities)
+				if fm.RequireTeam {
+					requireTeam = true
+				}
 			}
 			body = strings.Join(lines[endIdx+1:], "\n")
 			return
@@ -1323,7 +1402,7 @@ $ARGUMENTS
 A harness is a reusable multi-agent architecture that decomposes complex, recurring tasks into coordinated specialist agents. It produces:
 - ` + "`.claudio/agents/<name>.md`" + ` — one file per specialist role
 - ` + "`.claudio/skills/<harness-name>/skill.md`" + ` — an orchestrator skill that assembles and runs the team
-- ` + "`.claudio/team-templates/<harness-name>.json`" + ` — team roster for InstantiateTeam
+- ` + "`.claudio/team-templates/<harness-name>.lua`" + ` — team roster for InstantiateTeam
 - ` + "`.claudio/harness.json`" + ` — manifest for ` + "`claudio harness install`" + `
 - An entry in CLAUDIO.md documenting when and how to invoke it
 
@@ -1569,19 +1648,16 @@ Include the key nouns and verbs a user would naturally say when requesting this 
 
 ## Phase 5b: Generate team template
 
-Create ` + "`.claudio/team-templates/<harness-name>.json`" + ` with the roster from Phase 4:
+Create ` + "`.claudio/team-templates/<harness-name>.lua`" + ` with the roster from Phase 4:
 
-` + "```json" + `
-{
-  "name": "<harness-name>-team",
-  "description": "<one-line summary of what this team does>",
-  "members": [
-    {
-      "name": "<agent-display-name>",
-      "subagent_type": "<agent-type>",
-      "model": "<model-id>"
-    }
-  ]
+` + "```lua" + `
+return {
+  name = "<harness-name>-team",
+  description = "<one-line summary of what this team does>",
+  members = {
+    { name = "<agent-display-name>", subagent_type = "<agent-type>", model = "<model-id>" },
+    { name = "<agent-display-name>", subagent_type = "<agent-type>", model = "<model-id>" },
+  }
 }
 ` + "```" + `
 
@@ -1591,6 +1667,58 @@ Model selection guidance:
 - **opus** — architecture decisions, complex reasoning, senior-level judgment
 
 This template enables ` + "`InstantiateTeam`" + ` to spin up the full team without the orchestrator manually creating each member. The orchestrator skill can reference this template instead of hardcoding the roster.
+
+---
+
+## Phase 5d: Per-agent skills and plugins (optional)
+
+Each agent can have its own private skills and plugins that are merged on top of the global registries when that agent spawns. Use this when a specialist agent needs workflows or tools that no other agent should see.
+
+### Directory structure
+
+**Directory-form agent** (preferred for agents with extras):
+` + "```" + `
+.claudio/agents/<name>/
+  AGENT.md          ← agent definition
+  skills/           ← agent-private skills (auto-detected)
+    my-workflow/
+      skill.md
+  plugins/          ← agent-private plugins (auto-detected)
+    my-tool           ← executable plugin
+` + "```" + `
+
+**Flat-file agent with sibling dirs**:
+` + "```" + `
+.claudio/agents/
+  <name>.md         ← agent definition
+  <name>/           ← sibling dir (same name, no extension)
+    skills/
+      my-workflow/skill.md
+    plugins/
+      my-tool
+` + "```" + `
+
+No frontmatter fields needed — Claudio auto-detects ` + "`skills/`" + ` and ` + "`plugins/`" + ` subdirectories alongside the agent definition and merges them at spawn time.
+
+### When to use per-agent skills/plugins
+
+- **Per-agent skill**: a domain-specific workflow only this agent runs (e.g., a security auditor's vulnerability report template, a data engineer's pipeline validation checklist)
+- **Per-agent plugin**: an external tool or binary only this agent needs (e.g., a scanner binary for a security agent, a custom linter for a code-quality agent)
+- **Do not use** for workflows that are shared across multiple agents — put those in ` + "`.claudio/skills/`" + ` instead
+
+### Example: security agent with private workflow
+
+` + "```" + `
+.claudio/agents/security-auditor/
+  AGENT.md
+  skills/
+    owasp-checklist/
+      skill.md      ← OWASP Top 10 review steps, only security-auditor uses this
+  plugins/
+    semgrep          ← static analysis tool binary
+` + "```" + `
+
+When ` + "`security-auditor`" + ` spawns, it sees all global skills PLUS ` + "`owasp-checklist`" + ` and all global plugins PLUS ` + "`semgrep`" + `. Other agents spawned in the same session do NOT see these extras.
 
 ---
 
@@ -1773,7 +1901,7 @@ Before finishing, run these checks:
 - Verify ` + "`.claudio/agents/`" + ` and ` + "`.claudio/skills/`" + ` directories exist
 
 ### 2. Team template and manifest integrity
-- Verify ` + "`.claudio/team-templates/<harness-name>.json`" + ` exists and contains valid JSON
+- Verify ` + "`.claudio/team-templates/<harness-name>.lua`" + ` exists and returns a valid table
 - Verify ` + "`.claudio/harness.json`" + ` exists and references correct directories
 - Confirm no ` + "`~/.claudio/`" + ` paths appear anywhere in generated files — all output must be project-scoped
 
@@ -1821,7 +1949,7 @@ Summarize everything created:
 - Files created (with full paths)
 - Agent roster with one-line role summaries
 - Architecture pattern and execution mode
-- Team template path: ` + "`.claudio/team-templates/<harness-name>.json`" + `
+- Team template path: ` + "`.claudio/team-templates/<harness-name>.lua`" + `
 - Harness manifest path: ` + "`.claudio/harness.json`" + `
 - How to invoke: ` + "`/<harness-name> <example input>`" + `
 - How to install in another project: ` + "`claudio harness install <path-to-this-project/.claudio>`" + `

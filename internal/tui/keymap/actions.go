@@ -59,6 +59,11 @@ const (
 	// Branch / conversation branching
 	ActionBranchSession    ActionID = "branch.session"
 	ActionBranchParentJump ActionID = "branch.parent-jump"
+
+	// Pane management (split-pane multi-session)
+	ActionPaneNext  ActionID = "pane.next"
+	ActionPanePrev  ActionID = "pane.prev"
+	ActionPaneClose ActionID = "pane.close"
 )
 
 // ActionMeta holds metadata for a registered action.
@@ -119,6 +124,11 @@ var Registry = map[ActionID]ActionMeta{
 	// Branching
 	ActionBranchSession:    {ActionBranchSession, "Branch from cursor message", "buffer"},
 	ActionBranchParentJump: {ActionBranchParentJump, "Jump to parent (branch) session", "buffer"},
+
+	// Pane management
+	ActionPaneNext:  {ActionPaneNext, "Next split pane", "pane"},
+	ActionPanePrev:  {ActionPanePrev, "Previous split pane", "pane"},
+	ActionPaneClose: {ActionPaneClose, "Close split pane", "pane"},
 }
 
 // ValidAction returns true if the given action ID exists in the registry.

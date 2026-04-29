@@ -57,13 +57,12 @@ func sliceEq[T comparable](a, b []T) bool {
 }
 
 func newTestModel(msgs []ChatMessage) *Model {
+	pane := newPaneState("")
+	pane.messages = make([]ChatMessage, len(msgs))
+	copy(pane.messages, msgs)
 	m := &Model{
-		messages:         make([]ChatMessage, len(msgs)),
-		pinnedMsgIndices: make(map[int]bool),
-		expandedGroups:   make(map[int]bool),
-		lastToolGroup:    -1,
+		panes: []PaneState{pane},
 	}
-	copy(m.messages, msgs)
 	return m
 }
 
@@ -225,11 +224,11 @@ func TestDeleteInteraction_SimpleConversation(t *testing.T) {
 	})
 	// Delete first interaction (cursor on user at index 0)
 	m.deleteInteraction(0)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q2" || m.messages[1].Content != "a2" {
-		t.Fatalf("expected [q2, a2], got %v", msgContents(m.messages))
+	if m.activePane().messages[0].Content != "q2" || m.activePane().messages[1].Content != "a2" {
+		t.Fatalf("expected [q2, a2], got %v", msgContents(m.activePane().messages))
 	}
 }
 
@@ -242,11 +241,11 @@ func TestDeleteInteraction_CursorOnAssistant(t *testing.T) {
 	})
 	// Cursor on assistant message at index 1 — should still delete the whole interaction
 	m.deleteInteraction(1)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q2" {
-		t.Fatalf("expected q2 first, got %s", m.messages[0].Content)
+	if m.activePane().messages[0].Content != "q2" {
+		t.Fatalf("expected q2 first, got %s", m.activePane().messages[0].Content)
 	}
 }
 
@@ -261,7 +260,7 @@ func TestDeleteInteraction_MiddleInteraction(t *testing.T) {
 	})
 	// Delete middle interaction
 	m.deleteInteraction(2) // cursor on User q2
-	contents := msgContents(m.messages)
+	contents := msgContents(m.activePane().messages)
 	expected := []string{"q1", "a1", "q3", "a3"}
 	if !sliceEq(contents, expected) {
 		t.Fatalf("expected %v, got %v", expected, contents)
@@ -277,11 +276,11 @@ func TestDeleteInteraction_LastInteraction(t *testing.T) {
 	})
 	// Delete last interaction
 	m.deleteInteraction(3) // cursor on Asst a2
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q1" {
-		t.Fatalf("expected q1 first, got %s", m.messages[0].Content)
+	if m.activePane().messages[0].Content != "q1" {
+		t.Fatalf("expected q1 first, got %s", m.activePane().messages[0].Content)
 	}
 }
 
@@ -291,8 +290,8 @@ func TestDeleteInteraction_OnlyInteraction(t *testing.T) {
 		mkAssist("a1"),
 	})
 	m.deleteInteraction(0)
-	if len(m.messages) != 0 {
-		t.Fatalf("expected 0 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(m.activePane().messages))
 	}
 }
 
@@ -308,11 +307,11 @@ func TestDeleteInteraction_WithToolCalls(t *testing.T) {
 	})
 	// Delete first interaction (includes tool calls)
 	m.deleteInteraction(0)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q2" {
-		t.Fatalf("expected q2 first, got %s", m.messages[0].Content)
+	if m.activePane().messages[0].Content != "q2" {
+		t.Fatalf("expected q2 first, got %s", m.activePane().messages[0].Content)
 	}
 }
 
@@ -328,11 +327,11 @@ func TestDeleteInteraction_CursorOnToolUse(t *testing.T) {
 	})
 	// Cursor on tool_use at index 2 — should delete the whole first interaction
 	m.deleteInteraction(2)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q2" {
-		t.Fatalf("expected q2 first, got %s", m.messages[0].Content)
+	if m.activePane().messages[0].Content != "q2" {
+		t.Fatalf("expected q2 first, got %s", m.activePane().messages[0].Content)
 	}
 }
 
@@ -348,8 +347,8 @@ func TestDeleteInteraction_CursorOnToolResult(t *testing.T) {
 	})
 	// Cursor on tool_result at index 3
 	m.deleteInteraction(3)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
 }
 
@@ -361,8 +360,8 @@ func TestDeleteInteraction_OutOfBounds(t *testing.T) {
 	// Should not panic
 	m.deleteInteraction(-1)
 	m.deleteInteraction(5)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected messages unchanged, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected messages unchanged, got %d", len(m.activePane().messages))
 	}
 }
 
@@ -375,23 +374,23 @@ func TestDeleteInteraction_PinnedIndicesShift(t *testing.T) {
 		mkUser("q3"),
 		mkAssist("a3"),
 	})
-	m.pinnedMsgIndices[1] = true // a1 (before deleted range)
-	m.pinnedMsgIndices[3] = true // a2 (in deleted range — will be removed)
-	m.pinnedMsgIndices[5] = true // a3 (after deleted range — shifts to 3)
+	m.activePane().pinnedMsgIndices[1] = true // a1 (before deleted range)
+	m.activePane().pinnedMsgIndices[3] = true // a2 (in deleted range — will be removed)
+	m.activePane().pinnedMsgIndices[5] = true // a3 (after deleted range — shifts to 3)
 
 	// Delete middle interaction (indices 2,3)
 	m.deleteInteraction(2)
 
-	if m.pinnedMsgIndices[1] != true {
+	if m.activePane().pinnedMsgIndices[1] != true {
 		t.Fatal("pin at index 1 should survive")
 	}
 	// Old index 5 shifts to 3; old index 3 was in the deleted range so it's gone,
 	// but the shifted pin from old index 5 now occupies index 3.
-	if m.pinnedMsgIndices[3] != true {
+	if m.activePane().pinnedMsgIndices[3] != true {
 		t.Fatal("pin at old index 5 should shift to index 3")
 	}
 	// Index 5 should no longer exist
-	if m.pinnedMsgIndices[5] {
+	if m.activePane().pinnedMsgIndices[5] {
 		t.Fatal("pin at old index 5 should not remain at index 5")
 	}
 }
@@ -405,17 +404,17 @@ func TestDeleteInteraction_ExpandedGroupsShift(t *testing.T) {
 		mkUser("q3"),
 		mkAssist("a3"),
 	})
-	m.expandedGroups[0] = true // in deleted range
-	m.expandedGroups[4] = true // after deleted range
+	m.activePane().expandedGroups[0] = true // in deleted range
+	m.activePane().expandedGroups[4] = true // after deleted range
 
 	// Delete first interaction (indices 0,1)
 	m.deleteInteraction(0)
 
-	if m.expandedGroups[0] {
+	if m.activePane().expandedGroups[0] {
 		t.Fatal("expanded group at old index 0 should be removed")
 	}
 	// Old index 4 should shift to 2
-	if m.expandedGroups[2] != true {
+	if m.activePane().expandedGroups[2] != true {
 		t.Fatal("expanded group at old index 4 should shift to index 2")
 	}
 }
@@ -429,13 +428,13 @@ func TestDeleteInteraction_LastToolGroupShift(t *testing.T) {
 		mkToolUse("Bash", "tu_001"),
 		mkToolResult("tu_001", "out"),
 	})
-	m.lastToolGroup = 4 // tool group in second interaction
+	m.activePane().lastToolGroup = 4 // tool group in second interaction
 
 	// Delete first interaction (indices 0,1)
 	m.deleteInteraction(0)
 	// lastToolGroup should shift from 4 to 2
-	if m.lastToolGroup != 2 {
-		t.Fatalf("expected lastToolGroup=2, got %d", m.lastToolGroup)
+	if m.activePane().lastToolGroup != 2 {
+		t.Fatalf("expected lastToolGroup=2, got %d", m.activePane().lastToolGroup)
 	}
 }
 
@@ -448,12 +447,12 @@ func TestDeleteInteraction_LastToolGroupInDeletedRange(t *testing.T) {
 		mkUser("q2"),
 		mkAssist("a2"),
 	})
-	m.lastToolGroup = 2 // tool group in first interaction
+	m.activePane().lastToolGroup = 2 // tool group in first interaction
 
 	// Delete first interaction (indices 0-3)
 	m.deleteInteraction(0)
-	if m.lastToolGroup != -1 {
-		t.Fatalf("expected lastToolGroup=-1, got %d", m.lastToolGroup)
+	if m.activePane().lastToolGroup != -1 {
+		t.Fatalf("expected lastToolGroup=-1, got %d", m.activePane().lastToolGroup)
 	}
 }
 
@@ -461,8 +460,8 @@ func TestDeleteInteraction_EmptyMessages(t *testing.T) {
 	m := newTestModel(nil)
 	// Should not panic
 	m.deleteInteraction(0)
-	if len(m.messages) != 0 {
-		t.Fatalf("expected 0 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(m.activePane().messages))
 	}
 }
 
@@ -475,11 +474,11 @@ func TestDeleteInteraction_OrphanAssistantAtStart(t *testing.T) {
 	})
 	// Cursor on orphan assistant at index 0 — should delete just the orphan
 	m.deleteInteraction(0)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q1" {
-		t.Fatalf("expected q1 first, got %s", m.messages[0].Content)
+	if m.activePane().messages[0].Content != "q1" {
+		t.Fatalf("expected q1 first, got %s", m.activePane().messages[0].Content)
 	}
 }
 
@@ -496,10 +495,10 @@ func TestDeleteInteraction_SystemMessagesInterspersed(t *testing.T) {
 	// asst(a1) and error(oops) to index 4 (next user). Deletes indices [1,2,3].
 	m.deleteInteraction(1)
 	// Remaining: [system, q2, a2]
-	if len(m.messages) != 3 {
-		t.Fatalf("expected 3 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(m.activePane().messages))
 	}
-	types := msgTypes(m.messages)
+	types := msgTypes(m.activePane().messages)
 	expectedTypes := []MessageType{MsgSystem, MsgUser, MsgAssistant}
 	if !sliceEq(types, expectedTypes) {
 		t.Fatalf("expected types %v, got %v", expectedTypes, types)
@@ -550,11 +549,11 @@ func TestDeleteInteraction_CursorOnSystemBeforeUser(t *testing.T) {
 	m.deleteInteraction(0)
 	// The system msg is at start=0, end walks forward — system is not user, so end goes
 	// to index 1 (which IS user), so only the system msg gets deleted.
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q1" {
-		t.Fatalf("expected q1 first, got %s", m.messages[0].Content)
+	if m.activePane().messages[0].Content != "q1" {
+		t.Fatalf("expected q1 first, got %s", m.activePane().messages[0].Content)
 	}
 }
 
@@ -573,10 +572,10 @@ func TestDeleteInteraction_MultipleToolRounds(t *testing.T) {
 		mkAssist("a2"),
 	})
 	m.deleteInteraction(0)
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	if len(m.activePane().messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.activePane().messages))
 	}
-	if m.messages[0].Content != "q2" {
-		t.Fatalf("expected q2, got %s", m.messages[0].Content)
+	if m.activePane().messages[0].Content != "q2" {
+		t.Fatalf("expected q2, got %s", m.activePane().messages[0].Content)
 	}
 }

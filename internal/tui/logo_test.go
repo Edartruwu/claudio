@@ -64,9 +64,9 @@ func TestAnimatedLogo_ColorCycles(t *testing.T) {
 // reads: messages (empty → isWelcomeScreen true) and streaming (false).
 func minimalModel() Model {
 	return Model{
-		// eventCh must be a non-nil, open channel so waitForEvent() doesn't block.
-		// We make it buffered so it never blocks on send/receive during tests.
-		eventCh: make(chan tuiEvent, 1),
+		// panes must contain at least one pane so activePane() works.
+		// eventCh inside the pane must be non-nil so waitForEvent() doesn't block.
+		panes: []PaneState{newPaneState("")},
 	}
 }
 
@@ -99,7 +99,7 @@ func TestLogoTickMsg_ReturnsNextTick(t *testing.T) {
 func TestLogoTickMsg_StopsWhenNotWelcomeScreen(t *testing.T) {
 	m := minimalModel()
 	// Simulate a conversation in progress — isWelcomeScreen() returns false.
-	m.messages = []ChatMessage{{Type: MsgUser, Content: "hello"}}
+	m.activePane().messages = []ChatMessage{{Type: MsgUser, Content: "hello"}}
 
 	_, cmd := m.Update(logoTickMsg{})
 	if cmd != nil {
@@ -116,7 +116,7 @@ func TestLogoTickMsg_StopsWhenNotWelcomeScreen(t *testing.T) {
 func TestLogoTickMsg_DoesNotIncrementWhenNotWelcomeScreen(t *testing.T) {
 	m := minimalModel()
 	m.logoFrame = 5
-	m.messages = []ChatMessage{{Type: MsgUser, Content: "hello"}}
+	m.activePane().messages = []ChatMessage{{Type: MsgUser, Content: "hello"}}
 
 	next, _ := m.Update(logoTickMsg{})
 	got := next.(Model).logoFrame
