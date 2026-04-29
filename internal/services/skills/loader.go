@@ -1323,7 +1323,7 @@ $ARGUMENTS
 A harness is a reusable multi-agent architecture that decomposes complex, recurring tasks into coordinated specialist agents. It produces:
 - ` + "`.claudio/agents/<name>.md`" + ` — one file per specialist role
 - ` + "`.claudio/skills/<harness-name>/skill.md`" + ` — an orchestrator skill that assembles and runs the team
-- ` + "`.claudio/team-templates/<harness-name>.json`" + ` — team roster for InstantiateTeam
+- ` + "`.claudio/team-templates/<harness-name>.lua`" + ` — team roster for InstantiateTeam
 - ` + "`.claudio/harness.json`" + ` — manifest for ` + "`claudio harness install`" + `
 - An entry in CLAUDIO.md documenting when and how to invoke it
 
@@ -1569,19 +1569,16 @@ Include the key nouns and verbs a user would naturally say when requesting this 
 
 ## Phase 5b: Generate team template
 
-Create ` + "`.claudio/team-templates/<harness-name>.json`" + ` with the roster from Phase 4:
+Create ` + "`.claudio/team-templates/<harness-name>.lua`" + ` with the roster from Phase 4:
 
-` + "```json" + `
-{
-  "name": "<harness-name>-team",
-  "description": "<one-line summary of what this team does>",
-  "members": [
-    {
-      "name": "<agent-display-name>",
-      "subagent_type": "<agent-type>",
-      "model": "<model-id>"
-    }
-  ]
+` + "```lua" + `
+return {
+  name = "<harness-name>-team",
+  description = "<one-line summary of what this team does>",
+  members = {
+    { name = "<agent-display-name>", subagent_type = "<agent-type>", model = "<model-id>" },
+    { name = "<agent-display-name>", subagent_type = "<agent-type>", model = "<model-id>" },
+  }
 }
 ` + "```" + `
 
@@ -1591,6 +1588,58 @@ Model selection guidance:
 - **opus** — architecture decisions, complex reasoning, senior-level judgment
 
 This template enables ` + "`InstantiateTeam`" + ` to spin up the full team without the orchestrator manually creating each member. The orchestrator skill can reference this template instead of hardcoding the roster.
+
+---
+
+## Phase 5d: Per-agent skills and plugins (optional)
+
+Each agent can have its own private skills and plugins that are merged on top of the global registries when that agent spawns. Use this when a specialist agent needs workflows or tools that no other agent should see.
+
+### Directory structure
+
+**Directory-form agent** (preferred for agents with extras):
+` + "```" + `
+.claudio/agents/<name>/
+  AGENT.md          ← agent definition
+  skills/           ← agent-private skills (auto-detected)
+    my-workflow/
+      skill.md
+  plugins/          ← agent-private plugins (auto-detected)
+    my-tool           ← executable plugin
+` + "```" + `
+
+**Flat-file agent with sibling dirs**:
+` + "```" + `
+.claudio/agents/
+  <name>.md         ← agent definition
+  <name>/           ← sibling dir (same name, no extension)
+    skills/
+      my-workflow/skill.md
+    plugins/
+      my-tool
+` + "```" + `
+
+No frontmatter fields needed — Claudio auto-detects ` + "`skills/`" + ` and ` + "`plugins/`" + ` subdirectories alongside the agent definition and merges them at spawn time.
+
+### When to use per-agent skills/plugins
+
+- **Per-agent skill**: a domain-specific workflow only this agent runs (e.g., a security auditor's vulnerability report template, a data engineer's pipeline validation checklist)
+- **Per-agent plugin**: an external tool or binary only this agent needs (e.g., a scanner binary for a security agent, a custom linter for a code-quality agent)
+- **Do not use** for workflows that are shared across multiple agents — put those in ` + "`.claudio/skills/`" + ` instead
+
+### Example: security agent with private workflow
+
+` + "```" + `
+.claudio/agents/security-auditor/
+  AGENT.md
+  skills/
+    owasp-checklist/
+      skill.md      ← OWASP Top 10 review steps, only security-auditor uses this
+  plugins/
+    semgrep          ← static analysis tool binary
+` + "```" + `
+
+When ` + "`security-auditor`" + ` spawns, it sees all global skills PLUS ` + "`owasp-checklist`" + ` and all global plugins PLUS ` + "`semgrep`" + `. Other agents spawned in the same session do NOT see these extras.
 
 ---
 
@@ -1773,7 +1822,7 @@ Before finishing, run these checks:
 - Verify ` + "`.claudio/agents/`" + ` and ` + "`.claudio/skills/`" + ` directories exist
 
 ### 2. Team template and manifest integrity
-- Verify ` + "`.claudio/team-templates/<harness-name>.json`" + ` exists and contains valid JSON
+- Verify ` + "`.claudio/team-templates/<harness-name>.lua`" + ` exists and returns a valid table
 - Verify ` + "`.claudio/harness.json`" + ` exists and references correct directories
 - Confirm no ` + "`~/.claudio/`" + ` paths appear anywhere in generated files — all output must be project-scoped
 
@@ -1821,7 +1870,7 @@ Summarize everything created:
 - Files created (with full paths)
 - Agent roster with one-line role summaries
 - Architecture pattern and execution mode
-- Team template path: ` + "`.claudio/team-templates/<harness-name>.json`" + `
+- Team template path: ` + "`.claudio/team-templates/<harness-name>.lua`" + `
 - Harness manifest path: ` + "`.claudio/harness.json`" + `
 - How to invoke: ` + "`/<harness-name> <example input>`" + `
 - How to install in another project: ` + "`claudio harness install <path-to-this-project/.claudio>`" + `
