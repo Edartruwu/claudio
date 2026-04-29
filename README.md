@@ -463,20 +463,438 @@ claudio plugin info claudio-jira
 
 A plugin's `init.lua` receives the same `claudio.*` API — it can register tools, skills, commands, providers, keymaps, capabilities, and hooks exactly like your personal `init.lua`.
 
-### Full API surface
+### Lua API Reference
 
-| Namespace | Methods |
-|-----------|---------|
-| `claudio.*` | `register_tool`, `register_skill`, `register_hook`, `register_command`, `register_provider`, `register_capability`, `register_keymap`, `subscribe`, `publish`, `notify`, `log`, `cmd`, `colorscheme` |
-| `claudio.config.*` | `get(key)`, `set(key, val)`, `on_change(key, fn)` |
-| `claudio.keymap.*` | `set(mode, key, action, fn)`, `del(mode, key)`, `list(mode)` |
-| `claudio.ui.*` | `set_color(slot, hex)`, `set_theme(table)`, `set_border(name)`, `get_colors()`, `set_statusline(fn)`, `popup(opts)`, `register_palette_entry(entry)`, `register_sidebar_block(opts)` |
-| `claudio.agent.*` | `current()`, `on_change(fn)`, `add_context(text)`, `set_prompt_suffix(name, text)` |
-| `claudio.session.*` | `id()`, `title()`, `on_start(fn)`, `on_end(fn)`, `on_message(fn)` |
+#### Top-level `claudio.*`
 
-**Color slots for `set_color`:** `primary`, `secondary`, `success`, `warning`, `error`, `muted`, `surface`, `surface_alt`, `text`, `dim`, `subtle`, `orange`, `aqua`
+```lua
+-- Notifications
+claudio.notify("message")                    -- info level
+claudio.notify("oops", "error")              -- "info" | "warn" | "error"
+claudio.log("debug message")                 -- logs to debug output only
 
-**Built-in colorschemes:** `tokyonight`, `gruvbox`, `catppuccin`, `nord`, `dracula`
+-- Execute any colon command
+claudio.cmd("colorscheme tokyonight")
+claudio.cmd("set model=claude-sonnet-4-6")
+
+-- Register a custom AI tool (exposed to the agent)
+claudio.register_tool({
+  name        = "my_tool",
+  description = "Does something useful",
+  schema      = { type = "object", properties = { path = { type = "string" } }, required = {"path"} },
+  execute     = function(input)
+    return "result: " .. input.path
+  end,
+})
+
+-- Register a skill (slash-command for the agent)
+claudio.register_skill({
+  name         = "deploy",
+  description  = "Deploy the current project",
+  content      = "Run: make deploy && notify me when done",
+  capabilities = { "bash" },
+})
+
+-- Register a hook (pre/post tool execution)
+claudio.register_hook("before_tool", "bash", function(ctx)
+  claudio.notify("About to run: " .. ctx.command)
+end)
+
+-- Register a colon :command
+claudio.register_command({
+  name        = "reload",
+  description = "Reload Lua config",
+  aliases     = { "rl" },
+  execute     = function(args)
+    claudio.notify("Reloading...")
+    return nil
+  end,
+})
+
+-- Register a custom AI provider
+claudio.register_provider({
+  name           = "my-llm",
+  type           = "openai_compat",
+  base_url       = "https://my-llm.example.com/v1",
+  api_key        = os.getenv("MY_LLM_KEY"),
+  models         = { "my-model-7b" },
+  context_window = 32000,
+})
+
+-- Register a named capability (set of tools for agents)
+claudio.register_capability("web_tools", { "fetch", "search" })
+
+-- Event bus
+claudio.subscribe("session.start", function(evt)
+  claudio.notify("New session: " .. (evt.session_id or ""))
+end)
+claudio.publish("my.event", { key = "value" })
+
+-- Per-plugin config (namespaced, survives restarts)
+claudio.set_config("auto_format", true)
+local enabled = claudio.get_config("auto_format")
+```
+
+#### `claudio.config.*` — global settings
+
+```lua
+-- Read / write Claudio settings at runtime
+claudio.config.set("model", "claude-opus-4-6")
+claudio.config.set("caveman", true)            -- ultra-terse responses
+claudio.config.set("permissionMode", "auto")   -- "default" | "auto" | "plan"
+claudio.config.set("compactMode", true)
+claudio.config.set("compactKeepN", 5)
+claudio.config.set("outputStyle", "minimal")
+claudio.config.set("autoMemoryExtract", true)
+
+local model = claudio.config.get("model")
+```
+
+Available keys: `model`, `smallModel`, `permissionMode`, `compactMode`, `compactKeepN`, `sessionPersist`, `hookProfile`, `autoCompact`, `caveman`, `outputStyle`, `outputFilter`, `autoMemoryExtract`, `memorySelection`
+
+#### `claudio.keymap.*` — keybindings
+
+```lua
+-- Map a <Space>-prefixed leader sequence to a built-in action
+claudio.keymap.map("<space>ww", "window.cycle")
+claudio.keymap.map("<space>gs", "session.search")
+
+-- Map to a custom Lua function
+claudio.keymap.map("<space>nn", function(evt)
+  claudio.notify("hello from keymap!")
+end, { desc = "Say hello" })
+
+-- Remove a leader binding
+claudio.keymap.unmap("<space>ww")
+
+-- Delete a raw vim-mode binding
+claudio.keymap.del("normal", "gd")
+
+-- List all bindings for a mode
+local maps = claudio.keymap.list("normal")
+for _, m in ipairs(maps) do
+  print(m.key, m.action)
+end
+
+-- Register insert/normal/visual mode bindings (legacy)
+claudio.register_keymap({
+  mode    = "insert",
+  key     = "<C-f>",
+  action  = "format.selection",
+  handler = function() claudio.cmd("format") end,
+})
+```
+
+Built-in action IDs available via `claudio.actions.list()`.
+
+#### `claudio.ui.*` — appearance & widgets
+
+```lua
+-- Full theme override (any subset works)
+claudio.ui.set_theme({
+  primary     = "#7aa2f7",
+  secondary   = "#bb9af7",
+  success     = "#9ece6a",
+  warning     = "#e0af68",
+  error       = "#f7768e",
+  muted       = "#565f89",
+  surface     = "#1a1b26",
+  surface_alt = "#24283b",
+  text        = "#c0caf5",
+  dim         = "#9aa5ce",
+  subtle      = "#414868",
+  orange      = "#ff9e64",
+  aqua        = "#73daca",
+})
+
+-- Change border style: "rounded" | "sharp" | "block" | "none"
+claudio.ui.set_border("sharp")
+
+-- Custom statusline (returned string is displayed)
+claudio.ui.set_statusline(function(ctx)
+  return string.format(" %s │ %s ", ctx.model or "?", ctx.session_title or "no session")
+end)
+
+-- Floating popup
+claudio.ui.popup({
+  title   = "My Plugin",
+  content = "Hello from Lua!",
+  width   = 60,
+  height  = 10,
+})
+
+-- Add an entry to the command palette (<Space><Space>)
+claudio.ui.register_palette_entry({
+  name        = "Open scratchpad",
+  description = "Opens the scratch buffer",
+  handler     = function()
+    claudio.cmd("win scratch")
+  end,
+})
+
+-- Interactive picker (vim.ui.select equivalent)
+claudio.ui.pick(
+  { { value = "foo", display = "Option A" }, { value = "bar", display = "Option B" } },
+  {
+    title     = "Choose",
+    on_select = function(item) claudio.notify("picked: " .. item.value) end,
+    on_cancel = function() claudio.notify("cancelled") end,
+  }
+)
+```
+
+Built-in colorschemes: `tokyonight`, `gruvbox`, `catppuccin`, `nord`, `dracula`
+
+#### `claudio.buf.*` + `claudio.win.*` — custom panels
+
+```lua
+-- Create a live-updating buffer
+local buf = claudio.buf.new({
+  name   = "my-panel",
+  render = function(width, height)
+    return "Live content at " .. os.time()
+  end,
+})
+
+-- Register as a named window (opens with :win my-panel)
+claudio.ui.register_window({
+  name   = "my-panel",
+  buffer = buf,
+  layout = "right",   -- "left" | "right" | "float"
+  title  = "My Panel",
+})
+
+-- OR create a full sidebar panel with sections
+local panel = claudio.win.new_panel({ position = "right", width = 40 })
+panel:add_section({
+  id       = "status",
+  title    = "Status",
+  priority = 10,
+  render   = function(w, h)
+    return "Running: " .. (claudio.agent.current() or "none")
+  end,
+})
+```
+
+#### `claudio.agent.*` — agent context
+
+```lua
+-- Query current agent
+local name = claudio.agent.current()     -- nil when no agent active
+
+-- React to agent changes
+claudio.agent.on_change(function(new_agent, old_agent)
+  claudio.notify("switched to: " .. (new_agent or "none"))
+end)
+
+-- Inject extra context into every prompt
+claudio.agent.add_context("Always reply in Portuguese.")
+
+-- Dynamic prompt suffix per agent
+claudio.agent.set_prompt_suffix(function(agent_name)
+  if agent_name == "researcher" then
+    return "\nCite all sources."
+  end
+  return ""
+end)
+
+-- List all running agents
+local agents = claudio.agent.list()
+-- each: { id, name, status, team, has_window }
+
+-- Programmatically spawn a sub-agent
+claudio.agent.spawn({
+  prompt    = "Summarise the latest commit",
+  model     = "claude-haiku-4-5-20251001",
+  max_turns = 5,
+  tools     = { "bash", "read" },
+}, function(result, err)
+  if err then claudio.notify(err, "error") return end
+  claudio.ui.popup({ title = "Summary", content = result, width = 80, height = 20 })
+end)
+```
+
+#### `claudio.session.*` — current session
+
+```lua
+local id    = claudio.session.id()
+local title = claudio.session.title()
+
+claudio.session.on_start(function(session_id, session_title)
+  claudio.notify("started: " .. session_title)
+end)
+
+claudio.session.on_end(function(session_id)
+  claudio.log("session ended: " .. session_id)
+end)
+
+claudio.session.on_message(function(role, content)
+  if role == "assistant" then
+    -- react to every assistant reply
+  end
+end)
+
+-- Read recent messages
+local msgs = claudio.session.messages(10)
+for _, m in ipairs(msgs) do
+  print(m.role, m.content)
+end
+```
+
+#### `claudio.sessions.*` — session directory
+
+```lua
+local all    = claudio.sessions.list()        -- up to 50 most-recent
+local recent = claudio.sessions.list(10)
+local found  = claudio.sessions.search("authentication", 20)
+-- each item: { id, title, project_dir, model, created_at, updated_at }
+```
+
+#### `claudio.branch.*` — conversation branching
+
+```lua
+-- Inspect branch tree
+local cur      = claudio.branch.current()   -- { id, title, parent_id, depth, ... }
+local parent   = claudio.branch.parent()
+local children = claudio.branch.children()
+local root     = claudio.branch.root()
+
+-- Create a new branch from the current message
+local branch, err = claudio.branch.create()
+if err then claudio.notify(err, "error") end
+
+-- Switch to a branch
+local ok, err = claudio.branch.switch(branch.id)
+
+-- Read another branch's messages
+local msgs = claudio.branch.messages(branch.id)
+
+-- Hook: fires whenever a branch is created
+claudio.branch.on_branch(function(branch_id, parent_id, message_id)
+  claudio.notify("new branch from message " .. message_id)
+end)
+```
+
+#### `claudio.teams.*` — agent teams
+
+```lua
+local team_names = claudio.teams.list()
+-- e.g. { "backend-team", "frontend-team" }
+
+local members = claudio.teams.members("backend-team")
+-- each: { id, name, role, status }
+for _, m in ipairs(members) do
+  print(m.name, m.status)   -- status: "idle" | "running" | "done" | "error"
+end
+```
+
+#### `claudio.ai.*` — direct AI calls
+
+```lua
+-- One-shot LLM call (runs in background, callback on completion)
+claudio.ai.run({
+  system = "You are a terse code reviewer.",
+  user   = "Review: " .. vim.fn.getreg('"'),
+  model  = "claude-haiku-4-5-20251001",
+}, function(result, err)
+  if err then claudio.notify(err, "error") return end
+  claudio.ui.popup({ title = "Review", content = result, width = 80, height = 30 })
+end)
+```
+
+#### `claudio.filter.*` — output filters
+
+```lua
+-- Register a named output filter applied to bash commands
+claudio.filter.register("clean-go-test", {
+  match_command          = "^go test",
+  strip_ansi             = true,
+  strip_lines_matching   = "^=== RUN",
+  keep_lines_matching    = "FAIL|PASS|panic",
+  head_lines             = 0,
+  tail_lines             = 50,
+  max_lines              = 200,
+  transform              = function(output) return output:gsub("%s+$", "") end,
+})
+
+claudio.filter.unregister("clean-go-test")
+
+local filters = claudio.filter.list()
+```
+
+#### `claudio.picker.*` + `claudio.finder.*` — fuzzy pickers
+
+```lua
+-- Open a built-in picker
+claudio.picker.buffers()    -- recent sessions
+claudio.picker.agents()     -- running agents
+claudio.picker.commands()   -- colon commands
+claudio.picker.skills()     -- available skills
+
+-- Open a custom picker with a static list
+local finder = claudio.finder.from_table({
+  { value = "alpha", display = "Alpha" },
+  { value = "beta",  display = "Beta"  },
+})
+
+claudio.picker.open({
+  title     = "Pick one",
+  finder    = finder,
+  layout    = "center",
+  on_select = function(entry)
+    claudio.notify("selected: " .. entry.value)
+  end,
+})
+
+-- Dynamic/async finder (items stream in)
+local finder = claudio.finder.from_fn(function(query, emit, done)
+  for _, item in ipairs(my_search(query)) do
+    emit({ value = item, display = item })
+  end
+  done()
+end)
+```
+
+#### `claudio.lsp.*` — language server integration
+
+```lua
+-- Register a language server for given file extensions
+claudio.lsp.register_server({
+  name       = "gopls",
+  command    = "gopls",
+  args       = { "serve" },
+  extensions = { ".go" },
+})
+
+-- Start / stop a server (rootDir defaults to cwd)
+claudio.lsp.enable("gopls")
+claudio.lsp.enable("gopls", "/path/to/project")
+claudio.lsp.disable("gopls")
+
+-- Query running servers
+local servers = claudio.lsp.list()
+-- each: { name, status, root_dir }
+
+-- Code-intelligence queries (all blocking, return result or nil)
+local info = claudio.lsp.hover({ file = vim.fn.expand("%:p"), line = 10, col = 5 })
+local loc  = claudio.lsp.go_to_definition({ file = "main.go", line = 42, col = 8 })
+local refs = claudio.lsp.find_references({ file = "main.go", line = 42, col = 8 })
+local syms = claudio.lsp.document_symbols("main.go")
+```
+
+#### `claudio.models.*`, `claudio.commands.*`, `claudio.skills.*`, `claudio.windows.*`, `claudio.actions.*` — introspection
+
+```lua
+-- List everything available at runtime
+local models   = claudio.models.list()     -- { id, name, provider, context_window }
+local commands = claudio.commands.list()   -- { name, description, aliases }
+local skills   = claudio.skills.list()     -- { name, description }
+local windows  = claudio.windows.list()    -- { name, title, layout }
+local actions  = claudio.actions.list()    -- array of action ID strings
+
+-- Read a window's current rendered content
+local text = claudio.windows.read("agent://researcher")
+```
 
 ### `:checkhealth`
 
