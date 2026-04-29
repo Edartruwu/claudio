@@ -102,6 +102,84 @@ func (r *Registry) APIDefinitionsWithDeferral(discoveredTools map[string]bool) j
 	return data
 }
 
+// APIDefinitionsForAgent returns tool definitions filtered by agent visibility,
+// then applies deferral logic (including agent-conditional deferral).
+// Tools hidden by ToolFilter are omitted entirely. Deferred tools are omitted
+// (listed in system-reminder instead). This is the agent-aware replacement for
+// APIDefinitionsWithDeferral.
+func (r *Registry) APIDefinitionsForAgent(agentName string, agentCaps []string, hasActiveTeam bool, discoveredTools map[string]bool) json.RawMessage {
+	defs := make([]APIToolDef, 0, len(r.order))
+	for _, name := range r.order {
+		t := r.tools[name]
+
+		// Visibility filter: check FilterableTool interface.
+		if ft, ok := t.(FilterableTool); ok {
+			if !ft.Filter().IsVisible(agentName, agentCaps, hasActiveTeam) {
+				continue
+			}
+		}
+
+		// Deferral: check agent-conditional deferral first, then standard.
+		shouldDefer := r.resolveDeferralForAgent(name, t, agentName, agentCaps, discoveredTools)
+		if shouldDefer {
+			continue
+		}
+
+		defs = append(defs, APIToolDef{
+			Name:        name,
+			Description: t.Description(),
+			InputSchema: t.InputSchema(),
+		})
+	}
+	data, _ := json.Marshal(defs)
+	return data
+}
+
+// DeferredToolNamesForAgent returns names of tools that are both visible to
+// the agent and deferred (standard or agent-conditional).
+func (r *Registry) DeferredToolNamesForAgent(agentName string, agentCaps []string, hasActiveTeam bool) []string {
+	var names []string
+	for _, name := range r.order {
+		t := r.tools[name]
+		// Skip tools not visible to this agent.
+		if ft, ok := t.(FilterableTool); ok {
+			if !ft.Filter().IsVisible(agentName, agentCaps, hasActiveTeam) {
+				continue
+			}
+		}
+		if r.resolveDeferralForAgent(name, t, agentName, agentCaps, nil) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// resolveDeferralForAgent extends resolveDeferral with ConditionalDeferrableTool support.
+func (r *Registry) resolveDeferralForAgent(name string, t Tool, agentName string, agentCaps []string, discoveredTools map[string]bool) bool {
+	// Check standard deferral first (handles overrides, auto-activate, discovery).
+	if r.resolveDeferral(name, t, discoveredTools) {
+		return true
+	}
+
+	// Check agent-conditional deferral: tool may not be globally deferred but
+	// deferred for specific agents (e.g. deferred = { agents = {"explore"} }).
+	if cdt, ok := t.(ConditionalDeferrableTool); ok {
+		if !cdt.ShouldDefer() && cdt.ShouldDeferForAgent(agentName, agentCaps) {
+			// Honor user override: if user pinned it eager, respect that.
+			if override, ok := r.deferOverride[name]; ok && !override {
+				return false
+			}
+			// Already discovered → don't defer.
+			if discoveredTools != nil && discoveredTools[name] {
+				return false
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
 // DeferredToolNames returns the names of tools that support deferred loading
 // and are not auto-activated (i.e. their backing service is unavailable).
 // User overrides are honored: pinned tools are excluded, force-deferred tools

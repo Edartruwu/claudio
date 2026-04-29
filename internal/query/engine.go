@@ -71,6 +71,11 @@ type EngineConfig struct {
 	// CavemanMsg is injected as the first user message at session start
 	// and re-prepended after compaction for better model compliance.
 	CavemanMsg string
+
+	// Agent context for tool visibility filtering.
+	AgentName     string   // agent type name (e.g. "backend-senior"); empty = principal
+	AgentCaps     []string // agent capabilities (e.g. ["design"])
+	HasActiveTeam bool     // true when a team template is active
 }
 
 const (
@@ -104,6 +109,11 @@ type Engine struct {
 	frozenDeferredReminder string          // deferred-tools system-reminder, frozen on first build
 	onTurnEnd              func(messages []api.Message)                // called when a turn ends (end_turn stop reason)
 	onAutoCompact          func(messages []api.Message, summary string) // called after successful auto-compaction
+
+	// Agent context for tool visibility filtering.
+	agentName     string
+	agentCaps     []string
+	hasActiveTeam bool
 
 	// user context injection (CLAUDE.md as first user message)
 	userContextMsg      string
@@ -334,6 +344,9 @@ func NewEngineWithConfig(client *api.Client, registry *tools.Registry, handler E
 	e.onTurnEnd = cfg.OnTurnEnd
 	e.onAutoCompact = cfg.OnAutoCompact
 	e.cavemanMsg = cfg.CavemanMsg
+	e.agentName = cfg.AgentName
+	e.agentCaps = cfg.AgentCaps
+	e.hasActiveTeam = cfg.HasActiveTeam
 	return e
 }
 
@@ -660,7 +673,7 @@ func (e *Engine) RunWithBlocks(ctx context.Context, blocks []api.UserContentBloc
 			Messages:  mergedMessages,
 			System:    e.buildSystemWithDeferredTools(),
 			MaxTokens: maxTok,
-			Tools:     e.registry.APIDefinitionsWithDeferral(e.discoveredTools),
+			Tools:     e.toolDefinitions(),
 		}
 
 		// Stream response
@@ -1537,6 +1550,15 @@ func (e *Engine) fireHook(ctx context.Context, event hooks.Event, toolName, tool
 	return blocked
 }
 
+// toolDefinitions returns the tool definitions for the current request, using
+// agent-aware filtering when agent context is set.
+func (e *Engine) toolDefinitions() json.RawMessage {
+	if e.agentName != "" {
+		return e.registry.APIDefinitionsForAgent(e.agentName, e.agentCaps, e.hasActiveTeam, e.discoveredTools)
+	}
+	return e.registry.APIDefinitionsWithDeferral(e.discoveredTools)
+}
+
 // buildSystemWithDeferredTools returns the system prompt with a list of deferred
 // tool names appended (and optionally the git status context), so the model knows
 // they exist and can fetch them via ToolSearch.
@@ -1553,7 +1575,12 @@ func (e *Engine) buildSystemWithDeferredTools() string {
 
 	// Build the frozen reminder exactly once.
 	if e.frozenDeferredReminder == "" {
-		deferred := e.registry.DeferredToolNames()
+		var deferred []string
+		if e.agentName != "" {
+			deferred = e.registry.DeferredToolNamesForAgent(e.agentName, e.agentCaps, e.hasActiveTeam)
+		} else {
+			deferred = e.registry.DeferredToolNames()
+		}
 		if len(deferred) > 0 {
 			e.frozenDeferredReminder = "\n\n<system-reminder>\nThe following deferred tools are available via ToolSearch:\n" +
 				strings.Join(deferred, "\n") + "\n</system-reminder>"
