@@ -17,6 +17,10 @@ import (
 type PaneState struct {
 	SessionID string
 
+	// Title is a human-readable label for tab/split headers.
+	// Set to agent name, session title, or "New Pane" as fallback.
+	Title string
+
 	// Engine + channels
 	engine     *query.Engine
 	engineRef  **query.Engine // optional external pointer updated whenever engine is set

@@ -13,7 +13,8 @@ type WindowDef struct {
 	Window *windows.Window
 }
 
-// injectWindowsAPI adds claudio.buf sub-table and extends claudio.ui with register_window.
+// injectWindowsAPI adds claudio.buf sub-table, extends claudio.ui with register_window,
+// and adds the claudio.win sub-table (open_agent, etc.).
 func (r *Runtime) injectWindowsAPI(L *lua.LState, plugin *loadedPlugin, claudio *lua.LTable) {
 	// claudio.buf sub-table
 	bufTable := L.NewTable()
@@ -28,6 +29,11 @@ func (r *Runtime) injectWindowsAPI(L *lua.LState, plugin *loadedPlugin, claudio 
 		L.SetField(claudio, "ui", uiTable)
 	}
 	L.SetField(uiTable, "register_window", L.NewFunction(r.apiRegisterWindow()))
+
+	// claudio.win sub-table
+	winTable := L.NewTable()
+	L.SetField(winTable, "open_agent", L.NewFunction(r.apiWinOpenAgent()))
+	L.SetField(claudio, "win", winTable)
 }
 
 // apiBufNew implements claudio.buf.new({name, render}) -> LUserData(*windows.Buffer).
@@ -153,6 +159,33 @@ func (r *Runtime) apiRegisterWindow() lua.LGFunction {
 			r.pendingWindows = append(r.pendingWindows, WindowDef{Window: w})
 			r.pendingWindowsMu.Unlock()
 		}
+		return 0
+	}
+}
+
+// apiWinOpenAgent implements claudio.win.open_agent({ agent = "jj" }).
+// Opens a new agent pane in the TUI. The optional 'agent' field names the
+// agent persona to apply (empty or absent = default Claudio persona).
+func (r *Runtime) apiWinOpenAgent() lua.LGFunction {
+	return func(L *lua.LState) int {
+		agentName := ""
+		if L.GetTop() >= 1 {
+			if opts, ok := L.Get(1).(*lua.LTable); ok {
+				if av, ok2 := L.GetField(opts, "agent").(lua.LString); ok2 {
+					agentName = string(av)
+				}
+			}
+		}
+
+		r.openPaneFnMu.RLock()
+		fn := r.openPaneFn
+		r.openPaneFnMu.RUnlock()
+
+		if fn == nil {
+			log.Printf("[lua] claudio.win.open_agent: TUI not ready — open-pane fn not wired")
+			return 0
+		}
+		fn(agentName)
 		return 0
 	}
 }

@@ -191,6 +191,10 @@ type Model struct {
 	// Nil when no LuaRuntime is present.
 	luaPickerCh chan picker.Config
 
+	// luaOpenPaneCh receives agent name strings from Lua goroutines requesting a new pane.
+	// Empty string = default Claudio persona. Nil when no LuaRuntime is present.
+	luaOpenPaneCh chan string
+
 	// luaTokens is a shared token/cost snapshot updated after each turn and
 	// session reset. It is a pointer so all BubbleTea Model copies see the same data.
 	luaTokens *luaTokenState
@@ -814,6 +818,18 @@ func New(apiClient *api.Client, registry *tools.Registry, systemPrompt string, s
 				// Buffer full — a picker is already queued; drop duplicate.
 			}
 		})
+
+		// Wire Lua open-agent callback via a buffered channel so Lua goroutines
+		// can request new panes without touching BubbleTea internals directly.
+		paneCh := make(chan string, 4)
+		m.luaOpenPaneCh = paneCh
+		m.appCtx.LuaRuntime.SetOpenPaneFn(func(agentName string) {
+			select {
+			case paneCh <- agentName:
+			default:
+				// Buffer full — drop; the user can retry.
+			}
+		})
 	}
 
 	// Register AGUI panel as a managed float window.
@@ -868,6 +884,9 @@ func (m Model) Init() tea.Cmd {
 	if m.luaPickerCh != nil {
 		cmds = append(cmds, m.waitForLuaPicker())
 	}
+	if m.luaOpenPaneCh != nil {
+		cmds = append(cmds, m.waitForLuaOpenPane())
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -892,6 +911,20 @@ func (m Model) waitForLuaPicker() tea.Cmd {
 			return nil
 		}
 		return OpenLuaPickerMsg{Config: cfg}
+	}
+}
+
+// waitForLuaOpenPane blocks until a Lua plugin sends an agent name via luaOpenPaneCh,
+// then returns an openNewPaneMsg for the BubbleTea Update loop to handle.
+// Must be re-armed after each message so future calls are not missed.
+func (m Model) waitForLuaOpenPane() tea.Cmd {
+	ch := m.luaOpenPaneCh
+	return func() tea.Msg {
+		name, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return openNewPaneMsg{agentName: name}
 	}
 }
 
@@ -1669,6 +1702,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pickerModel = pickerMdl.(picker.Model)
 			cmds = append(cmds, pickerCmd)
 		}
+		return m, tea.Batch(cmds...)
+
+	case openNewPaneMsg:
+		// Re-arm listener so future Lua open_agent() calls are not dropped.
+		if m.luaOpenPaneCh != nil {
+			cmds = append(cmds, m.waitForLuaOpenPane())
+		}
+		idx, paneCmd := m.openNewPane(msg.agentName)
+		m.activePaneIdx = idx
+		cmds = append(cmds, paneCmd)
 		return m, tea.Batch(cmds...)
 
 	case OpenLuaPickerMsg:
@@ -4409,6 +4452,12 @@ type permissionRuleSavedMsg struct{}
 // The root model handles it by launching a fully interactive picker overlay.
 type OpenLuaPickerMsg struct {
 	Config picker.Config
+}
+
+// openNewPaneMsg is dispatched (e.g. by Lua claudio.win.open_agent) to request
+// that a new agent pane be created and made active.
+type openNewPaneMsg struct {
+	agentName string // empty = default Claudio persona
 }
 
 // persistPermissionRuleCmd returns a tea.Cmd that persists a permission rule to disk
@@ -7865,6 +7914,73 @@ func placeOverlay(base, overlay string, width, height int) string {
 		lipgloss.WithWhitespaceChars(" "),
 		lipgloss.WithWhitespaceForeground(lipgloss.Color("#000000")),
 	)
+}
+
+// ── Pane Management ──────────────────────────────────────
+
+// openNewPane creates a new agent pane wired with its own engine and event channel,
+// appends it to m.panes, and returns the new index plus a Cmd to begin listening
+// for events on the new pane. agentName is optional — empty = default Claudio persona.
+func (m *Model) openNewPane(agentName string) (int, tea.Cmd) {
+	// Derive a session ID for the new pane (re-use current session prefix + suffix).
+	sessionID := fmt.Sprintf("pane-%d", len(m.panes))
+	if m.session != nil && m.session.Current() != nil {
+		sessionID = m.session.Current().ID + fmt.Sprintf("-p%d", len(m.panes))
+	}
+
+	pane := newPaneState(sessionID)
+	pane.Title = "New Pane"
+
+	// Build engine
+	pane.approvalCh = make(chan bool, 1)
+	handler := &tuiEventHandler{ch: pane.eventCh, approvalCh: pane.approvalCh}
+	var eng *query.Engine
+	if m.engineConfig != nil {
+		cfg := *m.engineConfig
+		cfg.SessionID = sessionID
+		eng = query.NewEngineWithConfig(m.apiClient, m.registry, handler, cfg)
+	} else {
+		eng = query.NewEngine(m.apiClient, m.registry, handler)
+	}
+	if m.appCtx != nil && m.appCtx.Bus != nil {
+		eng.SetEventBus(m.appCtx.Bus)
+	}
+	pane.engine = eng
+
+	// Apply agent persona if requested
+	if agentName != "" {
+		agentDef := agents.GetAgent(agentName)
+		agentMsg := agentselector.AgentSelectedMsg{
+			AgentType:       agentDef.Type,
+			DisplayName:     agentDef.Type,
+			SystemPrompt:    agentDef.SystemPrompt,
+			Model:           agentDef.Model,
+			DisallowedTools: agentDef.DisallowedTools,
+			Capabilities:    agentDef.Capabilities,
+		}
+		// Build filtered registry for this pane
+		filtered := m.registry.Clone()
+		for _, name := range agentMsg.DisallowedTools {
+			filtered.Remove(name)
+		}
+		base := m.baseSystemPrompt
+		if agentMsg.SystemPrompt != "" {
+			base = m.baseSystemPrompt + "\n\n" + agentMsg.SystemPrompt
+		}
+		pane.systemPrompt = base
+		pane.engine.SetSystem(base)
+		pane.engine.SetRegistry(filtered)
+
+		label := agentDef.Type
+		if agentMsg.DisplayName != "" {
+			label = agentMsg.DisplayName
+		}
+		pane.Title = label
+	}
+
+	newIdx := len(m.panes)
+	m.panes = append(m.panes, pane)
+	return newIdx, waitForPaneEvent(newIdx, pane.eventCh)
 }
 
 // ── Event Handler ────────────────────────────────────────

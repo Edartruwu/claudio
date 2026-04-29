@@ -151,6 +151,10 @@ type Runtime struct {
 	pickerOpenerMu sync.RWMutex
 	pickerOpener   func(picker.Config)
 
+	// Open-pane fn (wired after TUI is ready via SetOpenPaneFn)
+	openPaneFnMu sync.RWMutex
+	openPaneFn   func(agentName string)
+
 	// Team inspection (wired after teams are initialised)
 	teamRunnerMu sync.RWMutex
 	teamRunner   *teams.TeammateRunner
@@ -605,6 +609,14 @@ func (r *Runtime) SetPickerOpener(fn func(picker.Config)) {
 	r.pickerOpenerMu.Lock()
 	defer r.pickerOpenerMu.Unlock()
 	r.pickerOpener = fn
+}
+
+// SetOpenPaneFn wires the open-pane callback so Lua plugins can spawn new agent panes.
+// agentName is the agent persona to apply; empty string = default Claudio persona.
+func (r *Runtime) SetOpenPaneFn(fn func(agentName string)) {
+	r.openPaneFnMu.Lock()
+	defer r.openPaneFnMu.Unlock()
+	r.openPaneFn = fn
 }
 
 // SetTeamRunner wires the TeammateRunner so Lua plugins can inspect agent state.
