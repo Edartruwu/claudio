@@ -72,7 +72,7 @@ Real agent parallelism — not just sub-agents. `Prab` (your PM) plans, creates 
 <td valign="top">
 
 ### Vim-Grade TUI
-Full modal state machine — normal, insert, visual, operator-pending — with registers, text objects, counts, and `.` repeat. Press `:` to open a Neovim-style command line: `:set model opus`, `:colorscheme gruvbox`, `:lua claudio.notify("hi")`.
+Full modal state machine — normal, insert, visual, operator-pending — with registers, text objects, counts, and `.` repeat. Press `:` to open a Neovim-style command line: `:set model opus`, `:colorscheme gruvbox`, `:lua claudio.notify("hi")`. Split panes let you run multiple agent sessions side-by-side: `<Space>wn` opens a new pane, `<Space>wN` cycles panes, `<Space>wx` closes one. Each pane has its own session, engine, message history, and scroll state.
 
 </td>
 <td valign="top">
@@ -219,7 +219,7 @@ Claudio is built ground-up in Go for engineers who want **more control, more age
 |---|---|---|
 | 🏗️ **Runtime** | Single Go binary — zero runtime deps | Node.js / TypeScript |
 | 🔌 **Extensibility** | Full Lua runtime — tools, keymaps, themes, providers, hooks from `init.lua`. No recompile. | Extension API in beta |
-| 🤝 **Multi-agent teams** | Parallel workers in isolated worktrees, mailbox messaging, `/harness` patterns | ❌ |
+| 🤝 **Multi-agent teams** | Parallel workers in isolated worktrees, mailbox messaging, `/harness` patterns + split-pane TUI sessions | ❌ |
 | 💎 **Session-as-agent** | Crystallize sessions into reusable personas with accumulated memory | ❌ |
 | 🧠 **Memory** | Scoped (project/agent/global), facts-based, `Recall` semantic search, `/dream` consolidation, cache-safe | Single directory |
 | 🗜️ **Token efficiency** | 11-layer optimization stack | Basic prompt caching |
@@ -320,6 +320,7 @@ claudio --attach http://localhost:8080 --name "my-session" --master
 - [CLI Flags](#cli-flags)
 - [Interactive Commands](#interactive-commands)
 - [Keybindings](#keybindings)
+  - [Pane Management](#pane-management)
 - [Vim Mode & `:` Command Line](#vim-mode---command-line)
 - [Context Management](#context-management)
 - [Token Efficiency](#token-efficiency)
@@ -493,38 +494,8 @@ claudio.register_skill({
   name         = "deploy",
   description  = "Deploy the current project",
   content      = "Run: make deploy && notify me when done",
-  capabilities = { },          -- empty = visible to all agents (most common)
+  capabilities = { "bash" },
 })
-
--- The `capabilities` field controls which agents can see this skill.
--- A skill is visible when its capabilities list is empty, or when at least
--- one entry matches the active agent's own capabilities.
---
---   capabilities = {}           → visible to every agent (default / most common)
---   capabilities = { "myapp" }  → visible only to agents that declare "myapp"
---
--- Two special built-in values change behaviour beyond simple visibility:
---
---   "design" — the skill is shown only to design agents AND Claudio also
---              unlocks 8 extra tools for those agents:
---              RenderMockup, BundleMockup, VerifyMockup, ExportHandoff,
---              CreateDesignSession, ExportVideo, ExportDeckPPTX, VerifyPrototype
---
---   "team"   — the skill is hidden for everyone when no team template is
---              loaded; once a team is active the skill becomes visible again
---
--- Custom capabilities — pair register_skill with register_capability so the
--- named capability also unlocks specific tools for those agents:
-claudio.register_capability("myapp", { "MyCustomTool", "AnotherTool" })
-claudio.register_skill({
-  name         = "deploy",
-  description  = "Deploy the current project",
-  content      = "Run: make deploy && notify me when done",
-  capabilities = { "myapp" },  -- only visible to agents that have "myapp"
-})
---
--- If you just want a skill available to everyone, leave capabilities empty or
--- omit the field entirely.
 
 -- Register a hook (pre/post tool execution)
 claudio.register_hook("before_tool", "bash", function(ctx)
@@ -706,9 +677,29 @@ panel:add_section({
   end,
 })
 
--- Open a running agent's live output buffer (lazy — created on first call)
--- Equivalent to picking the agent from <Space>wa
-claudio.win.open_agent("agent-id-or-name")
+-- Open a new agent pane (split view) — keybinding: <Space>wn
+claudio.win.open_agent({})                  -- new pane, default agent
+claudio.win.open_agent({ agent = "jj" })    -- new pane with jj persona
+```
+
+#### `claudio.prompt.*` — prompt customization
+
+```lua
+-- Set placeholder text shown in empty prompt
+claudio.prompt.set_placeholder("Ask anything...")
+
+-- Switch prompt editing mode: "vim" | "simple"
+claudio.prompt.set_mode("vim")
+
+-- Hook fired before submission — return false to cancel, return string to transform
+claudio.prompt.on_submit(function(text)
+  if text:sub(1,1) == "!" then
+    -- reroute to shell
+    claudio.cmd("bash " .. text:sub(2))
+    return false  -- cancel normal submission
+  end
+  return text
+end)
 ```
 
 #### `claudio.agent.*` — agent context
@@ -735,7 +726,7 @@ end)
 
 -- List all running agents
 local agents = claudio.agent.list()
--- each: { id, name, status, team, has_buffer }
+-- each: { id, name, status, team, has_window }
 
 -- Programmatically spawn a sub-agent
 claudio.agent.spawn({
@@ -1131,8 +1122,6 @@ Press `:` in normal vim mode — exactly like Neovim:
 | `:lua <code>` | Execute Lua live — `:lua claudio.notify("hi")`, `:lua claudio.ui.set_color(...)` |
 | `:set <key> [value]` | Read or write any config — `:set model`, `:set caveman true` |
 | `:colorscheme <name>` | Switch theme — `tokyonight`, `gruvbox`, `catppuccin`, `nord`, `dracula` |
-| `:q` / `:quit` | Close the active buffer (when one is open), otherwise exit |
-| `:bd` / `:bdelete` / `:bclose` | Close/delete the active buffer |
 | `:checkhealth` | Diagnose plugins, capabilities, config, LSP |
 | `:health` | Alias for `:checkhealth` |
 | `:<command>` | Any `/command` also works as a `:command` |
@@ -1217,8 +1206,16 @@ Enter with `<Space>wk` or (in vim normal mode with empty prompt) scroll with `j`
 | `<Space>bk` | Delete current session |
 | `<Space>.` | Open session picker (telescope-style) |
 | `<Space>,<Enter>` | Switch to alternate session |
-| `<Space>wa` | Open agents picker — pick an agent to open its live buffer |
-| `<Space>wl` / `<Space>wh` | Cycle to next / previous pane |
+
+### Pane Management
+
+| Sequence | Action |
+|----------|--------|
+| `<Space>wn` | Open new agent pane (split) |
+| `<Space>wN` | Cycle to previous pane |
+| `<Space>wx` | Close current pane |
+
+Active pane shown with `●` indicator. Each pane has its own session, engine, message history, and scroll state.
 
 ### Panels (`<Space>i` + key)
 
@@ -1228,7 +1225,7 @@ Enter with `<Space>wk` or (in vim normal mode with empty prompt) scroll with `j`
 | `m` | Memory | Browse, search, edit, add, delete memories |
 | `k` | Skills | Browse available skills |
 | `a` | Analytics | Session statistics and cache metrics |
-| `t` | Tasks | Background tasks and team agent status |
+| `t` | Tasks | Background tasks and team agent status — press `/` to filter by title |
 
 ---
 
@@ -1242,16 +1239,6 @@ Toggle vim mode with `/vim`. Full modal state machine:
 - **Operator-pending mode**: after `d/c/y`
 
 Press `:` in normal mode to open the command line — a live Lua REPL and config interface. Press `Tab` for wildmenu completion on commands and arguments.
-
-### Buffer navigation (nvim-style)
-
-Agent output and custom windows open as full-screen buffers. Buffer lifecycle follows Neovim conventions:
-
-- `j` / `k` — scroll the buffer
-- `:q` / `:bd` — close the buffer (like Neovim — `Esc` alone does **not** close it)
-- `Esc` — only closes if the buffer has `AllowEscClose` set (configurable per-buffer via Lua)
-
-Agent buffers are **lazy** — nothing is pre-opened when an agent starts. Open one by picking from the agents picker (`<Space>wa`) or via `claudio.win.open_agent(agentID)`.
 
 ### Keybinding Customization
 
