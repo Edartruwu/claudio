@@ -20,9 +20,10 @@ type Window struct {
 	Width   int // hint; 0 = auto
 	Height  int // hint; 0 = auto
 	ZIndex  int
-	Focused   bool
-	AgentName string // routing name for >>agentName messages
-	open      bool
+	Focused       bool
+	AgentName     string // routing name for >>agentName messages
+	AllowEscClose bool   // if true, ESC closes this buffer (default: false = nvim-style)
+	open          bool
 }
 
 // IsOpen reports whether the window is currently visible.

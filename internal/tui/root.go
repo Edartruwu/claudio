@@ -999,11 +999,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Buffer scroll keys (active when a buffer is open, but not while the picker overlay is open).
 		if m.activeBufferName != "" && m.windowMgr != nil && !m.isPickerOpen {
-			// ESC always closes the buffer regardless of vim mode.
-			if msg.String() == "esc" {
+			switch msg.String() {
+			case "q":
+				// q always closes the buffer (like :q in nvim).
 				m.activeBufferName = ""
 				m.bufferScrollOffset = 0
 				return m, nil
+			case "esc":
+				// ESC only closes if the buffer is configured to allow it.
+				if w := m.windowMgr.Get(m.activeBufferName); w != nil && w.AllowEscClose {
+					m.activeBufferName = ""
+					m.bufferScrollOffset = 0
+					return m, nil
+				}
 			}
 			// Scroll keys only fire in vim Normal mode (or when vim is disabled)
 			// so they don't interfere with typing in Insert mode.
@@ -1772,11 +1780,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "agents":
-			// Open the full-screen rich agent detail overlay.
 			if agentID, ok := msg.Entry.Meta["agentID"].(string); ok && agentID != "" {
-				newM, cmd := m.openAgentDetail(agentID)
-				m = newM
-				cmds = append(cmds, cmd)
+				if m.appCtx != nil && m.appCtx.TeamRunner != nil && m.windowMgr != nil {
+					bufName := "agent://" + agentID
+					// Lazily register the window if not yet in the manager.
+					if m.windowMgr.Get(bufName) == nil {
+						if lb, lbOK := m.appCtx.TeamRunner.GetAgentLiveBuffer(agentID); lbOK {
+							agentName := agentID
+							if state, hasState := m.appCtx.TeamRunner.GetState(agentID); hasState {
+								agentName = state.Identity.AgentName
+							}
+							func() {
+								defer func() { recover() }() //nolint:errcheck
+								m.windowMgr.RegisterLiveBuffer(lb, agentName, agentName)
+							}()
+						}
+					}
+					if m.windowMgr.Get(bufName) != nil {
+						m.activeBufferName = bufName
+						m.bufferScrollOffset = 0
+					}
+				}
 			}
 		case "lua":
 			// OnSelect callback already fired inside picker.handleKey before
