@@ -544,6 +544,13 @@ func (r *Runtime) GetWindowManager() *windows.Manager {
 
 // SetPrompt wires the prompt model so claudio.prompt.* calls can mutate it.
 // Any placeholder or mode set before TUI init is applied immediately.
+//
+// Stale-pointer risk: p must remain valid for the lifetime of the Runtime.
+// Root passes &m.prompt where m is the root bubbletea Model stored on the heap;
+// the address is stable as long as the root Model is not replaced. If the TUI
+// ever reinitializes the root Model (e.g. a full restart without process exit),
+// SetPrompt must be called again with the new address before any Lua prompt.*
+// calls can safely reach the live prompt.
 func (r *Runtime) SetPrompt(p *prompt.Model) {
 	r.promptMu.Lock()
 	defer r.promptMu.Unlock()

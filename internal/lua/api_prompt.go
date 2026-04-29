@@ -107,6 +107,9 @@ func (r *Runtime) RunPromptHooks(text string) (string, bool) {
 				Protect: true,
 			}, lua.LString(text)); err != nil {
 				log.Printf("[lua] on_submit handler error: %v", err)
+				// Protected call pushes the error value onto the stack;
+				// pop it to avoid Lua VM stack growth on repeated errors.
+				h.plugin.L.Pop(1)
 				return
 			}
 			result = h.plugin.L.Get(-1)

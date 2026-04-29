@@ -132,6 +132,11 @@ func (m *Model) SetPlaceholder(s string) {
 	m.textarea.Placeholder = s
 }
 
+// Placeholder returns the current placeholder text.
+func (m *Model) Placeholder() string {
+	return m.textarea.Placeholder
+}
+
 // ToggleVim enables/disables vim mode.
 func (m *Model) ToggleVim() {
 	m.vimEnabled = !m.vimEnabled
